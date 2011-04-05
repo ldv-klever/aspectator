@@ -95,6 +95,12 @@ along with GCC; see the file COPYING3.  If not see
 				   declarations for e.g. AIX 4.x.  */
 #endif
 
+/* LDV extension begin. */
+
+#include "ldv-core.h"
+
+/* LDV extension end. */
+
 static void general_init (const char *);
 static void do_compile (void);
 static void process_options (void);
@@ -1957,6 +1963,13 @@ toplev_main (int argc, char **argv)
 
   if (help_flag)
     print_plugins_help (stderr, "");
+
+/* LDV extension begin. */
+
+  /* Process ldv options before any file analysis. */
+  ldv_handle_options ();
+
+/* LDV extension end. */
 
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)

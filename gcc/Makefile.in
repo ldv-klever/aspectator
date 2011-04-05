@@ -1155,7 +1155,8 @@ C_COMMON_OBJS = c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o \
   c-family/c-format.o c-family/c-gimplify.o c-family/c-lex.o \
   c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o \
   c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o \
-  c-family/c-semantics.o c-family/c-ada-spec.o
+  c-family/c-semantics.o c-family/c-ada-spec.o \
+  c-family/ldv-convert.o c-family/ldv-pretty-print.o
 
 # Language-specific object files for C and Objective C.
 C_AND_OBJC_OBJS = attribs.o c-errors.o c-decl.o c-typeck.o \
@@ -1475,7 +1476,8 @@ OBJS-archive = \
 	prefix.o \
 	tree-inline.o \
 	tree-nomudflap.o \
-	varpool.o
+	varpool.o \
+	ldv-core.o
 
 OBJS = $(OBJS-common) $(OBJS-md) $(OBJS-archive)
 
@@ -2098,7 +2100,8 @@ c-family/c-common.o : c-family/c-common.c $(CONFIG_H) $(SYSTEM_H) coretypes.h \
 	intl.h $(OPTS_H) $(CPPLIB_H) $(TREE_INLINE_H) $(HASHTAB_H) \
 	$(BUILTINS_DEF) $(CGRAPH_H) $(BASIC_BLOCK_H) $(TARGET_DEF_H) \
 	$(LIBFUNCS_H) \
-	gt-c-family-c-common.h
+	gt-c-family-c-common.h \
+	ldv-core.h c-family/ldv-pretty-print.h
 
 c-family/c-cppbuiltin.o : c-family/c-cppbuiltin.c $(CONFIG_H) $(SYSTEM_H) \
 	coretypes.h $(TM_H) $(TREE_H) version.h $(C_COMMON_H) $(C_PRAGMA_H) \
@@ -2157,6 +2160,25 @@ c-family/c-pragma.o: c-family/c-pragma.c $(CONFIG_H) $(SYSTEM_H) coretypes.h \
 c-family/c-pretty-print.o : c-family/c-pretty-print.c $(C_PRETTY_PRINT_H) \
 	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) \
 	$(DIAGNOSTIC_H) tree-iterator.h intl.h tree-pretty-print.h
+
+# LDV extension begin.
+
+ldv-core.o : ldv-core.c \
+	ldv-core.h \
+	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H)
+
+c-family/ldv-convert.o : c-family/ldv-convert.c \
+	ldv-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
+	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) \
+	$(C_COMMON_H) $(DIAGNOSTIC_CORE_H) $(TREE_H) tree-iterator.h
+
+c-family/ldv-pretty-print.o : c-family/ldv-pretty-print.c \
+	ldv-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
+	c-family/ldv-pretty-print.h \
+	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) \
+	$(TREE_H)
+
+# LDV extension end.
 
 c-family/c-semantics.o : c-family/c-semantics.c $(CONFIG_H) $(SYSTEM_H) \
 	coretypes.h $(TM_H) $(TREE_H) $(FLAGS_H) output.h \

@@ -1466,6 +1466,16 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 	  shadow_tag_warned (specs, 1);
 	  pedwarn (here, 0, "empty declaration");
 	}
+
+/* LDV extension begin. */
+      
+      /* Here structure, union and enumeration prototypes are cautched. */
+      if (ldv_is_c_backend_enabled ())
+        if (specs->typespec_kind == ctsk_tagfirstref)
+          ldv_print_translation_unit (specs->type);
+
+/* LDV extension end. */
+
       c_parser_consume_token (parser);
       return;
     }

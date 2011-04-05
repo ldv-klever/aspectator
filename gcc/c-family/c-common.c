@@ -3698,6 +3698,12 @@ pointer_int_sum (location_t loc, enum tree_code resultcode,
      Do this multiplication as signed, then convert to the appropriate type
      for the pointer operation and disregard an overflow that occured only
      because of the sign-extension change in the latter conversion.  */
+
+/* LDV extension begin. */
+
+  /* We wouldn't like the given transformation to keep an original integer
+     number. */ 
+  if (!ldv_is_c_backend_enabled ())
   {
     tree t = build_binary_op (loc,
 			      MULT_EXPR, intop,
@@ -3708,6 +3714,8 @@ pointer_int_sum (location_t loc, enum tree_code resultcode,
 				  TREE_INT_CST_HIGH (intop));
   }
 
+/* LDV extension end. */
+  
   /* Create the sum or difference.  */
   if (resultcode == MINUS_EXPR)
     intop = fold_build1_loc (loc, NEGATE_EXPR, sizetype, intop);
