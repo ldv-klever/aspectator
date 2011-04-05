@@ -5,7 +5,7 @@
 #include "diagnostic-core.h"
 
 #include "ldv-convert.h"
-#include "ldv-core.h"
+#include "ldv-cbe-core.h"
 #include "ldv-grammar.h"
 #include "ldv-pretty-print.h"
 

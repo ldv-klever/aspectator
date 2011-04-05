@@ -46,7 +46,7 @@ never after.
 
 /* Since c-common.h is included in all major files dealing with C files
    processing we put here the LDV pretty printer interface. */
-#include "ldv-core.h"
+#include "ldv-cbe-core.h"
 #include "ldv-pretty-print.h"
 
 /* LDV extension end. */

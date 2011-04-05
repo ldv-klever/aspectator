@@ -97,7 +97,7 @@ along with GCC; see the file COPYING3.  If not see
 
 /* LDV extension begin. */
 
-#include "ldv-core.h"
+#include "ldv-cbe-core.h"
 
 /* LDV extension end. */
 

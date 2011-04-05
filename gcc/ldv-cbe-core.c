@@ -4,7 +4,7 @@
 #include "tm.h"
 #include "diagnostic-core.h"
 
-#include "ldv-core.h"
+#include "ldv-cbe-core.h"
 
 
 #define LDV_SPACES_PER_INDENT_LEVEL 2

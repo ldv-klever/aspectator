@@ -9,7 +9,7 @@
 #include "c-tree.h"
 
 #include "ldv-convert.h"
-#include "ldv-core.h"
+#include "ldv-cbe-core.h"
 #include "ldv-grammar.h"
 
 

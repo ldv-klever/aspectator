@@ -1477,7 +1477,7 @@ OBJS-archive = \
 	tree-inline.o \
 	tree-nomudflap.o \
 	varpool.o \
-	ldv-core.o
+	ldv-cbe-core.o
 
 OBJS = $(OBJS-common) $(OBJS-md) $(OBJS-archive)
 
@@ -2101,7 +2101,7 @@ c-family/c-common.o : c-family/c-common.c $(CONFIG_H) $(SYSTEM_H) coretypes.h \
 	$(BUILTINS_DEF) $(CGRAPH_H) $(BASIC_BLOCK_H) $(TARGET_DEF_H) \
 	$(LIBFUNCS_H) \
 	gt-c-family-c-common.h \
-	ldv-core.h c-family/ldv-pretty-print.h
+	ldv-cbe-core.h c-family/ldv-pretty-print.h
 
 c-family/c-cppbuiltin.o : c-family/c-cppbuiltin.c $(CONFIG_H) $(SYSTEM_H) \
 	coretypes.h $(TM_H) $(TREE_H) version.h $(C_COMMON_H) $(C_PRAGMA_H) \
@@ -2163,17 +2163,17 @@ c-family/c-pretty-print.o : c-family/c-pretty-print.c $(C_PRETTY_PRINT_H) \
 
 # LDV extension begin.
 
-ldv-core.o : ldv-core.c \
-	ldv-core.h \
+ldv-cbe-core.o : ldv-cbe-core.c \
+	ldv-cbe-core.h \
 	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H)
 
 c-family/ldv-convert.o : c-family/ldv-convert.c \
-	ldv-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
+	ldv-cbe-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
 	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) \
 	$(C_COMMON_H) $(DIAGNOSTIC_CORE_H) $(TREE_H) tree-iterator.h
 
 c-family/ldv-pretty-print.o : c-family/ldv-pretty-print.c \
-	ldv-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
+	ldv-cbe-core.h c-family/ldv-convert.h c-family/ldv-grammar.h \
 	c-family/ldv-pretty-print.h \
 	$(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) \
 	$(TREE_H)
