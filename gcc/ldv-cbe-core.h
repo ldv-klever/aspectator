@@ -1,5 +1,5 @@
-#ifndef _LDV_CORE_H_
-#define _LDV_CORE_H_
+#ifndef _LDV_CBE_CORE_H_
+#define _LDV_CBE_CORE_H_
 
 
 #define LDV_WARN(msg) warning (0, "LDV: %s: %d: %s", __FILE__, __LINE__, msg)
@@ -29,4 +29,4 @@ extern bool ldv_is_dump_ops (void);
 extern const char *ldv_itoa (unsigned int);
 
 
-#endif /* _LDV_CORE_H_ */
+#endif /* _LDV_CBE_CORE_H_ */
