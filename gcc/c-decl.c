@@ -60,6 +60,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "pointer-set.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
+ 
+/* LDV extension beginning. */
+
+#include "ldv-advice-weaver.h"
+#include "ldv-cpp-pointcut-matcher.h"
+#include "ldv-io.h"
+#include "ldv-opts.h"
+#include "ldv-pointcut-matcher.h"
+
+/* LDV extension end. */
 
 /* In grokdeclarator, distinguish syntactic contexts of declarators.  */
 enum decl_context
@@ -1875,6 +1885,22 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 		  )
 		  && same_translation_unit_p (newdecl, olddecl))
 		{
+		
+		  /* LDV extension beginning. */
+		  
+		  /* Ignore duplicates connected with woven function
+		     definitions. */
+		  if (ldv_isldv())
+		    {
+		      tree name = DECL_NAME (olddecl);
+		      const char *name_str = NULL;
+		      
+		      if (name && (name_str = IDENTIFIER_POINTER (name)) && ldv_isweaved (name_str, true))
+		        return retval;
+		    }
+		  
+		  /* LDV extension end. */
+		  
 		  error ("redefinition of %q+D", newdecl);
 		  locate_old_decl (olddecl);
 		  return false;
@@ -8217,9 +8243,16 @@ finish_function (void)
 {
   tree fndecl = current_function_decl;
   
+  /* LDV extension begin. */
+
+  /* Variable to store a location of a function body close brace. */
+  expanded_location ldv_func_close_brace_location;  
+  
+  /* LDV extension end. */
+
   if (c_dialect_objc ())
     objc_finish_function ();
-
+ 
   if (TREE_CODE (fndecl) == FUNCTION_DECL
       && targetm.calls.promote_prototypes (TREE_TYPE (fndecl)))
     {
@@ -8310,6 +8343,32 @@ finish_function (void)
   if (DECL_EXTERNAL (fndecl)
       && DECL_DECLARED_INLINE_P (fndecl))
     DECL_DISREGARD_INLINE_LIMITS (fndecl) = 1;
+ 
+  /* LDV extension beginning. */
+
+  if (ldv_isldv ())
+    {
+      /* Function matching and corresponding advice weaving are needed just on 
+       * the third and fourth ldv stages. */  
+      if (ldv_isldv_stage_third () || ldv_isldv_stage_fourth ())
+        {
+          /* Try to match a function declaration for an execution join point. */
+          ldv_match_func (fndecl, LDV_PP_EXECUTION);
+
+          ldv_func_close_brace_location = expand_location (DECL_STRUCT_FUNCTION (fndecl)->function_end_locus);
+        
+          /* Instance a matched advice. */
+          ldv_weave_advice (NULL, &ldv_func_close_brace_location);
+
+          /* Finish match. */
+          ldv_i_match = NULL;
+      
+          /* Begin matching inside a function body. */
+          ldv_match_func_body (fndecl);
+        }
+    }
+    
+  /* LDV extension end. */
 
   /* Genericize before inlining.  Delay genericizing nested functions
      until their parent function is genericized.  Since finalizing

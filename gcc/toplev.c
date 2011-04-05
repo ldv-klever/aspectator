@@ -94,6 +94,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "xcoffout.h"		/* Needed for external data
 				   declarations for e.g. AIX 4.x.  */
 #endif
+ 
+/* LDV extension beginning. */
+
+#include "ldv-advice-weaver.h"
+#include "ldv-aspect-parser.h"
+#include "ldv-cpp-core.h"
+#include "ldv-cpp-pointcut-matcher.h"
+#include "ldv-io.h"
+#include "ldv-opts.h"
+
+/* LDV extension end. */
 
 static void general_init (const char *);
 static void do_compile (void);
@@ -1957,10 +1968,64 @@ toplev_main (int argc, char **argv)
 
   if (help_flag)
     print_plugins_help (stderr, "");
+ 
+  /* LDV extension beginning. */
+
+  /* Perform preparsing actions. */
+
+  /* Process ldv options before file analysis. */
+  ldv_handle_options ();
+
+  /* Perform needed actions for different ldv stages if needed. */
+  if (ldv_isldv ())
+    {
+      /* Pass some options to cpp preprocessor library. */  
+      ldv_set_ldv_opts (ldv_isinfo_matching_table); 
+        
+      /* At the beginning specify that nothing was matched. */  
+      ldv_set_nomatch ();  
+        
+      /* Obtain all joinpoints before any file analysis. */
+      ldv_aspect_parser ();
+      
+      if (ldv_isldv_stage_first ())
+        {
+          /* Make the necessary includes in file to be analyzed. */
+          ldv_make_includes ();
+      
+          /* To prevent any further compilation at the first ldv stage. */
+          return (SUCCESS_EXIT_CODE);
+        }    
+       
+      if (ldv_isldv_stage_second ())
+        {
+          /* Set ldv flag, advice definition list and stage for cpp preprocessor. */
+          ldv_set_ldv (ldv_isldv ());
+          ldv_set_isprint_signature_of_matched_by_name (ldv_isprint_signature_of_matched_by_name);
+        }
+    }
+
+  /* LDV extension end. */
 
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)
     do_compile ();
+
+  /* LDV extension beginning. */
+
+  /* Perform postparsing actions. */
+
+  /* Perform needed actions for different ldv stages if needed. */
+  if (ldv_isldv ())
+    {
+      if (ldv_isldv_stage_third ())
+        {
+          /* Print needed declarations and definitions to a file processed. */
+          ldv_print_to_awfile ();
+        }    
+    }
+
+  /* LDV extension end. */
 
   if (warningcount || errorcount)
     print_ignored_options ();

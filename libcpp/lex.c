@@ -25,6 +25,13 @@ along with this program; see the file COPYING3.  If not see
 #include "cpplib.h"
 #include "internal.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-cpp-advice-weaver.h"
+#include "ldv-cpp-pointcut-matcher.h"
+
+/* LDV extension end. */
+
 enum spell_type
 {
   SPELL_OPERATOR = 0,
@@ -1835,7 +1842,24 @@ _cpp_lex_token (cpp_reader *pfile)
 	      if (_cpp_handle_directive (pfile, result->flags & PREV_WHITE))
 		{
 		  if (pfile->directive_result.type == CPP_PADDING)
-		    continue;
+                    {
+
+                      /* LDV extension beginning. */
+
+                      /* Make undef of macro and define of aspected macro if macro was matched. */
+                      if (ldv_i_match)
+                        {
+                          ldv_cpp_undef (pfile);
+                          ldv_cpp_define (pfile);
+          
+                          /* Matching is finished. */
+                          ldv_i_match = NULL;
+                        }
+
+                      /* LDV extension end. */
+
+		      continue;
+                    }
 		  result = &pfile->directive_result;
 		}
 	    }

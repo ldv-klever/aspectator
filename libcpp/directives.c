@@ -27,6 +27,15 @@ along with this program; see the file COPYING3.  If not see
 #include "mkdeps.h"
 #include "obstack.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-aspect-types.h"
+#include "ldv-cpp-core.h"
+#include "ldv-list.h"
+#include "ldv-cpp-pointcut-matcher.h"
+
+/* LDV extension end. */
+
 /* Stack of conditionals currently in progress
    (including both successful and failing conditionals).  */
 struct if_stack
@@ -570,6 +579,14 @@ do_define (cpp_reader *pfile)
 {
   cpp_hashnode *node = lex_macro_node (pfile, true);
 
+  /* LDV extension beginning. */
+
+  const struct line_map *map = NULL;
+  ldv_i_macro_ptr i_macro = NULL;
+  unsigned int i;
+  
+  /* LDV extension end. */  
+
   if (node)
     {
       /* If we have been requested to expand comments into macros,
@@ -586,6 +603,30 @@ do_define (cpp_reader *pfile)
 
       node->flags &= ~NODE_USED;
     }
+
+  /* LDV extension beginning. */
+  
+  if (ldv_cpp_isldv)
+    {
+      i_macro = ldv_create_info_macro ();
+
+      map = linemap_lookup (pfile->line_table, pfile->directive_line);
+  
+      /* Remember a macro name and a name of file containing a given macro. */
+      i_macro->macro_name = (const char *) (NODE_NAME (node));
+      i_macro->file_path = map->to_file;
+      i_macro->macro_param = NULL;
+  
+      /* Remember macro parameters. */
+      for (i = 0; i < node->value.macro->paramc; ++i)
+        ldv_list_push_back (&i_macro->macro_param, (char *) NODE_NAME (node->value.macro->params[i]));
+  
+      /* Try to match macro. */
+      ldv_match_macro (i_macro);
+    }
+      
+  /* LDV extension end. */  
+
 }
 
 /* Handle #undef.  Mark the identifier NT_VOID in the hash table.  */

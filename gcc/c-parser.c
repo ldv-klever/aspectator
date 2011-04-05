@@ -57,6 +57,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "cgraph.h"
 #include "plugin.h"
+ 
+/* LDV extension beginning. */
+
+#include "ldv-advice-weaver.h"
+#include "ldv-cpp-pointcut-matcher.h"
+#include "ldv-io.h"
+#include "ldv-opts.h"
+#include "ldv-pointcut-matcher.h"
+
+/* LDV extension end. */
 
 
 /* Initialization routine for this file.  */
@@ -1217,6 +1227,14 @@ c_parser_translation_unit (c_parser *parser)
       do
 	{
 	  ggc_collect ();
+
+          /* LDV extension beginning. */
+
+          /* Save information on a beginning of a new declaration. */
+          ldv_decl_beginning_location = expand_location (c_parser_peek_token (parser)->location);    
+  
+          /* LDV extension end. */
+      
 	  c_parser_external_declaration (parser);
 	  obstack_free (&parser_obstack, obstack_position);
 	}
@@ -1634,6 +1652,17 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 		finish_decl (d, UNKNOWN_LOCATION, NULL_TREE,
 			     NULL_TREE, asm_name);
 	      
+              /* LDV extension beginning. */
+
+              /* Save information on a end of a function declaration, i.e. ';'. */
+              if (ldv_isldv ())
+                {
+                  if (c_parser_next_token_is (parser, CPP_SEMICOLON))
+                    DECL_SOURCE_LOCATION (d) = c_parser_peek_token (parser)->location;    
+                }
+        
+              /* LDV extension end. */
+       
 	      if (c_parser_next_token_is_keyword (parser, RID_IN))
 		{
 		  if (d)
@@ -2169,6 +2198,14 @@ c_parser_enum_specifier (c_parser *parser)
   tree ident = NULL_TREE;
   location_t enum_loc;
   location_t ident_loc = UNKNOWN_LOCATION;  /* Quiet warning.  */
+    
+  /* LDV extension beginning. */
+
+  /* Variables to store open and close braces locations. */
+  expanded_location ldv_close_brace, ldv_open_brace;
+    
+  /* LDV extension end. */
+  
   gcc_assert (c_parser_next_token_is_keyword (parser, RID_ENUM));
   enum_loc = c_parser_peek_token (parser)->location;
   c_parser_consume_token (parser);
@@ -2191,7 +2228,15 @@ c_parser_enum_specifier (c_parser *parser)
       tree postfix_attrs;
       /* We chain the enumerators in reverse order, then put them in
 	 forward order at the end.  */
-      tree values = NULL_TREE;
+      tree values = NULL_TREE;    
+
+      /* LDV extension beginning. */
+
+      /* Store an open brace location. */
+      ldv_open_brace = expand_location (c_parser_peek_token (parser)->location);
+    
+      /* LDV extension end. */
+      
       c_parser_consume_token (parser);
       while (true)
 	{
@@ -2238,6 +2283,14 @@ c_parser_enum_specifier (c_parser *parser)
 	    {
 	      if (seen_comma && !flag_isoc99)
 		pedwarn (comma_loc, OPT_pedantic, "comma at end of enumerator list");
+
+              /* LDV extension beginning. */
+
+              /* Store a close brace location. */
+              ldv_close_brace = expand_location (c_parser_peek_token (parser)->location);
+    
+              /* LDV extension end. */
+        
 	      c_parser_consume_token (parser);
 	      break;
 	    }
@@ -2255,6 +2308,29 @@ c_parser_enum_specifier (c_parser *parser)
       ret.kind = ctsk_tagdef;
       ret.expr = NULL_TREE;
       ret.expr_const_operands = true;
+
+      /* LDV extension beginning. */
+      
+      /* Match and weave an enumeral type just for named types. */
+      if (ident)
+        {
+          /* Type declaration matching and weaving are needed just on the third ldv stage. */  
+          if (ldv_isldv_stage_third ())
+            {        
+              /* Try to match an enumeral typedecl. Note that a context of a typedecl is
+                 defined by its open brace location. */
+              ldv_match_typedecl (type, ldv_open_brace.file);
+    
+              /* Weave a matched advice. */
+              ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);
+      
+              /* Finish match. */
+              ldv_i_match = NULL;
+            }
+        }
+ 
+      /* LDV extension end. */
+          
       return ret;
     }
   else if (!ident)
@@ -2325,7 +2401,15 @@ c_parser_struct_or_union_specifier (c_parser *parser)
   tree ident = NULL_TREE;
   location_t struct_loc;
   location_t ident_loc = UNKNOWN_LOCATION;
-  enum tree_code code;
+  enum tree_code code;  
+
+  /* LDV extension beginning. */
+
+  /* Variables to store open and close braces locations. */
+  expanded_location ldv_close_brace, ldv_open_brace;
+    
+  /* LDV extension end. */
+  
   switch (c_parser_peek_token (parser)->keyword)
     {
     case RID_STRUCT:
@@ -2369,6 +2453,14 @@ c_parser_struct_or_union_specifier (c_parser *parser)
 	 so we'll be minimizing the number of node traversals required
 	 by chainon.  */
       tree contents = NULL_TREE;
+
+      /* LDV extension beginning. */
+
+      /* Store an open brace location. */
+      ldv_open_brace = expand_location (c_parser_peek_token (parser)->location);
+    
+      /* LDV extension end. */
+        
       c_parser_consume_token (parser);
       /* Handle the Objective-C @defs construct,
 	 e.g. foo(sizeof(struct{ @defs(ClassName) }));.  */
@@ -2413,6 +2505,14 @@ c_parser_struct_or_union_specifier (c_parser *parser)
 	  /* Stop if at the end of the struct or union contents.  */
 	  if (c_parser_next_token_is (parser, CPP_CLOSE_BRACE))
 	    {
+
+              /* LDV extension beginning. */
+ 
+              /* Store a close brace location. */
+              ldv_close_brace = expand_location (c_parser_peek_token (parser)->location);
+    
+              /* LDV extension end. */
+        
 	      c_parser_consume_token (parser);
 	      break;
 	    }
@@ -2455,6 +2555,29 @@ c_parser_struct_or_union_specifier (c_parser *parser)
       ret.kind = ctsk_tagdef;
       ret.expr = NULL_TREE;
       ret.expr_const_operands = true;
+
+      /* LDV extension beginning. */
+      
+      /* Match and weave a record type just for named types. */
+      if (ident)
+        {
+          /* Type declaration matching and weaving are needed just on the third ldv stage. */  
+          if (ldv_isldv_stage_third ())
+            {        
+              /* Try to match a struct or union typedecl. Note that a context of 
+                 a typedecl is defined by its open brace location. */
+              ldv_match_typedecl (type, ldv_open_brace.file);
+    
+              /* Weave a matched advice. */
+              ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);
+      
+              /* Finish match. */
+              ldv_i_match = NULL;
+           }
+        }
+    
+      /* LDV extension end. */
+
       return ret;
     }
   else if (!ident)

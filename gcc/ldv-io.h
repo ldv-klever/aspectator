@@ -1,0 +1,90 @@
+#ifndef _LDV_IO_H_
+#define _LDV_IO_H_
+
+
+/* To use functions and types needed to dump aspected preprocessed source code. */
+#include "tree.h"
+
+#include "ldv-aspect-types.h"
+
+
+#define LDV_INFO                "INFO"
+#define LDV_INFO_BISON          "INFO BISON"
+#define LDV_INFO_WEAVE          "INFO WEAVING"
+#define LDV_INFO_IO             "INFO IO"
+#define LDV_INFO_LEX            "INFO LEX"
+#define LDV_INFO_LIST           "INFO LIST"
+#define LDV_INFO_MATCH          "INFO MATCHING"
+#define LDV_INFO_MATCHING_TABLE "INFO MATCHING TABLE"
+#define LDV_INFO_MEM            "INFO MEMORY"
+
+#define LDV_ERROR_BISON     "ERROR BISON"
+#define LDV_ERROR_LEX       "ERROR LEX"
+
+#define LDV_ADVICE_WEAVED_EXTENSION     ".aw"
+#define LDV_MACRO_ASPECTED_EXTENSION    ".ma"
+#define LDV_NO_COMMENT_EXTENSION        ".nc"
+#define LDV_PREPROCESSED_EXTENSION      ".p"
+
+#define LDV_ADVICE_WEAVED_STREAM        (ldv_get_advice_weaved_stream ())
+#define LDV_ASPECT_STREAM               (ldv_get_aspect_stream ())
+#define LDV_EXPR_VISUALIZATION_STREAM   (stderr)
+#define LDV_INFO_STREAM                 (stderr)
+#define LDV_MAIN_STREAM                 (ldv_get_main_stream ())
+#define LDV_MATCHED_BY_NAME             (stderr)
+#define LDV_PREPROCESSED_STREAM         (ldv_get_preprocessed_stream ())
+
+
+typedef struct ldv_decl_for_print_internal
+{
+  ldv_text_ptr decl;
+  const char *file;
+  int line;
+  int column;
+} ldv_decl_for_print;
+typedef ldv_decl_for_print *ldv_decl_for_print_ptr;
+
+
+extern const char *ldv_aspect_fname;
+extern const char *ldv_aspect_fname_base;
+
+extern bool ldv_isinfo;
+extern bool ldv_isinfo_bison;
+extern bool ldv_isinfo_weave;
+extern bool ldv_isinfo_io;
+extern bool ldv_isinfo_lex;
+extern bool ldv_isinfo_list;
+extern bool ldv_isinfo_match;
+extern bool ldv_isinfo_matching_table;
+extern bool ldv_isinfo_mem;
+extern bool ldv_isexpr_visualization;
+extern bool ldv_isprint_signature_of_matched_by_name;
+
+extern bool ldv_isdir_orig;
+extern const char *ldv_dir_res;
+extern const char *ldv_dir_temp;
+
+extern ldv_list_ptr ldv_decl_for_print_list;
+extern ldv_text_ptr ldv_func_defs_for_print;
+
+extern void ldv_copy_file (const char *, FILE *);
+extern const char *ldv_empty_str (void);
+extern char ldv_end_of_line (int);
+extern FILE *ldv_get_advice_weaved_stream (void);
+extern FILE *ldv_get_aspect_stream (void);
+extern FILE *ldv_get_main_stream (void);
+extern FILE *ldv_get_preprocessed_stream (void);
+extern int ldv_getc (FILE *);
+extern const char *ldv_gets (FILE *);
+extern void ldv_make_includes (void);
+extern void ldv_open_file_streams (void);
+extern void ldv_print_info (const char *, const char *, ...) ATTRIBUTE_PRINTF_2;
+extern void ldv_print_to_awfile (void);
+extern void ldv_putc (int, FILE *);
+extern void ldv_puts (const char *, FILE *);
+extern int ldv_putsn (const char *, FILE *, int);
+extern void ldv_set_nomatch (void);
+extern void ldv_ungetc (int, FILE *);
+
+
+#endif /* _LDV_IO_H_ */

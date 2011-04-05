@@ -1,0 +1,471 @@
+/* General gcc core types and functions. */
+#include "config.h"
+#include "system.h"
+#include "coretypes.h"
+#include "tm.h"
+
+/* For error functions. */
+#include "toplev.h"
+
+/* Tree conceptions. */
+#include "diagnostic-core.h"
+#include "tree.h"
+
+#include "ldv-aspect-types.h"
+#include "ldv-converter.h"
+#include "ldv-core.h"
+#include "ldv-pointcut-matcher.h"
+
+
+ldv_pps_decl_ptr
+ldv_convert_internal_to_declaration (ldv_i_type_ptr type, const char *decl_name)
+{
+  ldv_pps_decl_ptr pps_decl = NULL;
+  ldv_pps_declarator_ptr declarator = NULL;
+  ldv_list_ptr declarator_list = NULL;
+
+  pps_decl = ldv_create_pps_decl ();
+
+  /* Convert an internal type representation to a declarator chain. Declaration
+     specifiers and a declaration name will be processed below. */
+  declarator_list = ldv_convert_internal_to_declarator (type);
+
+  /* Create a declarator for a declaration name. */
+  declarator = ldv_create_declarator ();
+
+  if (declarator_list)
+    {
+      /* Add a first declarator of a declarator chain to a declaration
+         declarator. */
+      pps_decl->pps_declarator = declarator_list;
+
+      /* Go to the end of a declarator chain to add a declaration name. */
+      declarator_list = ldv_list_get_last (declarator_list);
+
+      ldv_list_push_back (&declarator_list, declarator);
+    }
+  /* Use a name declarator for a declaration declarator if there is no
+     declarators in a declarator chain. */
+  else
+    {
+      ldv_list_push_back (&declarator_list, declarator);
+      pps_decl->pps_declarator = declarator_list;
+    }
+
+  /* Create a name for a declaration. */
+  if (decl_name)
+    {
+      declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_ID;
+      declarator->declarator_name = ldv_create_id ();
+      ldv_puts_id (decl_name, declarator->declarator_name);
+    }
+  /* Create an abstract declaration. */
+  else
+    declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_NONE;
+
+  /* Add declaration specifiers. Declaration specifiers is a primitive type in
+     a chain of base types of an initial type. */
+  pps_decl->pps_declspecs = ldv_convert_internal_to_declspecs (type);
+
+  return pps_decl;
+}
+
+ldv_list_ptr
+ldv_convert_internal_to_declarator (ldv_i_type_ptr type)
+{
+  ldv_list_ptr list = NULL, list_reverse = NULL;
+
+  /* Obtain a reverse declarator chain. */
+  list_reverse = ldv_convert_internal_to_declarator_reverse (type);
+
+  /* Obtain a convinient declarator chain. */
+  list = ldv_list_reverse (list_reverse);
+
+  return list;
+}
+
+ldv_list_ptr
+ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
+{
+  ldv_pps_declarator_ptr declarator = NULL;
+  ldv_list_ptr declarator_list = NULL;
+  ldv_i_param_ptr param = NULL;
+  ldv_list_ptr param_list = NULL;
+  const char *param_name;
+  unsigned int param_numb;
+  ldv_pps_func_arg_ptr func_arg_new = NULL;
+
+  declarator = ldv_create_declarator ();
+  ldv_list_push_back (&declarator_list, declarator);
+
+  switch (type->it_kind)
+    {
+    case LDV_IT_ARRAY:
+      declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_ARRAY;
+
+      declarator->pps_array_size = ldv_create_pps_array_size ();
+
+      /* Convert an array size. */
+      declarator->pps_array_size->issize_specified = type->issize_specified;
+
+      if (type->issize_specified)
+        declarator->pps_array_size->pps_array_size = type->array_size;
+
+      /* Convert an array elements type. */
+      ldv_list_splice (declarator_list, ldv_convert_internal_to_declarator_reverse (type->array_type));
+
+      break;
+
+    case LDV_IT_FUNC:
+      declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_FUNC;
+
+      /* Convert a function return type. */
+      ldv_list_splice (declarator_list, ldv_convert_internal_to_declarator_reverse (type->ret_type));
+
+      /* Convert function parameters. */
+      for (param_list = type->param, param_numb = 1
+        ; param_list
+        ; param_list = ldv_list_get_next (param_list), param_numb++)
+        {
+          param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
+
+          func_arg_new = ldv_create_pps_func_arg ();
+
+          ldv_list_push_back (&declarator->func_arg_list, func_arg_new);
+
+          /* Check whether an any parameters wildcard is encountered. */
+          if (param->isany_params)
+            {
+              func_arg_new->isany_params = true;
+              continue;
+            }
+
+          /* Convert a parameter. Note that it may have a name or may be an
+             abstract declarator and an auxiliary name if so is present is
+             preferable. */
+          if (param->name_aux)
+            param_name = param->name_aux;
+          else
+            param_name = param->name;
+
+          func_arg_new->pps_func_arg = ldv_convert_internal_to_declaration (param->type, param_name);
+
+          /* Convert a variable parameter length. */
+          func_arg_new->isva = param->type->isva;
+        }
+
+      break;
+
+    case LDV_IT_PRIMITIVE:
+      /* A primitive type corresponds to declaration specifiers. And it's
+         processed separately. */
+      return NULL;
+
+    case LDV_IT_PTR:
+      declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_PTR;
+
+      /* Convert pointer qualifiers. */
+      declarator->pps_ptr_quals = ldv_create_ptr_quals ();
+
+      declarator->pps_ptr_quals->isconst = type->isconst;
+      declarator->pps_ptr_quals->isvolatile = type->isvolatile;
+      declarator->pps_ptr_quals->isrestrict = type->isrestrict;
+
+      /* Convert a pointed type. */
+      ldv_list_splice (declarator_list, ldv_convert_internal_to_declarator_reverse (type->ptr_type));
+
+      break;
+
+    default:
+      fatal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
+    }
+
+  return declarator_list;
+}
+
+ldv_pps_declspecs_ptr
+ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
+{
+  ldv_pps_declspecs_ptr pps_declspecs = NULL;
+
+  switch (type->it_kind)
+    {
+    case LDV_IT_ARRAY:
+      /* Get declaration specifiers from an array element type. */
+      return ldv_convert_internal_to_declspecs (type->array_type);
+
+    case LDV_IT_FUNC:
+      /* Get declaration specifiers from a function return type. */
+      return ldv_convert_internal_to_declspecs (type->ret_type);
+
+    case LDV_IT_PRIMITIVE:
+      /* A primitive type corresponds to declaration specifiers. */
+      pps_declspecs = ldv_create_declspecs ();
+      pps_declspecs = type->primitive_type;
+
+      return pps_declspecs;
+
+    case LDV_IT_PTR:
+      /* Get declaration specifiers from a pointed type. */
+      return ldv_convert_internal_to_declspecs (type->ptr_type);
+
+    default:
+      fatal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
+    }
+}
+
+ldv_i_type_ptr
+ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
+{
+  ldv_i_type_ptr type = NULL;
+  enum tree_code code;
+  const char *type_name = NULL;
+  tree func_arg_tree = NULL_TREE, func_param_tree = NULL_TREE;
+  ldv_i_type_ptr arg_type_new = NULL;
+  ldv_i_param_ptr param_new = NULL;
+
+  /* Do nothing if there is no tree node implementing type. */
+  if (!type_tree)
+    return NULL;
+
+  type = ldv_create_info_type ();
+
+  code = TREE_CODE (type_tree);
+
+  switch (code)
+    {
+    case ARRAY_TYPE:
+      type->it_kind = LDV_IT_ARRAY;
+      type->array_type = ldv_convert_type_tree_to_internal (TREE_TYPE (type_tree), NULL);
+
+      if (TYPE_DOMAIN (type_tree) && TYPE_MAX_VALUE (TYPE_DOMAIN (type_tree)))
+        {
+          type->issize_specified = true;
+          type->array_size = TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type_tree))) + 1;
+        }
+      else
+        type->issize_specified = false;
+
+      break;
+
+    case FUNCTION_TYPE:
+      type->it_kind = LDV_IT_FUNC;
+
+      type->ret_type = ldv_convert_type_tree_to_internal (TREE_TYPE (type_tree), NULL);
+
+      for (func_arg_tree = TYPE_ARG_TYPES (type_tree), func_param_tree = decl_tree ? DECL_ARGUMENTS (decl_tree) : NULL
+        ; func_arg_tree
+        ; func_arg_tree = TREE_CHAIN (func_arg_tree), func_param_tree = func_param_tree ? TREE_CHAIN (func_param_tree) : NULL)
+        {
+          arg_type_new = ldv_convert_type_tree_to_internal (TREE_VALUE (func_arg_tree), NULL);
+
+          /* Finish the cycle when a gcc artificial void type from the end of a
+             function parameters list is found. Note that it's needed in case
+             when it isn't the only i.e. if a function has other parameters. */
+          if (type->param)
+            {
+              if (ldv_isvoid (arg_type_new))
+                break;
+            }
+
+          param_new = ldv_create_info_param ();
+
+          param_new->type = arg_type_new;
+
+          if (func_param_tree && DECL_NAME (func_param_tree))
+            param_new->name = IDENTIFIER_POINTER (DECL_NAME (func_param_tree));
+
+          ldv_list_push_back (&type->param, param_new);
+        }
+
+      /* Check whether function arguments have a variable length. In that case
+         gcc doesn't put a void type at the end of a  list of argument types. */
+      if (arg_type_new && !ldv_isvoid (arg_type_new))
+        arg_type_new->isva = true;
+
+      break;
+
+    case BOOLEAN_TYPE:
+    case ENUMERAL_TYPE:
+    case INTEGER_TYPE:
+    case UNION_TYPE:
+    case REAL_TYPE:
+    case RECORD_TYPE:
+    case VOID_TYPE:
+      type->it_kind = LDV_IT_PRIMITIVE;
+
+      type->primitive_type = ldv_create_declspecs ();
+
+      /* Add additional declaration specifiers like inline and static that were
+         obtained earlier. */
+      if (ldv_entity_declspecs)
+        {
+          type->primitive_type = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs);
+
+          /* Additional declaration specifiers may be applied just one time for
+             some entity return type. */
+          ldv_entity_declspecs = NULL;
+        }
+
+      if (code == ENUMERAL_TYPE || code == UNION_TYPE || code == RECORD_TYPE)
+        {
+          /* Check wheter a type is anonymous. */
+          if (TYPE_NAME (type_tree))
+            {
+              /* In this case we deal with a real structure (union, enum) that
+                 has a name. */
+              if (TREE_CODE (TYPE_NAME (type_tree)) == IDENTIFIER_NODE)
+                type_name = IDENTIFIER_POINTER (TYPE_NAME (type_tree));
+              /* In this case we deal with a typedef on some type. */
+              else if (TREE_CODE (TYPE_NAME (type_tree)) == TYPE_DECL)
+                {
+                  /* To specify that a typedef name is used. */
+                  code = ERROR_MARK;
+
+                  /* Get a typedef name. */
+                  type_name = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type_tree)));
+                }
+              else
+                type_name = "";
+            }
+          else
+            type_name = "";
+        }
+      else
+        {
+          /* Try to obtain a type name from a related declaration if so. Note,
+             that a void type hasn't such a name, so it will be parsed specially
+             below. */
+          if (TYPE_NAME (type_tree) && TREE_CODE (DECL_NAME (TYPE_NAME (type_tree))) == IDENTIFIER_NODE)
+            type_name = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type_tree)));
+          else
+            type_name = "";
+        }
+
+      type->primitive_type->type_name = ldv_create_id ();
+      ldv_puts_id (type_name, type->primitive_type->type_name);
+
+      if (code == ENUMERAL_TYPE)
+        type->primitive_type->isenum = true;
+      else if (code == UNION_TYPE)
+        type->primitive_type->isunion = true;
+      else if (code == RECORD_TYPE)
+        type->primitive_type->isstruct = true;
+      /* On the basis of gcc/c-common.c. */
+      else if (!strcmp (type_name, "int"))
+        type->primitive_type->isint = true;
+      else if (!strcmp (type_name, "char"))
+        type->primitive_type->ischar = true;
+      else if (!strcmp (type_name, "long int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->islong = true;
+        }
+      else if (!strcmp (type_name, "unsigned int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->isunsigned = true;
+        }
+      else if (!strcmp (type_name, "long unsigned int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->islong = true;
+          type->primitive_type->isunsigned = true;
+        }
+      else if (!strcmp (type_name, "long long int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->islonglong = true;
+        }
+      else if (!strcmp (type_name, "long long unsigned int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->islonglong = true;
+          type->primitive_type->isunsigned = true;
+        }
+      else if (!strcmp (type_name, "short int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->isshort = true;
+        }
+      else if (!strcmp (type_name, "short unsigned int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->isshort = true;
+          type->primitive_type->isunsigned = true;
+        }
+      else if (!strcmp (type_name, "signed char"))
+        {
+          type->primitive_type->ischar = true;
+          type->primitive_type->issigned = true;
+        }
+      else if (!strcmp (type_name, "unsigned char"))
+        {
+          type->primitive_type->ischar = true;
+          type->primitive_type->isunsigned = true;
+        }
+      else if (!strcmp (type_name, "float"))
+        type->primitive_type->isfloat = true;
+      else if (!strcmp (type_name, "double"))
+        type->primitive_type->isdouble = true;
+      else if (!strcmp (type_name, "long double"))
+        {
+          type->primitive_type->isdouble = true;
+          type->primitive_type->islong = true;
+        }
+      else if (!strcmp (type_name, "complex int"))
+        {
+          type->primitive_type->isint = true;
+          type->primitive_type->iscomplex = true;
+        }
+      else if (!strcmp (type_name, "complex float"))
+        {
+          type->primitive_type->isfloat = true;
+          type->primitive_type->iscomplex = true;
+        }
+      else if (!strcmp (type_name, "complex double"))
+        {
+          type->primitive_type->isdouble = true;
+          type->primitive_type->iscomplex = true;
+        }
+      else if (!strcmp (type_name, "complex long double"))
+        {
+          type->primitive_type->isdouble = true;
+          type->primitive_type->islong = true;
+          type->primitive_type->iscomplex = true;
+        }
+      else if (code == VOID_TYPE || !strcmp (type_name, "void"))
+        type->primitive_type->isvoid = true;
+      else if (!strcmp (type_name, "_Bool"))
+        type->primitive_type->isbool = true;
+      /* In this case a typedef name is processed. */
+      else
+        {
+          type->primitive_type->istypedef_name = true;
+          type->primitive_type->type_name = ldv_create_id ();
+          ldv_puts_id (type_name, type->primitive_type->type_name);
+        }
+
+      type->primitive_type->isconst = TYPE_READONLY (type_tree) ? true : false;
+      type->primitive_type->isvolatile = TYPE_VOLATILE (type_tree) ? true : false;
+      type->primitive_type->isrestrict = TYPE_RESTRICT (type_tree) ? true : false;
+
+      break;
+
+    case POINTER_TYPE:
+      type->it_kind = LDV_IT_PTR;
+      type->ptr_type = ldv_convert_type_tree_to_internal (TREE_TYPE (type_tree), NULL);
+
+      type->isconst = TYPE_READONLY (type_tree) ? true : false;
+      type->isvolatile = TYPE_VOLATILE (type_tree) ? true : false;
+      type->isrestrict = TYPE_RESTRICT (type_tree) ? true : false;
+
+      break;
+
+    default:
+      type = NULL;
+      break;
+    }
+
+    return type;
+}
