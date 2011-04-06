@@ -106,6 +106,12 @@ along with GCC; see the file COPYING3.  If not see
 
 /* LDV extension end. */
 
+/* LDV extension begin. */
+
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 static void general_init (const char *);
 static void do_compile (void);
 static void process_options (void);
@@ -2006,6 +2012,13 @@ toplev_main (int argc, char **argv)
     }
 
   /* LDV extension end. */
+
+/* LDV extension begin. */
+
+  /* Process ldv options before any file analysis. */
+  ldv_cbe_handle_options ();
+
+/* LDV extension end. */
 
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)

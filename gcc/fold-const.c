@@ -411,7 +411,15 @@ negate_expr_p (tree t)
     {
     case INTEGER_CST:
       if (TYPE_OVERFLOW_WRAPS (type))
-	return true;
+
+        /* LDV extension begin. */
+
+        /* Why gcc source code returns true here?.. This isn't safe
+           transormation of original gcc source code (since it isn't LDV
+           conditional), but I believe that all will work correctly. */ 
+	return false;
+
+        /* LDV extension end. */
 
       /* Check that -CST will not overflow type.  */
       return may_negate_without_overflow_p (t);

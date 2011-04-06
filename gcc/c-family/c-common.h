@@ -42,6 +42,15 @@ never after.
 #endif
 #include "diagnostic-core.h"
 
+/* LDV extension begin. */
+
+/* Since c-common.h is included in all major files dealing with C files
+   processing we put here the LDV pretty printer interface. */
+#include "ldv-cbe-core.h"
+#include "ldv-pretty-print.h"
+
+/* LDV extension end. */
+
 /* Usage of TREE_LANG_FLAG_?:
    0: TREE_NEGATED_INT (in INTEGER_CST).
       IDENTIFIER_MARKED (used by search routines).

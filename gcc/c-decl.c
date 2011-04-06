@@ -4488,6 +4488,16 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	}
     }
 
+/* LDV extension begin. */
+
+  if (ldv_is_c_backend_enabled ())
+    /* Skip function declarations related with function body because of such
+       declarations are useless. */
+    if (((TREE_CODE (decl) == FUNCTION_DECL && !DECL_SAVED_TREE (decl)) || TREE_CODE (decl) == VAR_DECL || TREE_CODE (decl) == TYPE_DECL) && DECL_FILE_SCOPE_P (decl))
+      ldv_print_translation_unit (decl);
+
+/* LDV extension end. */
+
   if (warn_cxx_compat
       && TREE_CODE (decl) == VAR_DECL
       && !DECL_EXTERNAL (decl)
@@ -7235,6 +7245,14 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
   /* Finish debugging output for this type.  */
   rest_of_type_compilation (t, toplevel);
 
+/* LDV extension begin. */
+
+  if (ldv_is_c_backend_enabled ())
+    if (TYPE_NAME (t) && TYPE_FILE_SCOPE_P (t))
+      ldv_print_translation_unit (t);
+
+/* LDV extension end. */
+
   /* If we're inside a function proper, i.e. not file-scope and not still
      parsing parameters, then arrange for the size of a variable sized type
      to be bound now.  */
@@ -7469,6 +7487,14 @@ finish_enum (tree enumtype, tree values, tree attributes)
 
   /* Finish debugging output for this type.  */
   rest_of_type_compilation (enumtype, toplevel);
+
+/* LDV extension begin. */
+
+  if (ldv_is_c_backend_enabled ())
+    if (TYPE_FILE_SCOPE_P (enumtype))
+      ldv_print_translation_unit (enumtype);
+
+/* LDV extension end. */
 
   /* If this enum is defined inside a struct, add it to
      struct_types.  */
@@ -8369,6 +8395,14 @@ finish_function (void)
     }
     
   /* LDV extension end. */
+
+/* LDV extension begin. */
+
+  if (ldv_is_c_backend_enabled ())
+    if (DECL_FILE_SCOPE_P (fndecl))
+      ldv_print_translation_unit (fndecl);
+
+/* LDV extension end. */
 
   /* Genericize before inlining.  Delay genericizing nested functions
      until their parent function is genericized.  Since finalizing
