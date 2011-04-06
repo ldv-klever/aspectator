@@ -1967,7 +1967,7 @@ toplev_main (int argc, char **argv)
 /* LDV extension begin. */
 
   /* Process ldv options before any file analysis. */
-  ldv_handle_options ();
+  ldv_cbe_handle_options ();
 
 /* LDV extension end. */
 

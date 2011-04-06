@@ -2662,7 +2662,7 @@ ldv_convert_identifier (tree t)
         }
       else if ((decl_uid = DECL_UID (t)))
         {
-          decl_uid_str = ldv_itoa (decl_uid);
+          decl_uid_str = ldv_cbe_itoa (decl_uid);
           decl_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (decl_uid_str) + 1);
           sprintf (decl_uid_name_str, "ldv_%d", decl_uid);
           LDV_IDENTIFIER_STR (identifier) = decl_uid_name_str;
@@ -2700,7 +2700,7 @@ ldv_convert_identifier (tree t)
          enumerations correctly. */
       else if ((enum_uid = TYPE_UID (t)))
         {
-          enum_uid_str = ldv_itoa (enum_uid);
+          enum_uid_str = ldv_cbe_itoa (enum_uid);
           enum_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (enum_uid_str) + 1);
           sprintf (enum_uid_name_str, "ldv_%d", enum_uid);
           LDV_IDENTIFIER_STR (identifier) = enum_uid_name_str;
@@ -5605,7 +5605,7 @@ ldv_label_decl_name (tree t)
           return IDENTIFIER_POINTER (label_decl_name);
         else if ((label_decl_uid = DECL_UID (t)))
           {
-            label_decl_uid_str = ldv_itoa (label_decl_uid);
+            label_decl_uid_str = ldv_cbe_itoa (label_decl_uid);
             label_decl_name_str = XCNEWVEC (char, 3 + 1 + strlen (label_decl_uid_str) + 1);
             sprintf (label_decl_name_str, "ldv_%d", label_decl_uid);
             return label_decl_name_str;

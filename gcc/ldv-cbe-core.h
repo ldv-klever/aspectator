@@ -23,10 +23,10 @@ extern bool ldv_c_backend_is_lines_level (int);
 extern void ldv_c_backend_padding_cancel (void);
 extern void ldv_c_backend_padding_force (void);
 extern void ldv_c_backend_print (unsigned int, bool, const char *, ...) ATTRIBUTE_PRINTF_3;
-extern void ldv_handle_options (void);
+extern void ldv_cbe_handle_options (void);
 extern bool ldv_is_c_backend_enabled (void);
 extern bool ldv_is_dump_ops (void);
-extern const char *ldv_itoa (unsigned int);
+extern const char *ldv_cbe_itoa (unsigned int);
 
 
 #endif /* _LDV_CBE_CORE_H_ */

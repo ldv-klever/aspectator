@@ -106,7 +106,7 @@ ldv_c_backend_print (unsigned int indent_level, bool padding, const char *format
 }
 
 void
-ldv_handle_options (void)
+ldv_cbe_handle_options (void)
 {
   const char *lines_level_str;
   
@@ -139,7 +139,7 @@ ldv_is_dump_ops (void)
 }
 
 const char *
-ldv_itoa (unsigned int n)
+ldv_cbe_itoa (unsigned int n)
 {
   int int_digits, order;
   char *str = NULL;
