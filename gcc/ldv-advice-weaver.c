@@ -332,7 +332,7 @@ ldv_isweaved (const char *name, bool is_check)
 
       ldv_list_push_back (&ldv_name_weaved_list, name_save);
     }
-    
+
   /* An entity with such name wasn't weaved yet. */
   return false;
 }
@@ -636,7 +636,11 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
   if (a_kind == LDV_A_BEFORE)
     {
-      ldv_print_str ("\n  return");
+      ldv_print_str ("\n ");
+
+      /* Don't generate return statement for a function returning void. */
+      if (isres_needed)
+        ldv_print_str ("return");
 
       ldv_print_str_without_padding (func_call);
 
@@ -1585,7 +1589,7 @@ ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
 {
   char *aspected_name = NULL;
   tree id = NULL_TREE;
-  
+
   /* Obtain a corresponding aspected name for a function. */
   aspected_name = ldv_create_aspected_name (func->name);
 
@@ -1599,7 +1603,7 @@ ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
       DECL_NAME (ldv_func_decl_matched) = get_identifier (aspected_name);
       /* Release a binding between a name and an entity. */
     /*  ldv_release_binding (id); */
-      
+
       ldv_print_info (LDV_INFO_WEAVE, "change source function name in function definition from \"%s\" to \"%s\" for execution join point", func->name, aspected_name);
     }
   else if (pp_kind == LDV_PP_CALL)

@@ -140,12 +140,15 @@ ldv_match_expr (tree t)
     /* Nothing can be matched for such entities. */
     case tcc_constant:
     case tcc_type:
-      return ;
+      break;
       
     /* For declarations just investigate variable initializers. */
     case tcc_declaration:
       if (code == VAR_DECL)
-        ldv_match_expr (DECL_INITIAL (t));
+        /* To avoid infinite recursion check that initializer isn't equal to 
+	   an initialized variable itself. */
+	if (t != DECL_INITIAL (t))
+          ldv_match_expr (DECL_INITIAL (t));
 
       break;
 
@@ -208,6 +211,10 @@ ldv_match_expr (tree t)
 	     subtracted. It isn't interesting. */
 	  
 	  break;
+	  
+	/* Do nothing for this auxliary entity. */
+        case SAVE_EXPR:
+          break;
 	  
 	/* It has four operands. */
 	case TARGET_EXPR:
@@ -292,6 +299,10 @@ ldv_match_expr (tree t)
 	  
 	  break;
 	
+	/* Do nothing for this auxliary entity. */
+        case DECL_EXPR:
+          break;
+	  
 	/* It has one operand. */
 	case GOTO_EXPR:
 	  ldv_match_expr (GOTO_DESTINATION (t));
@@ -400,9 +411,10 @@ ldv_match_expr (tree t)
                   ldv_func_called_matched = NULL;
                 }
 	    }
-	  else
-	    fatal_error ("can't find a called function");
-	  
+	  /* A function can be called not only by means of its name but also
+	     by means of a function pointer that may be a structure field. But
+	     at the moment we don't treat these cases. */
+	     
 	  break;
 	
 	default:
@@ -415,6 +427,10 @@ ldv_match_expr (tree t)
     }
 }
 
+/* TODO!!! Don't forget to get set/get and arg size/name instrumentation from the
+  function below. */
+void
+ldv_match_expr_2 (tree t);
 void
 ldv_match_expr_2 (tree t)
 {
