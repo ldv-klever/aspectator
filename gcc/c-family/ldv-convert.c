@@ -2428,7 +2428,7 @@ external-declaration:
     declaration
 */
 ldv_ext_decl_ptr
-ldv_convert_ext_decl (tree t)
+ldv_convert_ext_decl (tree t, bool isdecl)
 {
   ldv_ext_decl_ptr ext_decl;
 
@@ -2437,15 +2437,15 @@ ldv_convert_ext_decl (tree t)
   switch (TREE_CODE (t))
     {
     case FUNCTION_DECL:
-      if (DECL_SAVED_TREE (t))
-        {
-          LDV_EXT_DECL_KIND (ext_decl) = LDV_EXT_DECL_FIRST;
-          LDV_EXT_DECL_FUNC_DEF (ext_decl) = ldv_convert_func_def (t);
-        }
-      else
+      if (isdecl)
         {
           LDV_EXT_DECL_KIND (ext_decl) = LDV_EXT_DECL_SECOND;
           LDV_EXT_DECL_DECL (ext_decl) = ldv_convert_decl (t);
+        }
+      else
+        {
+          LDV_EXT_DECL_KIND (ext_decl) = LDV_EXT_DECL_FIRST;
+          LDV_EXT_DECL_FUNC_DEF (ext_decl) = ldv_convert_func_def (t);
         }
 
       break;
@@ -4171,7 +4171,7 @@ ldv_convert_selection_statement (tree t)
     case COND_EXPR:
       if (TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
         {
-          ;
+          /* TODO is this needed? */;
         }
       else
         {

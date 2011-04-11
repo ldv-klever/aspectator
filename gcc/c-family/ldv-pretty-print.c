@@ -3413,7 +3413,7 @@ translation-unit:
     translation-unit external-declaration
 */
 void
-ldv_print_translation_unit (tree t)
+ldv_print_translation_unit (tree t, bool isdecl)
 {
   ldv_translation_unit_ptr translation_unit;
   ldv_ext_decl_ptr ext_decl;
@@ -3428,7 +3428,7 @@ ldv_print_translation_unit (tree t)
      this one. May be in future this will be useful. */
   translation_unit = XCNEW (struct ldv_translation_unit);
 
-  if ((ext_decl = ldv_convert_ext_decl (t)))
+  if ((ext_decl = ldv_convert_ext_decl (t, isdecl)))
     {
       LDV_TRANSLATION_UNIT_EXT_DECL (translation_unit) = ext_decl;
 

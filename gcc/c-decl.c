@@ -4465,10 +4465,10 @@ finish_decl (tree decl, location_t init_loc, tree init,
 /* LDV extension begin. */
 
   if (ldv_is_c_backend_enabled ())
-    /* Skip function declarations related with function body because of such
-       declarations are useless. */
-    if (((TREE_CODE (decl) == FUNCTION_DECL && !DECL_SAVED_TREE (decl)) || TREE_CODE (decl) == VAR_DECL || TREE_CODE (decl) == TYPE_DECL) && DECL_FILE_SCOPE_P (decl))
-      ldv_print_translation_unit (decl);
+    /* Don't skip function declarations that are already related with function
+       bodies because of such declarations may be usefull for instrumentation. */
+    if ((TREE_CODE (decl) == FUNCTION_DECL || TREE_CODE (decl) == VAR_DECL || TREE_CODE (decl) == TYPE_DECL) && DECL_FILE_SCOPE_P (decl))
+      ldv_print_translation_unit (decl, true);
 
 /* LDV extension end. */
 
@@ -7223,7 +7223,7 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 
   if (ldv_is_c_backend_enabled ())
     if (TYPE_NAME (t) && TYPE_FILE_SCOPE_P (t))
-      ldv_print_translation_unit (t);
+      ldv_print_translation_unit (t, true);
 
 /* LDV extension end. */
 
@@ -7466,7 +7466,7 @@ finish_enum (tree enumtype, tree values, tree attributes)
 
   if (ldv_is_c_backend_enabled ())
     if (TYPE_FILE_SCOPE_P (enumtype))
-      ldv_print_translation_unit (enumtype);
+      ldv_print_translation_unit (enumtype, true);
 
 /* LDV extension end. */
 
@@ -8341,7 +8341,7 @@ finish_function (void)
 
   if (ldv_is_c_backend_enabled ())
     if (DECL_FILE_SCOPE_P (fndecl))
-      ldv_print_translation_unit (fndecl);
+      ldv_print_translation_unit (fndecl, false);
 
 /* LDV extension end. */
 
