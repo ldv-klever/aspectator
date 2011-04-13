@@ -57,6 +57,9 @@ ldv_i_match_ptr ldv_i_match = NULL;
 static bool ldv_ismodified_first = false, ldv_ismodified_second = false;
 static ldv_list_ptr ldv_var_array_list;
 
+static tree cur_var;
+static bool isfunc_vars;
+
 
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
@@ -127,7 +130,7 @@ ldv_match_expr (tree t)
   expanded_location func_close_brace_location;
   unsigned HOST_WIDE_INT ix;
   tree index, value;
-    
+
   /* Stop processing if there is not a node given. */
   if (!t)
     return;
@@ -141,92 +144,115 @@ ldv_match_expr (tree t)
     case tcc_constant:
     case tcc_type:
       break;
-      
+
     /* For declarations just investigate variable initializers. */
     case tcc_declaration:
       if (code == VAR_DECL)
-        /* To avoid infinite recursion check that initializer isn't equal to 
-	   an initialized variable itself. */
-	if (t != DECL_INITIAL (t))
-          ldv_match_expr (DECL_INITIAL (t));
+        /* To avoid infinite recursion check that initializer isn't equal to
+           an initialized variable itself. */
+        /* Don't consider an initialized variable in scope of initialization. */
+        if (t != cur_var)
+          {
+            /* Set a current variable just ones. */
+            if (!cur_var)
+              cur_var = t;
+
+            /* Consider initialization just in global scope and through function
+               variables. */
+            if (DECL_FILE_SCOPE_P (cur_var) || isfunc_vars)
+              {
+                if (!DECL_FILE_SCOPE_P (cur_var))
+                  isfunc_vars = false;
+                ldv_match_expr (DECL_INITIAL (t));
+                if (!DECL_FILE_SCOPE_P (cur_var))
+                  isfunc_vars = true;
+              }
+
+            /* Finish current variable processing. */
+            if (t == cur_var)
+              cur_var = NULL_TREE;
+          }
 
       break;
 
     case tcc_expression:
       switch (code)
         {
-	/* They have one operand. */
-	case ADDR_EXPR:
-	case TRUTH_NOT_EXPR:
-	  ldv_match_expr (LDV_OP1);
-	
-	  break;
-	  
-	/* It has three operands. */
-	case BIND_EXPR:
-          /* Match information on bound variables. */
-	  for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
+        /* They have one operand. */
+        case ADDR_EXPR:
+        case TRUTH_NOT_EXPR:
+          ldv_match_expr (LDV_OP1);
+
+          break;
+
+        /* It has three operands. */
+        case BIND_EXPR:
+          /* Match information on bound variables. Mark that we process function
+             variables to avoid infinite recursion in initialization. */
+          isfunc_vars = true;
+          for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
             ldv_match_expr (block_decl);
-	    
+          isfunc_vars = false;
+
           /* Match a statement list. */
-	  ldv_match_expr (BIND_EXPR_BODY (t));
-	  
-	  /* Third operand is required for debugging purposes. */
-	  
-	  break;
-	
-	/* They have two operands. */
-	case COMPOUND_EXPR:
-	case MODIFY_EXPR:
-	case TRUTH_ANDIF_EXPR:
-	case TRUTH_ORIF_EXPR:
-	  ldv_match_expr (LDV_OP1);
-	  ldv_match_expr (LDV_OP2);
-	  
-	  break;
-	
-	/* It has one operand. */
-	case COMPOUND_LITERAL_EXPR:
-	  /* But in fact just it initializer is interested. */
-	  ldv_match_expr (DECL_INITIAL (COMPOUND_LITERAL_EXPR_DECL (t)));
-	 
-	  break;
-	
-	/* It has three operands. */
-	case COND_EXPR:
-	  ldv_match_expr (COND_EXPR_COND (t));
-	  ldv_match_expr (COND_EXPR_THEN (t));
-	  ldv_match_expr (COND_EXPR_ELSE (t));
-	  
-	  break;
-	  
-	/* They have two operands. */
+          ldv_match_expr (BIND_EXPR_BODY (t));
+
+          /* Third operand is required for debugging purposes. */
+
+          break;
+
+        /* They have two operands. */
+        case COMPOUND_EXPR:
+        case MODIFY_EXPR:
+        case TRUTH_ANDIF_EXPR:
+        case TRUTH_ORIF_EXPR:
+          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP2);
+
+          break;
+
+        /* It has one operand. */
+        case COMPOUND_LITERAL_EXPR:
+          /* But in fact just it initializer is interested. */
+          ldv_match_expr (DECL_INITIAL (COMPOUND_LITERAL_EXPR_DECL (t)));
+
+          break;
+
+        /* It has three operands. */
+        case COND_EXPR:
+          ldv_match_expr (COND_EXPR_COND (t));
+          ldv_match_expr (COND_EXPR_THEN (t));
+          ldv_match_expr (COND_EXPR_ELSE (t));
+
+          break;
+
+        /* They have two operands. */
         case PREINCREMENT_EXPR:
         case PREDECREMENT_EXPR:
         case POSTINCREMENT_EXPR:
         case POSTDECREMENT_EXPR:
-	  ldv_match_expr (LDV_OP1);
-	  
-	  /* Second operand represents an integer number to be added or 
-	     subtracted. It isn't interesting. */
-	  
-	  break;
-	  
-	/* Do nothing for this auxliary entity. */
+          ldv_match_expr (LDV_OP1);
+
+          /* Second operand represents an integer number to be added or
+             subtracted. It isn't interesting. */
+
+          break;
+
+        /* Do nothing for this auxliary entity. */
         case SAVE_EXPR:
           break;
-	  
-	/* It has four operands. */
-	case TARGET_EXPR:
-	  /* Nevertheless we are interested just in one operand. */
-	  ldv_match_expr (TARGET_EXPR_INITIAL (t));
-	  
-	  break;
-	
-	default:
-	  fatal_error ("incorrect expression code");
-	}
-	
+
+        /* It has four operands. */
+        case TARGET_EXPR:
+          /* Nevertheless we are interested just in one operand. */
+          ldv_match_expr (TARGET_EXPR_INITIAL (t));
+
+          break;
+
+        default:
+          fatal_error ("incorrect expression code");
+        }
+
       break;
 
     /* They both has two operands to be examined. */
@@ -234,164 +260,164 @@ ldv_match_expr (tree t)
     case tcc_comparison:
       ldv_match_expr (LDV_OP1);
       ldv_match_expr (LDV_OP2);
-      
+
       break;
 
     /* It has one operand. */
     case tcc_unary:
       ldv_match_expr (LDV_OP1);
-      
+
       break;
-      
+
     case tcc_reference:
       switch (code)
         {
-	/* It has four operands. */
-	case ARRAY_REF:
-	  /* But in fact just a first representing an array itself and a second
-	     responsible for index are considered. */
+        /* It has four operands. */
+        case ARRAY_REF:
+          /* But in fact just a first representing an array itself and a second
+             responsible for index are considered. */
           ldv_match_expr (LDV_OP1);
           ldv_match_expr (LDV_OP2);
-	
-	  break;
-	
-	/* It has three operands. But it so awful that we skip it. */
-	case BIT_FIELD_REF:
-	  break;
-	  
-	/* It has three operands. */
-	case COMPONENT_REF:
-	  ldv_match_expr (LDV_OP1);
+
+          break;
+
+        /* It has three operands. But it so awful that we skip it. */
+        case BIT_FIELD_REF:
+          break;
+
+        /* It has three operands. */
+        case COMPONENT_REF:
+          ldv_match_expr (LDV_OP1);
           ldv_match_expr (LDV_OP2);
-	  
-	  /* Fird operand provides a field offset. */
-	  
-	  break;
-	  
-	/* It has one operand. */
-	case INDIRECT_REF:
-	  ldv_match_expr (LDV_OP1);
-	  
-	  break;
-	
-	default:
-	  fatal_error ("incorrect reference code");
-	}
-	
+
+          /* Fird operand provides a field offset. */
+
+          break;
+
+        /* It has one operand. */
+        case INDIRECT_REF:
+          ldv_match_expr (LDV_OP1);
+
+          break;
+
+        default:
+          fatal_error ("incorrect reference code");
+        }
+
       break;
-      
+
     case tcc_statement:
       switch (code)
         {
-	/* It has five operands. */
-	case ASM_EXPR:
-	  /* We wouldn't like to deal with asm statements. */
-	  break;
-	
-	/* It has three operands. */
-	case CASE_LABEL_EXPR:
-	  /* CASE_HIGH corresponds to default label while CASE_LOW to the usual
-	     one. */
-	  if (CASE_LOW (t) && !CASE_HIGH (t))
-	    ldv_match_expr (CASE_LOW (t));
-	  
-	  /* The third operand represents an auxliary label. */
-	  
-	  break;
-	
-	/* Do nothing for this auxliary entity. */
+        /* It has five operands. */
+        case ASM_EXPR:
+          /* We wouldn't like to deal with asm statements. */
+          break;
+
+        /* It has three operands. */
+        case CASE_LABEL_EXPR:
+          /* CASE_HIGH corresponds to default label while CASE_LOW to the usual
+             one. */
+          if (CASE_LOW (t) && !CASE_HIGH (t))
+            ldv_match_expr (CASE_LOW (t));
+
+          /* The third operand represents an auxliary label. */
+
+          break;
+
+        /* Do nothing for this auxliary entity. */
         case DECL_EXPR:
           break;
-	  
-	/* It has one operand. */
-	case GOTO_EXPR:
-	  ldv_match_expr (GOTO_DESTINATION (t));
-	  
-	  break;
-	
-	/* It has one operand. */
-	case LABEL_EXPR:
-	  ldv_match_expr (LABEL_EXPR_LABEL (t));
-	  
-	  break;
-	
-	/* It has one operand. */
-	case RETURN_EXPR:
-	  ldv_match_expr (LDV_OP1);
-	  
-	  break;
-	
-	/* It has three operands. */
-	case SWITCH_EXPR:
-	  ldv_match_expr (SWITCH_COND (t));
-	  ldv_match_expr (SWITCH_BODY (t));
-	  
-	  /* The third operand in fact represents a collection of the second one
-	     case labels. */
-	  
-	  break;
-	
-	default:
-	  fatal_error ("incorrect statement code");
-	}
-      
+
+        /* It has one operand. */
+        case GOTO_EXPR:
+          ldv_match_expr (GOTO_DESTINATION (t));
+
+          break;
+
+        /* It has one operand. */
+        case LABEL_EXPR:
+          ldv_match_expr (LABEL_EXPR_LABEL (t));
+
+          break;
+
+        /* It has one operand. */
+        case RETURN_EXPR:
+          ldv_match_expr (LDV_OP1);
+
+          break;
+
+        /* It has three operands. */
+        case SWITCH_EXPR:
+          ldv_match_expr (SWITCH_COND (t));
+          ldv_match_expr (SWITCH_BODY (t));
+
+          /* The third operand in fact represents a collection of the second one
+             case labels. */
+
+          break;
+
+        default:
+          fatal_error ("incorrect statement code");
+        }
+
       break;
-      
+
     /* They both have variable operand lists. */
     case tcc_exceptional:
       switch (code)
         {
-	case STATEMENT_LIST:
+        case STATEMENT_LIST:
           /* Match a statement step by step. */
           for (si = tsi_start (t); !tsi_end_p (si); tsi_next (&si))
-            {   
-              if ((statement = tsi_stmt (si)))       
-	        {
-		  switch (TREE_CODE (statement))
+            {
+              if ((statement = tsi_stmt (si)))
+                {
+                  switch (TREE_CODE (statement))
                     {
-		      /* Do nothing for these auxliary entities. */
+                      /* Do nothing for these auxliary entities. */
                       case DECL_EXPR:
                       case SAVE_EXPR:
                       case PREDICT_EXPR:
                         break;
-		      
-		      default:
+
+                      default:
                         ldv_match_expr (statement);
-		    }
-		}
-	    }
-	  
-	  break;
-	
-	case CONSTRUCTOR:
-	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
+                    }
+                }
+            }
+
+          break;
+
+        case CONSTRUCTOR:
+          FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
             ldv_match_expr (value);
-	    
-	  break;
-	
-	default:
-	  fatal_error ("incorrect exceptional code");
-	}
-	
+
+          break;
+
+        default:
+          fatal_error ("incorrect exceptional code");
+        }
+
       break;
 
     /* It has variable more then three operands.*/
     case tcc_vl_exp:
       switch (code)
         {
-	case CALL_EXPR:
-	  /* Try to get a called function. */
-	  if ((func_called_addr = CALL_EXPR_FN (t)) 
-	    && TREE_CODE (func_called_addr) == ADDR_EXPR
-	    && (func_called = TREE_OPERAND (func_called_addr, 0))
-	    && TREE_CODE (func_called) == FUNCTION_DECL)
-	    {
-	      /* Try to match a function declaration for a call join point. */
+        case CALL_EXPR:
+          /* Try to get a called function. */
+          if ((func_called_addr = CALL_EXPR_FN (t))
+            && TREE_CODE (func_called_addr) == ADDR_EXPR
+            && (func_called = TREE_OPERAND (func_called_addr, 0))
+            && TREE_CODE (func_called) == FUNCTION_DECL)
+            {
+              /* Try to match a function declaration for a call join point. */
               ldv_match_func (func_called, LDV_PP_CALL);
 
               /* Obtain a function close brace location. A function structure is
                  available for a function that has a definition. For a function
-		 that has a declaration a place of its finishing ';' is used. */
+                 that has a declaration a place of its finishing ';' is used. */
               if ((cfunc = DECL_STRUCT_FUNCTION (func_called)) != NULL)
                 func_close_brace_location = expand_location (cfunc->function_end_locus);
               else
@@ -402,26 +428,26 @@ ldv_match_expr (tree t)
 
               /* Finish matching. */
               ldv_i_match = NULL;
-          
-	      /* Change a function call to an aspect function call if it's
+
+              /* Change a function call to an aspect function call if it's
                  matched. */
               if (ldv_func_called_matched)
                 {
                   TREE_OPERAND (func_called_addr, 0) = ldv_func_called_matched;
                   ldv_func_called_matched = NULL;
                 }
-	    }
-	  /* A function can be called not only by means of its name but also
-	     by means of a function pointer that may be a structure field. But
-	     at the moment we don't treat these cases. */
-	     
-	  break;
-	
-	default:
-	  fatal_error ("incorrect variable length expression code");
-	}
+            }
+          /* A function can be called not only by means of its name but also
+             by means of a function pointer that may be a structure field. But
+             at the moment we don't treat these cases. */
+
+          break;
+
+        default:
+          fatal_error ("incorrect variable length expression code");
+        }
       break;
-      
+
     default:
       fatal_error ("incorrect class code");
     }
