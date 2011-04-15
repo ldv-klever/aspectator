@@ -140,7 +140,7 @@ ldv_match_expr (tree t)
 
   switch (code_class)
     {
-    /* Nothing is matched for such entities at the moment. */
+    /* These entities aren't matched at the moment. */
     case tcc_constant:
     case tcc_type:
       break;
