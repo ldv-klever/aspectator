@@ -1490,7 +1490,7 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
       /* Here structure, union and enumeration prototypes are cautched. */
       if (ldv_is_c_backend_enabled ())
         if (specs->typespec_kind == ctsk_tagfirstref)
-          ldv_print_translation_unit (specs->type);
+          ldv_print_translation_unit (specs->type, true);
 
 /* LDV extension end. */
 
