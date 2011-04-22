@@ -113,12 +113,12 @@ static ldv_location_ptr
 ldv_declarator_location (ldv_declarator_ptr declarator)
 {
   ldv_direct_declarator_ptr direct_declarator;
-  
+
   if ((direct_declarator = LDV_DECLARATOR_DIRECT_DECLARATOR (declarator)))
     return ldv_direct_declarator_location (direct_declarator);
   else
     LDV_WARN ("can't find direct declarator of declarator");
-    
+
   return NULL;
 }
 
@@ -128,7 +128,7 @@ ldv_direct_declarator_location (ldv_direct_declarator_ptr direct_declarator)
   ldv_declarator_ptr declarator;
   ldv_direct_declarator_ptr direct_declarator_next;
   ldv_location_ptr location;
-      
+
   if ((declarator = LDV_DIRECT_DECLARATOR_DECLARATOR (direct_declarator)))
     return ldv_declarator_location (declarator);
   else if ((direct_declarator_next = LDV_DIRECT_DECLARATOR_DIRECT_DECLARATOR (direct_declarator)))
@@ -140,7 +140,7 @@ ldv_direct_declarator_location (ldv_direct_declarator_ptr direct_declarator)
       else
         LDV_WARN ("can't find location of direct declarator");
     }
-    
+
   return NULL;
 }
 
@@ -157,10 +157,10 @@ ldv_print_abstract_declarator (unsigned int indent_level, ldv_abstract_declarato
 
   if ((pointer = LDV_ABSTRACT_DECLARATOR_POINTER (abstract_declarator)))
     ldv_print_pointer (indent_level, pointer);
-  
+
   if ((direct_abstract_declarator = LDV_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (abstract_declarator)))
     ldv_print_direct_abstract_declarator (indent_level, direct_abstract_declarator);
-  
+
   if (!pointer && !direct_abstract_declarator)
     LDV_WARN ("neither pointer nor abstract declarator direct abstract declarator was printed");
 }
@@ -177,7 +177,7 @@ ldv_print_additive_expr (unsigned int indent_level, ldv_additive_expr_ptr additi
   ldv_multiplicative_expr_ptr multiplicative_expr;
   ldv_additive_expr_ptr additive_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_ADDITIVE_EXPR_KIND (additive_expr))
     {
     case LDV_ADDITIVE_EXPR_FIRST:
@@ -227,7 +227,7 @@ ldv_print_and_expr (unsigned int indent_level, ldv_and_expr_ptr and_expr)
   ldv_equality_expr_ptr equality_expr;
   ldv_and_expr_ptr and_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_AND_EXPR_KIND (and_expr))
     {
     case LDV_AND_EXPR_FIRST:
@@ -305,7 +305,7 @@ ldv_print_arg_expr_list (unsigned int indent_level, ldv_arg_expr_list_ptr arg_ex
 
 /*
 GNU extension
- 
+
 asm-argument:
     asm-string-literal
     asm-string-literal : asm-operandsopt
@@ -318,7 +318,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
   ldv_asm_str_literal_ptr asm_str_literal;
   ldv_asm_operands_ptr asm_operands1, asm_operands2;
   ldv_asm_clobbers_ptr asm_clobbers;
-  
+
   switch (LDV_ASM_ARG_KIND (asm_arg))
     {
     case LDV_ASM_ARG_FIRST:
@@ -333,7 +333,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
       if (LDV_ASM_ARG_KIND (asm_arg) > LDV_ASM_ARG_FIRST)
         {
           ldv_c_backend_print (indent_level, true, ":");
-      
+
           if ((asm_operands1 = LDV_ASM_ARG_ASM_OPERANDS1 (asm_arg)))
             ldv_print_asm_operands (indent_level, asm_operands1);
         }
@@ -341,7 +341,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
       if (LDV_ASM_ARG_KIND (asm_arg) > LDV_ASM_ARG_SECOND)
         {
           ldv_c_backend_print (indent_level, true, ":");
-      
+
           if ((asm_operands2 = LDV_ASM_ARG_ASM_OPERANDS2 (asm_arg)))
             ldv_print_asm_operands (indent_level, asm_operands2);
         }
@@ -349,7 +349,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
       if (LDV_ASM_ARG_KIND (asm_arg) > LDV_ASM_ARG_THIRD)
         {
           ldv_c_backend_print (indent_level, true, ":");
-      
+
           if ((asm_clobbers = LDV_ASM_ARG_ASM_CLOBBERS (asm_arg)))
             ldv_print_asm_clobbers (indent_level, asm_clobbers);
         }
@@ -363,7 +363,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
 
 /*
 GNU extension
- 
+
 asm-clobbers:
     asm-string-literal
     asm-clobbers , asm-string-literal
@@ -373,7 +373,7 @@ ldv_print_asm_clobbers (unsigned int indent_level, ldv_asm_clobbers_ptr asm_clob
 {
   ldv_asm_str_literal_ptr asm_str_literal;
   ldv_asm_clobbers_ptr asm_clobbers_next;
-  
+
   switch (LDV_ASM_CLOBBERS_KIND (asm_clobbers))
     {
     case LDV_ASM_CLOBBERS_FIRST:
@@ -384,10 +384,10 @@ ldv_print_asm_clobbers (unsigned int indent_level, ldv_asm_clobbers_ptr asm_clob
             ldv_print_asm_clobbers (indent_level, asm_clobbers_next);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "asm clobbers of asm clobbers was not printed");
-      
+
           ldv_c_backend_print (indent_level, true, ",");
         }
-      
+
       if ((asm_str_literal = LDV_ASM_CLOBBERS_ASM_STR_LITERAL (asm_clobbers)))
         ldv_print_asm_str_literal (indent_level, asm_str_literal);
       else
@@ -402,7 +402,7 @@ ldv_print_asm_clobbers (unsigned int indent_level, ldv_asm_clobbers_ptr asm_clob
 
 /*
 GNU extension
- 
+
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
 */
@@ -413,26 +413,26 @@ ldv_print_asm_goto_arg (unsigned int indent_level, ldv_asm_goto_arg_ptr asm_goto
   ldv_asm_operands_ptr asm_operands;
   ldv_asm_clobbers_ptr asm_clobbers;
   ldv_asm_goto_operands_ptr asm_goto_operands;
-  
+
   if ((asm_str_literal = LDV_ASM_GOTO_ARG_ASM_STR_LITERAL (asm_goto_arg)))
     ldv_print_asm_str_literal (indent_level, asm_str_literal);
   else
     LDV_PRETTY_PRINT_WARN (indent_level, "asm string literal of asm goto argument was not printed");
-  
+
   ldv_c_backend_print (indent_level, true, ":");
-  
+
   ldv_c_backend_print (indent_level, true, ":");
-    
+
   if ((asm_operands = LDV_ASM_GOTO_ARG_ASM_OPERANDS (asm_goto_arg)))
     ldv_print_asm_operands (indent_level, asm_operands);
-  
+
   ldv_c_backend_print (indent_level, true, ":");
-  
+
   if ((asm_clobbers = LDV_ASM_GOTO_ARG_ASM_CLOBBERS (asm_goto_arg)))
     ldv_print_asm_clobbers (indent_level, asm_clobbers);
-  
+
   ldv_c_backend_print (indent_level, true, ":");
-    
+
   if ((asm_goto_operands = LDV_ASM_GOTO_ARG_ASM_GOTO_OPERANDS (asm_goto_arg)))
     ldv_print_asm_goto_operands (indent_level, asm_goto_operands);
   else
@@ -441,7 +441,7 @@ ldv_print_asm_goto_arg (unsigned int indent_level, ldv_asm_goto_arg_ptr asm_goto
 
 /*
 GNU extension
- 
+
 asm-goto-operands:
     identifier
     asm-goto-operands, identifier
@@ -451,7 +451,7 @@ ldv_print_asm_goto_operands (unsigned int indent_level, ldv_asm_goto_operands_pt
 {
   ldv_identifier_ptr identifier;
   ldv_asm_goto_operands_ptr asm_goto_operands_next;
-  
+
   switch (LDV_ASM_GOTO_OPERANDS_KIND (asm_goto_operands))
     {
     case LDV_ASM_GOTO_OPERANDS_FIRST:
@@ -462,10 +462,10 @@ ldv_print_asm_goto_operands (unsigned int indent_level, ldv_asm_goto_operands_pt
             ldv_print_asm_goto_operands (indent_level, asm_goto_operands_next);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "asm goto operands of asm goto operands was not printed");
-      
+
           ldv_c_backend_print (indent_level, true, ",");
         }
-      
+
       if ((identifier = LDV_ASM_GOTO_OPERANDS_IDENTIFIER (asm_goto_operands)))
         ldv_print_identifier (indent_level, identifier);
       else
@@ -480,7 +480,7 @@ ldv_print_asm_goto_operands (unsigned int indent_level, ldv_asm_goto_operands_pt
 
 /*
 GNU extension
- 
+
 asm-operand:
     asm-string-literal ( expression )
     [ identifier ] asm-string-literal ( expression )
@@ -491,7 +491,7 @@ ldv_print_asm_operand (unsigned int indent_level, ldv_asm_operand_ptr asm_operan
   ldv_asm_str_literal_ptr asm_str_literal;
   ldv_expr_ptr expr;
   ldv_identifier_ptr identifier;
-  
+
   switch (LDV_ASM_OPERAND_KIND (asm_operand))
     {
     case LDV_ASM_OPERAND_FIRST:
@@ -499,29 +499,29 @@ ldv_print_asm_operand (unsigned int indent_level, ldv_asm_operand_ptr asm_operan
       if (LDV_ASM_OPERAND_KIND (asm_operand) == LDV_ASM_OPERAND_SECOND)
         {
           ldv_c_backend_print (indent_level, true, "[");
-      
+
           if ((identifier = LDV_ASM_OPERAND_IDENTIFIER (asm_operand)))
             ldv_print_identifier (indent_level, identifier);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "identifier of asm operand was not printed");
-      
+
           ldv_c_backend_print (indent_level, true, "]");
         }
-      
+
       if ((asm_str_literal = LDV_ASM_OPERAND_ASM_STR_LITERAL (asm_operand)))
         ldv_print_asm_str_literal (indent_level, asm_str_literal);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "asm string literal of asm operand was not printed");
 
       ldv_c_backend_print (indent_level, true, "(");
-      
+
       if ((expr = LDV_ASM_OPERAND_EXPR (asm_operand)))
         ldv_print_expr (indent_level, expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "expression of asm operand was not printed");
-      
+
       ldv_c_backend_print (indent_level, true, ")");
-      
+
       break;
 
     default:
@@ -531,7 +531,7 @@ ldv_print_asm_operand (unsigned int indent_level, ldv_asm_operand_ptr asm_operan
 
 /*
 GNU extension
- 
+
 asm-operands:
     asm-operand
     asm-operands , asm-operand
@@ -541,7 +541,7 @@ ldv_print_asm_operands (unsigned int indent_level, ldv_asm_operands_ptr asm_oper
 {
   ldv_asm_operand_ptr asm_operand;
   ldv_asm_operands_ptr asm_operands_next;
-  
+
   switch (LDV_ASM_OPERANDS_KIND (asm_operands))
     {
     case LDV_ASM_OPERANDS_FIRST:
@@ -552,10 +552,10 @@ ldv_print_asm_operands (unsigned int indent_level, ldv_asm_operands_ptr asm_oper
             ldv_print_asm_operands (indent_level, asm_operands_next);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "asm operands of asm operands was not printed");
-      
+
           ldv_c_backend_print (indent_level, true, ",");
         }
-      
+
       if ((asm_operand = LDV_ASM_OPERANDS_ASM_OPERAND (asm_operands)))
         ldv_print_asm_operand (indent_level, asm_operand);
       else
@@ -570,7 +570,7 @@ ldv_print_asm_operands (unsigned int indent_level, ldv_asm_operands_ptr asm_oper
 
 /*
 GNU extension
- 
+
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
     asm type-qualifieropt goto ( asm-goto-argument ) ;
@@ -582,7 +582,7 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
   ldv_asm_arg_ptr asm_arg;
   ldv_asm_goto_arg_ptr asm_goto_arg;
   ldv_location_ptr location;
-  
+
   switch (LDV_ASM_STATEMENT_KIND (asm_statement))
     {
     case LDV_ASM_STATEMENT_FIRST:
@@ -614,9 +614,9 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "asm goto argument of asm statement was not printed");
         }
-      
+
       ldv_c_backend_print (indent_level, true, ")");
-      
+
       ldv_c_backend_print (indent_level, true, ";");
 
       break;
@@ -628,7 +628,7 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
 
 /*
 GNU extension
- 
+
 asm-string-literal:
     string-literal
 */
@@ -636,7 +636,7 @@ static void
 ldv_print_asm_str_literal (unsigned int indent_level, ldv_asm_str_literal_ptr asm_str_literal)
 {
   ldv_str_literal_ptr str_literal;
-  
+
   if ((str_literal = LDV_ASM_STR_LITERAL_STR_LITERAL (asm_str_literal)))
     ldv_print_str_literal (indent_level, str_literal);
   else
@@ -705,7 +705,47 @@ ldv_print_assignment_operator (unsigned int indent_level, ldv_assignment_operato
     case LDV_ASSIGNMENT_OPERATOR_FIRST:
       ldv_c_backend_print (indent_level, true, "=");
       break;
-    
+
+    case LDV_ASSIGNMENT_OPERATOR_SECOND:
+      ldv_c_backend_print (indent_level, true, "*=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_THIRD:
+      ldv_c_backend_print (indent_level, true, "/=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_FOURTH:
+      ldv_c_backend_print (indent_level, true, "%%=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_FIVTH:
+      ldv_c_backend_print (indent_level, true, "+=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_SIXTH:
+      ldv_c_backend_print (indent_level, true, "-=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_SEVENTH:
+      ldv_c_backend_print (indent_level, true, "<<=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_EIGHTH:
+      ldv_c_backend_print (indent_level, true, ">>=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_NINTH:
+      ldv_c_backend_print (indent_level, true, "&=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_TENTH:
+      ldv_c_backend_print (indent_level, true, "^=");
+      break;
+
+    case LDV_ASSIGNMENT_OPERATOR_ELEVEN:
+      ldv_c_backend_print (indent_level, true, "|=");
+      break;
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "assignment operator was not printed");
     }
@@ -715,24 +755,24 @@ static void
 ldv_print_aux_init (void)
 {
   static bool once = false;
-  
+
   /* Print some auxiliary entities at the beginning of the generated file. */
   if (!once)
     {
-      /* Print LDV_MIN and LDV_MAX macros required to expand MIN_EXPR and 
+      /* Print LDV_MIN and LDV_MAX macros required to expand MIN_EXPR and
          MAX_EXPR correspondingly. */
       ldv_c_backend_print (0, false, "#define LDV_MIN(X,Y) ((X) < (Y) ? (X) : (Y))\n");
       ldv_c_backend_print (0, false, "#define LDV_MAX(X,Y) ((X) > (Y) ? (X) : (Y))\n");
-      
-      /* Print LDV_LROTATE and LDV_RROTATE macros required to expand 
+
+      /* Print LDV_LROTATE and LDV_RROTATE macros required to expand
          LROTATE_EXPR and RROTATE_EXPR correspondingly. */
       ldv_c_backend_print (0, false, "#define LDV_LROTATE(X,Y) (((X) << (Y)) | ((X) >> (__CHAR_BIT__ * sizeof (X) - Y)))\n");
       ldv_c_backend_print (0, false, "#define LDV_RROTATE(X,Y) (((X) >> (Y)) | ((X) << (__CHAR_BIT__ * sizeof (X) - Y)))\n");
-      
+
       /* Print special typedef for __va_list_tag to prevent compile errors and
          warnings. */
       ldv_c_backend_print (0, false, "typedef struct __va_list_tag __va_list_tag;\n");
-      
+
       once = true;
     }
 }
@@ -768,7 +808,7 @@ ldv_print_block_item (unsigned int indent_level, ldv_block_item_ptr block_item)
         ldv_print_statement (indent_level, statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "statement of block item was not printed");
-	
+
       break;
 
     default:
@@ -811,7 +851,7 @@ ldv_print_cast_expr (unsigned int indent_level, ldv_cast_expr_ptr cast_expr)
   ldv_type_name_ptr type_name;
   ldv_cast_expr_ptr cast_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_CAST_EXPR_KIND (cast_expr))
     {
     case LDV_CAST_EXPR_FIRST:
@@ -869,13 +909,13 @@ ldv_print_compound_statement (unsigned int indent_level, ldv_compound_statement_
       ldv_print_label_decls (indent_level + 1, label_decls);
       ldv_c_backend_print (indent_level, false, "\n");
     }
-    
+
   if ((block_item_list = LDV_COMPOUND_STATEMENT_BLOCK_ITEM_LIST (compound_statement)))
     {
       ldv_print_block_item_list (indent_level + 1, block_item_list);
       ldv_c_backend_print (indent_level, false, "\n");
     }
-  
+
   ldv_c_backend_print (indent_level, true, "}");
 }
 
@@ -885,7 +925,7 @@ conditional-expression:
     logical-OR-expression ? expression : conditional-expression
 
 LDV extension
-    
+
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
     LDV_MAX (expression, conditional-expression)
@@ -897,7 +937,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
   ldv_expr_ptr expr;
   ldv_cond_expr_ptr cond_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_COND_EXPR_KIND (cond_expr))
     {
     case LDV_COND_EXPR_FIRST:
@@ -924,7 +964,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
         ldv_c_backend_print (indent_level, true, "LDV_MIN (");
       else
         ldv_c_backend_print (indent_level, true, "LDV_MAX (");
-      
+
       if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         ldv_print_expr (indent_level, expr);
       else
@@ -937,7 +977,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
         ldv_c_backend_print (indent_level, true, ":");
       else
         ldv_c_backend_print (indent_level, true, ",");
-        
+
       if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
         ldv_print_cond_expr (indent_level, cond_expr_next);
       else
@@ -960,7 +1000,7 @@ static void
 ldv_print_const_expr (unsigned int indent_level, ldv_const_expr_ptr const_expr)
 {
   ldv_cond_expr_ptr cond_expr;
-  
+
   if ((cond_expr = LDV_CONST_EXPR_COND_EXPR (const_expr)))
     ldv_print_cond_expr (indent_level, cond_expr);
   else
@@ -980,7 +1020,7 @@ ldv_print_constant (unsigned int indent_level, ldv_constant_ptr constant)
   ldv_integer_constant_ptr integer_constant;
   ldv_floating_constant_ptr floating_constant;
   ldv_enumeration_constant_ptr enumeration_constant;
-  
+
   switch (LDV_CONSTANT_KIND (constant))
     {
     case LDV_CONSTANT_FIRST:
@@ -998,7 +1038,7 @@ ldv_print_constant (unsigned int indent_level, ldv_constant_ptr constant)
         LDV_PRETTY_PRINT_WARN (indent_level, "floating constant of constant was not printed");
 
       break;
-    
+
     case LDV_CONSTANT_THIRD:
       if ((enumeration_constant = LDV_CONSTANT_ENUMERATION_CONSTANT (constant)))
         ldv_print_enumeration_constant (indent_level, enumeration_constant);
@@ -1026,12 +1066,12 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
   ldv_init_declarator_ptr init_declarator;
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
-  
+
   /* Print #line directive before variable declaration. */
   if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)))
     {
       if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
-        && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator)) 
+        && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator))
         && (location = ldv_declarator_location (declarator)))
         ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
       else
@@ -1107,12 +1147,12 @@ static void
 ldv_print_designation (unsigned int indent_level, ldv_designation_ptr designation)
 {
   ldv_designator_list_ptr designator_list;
-  
+
   if ((designator_list = LDV_DESIGNATION_DESIGNATOR_LIST (designation)))
     ldv_print_designator_list (indent_level, designator_list);
   else
     LDV_PRETTY_PRINT_WARN (indent_level, "designator list of designation was not printed");
-  
+
   ldv_c_backend_print (indent_level, true, "=");
 }
 
@@ -1131,19 +1171,19 @@ ldv_print_designator (unsigned int indent_level, ldv_designator_ptr designator)
     {
     case LDV_DESIGNATOR_FIRST:
       ldv_c_backend_print (indent_level, true, "[");
-      
+
       if ((const_expr = LDV_DESIGNATOR_CONST_EXPR (designator)))
         ldv_print_const_expr (indent_level, const_expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "constant expression of designator was not printed");
-      
+
       ldv_c_backend_print (indent_level, true, "]");
 
       break;
 
     case LDV_DESIGNATOR_SECOND:
       ldv_c_backend_print (indent_level, true, ".");
-      
+
       if ((identifier = LDV_DESIGNATOR_IDENTIFIER (designator)))
         ldv_print_identifier (indent_level, identifier);
       else
@@ -1180,7 +1220,7 @@ ldv_print_designator_list (unsigned int indent_level, ldv_designator_list_ptr de
 
           ldv_c_backend_print (indent_level, true, ",");
         }
-      
+
       if ((designator = LDV_DESIGNATOR_LIST_DESIGNATOR (designator_list)))
         ldv_print_designator (indent_level, designator);
       else
@@ -1215,7 +1255,7 @@ ldv_print_direct_abstract_declarator (unsigned int indent_level, ldv_direct_abst
       ldv_print_abstract_declarator (indent_level, abstract_declarator);
       ldv_c_backend_print (indent_level, false, ")");
     }
-  else 
+  else
     {
       if ((direct_abstract_declarator_next = LDV_DIRECT_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (direct_abstract_declarator)))
         ldv_print_direct_abstract_declarator (indent_level, direct_abstract_declarator_next);
@@ -1266,20 +1306,20 @@ ldv_print_direct_declarator (unsigned int indent_level, ldv_direct_declarator_pt
         ldv_print_identifier (indent_level, identifier);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "identifier of direct declarator was not printed");
-            
+
       break;
 
     case LDV_DIRECT_DECLARATOR_SECOND:
       ldv_c_backend_print (indent_level, true, "(");
       ldv_c_backend_padding_cancel ();
-      
+
       if ((declarator = LDV_DIRECT_DECLARATOR_DECLARATOR (direct_declarator)))
         ldv_print_declarator (indent_level, declarator);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "declarator of direct declarator was not printed");
 
       ldv_c_backend_print (indent_level, false, ")");
-            
+
       break;
 
     case LDV_DIRECT_DECLARATOR_THIRD:
@@ -1292,40 +1332,40 @@ ldv_print_direct_declarator (unsigned int indent_level, ldv_direct_declarator_pt
         ldv_print_direct_declarator (indent_level, direct_declarator_next);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "direct declarator of direct declarator was not printed");
-    
+
       if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_THIRD
         || LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_FOURTH
         || LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_FIFTH
         || LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_SIXTH)
         {
           ldv_c_backend_print (indent_level, false, "[");
-          
-	  if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_THIRD)
+
+    if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_THIRD)
             {
-	      if ((assignment_expr = LDV_DIRECT_DECLARATOR_ASSIGNMENT_EXPR (direct_declarator)))
+        if ((assignment_expr = LDV_DIRECT_DECLARATOR_ASSIGNMENT_EXPR (direct_declarator)))
                 ldv_print_assignment_expr (indent_level, assignment_expr);
             }
-	  else
+    else
             LDV_WARN ("something strange");
-	  
+
           ldv_c_backend_print (indent_level, false, "]");
         }
       else if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_SEVENTH)
-        {      
+        {
           ldv_c_backend_print (indent_level, false, "(");
-          
+
           if ((param_type_list = LDV_DIRECT_DECLARATOR_PARAM_TYPE_LIST (direct_declarator)))
             ldv_print_param_type_list (indent_level, param_type_list);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "parameter type list of direct declarator was not printed");
- 
+
           ldv_c_backend_print (indent_level, false, ")");
         }
       else
         LDV_WARN ("something strange");
-    
+
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "direct declarator was not printed");
     }
@@ -1341,7 +1381,7 @@ ldv_print_enum (unsigned int indent_level, ldv_enum_ptr ldv_enum)
 {
   ldv_enum_const_ptr enum_const;
   ldv_const_expr_ptr const_expr;
-  
+
   switch (LDV_ENUM_KIND (ldv_enum))
     {
     case LDV_ENUM_FIRST:
@@ -1350,11 +1390,11 @@ ldv_print_enum (unsigned int indent_level, ldv_enum_ptr ldv_enum)
         ldv_print_enum_const (indent_level, enum_const);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "enumeration constant of enumerator was not printed");
- 
+
       if (LDV_ENUM_KIND (ldv_enum) == LDV_ENUM_SECOND)
         {
           ldv_c_backend_print (indent_level, true, "=");
-      
+
           if ((const_expr = LDV_ENUM_CONST_EXPR (ldv_enum)))
             ldv_print_const_expr (indent_level, const_expr);
           else
@@ -1365,7 +1405,7 @@ ldv_print_enum (unsigned int indent_level, ldv_enum_ptr ldv_enum)
 
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "enumerator was not printed");
-    }    
+    }
 }
 
 /*
@@ -1443,8 +1483,8 @@ enumeration-constant:
 static void
 ldv_print_enumeration_constant (unsigned int indent_level, ldv_enumeration_constant_ptr enumeration_constant)
 {
-  ldv_identifier_ptr identifier;          
-  
+  ldv_identifier_ptr identifier;
+
   if ((identifier = LDV_ENUMERATION_CONSTANT_IDENTIFIER (enumeration_constant)))
     ldv_print_identifier (indent_level, identifier);
   else
@@ -1463,7 +1503,7 @@ ldv_print_equality_expr (unsigned int indent_level, ldv_equality_expr_ptr equali
   ldv_relational_expr_ptr relational_expr;
   ldv_equality_expr_ptr equality_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_EQUALITY_EXPR_KIND (equality_expr))
     {
     case LDV_EQUALITY_EXPR_FIRST:
@@ -1513,7 +1553,7 @@ ldv_print_exclusive_or_expr (unsigned int indent_level, ldv_exclusive_or_expr_pt
   ldv_and_expr_ptr and_expr;
   ldv_exclusive_or_expr_ptr exclusive_or_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_EXCLUSIVE_OR_EXPR_KIND (exclusive_or_expr))
     {
     case LDV_EXCLUSIVE_OR_EXPR_FIRST:
@@ -1558,7 +1598,7 @@ ldv_print_expr (unsigned int indent_level, ldv_expr_ptr expr)
 {
   ldv_assignment_expr_ptr assignment_expr;
   ldv_expr_ptr expr_next;
-    
+
   switch (LDV_EXPR_KIND (expr))
     {
     case LDV_EXPR_FIRST:
@@ -1567,19 +1607,19 @@ ldv_print_expr (unsigned int indent_level, ldv_expr_ptr expr)
         {
           if ((expr_next = LDV_EXPR_EXPR (expr)))
             {
-	      ldv_print_expr (indent_level, expr_next);
-	      ldv_c_backend_print (indent_level, false, ",");
-	      ldv_c_backend_padding_force ();
+        ldv_print_expr (indent_level, expr_next);
+        ldv_c_backend_print (indent_level, false, ",");
+        ldv_c_backend_padding_force ();
             }
-	  else
+    else
             LDV_PRETTY_PRINT_WARN (indent_level, "expression of expression was not printed");
         }
-	
+
       if ((assignment_expr = LDV_EXPR_ASSIGNMENT_EXPR (expr)))
         ldv_print_assignment_expr (indent_level, assignment_expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "assignment expression of expression was not printed");
-	
+
       break;
 
     default:
@@ -1596,7 +1636,7 @@ ldv_print_expr_statement (unsigned int indent_level, ldv_expr_statement_ptr expr
 {
   ldv_expr_ptr expr;
   ldv_location_ptr location;
-  
+
   if ((location = LDV_EXPR_STATEMENT_LOCATION (expr_statement)))
     ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
 
@@ -1634,7 +1674,7 @@ ldv_print_ext_decl (unsigned int indent_level, ldv_ext_decl_ptr ext_decl)
         LDV_PRETTY_PRINT_WARN (indent_level, "declaration of external declaration was not printed");
 
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "external declaration was not printed");
     }
@@ -1647,7 +1687,7 @@ floating-constant:
 */
 static void
 ldv_print_floating_constant (unsigned int indent_level, ldv_floating_constant_ptr floating_constant)
-{  
+{
   const char *cst;
 
   switch (LDV_FLOATING_CONSTANT_KIND (floating_constant))
@@ -1676,9 +1716,9 @@ ldv_print_func_def (unsigned int indent_level, ldv_func_def_ptr func_def)
   ldv_declarator_ptr declarator;
   ldv_compound_statement_ptr compound_statement;
   ldv_location_ptr location;
-  
+
   /* Print #line directive before function definition. */
-  if ((declarator = LDV_FUNC_DEF_DECLARATOR (func_def)) 
+  if ((declarator = LDV_FUNC_DEF_DECLARATOR (func_def))
     && (location = ldv_declarator_location (declarator)))
     ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
   else
@@ -1733,7 +1773,7 @@ static void
 ldv_print_identifier (unsigned int indent_level, ldv_identifier_ptr identifier)
 {
   const char *str;
-  
+
   if ((str = LDV_IDENTIFIER_STR (identifier)))
     ldv_c_backend_print (indent_level, true, "%s", str);
   else
@@ -1751,7 +1791,7 @@ ldv_print_inclusive_or_expr (unsigned int indent_level, ldv_inclusive_or_expr_pt
   ldv_exclusive_or_expr_ptr exclusive_or_expr;
   ldv_inclusive_or_expr_ptr inclusive_or_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_INCLUSIVE_OR_EXPR_KIND (inclusive_or_expr))
     {
     case LDV_INCLUSIVE_OR_EXPR_FIRST:
@@ -1796,7 +1836,7 @@ ldv_print_init_declarator (unsigned int indent_level, ldv_init_declarator_ptr in
 {
   ldv_declarator_ptr declarator;
   ldv_initializer_ptr initializer;
-  
+
   switch (LDV_INIT_DECLARATOR_KIND (init_declarator))
     {
     case LDV_INIT_DECLARATOR_FIRST:
@@ -1805,12 +1845,12 @@ ldv_print_init_declarator (unsigned int indent_level, ldv_init_declarator_ptr in
         ldv_print_declarator (indent_level, declarator);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "declarator of init declarator was not printed");
- 
+
       if (LDV_INIT_DECLARATOR_KIND (init_declarator) == LDV_INIT_DECLARATOR_SECOND)
         {
           ldv_c_backend_padding_force ();
           ldv_c_backend_print (indent_level, true, "=");
-      
+
           if ((initializer = LDV_INIT_DECLARATOR_INITIALIZER (init_declarator)))
             ldv_print_initializer (indent_level, initializer);
           else
@@ -1821,7 +1861,7 @@ ldv_print_init_declarator (unsigned int indent_level, ldv_init_declarator_ptr in
 
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "init declarator was not printed");
-    }    
+    }
 }
 
 /*
@@ -1858,7 +1898,7 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
 {
   ldv_assignment_expr_ptr assignment_expr;
   ldv_initializer_list_ptr initializer_list;
-  
+
   switch (LDV_INITIALIZER_KIND (initializer))
     {
     case LDV_INITIALIZER_FIRST:
@@ -1866,13 +1906,13 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
         ldv_print_assignment_expr (indent_level, assignment_expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "assignment expression of initializer was not printed");
-    
+
       break;
-      
+
     case LDV_INITIALIZER_SECOND:
     case LDV_INITIALIZER_THIRD:
       ldv_c_backend_print (indent_level, true, "{");
-      
+
       if ((initializer_list = LDV_INITIALIZER_INITIALIZER_LIST (initializer)))
         ldv_print_initializer_list (indent_level, initializer_list);
       else
@@ -1882,12 +1922,12 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
         ldv_c_backend_print (indent_level, true, ",");
 
       ldv_c_backend_print (indent_level, true, "}");
-      
+
       break;
 
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "initializer was not printed");
-    }    
+    }
 }
 
 /*
@@ -1915,10 +1955,10 @@ ldv_print_initializer_list (unsigned int indent_level, ldv_initializer_list_ptr 
 
           ldv_c_backend_print (indent_level, true, ",");
         }
-      
+
       if ((designation = LDV_INITIALIZER_LIST_DESIGNATION (initializer_list)))
         ldv_print_designation (indent_level, designation);
-      
+
       if ((initializer = LDV_INITIALIZER_LIST_INITIALIZER (initializer_list)))
         ldv_print_initializer (indent_level, initializer);
       else
@@ -1942,7 +1982,7 @@ ldv_print_integer_constant (unsigned int indent_level, ldv_integer_constant_ptr 
 {
   HOST_WIDE_INT decimal_constant;
   ldv_integer_suffix_ptr integer_suffix;
-  
+
   switch (LDV_INTEGER_CONSTANT_KIND (integer_constant))
     {
     case LDV_INTEGER_CONSTANT_FIRST:
@@ -1951,10 +1991,10 @@ ldv_print_integer_constant (unsigned int indent_level, ldv_integer_constant_ptr 
         ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_DEC, decimal_constant);
       else
         ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_UNSIGNED, /*(UINTMAX_TYPE)*/ decimal_constant);
-	
+
       if ((integer_suffix = LDV_INTEGER_CONSTANT_INTEGER_SUFFIX (integer_constant)))
         ldv_print_integer_suffix (indent_level, integer_suffix);
-	
+
       break;
 
     default:
@@ -1971,11 +2011,11 @@ integer-suffix:
 */
 static void
 ldv_print_integer_suffix (unsigned int indent_level, ldv_integer_suffix_ptr integer_suffix)
-{  
+{
   ldv_unsigned_suffix_ptr unsigned_suffix;
   ldv_long_suffix_ptr long_suffix;
   ldv_long_long_suffix_ptr long_long_suffix;
-  
+
   switch (LDV_INTEGER_SUFFIX_KIND (integer_suffix))
     {
     case LDV_INTEGER_SUFFIX_FIRST:
@@ -1987,41 +2027,41 @@ ldv_print_integer_suffix (unsigned int indent_level, ldv_integer_suffix_ptr inte
 
       if (LDV_INTEGER_SUFFIX_KIND (integer_suffix) == LDV_INTEGER_SUFFIX_FIRST)
         {
-	  if ((long_suffix = LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix)))
+    if ((long_suffix = LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix)))
             ldv_print_long_suffix (indent_level, long_suffix);
-	}
+  }
       else
         {
           if ((long_long_suffix = LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix)))
             ldv_print_long_long_suffix (indent_level, long_long_suffix);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "long long suffix of integer suffix was not printed");
-	}
-	
+  }
+
       break;
 
     case LDV_INTEGER_SUFFIX_THIRD:
     case LDV_INTEGER_SUFFIX_FOURTH:
       if (LDV_INTEGER_SUFFIX_KIND (integer_suffix) == LDV_INTEGER_SUFFIX_THIRD)
         {
-	  if ((long_suffix = LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix)))
+    if ((long_suffix = LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix)))
             ldv_print_long_suffix (indent_level, long_suffix);
-	  else
+    else
             LDV_PRETTY_PRINT_WARN (indent_level, "long suffix of integer suffix was not printed");
-	}
+  }
       else
         {
-	  if ((long_long_suffix = LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix)))
+    if ((long_long_suffix = LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix)))
             ldv_print_long_long_suffix (indent_level, long_long_suffix);
-	  else
+    else
             LDV_PRETTY_PRINT_WARN (indent_level, "long long suffix of integer suffix was not printed");
-	}
-          
+  }
+
       if ((unsigned_suffix = LDV_INTEGER_SUFFIX_UNSIGNED_SUFFIX (integer_suffix)))
         ldv_print_unsigned_suffix (indent_level, unsigned_suffix);
-      
+
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "integer suffix was not printed");
     }
@@ -2040,14 +2080,14 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
   const char *id;
   ldv_expr_ptr expr;
   ldv_location_ptr location;
-  
+
   switch (LDV_JUMP_STATEMENT_KIND (jump_statement))
     {
       case LDV_JUMP_STATEMENT_GOTO:
-      case LDV_JUMP_STATEMENT_RETURN:      
+      case LDV_JUMP_STATEMENT_RETURN:
         if ((location = LDV_JUMP_STATEMENT_LOCATION (jump_statement)))
           ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
-          
+
         if (LDV_JUMP_STATEMENT_KIND (jump_statement) == LDV_JUMP_STATEMENT_GOTO)
           {
             ldv_c_backend_print (indent_level, true, "goto");
@@ -2060,13 +2100,13 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
         else
           {
             ldv_c_backend_print (indent_level, true, "return");
-   
+
             if ((expr = LDV_JUMP_STATEMENT_EXPR (jump_statement)))
               ldv_print_expr (indent_level, expr);
-          } 
-        
+          }
+
         break;
-      
+
       default:
         LDV_PRETTY_PRINT_WARN (indent_level, "jump statement was not printed");
     }
@@ -2139,7 +2179,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
     case LDV_LABELED_STATEMENT_LABEL:
       if ((location = LDV_LABELED_STATEMENT_LOCATION (labeled_statement)))
         ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
-        
+
       if ((id = LDV_LABELED_STATEMENT_ID (labeled_statement)))
         ldv_c_backend_print (indent_level, true, id);
       else
@@ -2160,7 +2200,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
         ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "line directive for labeled statement was not printed");
-      
+
       ldv_c_backend_print (indent_level, true, "case");
 
       const_expr = LDV_LABELED_STATEMENT_CONST_EXPR (labeled_statement);
@@ -2180,7 +2220,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
         ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "line directive for labeled statement was not printed");
-      
+
       ldv_c_backend_print (indent_level, true, "default");
       ldv_c_backend_print (indent_level, false, ":");
 
@@ -2190,7 +2230,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
         LDV_WARN ("labeled statement statement wasn't printed");
 
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "labeled statement was not printed");
     }
@@ -2201,15 +2241,15 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
 {
   const char *file;
   unsigned int line;
-  
+
   /* Don't print line directives if they are unneeded. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO))
     return;
-  
+
   /* Print just required entities if this is specified. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_USEFUL))
     {
-      if ((line = LDV_LOCATION_LINE (location)) && ldv_c_backend_is_current_line (line)) 
+      if ((line = LDV_LOCATION_LINE (location)) && ldv_c_backend_is_current_line (line))
         return;
     }
   else if (!ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_ALL))
@@ -2221,32 +2261,32 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
           case LDV_C_BACKEND_LINES_LEVEL_EXPR:
             if (!ldv_c_backend_is_lines_level (lines_level))
               return;
-          
+
             break;
-            
+
           default:
             LDV_WARN ("something strange");
         }
     }
-  
+
   if (new_line)
     ldv_c_backend_print (0, false, "\n");
-  
+
   ldv_c_backend_print (0, true, "#line");
-  
+
   if ((line = LDV_LOCATION_LINE (location)))
     ldv_c_backend_print (0, true, "%d", line);
   else
     LDV_PRETTY_PRINT_WARN (0, "line for line directive was not printed");
-  
+
   if ((file = LDV_LOCATION_FILE (location)))
     ldv_c_backend_print (0, true, "\"%s\"", file);
   else
     LDV_PRETTY_PRINT_WARN (0, "file for line directive was not printed");
 
   ldv_c_backend_print (0, false, "\n");
-  
-  /* Update current line if a line directive was printed. This also allows to 
+
+  /* Update current line if a line directive was printed. This also allows to
      ignore lines printed for line directive itself. */
   ldv_c_backend_current_line_set (line);
 }
@@ -2262,7 +2302,7 @@ ldv_print_logical_and_expr (unsigned int indent_level, ldv_logical_and_expr_ptr 
   ldv_inclusive_or_expr_ptr inclusive_or_expr;
   ldv_logical_and_expr_ptr logical_and_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_LOGICAL_AND_EXPR_KIND (logical_and_expr))
     {
     case LDV_LOGICAL_AND_EXPR_FIRST:
@@ -2307,7 +2347,7 @@ ldv_print_logical_or_expr (unsigned int indent_level, ldv_logical_or_expr_ptr lo
   ldv_logical_and_expr_ptr logical_and_expr;
   ldv_logical_or_expr_ptr logical_or_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_LOGICAL_OR_EXPR_KIND (logical_or_expr))
     {
     case LDV_LOGICAL_OR_EXPR_FIRST:
@@ -2348,20 +2388,20 @@ long-long-suffix: one of
 */
 static void
 ldv_print_long_long_suffix (unsigned int indent_level, ldv_long_long_suffix_ptr long_long_suffix)
-{  
+{
   /* Join suffix to the previously printed integer constant. */
   ldv_c_backend_padding_cancel ();
-  
+
   switch (LDV_LONG_LONG_SUFFIX_KIND (long_long_suffix))
     {
     case LDV_LONG_LONG_SUFFIX_FIRST:
       ldv_c_backend_print (indent_level, true, "ll");
       break;
-    
+
     case LDV_LONG_LONG_SUFFIX_SECOND:
       ldv_c_backend_print (indent_level, true, "LL");
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "long long suffix was not printed");
     }
@@ -2373,20 +2413,20 @@ long-suffix: one of
 */
 static void
 ldv_print_long_suffix (unsigned int indent_level, ldv_long_suffix_ptr long_suffix)
-{  
+{
   /* Join suffix to the previously printed integer constant. */
   ldv_c_backend_padding_cancel ();
-  
+
   switch (LDV_LONG_SUFFIX_KIND (long_suffix))
     {
     case LDV_LONG_SUFFIX_FIRST:
       ldv_c_backend_print (indent_level, true, "l");
       break;
-    
+
     case LDV_LONG_SUFFIX_SECOND:
       ldv_c_backend_print (indent_level, true, "L");
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "long suffix was not printed");
     }
@@ -2405,7 +2445,7 @@ ldv_print_multiplicative_expr (unsigned int indent_level, ldv_multiplicative_exp
   ldv_cast_expr_ptr cast_expr;
   ldv_multiplicative_expr_ptr multiplicative_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr))
     {
     case LDV_MULTIPLICATIVE_EXPR_FIRST:
@@ -2456,7 +2496,7 @@ nested-declaration:
 */
 static void
 ldv_print_nested_decl (unsigned int indent_level, ldv_nested_decl_ptr nested_decl)
-{  
+{
   ldv_decl_ptr decl;
   ldv_nested_func_def_ptr nested_func_def;
 
@@ -2475,7 +2515,7 @@ ldv_print_nested_decl (unsigned int indent_level, ldv_nested_decl_ptr nested_dec
         ldv_print_nested_func_def (indent_level, nested_func_def);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "nested function definition of nested declaration was not printed");
-	
+
       break;
 
     default:
@@ -2493,7 +2533,7 @@ static void
 ldv_print_nested_func_def (unsigned int indent_level, ldv_nested_func_def_ptr nested_func_def)
 {
   ldv_func_def_ptr func_def;
-  
+
   if ((func_def = LDV_NESTED_FUNC_DEF_FUNC_DEF (nested_func_def)))
     ldv_print_func_def (indent_level, func_def);
   else
@@ -2616,7 +2656,7 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
   ldv_type_name_ptr type_name;
   ldv_initializer_list_ptr initializer_list;
   ldv_location_ptr location;
-  
+
   switch (LDV_POSTFIX_EXPR_KIND (postfix_expr))
     {
     case LDV_POSTFIX_EXPR_FIRST:
@@ -2633,7 +2673,7 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
     case LDV_POSTFIX_EXPR_FIFTH:
     case LDV_POSTFIX_EXPR_SIXTH:
     case LDV_POSTFIX_EXPR_SEVENTH:
-    case LDV_POSTFIX_EXPR_EIGHTH:  
+    case LDV_POSTFIX_EXPR_EIGHTH:
       if (LDV_POSTFIX_EXPR_KIND (postfix_expr) != LDV_POSTFIX_EXPR_EIGHTH)
         {
           if ((postfix_expr_next = LDV_POSTFIX_EXPR_POSTFIX_EXPR (postfix_expr)))
@@ -2641,34 +2681,34 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "postfix expression of postfix expression was not printed");
         }
-      
+
       if ((location = LDV_POSTFIX_EXPR_LOCATION (postfix_expr)))
         ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_SECOND)
         {
           ldv_c_backend_print (indent_level, true, "[");
-          
+
           if ((expr = LDV_POSTFIX_EXPR_EXPR (postfix_expr)))
             ldv_print_expr (indent_level, expr);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "expression of postfix expression was not printed");
-      
+
           ldv_c_backend_print (indent_level, true, "]");
         }
       else if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_THIRD)
         {
           ldv_c_backend_print (indent_level, true, "(");
-          
+
           if ((arg_expr_list = LDV_POSTFIX_EXPR_ARG_EXPR_LIST (postfix_expr)))
             ldv_print_arg_expr_list (indent_level, arg_expr_list);
-      
+
           ldv_c_backend_print (indent_level, true, ")");
         }
       else if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_FOURTH)
         {
           ldv_c_backend_print (indent_level, true, ".");
-          
+
           if ((identifier = LDV_POSTFIX_EXPR_IDENTIFIER (postfix_expr)))
             ldv_print_identifier (indent_level, identifier);
           else
@@ -2681,16 +2721,16 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
       else
         {
           ldv_c_backend_print (indent_level, true, "(");
-            
+
           if ((type_name = LDV_POSTFIX_EXPR_TYPE_NAME (postfix_expr)))
             ldv_print_type_name (indent_level, type_name);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "type name of postfix expression was not printed");
 
           ldv_c_backend_print (indent_level, true, ")");
-          
+
           ldv_c_backend_print (indent_level, true, "{");
-          
+
           if ((initializer_list = LDV_POSTFIX_EXPR_INITIALIZER_LIST (postfix_expr)))
             ldv_print_initializer_list (indent_level, initializer_list);
           else
@@ -2698,9 +2738,9 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
 
           ldv_c_backend_print (indent_level, true, "}");
         }
-      
+
       break;
-       
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "postfix expression was not printed");
     }
@@ -2744,7 +2784,7 @@ ldv_print_primary_expr (unsigned int indent_level, ldv_primary_expr_ptr primary_
         LDV_PRETTY_PRINT_WARN (indent_level, "constant of primary expression was not printed");
 
       break;
-    
+
     case LDV_PRIMARY_EXPR_THIRD:
       if ((str_literal = LDV_PRIMARY_EXPR_STR_LITERAL (primary_expr)))
         ldv_print_str_literal (indent_level, str_literal);
@@ -2752,29 +2792,29 @@ ldv_print_primary_expr (unsigned int indent_level, ldv_primary_expr_ptr primary_
         LDV_PRETTY_PRINT_WARN (indent_level, "string literal of primary expression was not printed");
 
       break;
-      
+
     case LDV_PRIMARY_EXPR_FOURTH:
       ldv_c_backend_print (indent_level, true, "(");
-      
+
       if ((expr = LDV_PRIMARY_EXPR_EXPR (primary_expr)))
         ldv_print_expr (indent_level, expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "expression of primary expression was not printed");
 
       ldv_c_backend_print (indent_level, true, ")");
-      
+
       break;
 
     case LDV_PRIMARY_EXPR_FIFTH:
       ldv_c_backend_print (indent_level, true, "(");
-      
+
       if ((compound_statement = LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr)))
         ldv_print_compound_statement (indent_level, compound_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "compound statement of primary expression was not printed");
 
       ldv_c_backend_print (indent_level, true, ")");
-      
+
       break;
 
     default:
@@ -2796,7 +2836,7 @@ ldv_print_relational_expr (unsigned int indent_level, ldv_relational_expr_ptr re
   ldv_shift_expr_ptr shift_expr;
   ldv_relational_expr_ptr relational_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_RELATIONAL_EXPR_KIND (relational_expr))
     {
     case LDV_RELATIONAL_EXPR_FIRST:
@@ -2918,7 +2958,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
         ldv_print_statement_internal (indent_level, else_statement);
 
       break;
-    
+
     default:
         LDV_PRETTY_PRINT_WARN (indent_level, "selection statement was not printed");
     }
@@ -2931,7 +2971,7 @@ shift-expression:
     shift-expression >> additive-expression
 
 LDV extension
-    
+
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
     LDV_RROTATE (shift-expression, additive-expression)
@@ -2942,7 +2982,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
   ldv_additive_expr_ptr additive_expr;
   ldv_shift_expr_ptr shift_expr_next;
   ldv_location_ptr location;
-  
+
   switch (LDV_SHIFT_EXPR_KIND (shift_expr))
     {
     case LDV_SHIFT_EXPR_FIRST:
@@ -2961,7 +3001,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
         ldv_c_backend_print (indent_level, true, "LDV_LROTATE (");
       else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
         ldv_c_backend_print (indent_level, true, "LDV_RROTATE (");
-      
+
       if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
         ldv_print_shift_expr (indent_level, shift_expr_next);
       else
@@ -2985,7 +3025,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
       if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH
         || LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
         ldv_c_backend_print (indent_level, true, ")");
-	
+
       break;
 
     default:
@@ -3047,7 +3087,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_labeled_statement (indent_level, labeled_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "labeled statement of statement was not printed");
-  
+
       break;
 
     case LDV_COMPOUND_STATEMENT:
@@ -3055,7 +3095,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_compound_statement (indent_level, compound_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "compound statement of statement was not printed");
-  
+
       break;
 
     case LDV_EXPR_STATEMENT:
@@ -3063,7 +3103,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_expr_statement (indent_level, expr_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "expression statement of statement was not printed");
-  
+
       break;
 
     case LDV_SELECTION_STATEMENT:
@@ -3071,12 +3111,12 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_selection_statement (indent_level, selection_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "selection statement of statement was not printed");
-  
+
       break;
 
     case LDV_ITERATION_STATEMENT:
       LDV_PRETTY_PRINT_WARN (indent_level, "iteration statement of statement was not printed");
-  
+
       break;
 
     case LDV_JUMP_STATEMENT:
@@ -3084,7 +3124,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_jump_statement (indent_level, jump_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "jump statement of statement was not printed");
-  
+
       break;
 
     case LDV_ASM_STATEMENT:
@@ -3092,7 +3132,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
         ldv_print_asm_statement (indent_level, asm_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "asm statement of statement was not printed");
-  
+
       break;
 
     default:
@@ -3141,7 +3181,7 @@ ldv_print_storage_class_spec (unsigned int indent_level, ldv_storage_class_spec_
     case LDV_STORAGE_CLASS_SPEC_REGISTER:
       ldv_c_backend_print (indent_level, true, "register");
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "storage class specifier was not printed");
     }
@@ -3174,56 +3214,56 @@ string-literal:
 */
 static void
 ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_literal)
-{  
+{
   const char *str;
   const char *c;
-  
+
   /* A given string can contain some escape sequences. To print them correctly
      print a given string character by character and escape escape sequences. */
   if ((str = LDV_STR_LITERAL_STR (str_literal)))
     {
       ldv_c_backend_print (indent_level, true, "\"");
       ldv_c_backend_padding_cancel ();
-      
+
       for (c = str; *c; c++)
         switch (*c)
           {
           case '\a':
             ldv_c_backend_print (indent_level, false, "\\a");
             break;
-      
+
           case '\b':
             ldv_c_backend_print (indent_level, false, "\\b");
             break;
-      
+
           case '\f':
             ldv_c_backend_print (indent_level, false, "\\f");
             break;
-      
+
           case '\n':
             ldv_c_backend_print (indent_level, false, "\\n");
             break;
-      
+
           case '\r':
             ldv_c_backend_print (indent_level, false, "\\r");
             break;
-      
+
           case '\t':
             ldv_c_backend_print (indent_level, false, "\\t");
             break;
-      
+
           case '\v':
             ldv_c_backend_print (indent_level, false, "\\v");
             break;
-      
+
           case '\\':
             ldv_c_backend_print (indent_level, false, "\\\\");
             break;
-      
+
           case '\"':
             ldv_c_backend_print (indent_level, false, "\\\"");
             break;
-      
+
           case '\'':
             ldv_c_backend_print (indent_level, false, "\\'");
             break;
@@ -3234,7 +3274,7 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
             else
               ldv_c_backend_print (indent_level, false, "\\%o", (unsigned char) *c);
           }
-      
+
       ldv_c_backend_print (indent_level, false, "\"");
       ldv_c_backend_padding_force ();
     }
@@ -3254,11 +3294,11 @@ ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_dec
   ldv_struct_declarator_ptr struct_declarator;
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
-  
+
   /* Print #line directive before field declaration. */
   if ((struct_declarator_list = LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl))
     && (struct_declarator = LDV_STRUCT_DECLARATOR_LIST_STRUCT_DECLARATOR (struct_declarator_list))
-    && (declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator)) 
+    && (declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator))
     && (location = ldv_declarator_location (declarator)))
     ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
   else
@@ -3379,22 +3419,22 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
         ldv_c_backend_print (indent_level, true, "%s", struct_or_union_name);
       else if (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) == LDV_STRUCT_OR_UNION_SPEC_SECOND)
         LDV_PRETTY_PRINT_WARN (indent_level, "identifier of struct or union specifier was not printed");
-      
+
       if (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) != LDV_STRUCT_OR_UNION_SPEC_SECOND)
         {
           ldv_c_backend_print (indent_level, false, "\n");
           ldv_c_backend_print (indent_level, false, "{\n");
-          
+
           if (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) == LDV_STRUCT_OR_UNION_SPEC_FIRST)
             {
               if ((struct_decl_list = LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST (struct_or_union_spec)))
                 ldv_print_struct_decl_list (indent_level + 1, struct_decl_list);
               else
                 LDV_PRETTY_PRINT_WARN (indent_level, "struct declaration list of struct or union specifier was not printed");
-          
+
               ldv_c_backend_print (indent_level, false, "\n");
             }
-          
+
           ldv_c_backend_print (indent_level, true, "}");
         }
 
@@ -3453,12 +3493,12 @@ ldv_print_type_name (unsigned int indent_level, ldv_type_name_ptr type_name)
 {
   ldv_spec_qual_list_ptr spec_qual_list;
   ldv_abstract_declarator_ptr abstract_declarator;
-  
+
   if ((spec_qual_list = LDV_TYPE_NAME_SPEC_QUAL_LIST (type_name)))
     ldv_print_spec_qual_list (indent_level, spec_qual_list);
   else
     LDV_PRETTY_PRINT_WARN (indent_level, "specifier qualifier list of type name wasn't printed");
-  
+
   if ((abstract_declarator = LDV_TYPE_NAME_ABSTRACT_DECLARATOR (type_name)))
     ldv_print_abstract_declarator (indent_level, abstract_declarator);
 }
@@ -3486,7 +3526,7 @@ ldv_print_type_qual (unsigned int indent_level, ldv_type_qual_ptr type_qual)
     case LDV_TYPE_QUAL_VOLATILE:
       ldv_c_backend_print (indent_level, true, "volatile");
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "type qualifier was not printed");
     }
@@ -3587,7 +3627,7 @@ ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
         ldv_print_struct_or_union_spec (indent_level, struct_or_union_spec);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "struct or union specifier of type specifier was not printed");
-      
+
       break;
 
     case LDV_TYPE_SPEC_SECOND:
@@ -3595,7 +3635,7 @@ ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
         ldv_print_enum_spec (indent_level, enum_spec);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "enum specifier of type specifier was not printed");
-      
+
       break;
 
     case LDV_TYPE_SPEC_THIRD:
@@ -3603,9 +3643,9 @@ ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
         ldv_print_typedef_name (indent_level, typedef_name);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "typedef name of type specifier was not printed");
-      
+
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "type specifier was not printed");
     }
@@ -3618,8 +3658,8 @@ typedef-name:
 static void
 ldv_print_typedef_name (unsigned int indent_level, ldv_typedef_name_ptr typedef_name)
 {
-  ldv_identifier_ptr identifier;          
-  
+  ldv_identifier_ptr identifier;
+
   if ((identifier = LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)))
     ldv_print_identifier (indent_level, identifier);
   else
@@ -3648,7 +3688,7 @@ ldv_print_unary_expr (unsigned int indent_level, ldv_unary_expr_ptr unary_expr)
   ldv_cast_expr_ptr cast_expr;
   ldv_location_ptr location;
   ldv_identifier_ptr identifier;
-  
+
   switch (LDV_UNARY_EXPR_KIND (unary_expr))
     {
     case LDV_UNARY_EXPR_FIRST:
@@ -3669,14 +3709,14 @@ ldv_print_unary_expr (unsigned int indent_level, ldv_unary_expr_ptr unary_expr)
         ldv_c_backend_print (indent_level, true, "++");
       else if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_THIRD)
         ldv_c_backend_print (indent_level, true, "--");
-      
+
       if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_FOURTH)
         {
           if ((unary_operator = LDV_UNARY_EXPR_UNARY_OPERATOR (unary_expr)))
             ldv_print_unary_operator (indent_level, unary_operator);
           else
             LDV_PRETTY_PRINT_WARN (indent_level, "unary operator of unary expression was not printed");
-      
+
           if ((cast_expr = LDV_UNARY_EXPR_CAST_EXPR (unary_expr)))
             ldv_print_cast_expr (indent_level, cast_expr);
           else
@@ -3764,17 +3804,17 @@ ldv_print_unsigned_suffix (unsigned int indent_level, ldv_unsigned_suffix_ptr un
 {
   /* Join suffix to the previously printed integer constant. */
   ldv_c_backend_padding_cancel ();
-  
+
   switch (LDV_UNSIGNED_SUFFIX_KIND (unsigned_suffix))
     {
     case LDV_UNSIGNED_SUFFIX_FIRST:
       ldv_c_backend_print (indent_level, true, "u");
       break;
-    
+
     case LDV_UNSIGNED_SUFFIX_SECOND:
       ldv_c_backend_print (indent_level, true, "U");
       break;
-      
+
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "unsigned suffix was not printed");
     }
