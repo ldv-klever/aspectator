@@ -144,7 +144,7 @@ typedef struct ldv_integer_suffix *ldv_integer_suffix_ptr;
 #define LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX(integer_suffix) (integer_suffix->long_long_suffix)
 
 /* All integer constants are represented as signed HOST_WIDE_INT. So for example
-   large unsigned long constants become negative numbers. Unsigned constants 
+   large unsigned long constants become negative numbers. Unsigned constants
    require the integer suffix to be printed. Other integer constants may be
    printed either with or without suffixes.
 integer-constant:
@@ -535,7 +535,7 @@ shift-expression:
     shift-expression >> additive-expression
 
 LDV extension
-    
+
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
     LDV_RROTATE (shift-expression, additive-expression)
@@ -736,7 +736,7 @@ conditional-expression:
     logical-OR-expression ? expression : conditional-expression
 
 LDV extension
-    
+
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
     LDV_MAX (expression, conditional-expression)
@@ -763,13 +763,23 @@ typedef struct ldv_cond_expr *ldv_cond_expr_ptr;
 #define LDV_COND_EXPR_COND_EXPR(cond_expr_arg)   (cond_expr_arg->cond_expr)
 #define LDV_COND_EXPR_LOCATION(cond_expr)        (cond_expr->location)
 
-/* There is just equality operator in gcc. 
+/*
 assignment-operator: one of
     = *= /= %= += -= <<= >>= &= ^= |=
 */
 enum ldv_assignment_operator_kind
 {
-  LDV_ASSIGNMENT_OPERATOR_FIRST = 1
+  LDV_ASSIGNMENT_OPERATOR_FIRST = 1,
+  LDV_ASSIGNMENT_OPERATOR_SECOND = 2,
+  LDV_ASSIGNMENT_OPERATOR_THIRD = 3,
+  LDV_ASSIGNMENT_OPERATOR_FOURTH = 4,
+  LDV_ASSIGNMENT_OPERATOR_FIVTH = 5,
+  LDV_ASSIGNMENT_OPERATOR_SIXTH = 6,
+  LDV_ASSIGNMENT_OPERATOR_SEVENTH = 7,
+  LDV_ASSIGNMENT_OPERATOR_EIGHTH = 8,
+  LDV_ASSIGNMENT_OPERATOR_NINTH = 9,
+  LDV_ASSIGNMENT_OPERATOR_TENTH = 10,
+  LDV_ASSIGNMENT_OPERATOR_ELEVEN = 11
 };
 struct ldv_assignment_operator
 {
@@ -828,7 +838,7 @@ typedef struct ldv_expr *ldv_expr_ptr;
 
 /*
 GNU extension
- 
+
 asm-goto-operands:
     identifier
     asm-goto-operands, identifier
@@ -851,7 +861,7 @@ typedef struct ldv_asm_goto_operands *ldv_asm_goto_operands_ptr;
 
 /*
 GNU extension
- 
+
 asm-string-literal:
     string-literal
 */
@@ -864,7 +874,7 @@ typedef struct ldv_asm_str_literal *ldv_asm_str_literal_ptr;
 
 /*
 GNU extension
- 
+
 asm-clobbers:
     asm-string-literal
     asm-clobbers , asm-string-literal
@@ -887,7 +897,7 @@ typedef struct ldv_asm_clobbers *ldv_asm_clobbers_ptr;
 
 /*
 GNU extension
- 
+
 asm-operand:
     asm-string-literal ( expression )
     [ identifier ] asm-string-literal ( expression )
@@ -912,7 +922,7 @@ typedef struct ldv_asm_operand *ldv_asm_operand_ptr;
 
 /*
 GNU extension
- 
+
 asm-operands:
     asm-operand
     asm-operands , asm-operand
@@ -935,7 +945,7 @@ typedef struct ldv_asm_operands *ldv_asm_operands_ptr;
 
 /*
 GNU extension
- 
+
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
 */
@@ -954,7 +964,7 @@ typedef struct ldv_asm_goto_arg *ldv_asm_goto_arg_ptr;
 
 /*
 GNU extension
- 
+
 asm-argument:
     asm-string-literal
     asm-string-literal : asm-operandsopt
@@ -984,7 +994,7 @@ typedef struct ldv_asm_arg *ldv_asm_arg_ptr;
 
 /*
 GNU extension
- 
+
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
     asm type-qualifieropt goto ( asm-goto-argument ) ;
@@ -1651,7 +1661,7 @@ struct-or-union-specifier:
 enum ldv_struct_or_union_spec_kind
 {
   LDV_STRUCT_OR_UNION_SPEC_FIRST = 1,
-  LDV_STRUCT_OR_UNION_SPEC_SECOND, 
+  LDV_STRUCT_OR_UNION_SPEC_SECOND,
   LDV_STRUCT_OR_UNION_SPEC_THIRD
 };
 struct ldv_struct_or_union_spec

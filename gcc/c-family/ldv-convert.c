@@ -807,6 +807,7 @@ static ldv_assignment_expr_ptr
 ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
 {
   ldv_assignment_expr_ptr assignment_expr;
+  ldv_assignment_operator_ptr assignment_operator;
   tree op1, op2;
 
   /* Dump expression operands being almost on the top of expression stack. */
@@ -841,6 +842,20 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
 
       LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr) = ldv_convert_assignment_operator (t);
 
+      /* See on whether an assignment operator is a compound one (i.e. like,
+         '+=', '*=' and so on. If so then get the second operand of the second
+         operand of the given expression to make next assignment expression. */
+      if ((assignment_operator = LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr)))
+        {
+          if (LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) > 1)
+            {
+              if (!(op2 = LDV_OP_SECOND (op2)))
+                LDV_WARN ("can't find the second operand of compound assignment expression");
+            }
+        }
+      else
+        LDV_WARN ("can't get assignment operator of assignment expression");
+
       if (op2)
         LDV_ASSIGNMENT_EXPR_ASSIGNMENT_EXPR (assignment_expr) = ldv_convert_assignment_expr (op2, recursion_limit);
 
@@ -870,15 +885,116 @@ assignment-operator: one of
 static ldv_assignment_operator_ptr
 ldv_convert_assignment_operator (tree t)
 {
+  tree op1, op2, op21;
   ldv_assignment_operator_ptr assignment_operator;
 
   assignment_operator = XCNEW (struct ldv_assignment_operator);
 
-  /* Gcc supports just one of assignments operators, '='. */
+  /* There aren't distinct tree nodes for different assignment operators. Insted
+     they all are considered as MODIFY_EXPR. Nevertheless we can obtain compound
+     assignment operator (that is something unlike '=') by investigating second
+     operand kind. So if we have something like this:
+       MODIFY_EXPR
+         op1
+         op2 (PLUS_EXPR)
+           op1 (the same as above!)
+           op3
+     we can "build" compound assignment operator:
+       op1 += op3
+   */
   switch (TREE_CODE (t))
     {
     case MODIFY_EXPR:
       LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_FIRST;
+
+      if (!(op1 = LDV_OP_FIRST (t)))
+        {
+          LDV_WARN ("can't find the first operand of assignment expression");
+          break;
+        }
+
+      if (!(op2 = LDV_OP_SECOND (t)))
+        {
+          LDV_WARN ("can't find the second operand of assignment expression");
+          break;
+        }
+
+      switch (TREE_CODE (op2))
+        {
+        case MULT_EXPR:
+        case TRUNC_DIV_EXPR:
+        case EXACT_DIV_EXPR:
+        case TRUNC_MOD_EXPR:
+        case PLUS_EXPR:
+        case POINTER_PLUS_EXPR:
+        case MINUS_EXPR:
+        case LSHIFT_EXPR:
+        case RSHIFT_EXPR:
+        case BIT_AND_EXPR:
+        case BIT_XOR_EXPR:
+        case BIT_IOR_EXPR:
+          if (!(op21 = LDV_OP_FIRST (op2)))
+            {
+              LDV_WARN ("can't find the first operand of compound assignment expression");
+              break;
+            }
+
+          if (op1 == op21)
+            {
+              switch (TREE_CODE (op2))
+                {
+                case MULT_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_SECOND;
+                  break;
+
+                case TRUNC_DIV_EXPR:
+                case EXACT_DIV_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_THIRD;
+                  break;
+
+                case TRUNC_MOD_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_FOURTH;
+                  break;
+
+                case PLUS_EXPR:
+                case POINTER_PLUS_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_FIVTH;
+                  break;
+
+                case MINUS_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_SIXTH;
+                  break;
+
+                case LSHIFT_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_SEVENTH;
+                  break;
+
+                case RSHIFT_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_EIGHTH;
+                  break;
+
+                case BIT_AND_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_NINTH;
+                  break;
+
+                case BIT_XOR_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_TENTH;
+                  break;
+
+                case BIT_IOR_EXPR:
+                  LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_ELEVEN;
+                  break;
+
+                default:
+                  LDV_WARN ("something strange");
+                }
+            }
+
+          break;
+
+        /* In this case we have simple assignment '='. */
+        default: ;
+        }
 
       break;
 
