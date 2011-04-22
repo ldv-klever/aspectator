@@ -164,7 +164,7 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
   ldv_pointer_ptr pointer;
   tree first_non_pointer;
   tree type_name;
-  
+
   first_non_pointer = NULL;
 
   switch (TREE_CODE (t))
@@ -191,14 +191,14 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
     case POINTER_TYPE:
       if ((type_name = TYPE_NAME (t)) && TREE_CODE(type_name) == TYPE_DECL)
         {
-	  if (direct_abstract_declarator_prev)
-	    {
-	      abstract_declarator = XCNEW (struct ldv_abstract_declarator);
-	      LDV_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (abstract_declarator) = direct_abstract_declarator_prev;
-	      *abstract_declarator_first_ptr = abstract_declarator;
-	    }
-	  else if (abstract_declarator_prev)
-	    *abstract_declarator_first_ptr = abstract_declarator_prev;
+          if (direct_abstract_declarator_prev)
+            {
+              abstract_declarator = XCNEW (struct ldv_abstract_declarator);
+              LDV_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (abstract_declarator) = direct_abstract_declarator_prev;
+              *abstract_declarator_first_ptr = abstract_declarator;
+            }
+          else if (abstract_declarator_prev)
+            *abstract_declarator_first_ptr = abstract_declarator_prev;
         }
       else if ((pointer = ldv_convert_pointer (t, &first_non_pointer)))
         {
@@ -223,12 +223,12 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
 
               case ARRAY_TYPE:
               case FUNCTION_TYPE:
-		if ((type_name = TYPE_NAME (first_non_pointer)) && TREE_CODE(type_name) == TYPE_DECL)
+                if ((type_name = TYPE_NAME (first_non_pointer)) && TREE_CODE(type_name) == TYPE_DECL)
                   *abstract_declarator_first_ptr = abstract_declarator;
-		else
+                else
                   ldv_convert_direct_abstract_declarator (first_non_pointer, abstract_declarator_first_ptr, NULL, abstract_declarator);
-                
-		break;
+
+                break;
 
               default:
                 LDV_CONVERT_WARN (first_non_pointer);
@@ -274,7 +274,7 @@ ldv_convert_additive_expr (tree t, unsigned int recursion_limit)
 {
   ldv_additive_expr_ptr additive_expr;
   tree op1, op2;
-  
+
   additive_expr = XCNEW (struct ldv_additive_expr);
 
   switch (TREE_CODE (t))
@@ -819,17 +819,30 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
     case MODIFY_EXPR:
       LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_SECOND;
 
-      LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr) = ldv_convert_assignment_operator (t);
-
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_ASSIGNMENT_EXPR_UNARY_EXPR (assignment_expr) = ldv_convert_unary_expr (op1, recursion_limit);
       else
         LDV_WARN ("can't find the first operand of assignment expression");
 
-      if ((op2 = LDV_OP_SECOND (t)))
-        LDV_ASSIGNMENT_EXPR_ASSIGNMENT_EXPR (assignment_expr) = ldv_convert_assignment_expr (op2, recursion_limit);
-      else
+      if (!(op2 = LDV_OP_SECOND (t)))
         LDV_WARN ("can't find the second operand of assignment expression");
+
+      /* This is the case for GNU extension of compound expression in primary
+         expression, i.e. '({...})'. For it auxiliary artificial variable is
+         generated where compound expression result is assigned. In fact it
+         becomes a problem just when the given result has constant type. */
+      if (TREE_CODE (op1) == VAR_DECL && DECL_ARTIFICIAL (op1))
+        {
+          LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_FIRST;
+          if (op2)
+            LDV_ASSIGNMENT_EXPR_COND_EXPR (assignment_expr) = ldv_convert_cond_expr (op2, recursion_limit);
+          break;
+        }
+
+      LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr) = ldv_convert_assignment_operator (t);
+
+      if (op2)
+        LDV_ASSIGNMENT_EXPR_ASSIGNMENT_EXPR (assignment_expr) = ldv_convert_assignment_expr (op2, recursion_limit);
 
       LDV_ASSIGNMENT_EXPR_LOCATION (assignment_expr) = ldv_convert_location (t);
 
@@ -1169,9 +1182,9 @@ ldv_convert_constant (tree t)
               LDV_CONSTANT_KIND (constant) = LDV_CONSTANT_FIRST;
               LDV_CONSTANT_INTEGER_CONSTANT (constant) = ldv_convert_integer_constant (t);
             }
-	  /*
-	  else
-	    LDV_CONVERT_WARN (type); */
+          /*
+          else
+            LDV_CONVERT_WARN (type); */
         }
       else
         LDV_WARN ("can't find type of integer constant");
@@ -1245,16 +1258,16 @@ ldv_convert_compound_statement (tree t)
 
             /* Convert label declarations */
             case LABEL_DECL:
-	      /* See on whether a label was defined explicitly by means of __label__. */
-	      if (TREE_LANG_FLAG_1 (block_decl))
-	        {
+              /* See on whether a label was defined explicitly by means of __label__. */
+              if (TREE_LANG_FLAG_1 (block_decl))
+                {
                   label_decls_next_old = label_decls_next;
                   label_decls_next = XCNEW (struct ldv_label_decls);
                   LDV_LABEL_DECLS_LABEL_DECLS (label_decls_next) = label_decls_next_old;
 
                   LDV_LABEL_DECLS_LABEL_DECL (label_decls_next) = ldv_convert_label_decl (block_decl);
-	        }
-		
+                }
+
               /* Do not convert them like usual variables. */
               block_decl_type = NULL;
 
@@ -1480,8 +1493,8 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
               LDV_DECLARATOR_DIRECT_DECLARATOR (declarator) = direct_declarator_prev;
               *declarator_first_ptr = declarator;
             }
-	  else if (declarator_prev)
-            *declarator_first_ptr = declarator_prev;	  
+          else if (declarator_prev)
+            *declarator_first_ptr = declarator_prev;
         }
       else if ((pointer = ldv_convert_pointer (t, &first_non_pointer)))
         {
@@ -1698,42 +1711,42 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
          declarator and direct declarator sequence. */
       if ((decl_type = TREE_TYPE (t)))
         {
-	  /* Typedefs aren't processed here. */
-	  if ((type_name = TYPE_NAME (decl_type)) && TREE_CODE(type_name) == TYPE_DECL && !is_decl_decl_spec)
-	    ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
-	  else
-	    {
-	      switch (TREE_CODE (decl_type))
-		{
-		case ARRAY_TYPE:
-		case FUNCTION_TYPE:
+          /* Typedefs aren't processed here. */
+          if ((type_name = TYPE_NAME (decl_type)) && TREE_CODE(type_name) == TYPE_DECL && !is_decl_decl_spec)
+            ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
+          else
+            {
+              switch (TREE_CODE (decl_type))
+                {
+                case ARRAY_TYPE:
+                case FUNCTION_TYPE:
        // TODO: remove tree code checking from here! Type declarations shouldn't passed here!
-		  if (TREE_CODE (t) == FUNCTION_DECL)
-		    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, t, declarator_first_ptr, direct_declarator, NULL);
-		  else
-		    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, NULL_TREE, declarator_first_ptr, direct_declarator, NULL);
+                  if (TREE_CODE (t) == FUNCTION_DECL)
+                    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, t, declarator_first_ptr, direct_declarator, NULL);
+                  else
+                    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, NULL_TREE, declarator_first_ptr, direct_declarator, NULL);
 
-		  break;
+                  break;
 
-		case VOID_TYPE:
-		case INTEGER_TYPE:
-		case REAL_TYPE:
-		case BOOLEAN_TYPE:
-		case POINTER_TYPE:
-		case ENUMERAL_TYPE:
-		case RECORD_TYPE:
-		case UNION_TYPE:
-		  ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
-		  break;
+                case VOID_TYPE:
+                case INTEGER_TYPE:
+                case REAL_TYPE:
+                case BOOLEAN_TYPE:
+                case POINTER_TYPE:
+                case ENUMERAL_TYPE:
+                case RECORD_TYPE:
+                case UNION_TYPE:
+                  ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
+                  break;
 
-		default:
-		  LDV_CONVERT_WARN (decl_type);
-		}
-	    }
-	}
+                default:
+                  LDV_CONVERT_WARN (decl_type);
+                }
+            }
+        }
       else
         LDV_WARN ("can't find declaration type");
-	
+
       break;
 
     case ARRAY_TYPE:
@@ -1982,9 +1995,9 @@ ldv_convert_enum (tree t)
       if ((const_expr = TREE_VALUE (t)))
         {
           LDV_ENUM_KIND (ldv_enum) = LDV_ENUM_SECOND;
-	  ldv_is_convert_enum_const_const_expr = true;
+          ldv_is_convert_enum_const_const_expr = true;
           LDV_ENUM_CONST_EXPR (ldv_enum) = ldv_convert_const_expr (const_expr);
-	  ldv_is_convert_enum_const_const_expr = false;
+          ldv_is_convert_enum_const_const_expr = false;
         }
 
       break;
@@ -2782,7 +2795,7 @@ ldv_convert_init_declarator (tree t)
   ldv_init_declarator_ptr init_declarator;
   tree initializer;
   bool is_typedef;
-  
+
   init_declarator = XCNEW (struct ldv_init_declarator);
 
   switch (TREE_CODE (t))
@@ -2791,7 +2804,7 @@ ldv_convert_init_declarator (tree t)
     case TYPE_DECL:
     case VAR_DECL:
       LDV_INIT_DECLARATOR_KIND (init_declarator) = LDV_INIT_DECLARATOR_FIRST;
-     
+
       is_typedef = (TREE_CODE (t) == TYPE_DECL);
       LDV_INIT_DECLARATOR_DECLARATOR (init_declarator) = ldv_convert_declarator_internal (t, is_typedef);
 
@@ -2962,7 +2975,7 @@ ldv_convert_integer_constant (tree t)
 {
   ldv_integer_constant_ptr integer_constant;
   tree type;
-  
+
   integer_constant = XCNEW (struct ldv_integer_constant);
 
   switch (TREE_CODE (t))
@@ -2976,34 +2989,34 @@ ldv_convert_integer_constant (tree t)
       */
       LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) = TREE_INT_CST_LOW (t);
 
-      /* To see underlying builtin types that may be masked by typedef get a 
+      /* To see underlying builtin types that may be masked by typedef get a
          main variant of type. */
       if ((type = TREE_TYPE (t)) && (type = TYPE_MAIN_VARIANT (type)))
         {
-          LDV_INTEGER_CONSTANT_ISSIGNED (integer_constant) = !TYPE_UNSIGNED (type);  
-	  /* We decide to make unsigned char/short/int in the same wave as
-	     unsigned long/long long. That is convert numbers exceeding a
-	     maximum value of corresponding signed type to negative ones. Do it
-	     by default. */
-	  /* Stupid decision :)
-	  if (!getenv ("LDV_DONT_CONVERT_SMALL_INT"))
-	    {
-	      if (type == unsigned_char_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > CHAR_MAX)
-	        LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= UCHAR_MAX + 1L;
-	      else if (type == short_unsigned_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > SHRT_MAX)
-	        LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= USHRT_MAX + 1L;
-	      else if (type == unsigned_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > INT_MAX)
-	        LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= UINT_MAX + 1L;
-	    }
-	  */
-	  if (TYPE_UNSIGNED (type) 
-	    || type == long_integer_type_node || type == long_unsigned_type_node 
-	    || type == long_long_integer_type_node || type == long_long_unsigned_type_node)
-	    LDV_INTEGER_CONSTANT_INTEGER_SUFFIX (integer_constant) = ldv_convert_integer_suffix (type);
-	}
+          LDV_INTEGER_CONSTANT_ISSIGNED (integer_constant) = !TYPE_UNSIGNED (type);
+          /* We decide to make unsigned char/short/int in the same wave as
+             unsigned long/long long. That is convert numbers exceeding a
+             maximum value of corresponding signed type to negative ones. Do it
+             by default. */
+          /* Stupid decision :)
+          if (!getenv ("LDV_DONT_CONVERT_SMALL_INT"))
+            {
+              if (type == unsigned_char_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > CHAR_MAX)
+                LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= UCHAR_MAX + 1L;
+              else if (type == short_unsigned_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > SHRT_MAX)
+                LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= USHRT_MAX + 1L;
+              else if (type == unsigned_type_node && LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) > INT_MAX)
+                LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= UINT_MAX + 1L;
+            }
+          */
+          if (TYPE_UNSIGNED (type)
+            || type == long_integer_type_node || type == long_unsigned_type_node
+            || type == long_long_integer_type_node || type == long_long_unsigned_type_node)
+            LDV_INTEGER_CONSTANT_INTEGER_SUFFIX (integer_constant) = ldv_convert_integer_suffix (type);
+        }
       else
         LDV_WARN ("can't find integer constant type");
-	
+
       break;
 
     default:
@@ -3031,7 +3044,7 @@ static ldv_integer_suffix_ptr
 ldv_convert_integer_suffix (tree t)
 {
   ldv_integer_suffix_ptr integer_suffix;
-  
+
   integer_suffix = XCNEW (struct ldv_integer_suffix);
 
   switch (TREE_CODE (t))
@@ -3039,32 +3052,32 @@ ldv_convert_integer_suffix (tree t)
     case INTEGER_TYPE:
       if (TYPE_UNSIGNED (t))
         {
-	  LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_FIRST;
-	  LDV_INTEGER_SUFFIX_UNSIGNED_SUFFIX (integer_suffix) = ldv_convert_unsigned_suffix (t);
-	  
-	  if (t == long_unsigned_type_node)
+          LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_FIRST;
+          LDV_INTEGER_SUFFIX_UNSIGNED_SUFFIX (integer_suffix) = ldv_convert_unsigned_suffix (t);
+
+          if (t == long_unsigned_type_node)
             LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix) = ldv_convert_long_suffix (t);
-	  else if (t == long_long_unsigned_type_node)
-	    {
-	      LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_SECOND;
-	      LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix) = ldv_convert_long_long_suffix (t);
-	    }
+          else if (t == long_long_unsigned_type_node)
+            {
+              LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_SECOND;
+              LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix) = ldv_convert_long_long_suffix (t);
+            }
         }
       else
         {
-	  if (t == long_integer_type_node)
-	    {
-	      LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_THIRD;
-	      LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix) = ldv_convert_long_suffix (t);
-	    }
-	  else if (t == long_long_integer_type_node)
-	    {
-	      LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_FOURTH;
-	      LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix) = ldv_convert_long_long_suffix (t);
-	    }
-	  else
-	    LDV_WARN ("something strange");
-	}
+          if (t == long_integer_type_node)
+            {
+              LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_THIRD;
+              LDV_INTEGER_SUFFIX_LONG_SUFFIX (integer_suffix) = ldv_convert_long_suffix (t);
+            }
+          else if (t == long_long_integer_type_node)
+            {
+              LDV_INTEGER_SUFFIX_KIND (integer_suffix) = LDV_INTEGER_SUFFIX_FOURTH;
+              LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix) = ldv_convert_long_long_suffix (t);
+            }
+          else
+            LDV_WARN ("something strange");
+        }
 
       break;
 
@@ -3406,7 +3419,7 @@ static ldv_long_long_suffix_ptr
 ldv_convert_long_long_suffix (tree t)
 {
   ldv_long_long_suffix_ptr long_long_suffix;
-  
+
   long_long_suffix = XCNEW (struct ldv_long_long_suffix);
 
   switch (TREE_CODE (t))
@@ -3439,9 +3452,9 @@ long-suffix: one of
 */
 static ldv_long_suffix_ptr
 ldv_convert_long_suffix (tree t)
-{  
+{
   ldv_long_suffix_ptr long_suffix;
-  
+
   long_suffix = XCNEW (struct ldv_long_suffix);
 
   switch (TREE_CODE (t))
@@ -3962,12 +3975,8 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 {
   ldv_primary_expr_ptr primary_expr;
   tree initial;
-  tree slot;
-  ldv_block_item_list_ptr block_item_list, block_item_list_prev, block_item_list_next, block_item_list_aux;
-  ldv_block_item_ptr block_item;
-  ldv_compound_statement_ptr compound_statement;
- /* tree type, cast;
-*/
+  /* tree type, cast; */
+
   primary_expr = XCNEW (struct ldv_primary_expr);
 
   switch (TREE_CODE (t))
@@ -3984,40 +3993,40 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
     case INTEGER_CST:
     case REAL_CST:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_SECOND;
-/* TODO: deal with commented code      
+/* TODO: deal with commented code
       if ((type = TREE_TYPE (t)))
         {
-	  switch (TREE_CODE (type))
-	    {
-	    case INTEGER_TYPE:
-	    case REAL_TYPE:
-	      break;
-	    
-	     Build artificial conversion for "pointer" constants to avoid
-	       int-to-pointer conversion warning. 
-	    case POINTER_TYPE:
- TODO: don't break do conversation!!! 
-	      break;
-	      if (!(cast = build1 (CONVERT_EXPR, type, t)))
+          switch (TREE_CODE (type))
+            {
+            case INTEGER_TYPE:
+            case REAL_TYPE:
+              break;
+
+             Build artificial conversion for "pointer" constants to avoid
+               int-to-pointer conversion warning.
+            case POINTER_TYPE:
+ TODO: don't break do conversation!!!
+              break;
+              if (!(cast = build1 (CONVERT_EXPR, type, t)))
                 {
                   LDV_WARN ("can't build cast for constant");
                   break;
                 }
-      
-              LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FOURTH;
-	      LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (cast, recursion_limit - 1);
 
-	      break;
-	    
-	    default:
-	      LDV_CONVERT_WARN (t);
-	    }
-	}
+              LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FOURTH;
+              LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (cast, recursion_limit - 1);
+
+              break;
+
+            default:
+              LDV_CONVERT_WARN (t);
+            }
+        }
       else
         LDV_WARN ("can't find constant type");
-	*/
+        */
       if ((LDV_PRIMARY_EXPR_KIND (primary_expr) == LDV_PRIMARY_EXPR_SECOND))
-	ldv_constant_current = LDV_PRIMARY_EXPR_CONSTANT (primary_expr) = ldv_convert_constant (t);
+        ldv_constant_current = LDV_PRIMARY_EXPR_CONSTANT (primary_expr) = ldv_convert_constant (t);
 
       break;
 
@@ -4030,40 +4039,10 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
     case TARGET_EXPR:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FIFTH;
 
-      if ((slot = TARGET_EXPR_SLOT (t)))
-        block_item_list_aux = ldv_convert_block_item_list (slot);
-      else
-        LDV_WARN ("can't find slot of primary expression");
-
       if ((initial = TARGET_EXPR_INITIAL (t)))
         LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr) = ldv_convert_compound_statement (initial);
       else
         LDV_WARN ("can't find compound statement of primary expression");
-
-      /* Insert artificial variable declaration after all compound statement
-         declarations to ensure that all types are alredy declared. */
-      if (block_item_list_aux && (compound_statement = LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr))
-        && (block_item_list = LDV_COMPOUND_STATEMENT_BLOCK_ITEM_LIST (compound_statement)))
-        {
-          for (block_item_list_prev = NULL, block_item_list_next = block_item_list; block_item_list_next; block_item_list_prev = block_item_list_next, block_item_list_next = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_next))
-            {
-              if ((block_item = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list_next)))
-                {
-                  if (LDV_BLOCK_ITEM_NESTED_DECL (block_item))
-                    break;
-                }
-              else
-                LDV_WARN ("can't find block item of block item list");
-            }
-
-          if (!block_item_list_prev)
-            LDV_WARN ("something strange, this should be imposible");
-          else
-            {
-              LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_aux) = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_prev);
-              LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_prev) = block_item_list_aux;
-            }
-        }
 
       break;
 
@@ -4753,7 +4732,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
         if ((struct_or_union_name_str = IDENTIFIER_POINTER (struct_or_union_name)))
             LDV_STRUCT_OR_UNION_SPEC_ID (struct_or_union_spec) = struct_or_union_name_str;
 
-      /* Fields should be printed just for full type declarations. */ 
+      /* Fields should be printed just for full type declarations. */
       if ((!struct_or_union_name || is_decl_decl_spec) && C_TYPE_BEING_DEFINED (t))
         {
           if ((struct_or_union_fields = TYPE_FIELDS (t)))
@@ -5278,41 +5257,41 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
         LDV_WARN ("can't find the first operand of unary expression");
 
       /* String constants are always taken by their addresses. To prevent this
-         skip address expression and go directly to string constant itself. 
-	 This also arises for __func__ GNU extension represented as address to
-	 variable having corresponding name. */
+         skip address expression and go directly to string constant itself.
+         This also arises for __func__ GNU extension represented as address to
+         variable having corresponding name. */
       if (TREE_CODE (t) == ADDR_EXPR)
         {
-	  switch (TREE_CODE (op1))
-	    {
-	    case STRING_CST:
-	      LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
-	      LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
-	      
-	      break;
-	    
-	    case VAR_DECL:
-	      if ((identifier = ldv_convert_identifier (op1)))
-	        {
-		  if ((str = LDV_IDENTIFIER_STR (identifier)) && !strcmp (str, "__func__"))
-		    {
-		      LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
-	              LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
-		    }
-		}
-	      else
-	        LDV_WARN ("can't find variable name");
-	     
-	      break;
-	      
-	    default:
-	      ;
-	    }
-	  
-	  if (LDV_UNARY_EXPR_KIND (unary_expr))
-	    break;
-	}
-	
+          switch (TREE_CODE (op1))
+            {
+            case STRING_CST:
+              LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
+              LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
+
+              break;
+
+            case VAR_DECL:
+              if ((identifier = ldv_convert_identifier (op1)))
+                {
+                  if ((str = LDV_IDENTIFIER_STR (identifier)) && !strcmp (str, "__func__"))
+                    {
+                      LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
+                      LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
+                    }
+                }
+              else
+                LDV_WARN ("can't find variable name");
+
+              break;
+
+            default:
+              ;
+            }
+
+          if (LDV_UNARY_EXPR_KIND (unary_expr))
+            break;
+        }
+
       LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FOURTH;
 
       LDV_UNARY_EXPR_UNARY_OPERATOR (unary_expr) = ldv_convert_unary_operator (t);
@@ -5326,7 +5305,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
         }
         else
           LDV_UNARY_EXPR_CAST_EXPR (unary_expr) = ldv_convert_cast_expr (op1, recursion_limit);
-      } 
+      }
 
       LDV_UNARY_EXPR_LOCATION (unary_expr) = ldv_convert_location (t);
 
@@ -5405,9 +5384,9 @@ unsigned-suffix: one of
 */
 static ldv_unsigned_suffix_ptr
 ldv_convert_unsigned_suffix (tree t)
-{  
+{
   ldv_unsigned_suffix_ptr unsigned_suffix;
-  
+
   unsigned_suffix = XCNEW (struct ldv_unsigned_suffix);
 
   switch (TREE_CODE (t))
