@@ -3125,7 +3125,9 @@ ldv_convert_integer_constant (tree t)
                 LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) -= UINT_MAX + 1L;
             }
           */
-          if (TYPE_UNSIGNED (type)
+          /* TODO in fact checking of TREE_CODE (type) == INTEGER_TYPE is incorrect
+             since here also pointers and so on are passed (see caller). See issue #1137. */
+          if ((TYPE_UNSIGNED (type) && TREE_CODE (type) == INTEGER_TYPE)
             || type == long_integer_type_node || type == long_unsigned_type_node
             || type == long_long_integer_type_node || type == long_long_unsigned_type_node)
             LDV_INTEGER_CONSTANT_INTEGER_SUFFIX (integer_constant) = ldv_convert_integer_suffix (type);
