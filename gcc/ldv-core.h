@@ -9,10 +9,13 @@
 
 /* Obtain a pointer to a string end. */
 #define LDV_STR_END(str) (str + (strlen (str) - 1))
+/* Obtain an offset to a string end. */
+#define LDV_STR_OFFSET(str) ((strlen (str) - 1))
 
 
 extern ldv_ab_ptr ldv_create_body (void);
 extern ldv_ab_arg_ptr ldv_create_body_arg (void);
+extern ldv_ab_general_ptr ldv_create_body_general (void);
 extern ldv_pps_declarator_ptr ldv_create_declarator (void);
 extern ldv_file_ptr ldv_create_file (void);
 extern ldv_id_ptr ldv_create_id (void);

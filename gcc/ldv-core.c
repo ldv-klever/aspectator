@@ -37,9 +37,20 @@ ldv_create_body_arg (void)
   ldv_ab_arg_ptr body_arg = NULL;
 
   body_arg = XCNEW (ldv_ab_arg);
-  ldv_print_info (LDV_INFO_MEM, "body argument memory was released");
+  ldv_print_info (LDV_INFO_MEM, "body argument pattern  memory was released");
 
   return body_arg;
+}
+
+ldv_ab_general_ptr
+ldv_create_body_general (void)
+{
+  ldv_ab_general_ptr body_general = NULL;
+
+  body_general = XCNEW (ldv_ab_general);
+  ldv_print_info (LDV_INFO_MEM, "body pattern memory was released");
+
+  return body_general;
 }
 
 ldv_pps_declarator_ptr

@@ -393,10 +393,11 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   int func_arg_size;
   const char *func_call = NULL;
   ldv_ab_arg_ptr body_arg;
+  ldv_ab_general_ptr body_general;
   ldv_list_ptr body_arg_list;
   ldv_text_ptr body_with_patterns;
   const char *body_c = NULL;
-  char *body_place;
+  int body_p;
   ldv_list_ptr body_place_list;
   bool isres_needed = true;
 
@@ -425,7 +426,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   body_with_patterns = ldv_create_text ();
 
   /* Walk through a body text to find places body patterns to be printed. */
-  for (body_c = ldv_get_body_text (body); *body_c; body_c++)
+  for (body_c = ldv_get_body_text (body), body_p = 0; *body_c; body_c++, body_p++)
     {
       /* Copy a non pattern text of a body. */
       ldv_putc_text (*body_c, body_with_patterns);
@@ -437,7 +438,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         {
           body_arg = (ldv_ab_arg_ptr) ldv_list_get_data (body_arg_list);
 
-          if (body_arg->arg_place == body_c)
+          if (body_arg->arg_place == body_p)
             {
               func_arg = ldv_get_param_name (body_arg->arg_numb);
 
@@ -454,7 +455,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         {
           body_arg = (ldv_ab_arg_ptr) ldv_list_get_data (body_arg_list);
 
-          if (body_arg->arg_place == body_c)
+          if (body_arg->arg_place == body_p)
             {
               func_arg = ldv_get_arg_type_name (body_arg->arg_numb);
 
@@ -471,7 +472,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         {
           body_arg = (ldv_ab_arg_ptr) ldv_list_get_data (body_arg_list);
 
-          if (body_arg->arg_place == body_c)
+          if (body_arg->arg_place == body_p)
             {
               func_arg_size = ldv_get_arg_size (body_arg->arg_numb);
 
@@ -499,7 +500,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         {
           body_arg = (ldv_ab_arg_ptr) ldv_list_get_data (body_arg_list);
 
-          if (body_arg->arg_place == body_c)
+          if (body_arg->arg_place == body_p)
             {
               func_arg = ldv_get_arg_value (body_arg->arg_numb);
 
@@ -521,9 +522,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ; body_place_list
         ; body_place_list = ldv_list_get_next (body_place_list))
         {
-          body_place = (char *) ldv_list_get_data (body_place_list);
+          body_general = (ldv_ab_general_ptr) ldv_list_get_data (body_place_list);
 
-          if (body_place == body_c)
+          if (body_general->arg_place == body_p)
             {
               if (ldv_aspect_func_name)
                 {
@@ -541,9 +542,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ; body_place_list
         ; body_place_list = ldv_list_get_next (body_place_list))
         {
-          body_place = (char *) ldv_list_get_data (body_place_list);
+          body_general = (ldv_ab_general_ptr) ldv_list_get_data (body_place_list);
 
-          if (body_place == body_c)
+          if (body_general->arg_place == body_p)
             {
               if (ldv_func_name)
                 {
@@ -561,9 +562,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ; body_place_list
         ; body_place_list = ldv_list_get_next (body_place_list))
         {
-          body_place = (char *) ldv_list_get_data (body_place_list);
+          body_general = (ldv_ab_general_ptr) ldv_list_get_data (body_place_list);
 
-          if (body_place == body_c)
+          if (body_general->arg_place == body_p)
             {
               ldv_puts_text (func_call, body_with_patterns);
 
@@ -576,9 +577,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ; body_place_list
         ; body_place_list = ldv_list_get_next (body_place_list))
         {
-          body_place = (char *) ldv_list_get_data (body_place_list);
+          body_general = (ldv_ab_general_ptr) ldv_list_get_data (body_place_list);
 
-          if (body_place == body_c)
+          if (body_general->arg_place == body_p)
             {
               ldv_puts_text (LDV_FUNC_RES, body_with_patterns);
 
@@ -591,9 +592,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ; body_place_list
         ; body_place_list = ldv_list_get_next (body_place_list))
         {
-          body_place = (char *) ldv_list_get_data (body_place_list);
+          body_general = (ldv_ab_general_ptr) ldv_list_get_data (body_place_list);
 
-          if (body_place == body_c)
+          if (body_general->arg_place == body_p)
             {
               ldv_puts_text (LDV_FUNC_RET_TYPE, body_with_patterns);
 

@@ -265,14 +265,21 @@ typedef struct ldv_advice_declaration_internal
 } ldv_advice_declaration;
 typedef ldv_advice_declaration *ldv_adecl_ptr;
 
-/* Body argument to be weaved = argument number corresponding to function arguments +
-   argument place in body + next argument. */
+/* Body argument pattern to be weaved = argument number corresponding to a
+   function argument + argument place in body. */
 typedef struct ldv_ab_arg_internal
 {
   unsigned int arg_numb;
-  const char *arg_place;
+  int arg_place;
 } ldv_ab_arg;
 typedef ldv_ab_arg *ldv_ab_arg_ptr;
+
+/* Body pattern (non argument) to be weaved = argument place in body. */
+typedef struct ldv_ab_general_internal
+{
+  int arg_place;
+} ldv_ab_general;
+typedef ldv_ab_general *ldv_ab_general_ptr;
 
 /* Body string beginning maximum length and its growth are specified. */
 typedef enum { LDV_B_LEN_ADD = 50, LDV_B_LEN_START = 100 } ldv_abl;

@@ -1620,6 +1620,7 @@ yylex (void)
   bool whitespace = true;
   unsigned int arg_numb;
   ldv_ab_arg_ptr ab_arg_new = NULL;
+  ldv_ab_general_ptr ab_general_new = NULL;
 
   /* Skip nonsignificant whitespaces and move a lexer location. */
   while (whitespace)
@@ -1783,7 +1784,7 @@ yylex (void)
                           ab_arg_new = ldv_create_body_arg ();
 
                           ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_END (ldv_get_body_text (body));
+                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
 
                           ldv_list_push_back (&body->ab_arg, ab_arg_new);
                         }
@@ -1800,7 +1801,7 @@ yylex (void)
                           ab_arg_new = ldv_create_body_arg ();
 
                           ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_END (ldv_get_body_text (body));
+                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
 
                           ldv_list_push_back (&body->ab_arg_type, ab_arg_new);
                         }
@@ -1817,7 +1818,7 @@ yylex (void)
                           ab_arg_new = ldv_create_body_arg ();
 
                           ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_END (ldv_get_body_text (body));
+                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
 
                           ldv_list_push_back (&body->ab_arg_size, ab_arg_new);
                         }
@@ -1834,7 +1835,7 @@ yylex (void)
                           ab_arg_new = ldv_create_body_arg ();
 
                           ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_END (ldv_get_body_text (body));
+                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
 
                           ldv_list_push_back (&body->ab_arg_value, ab_arg_new);
                         }
@@ -1843,35 +1844,55 @@ yylex (void)
                         {
                           ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern aspect function name");
 
-                          ldv_list_push_back (&body->ab_aspect_func_name, LDV_STR_END (ldv_get_body_text (body)));
+                          ab_general_new = ldv_create_body_general ();
+
+                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
+
+                          ldv_list_push_back (&body->ab_aspect_func_name, ab_general_new);
                         }
                       /* Compare a pattern with 'func_name'. */
                       else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_FUNC_NAME))
                         {
                           ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern function name");
 
-                          ldv_list_push_back (&body->ab_func_name, LDV_STR_END (ldv_get_body_text (body)));
+                          ab_general_new = ldv_create_body_general ();
+
+                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
+
+                          ldv_list_push_back (&body->ab_func_name, ab_general_new);
                         }
                       /* Compare a pattern with 'proceed'. */
                       else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_PROCEED))
                         {
                           ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern proceed");
 
-                          ldv_list_push_back (&body->ab_proceed, LDV_STR_END (ldv_get_body_text (body)));
+                          ab_general_new = ldv_create_body_general ();
+
+                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
+
+                          ldv_list_push_back (&body->ab_proceed, ab_general_new);
                         }
                       /* Compare a pattern with 'res'. */
                       else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_RES))
                         {
                           ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern result");
 
-                          ldv_list_push_back (&body->ab_res, LDV_STR_END (ldv_get_body_text (body)));
+                          ab_general_new = ldv_create_body_general ();
+
+                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
+
+                          ldv_list_push_back (&body->ab_res, ab_general_new);
                         }
                       /* Compare a pattern with 'ret_type'. */
                       else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_RET_TYPE))
                         {
                           ldv_print_info (LDV_INFO_LEX, "lex parsed body return type to be weaved \"%s\"", ldv_get_id_name (id));
 
-                          ldv_list_push_back (&body->ab_ret_type, LDV_STR_END (ldv_get_body_text (body)));
+                          ab_general_new = ldv_create_body_general ();
+
+                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
+
+                          ldv_list_push_back (&body->ab_ret_type, ab_general_new);
                         }
                       else
                         {
