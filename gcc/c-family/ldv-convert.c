@@ -1064,6 +1064,13 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
 conditional-expression:
     logical-OR-expression
     logical-OR-expression ? expression : conditional-expression
+
+LDV extension
+
+conditional-expression:
+    LDV_MIN (expression, conditional-expression)
+    LDV_MAX (expression, conditional-expression)
+    LDV_ABS (expression)
 */
 static ldv_cond_expr_ptr
 ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
@@ -1118,6 +1125,18 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
 
       LDV_COND_EXPR_LOCATION (cond_expr) = ldv_convert_location (t);
 
+      break;
+
+    case ABS_EXPR:
+      LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
+      
+      if ((op1 = LDV_OP_FIRST (t)))
+        LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op1, recursion_limit);
+      else
+        LDV_WARN ("can't find the first operand of conditional expression");
+
+      LDV_COND_EXPR_LOCATION (cond_expr) = ldv_convert_location (t);
+      
       break;
 
     default:
