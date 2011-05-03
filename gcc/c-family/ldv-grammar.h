@@ -740,13 +740,15 @@ LDV extension
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
     LDV_MAX (expression, conditional-expression)
+    LDV_ABS (expression)
 */
 enum ldv_cond_expr_kind
 {
   LDV_COND_EXPR_FIRST = 1,
   LDV_COND_EXPR_SECOND,
   LDV_COND_EXPR_THIRD,
-  LDV_COND_EXPR_FOURTH
+  LDV_COND_EXPR_FOURTH,
+  LDV_COND_EXPR_FIFTH
 };
 struct ldv_cond_expr
 {

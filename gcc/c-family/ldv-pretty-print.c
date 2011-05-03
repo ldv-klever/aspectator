@@ -764,6 +764,9 @@ ldv_print_aux_init (void)
       ldv_c_backend_print (0, false, "#define LDV_MIN(X,Y) ((X) < (Y) ? (X) : (Y))\n");
       ldv_c_backend_print (0, false, "#define LDV_MAX(X,Y) ((X) > (Y) ? (X) : (Y))\n");
 
+      /* Print LDV_ABS macro required to expand ABS_EXPR. */
+      ldv_c_backend_print (0, false, "#define LDV_ABS(X) ((X) < 0 ? -(X) : (X))\n");
+
       /* Print LDV_LROTATE and LDV_RROTATE macros required to expand
          LROTATE_EXPR and RROTATE_EXPR correspondingly. */
       ldv_c_backend_print (0, false, "#define LDV_LROTATE(X,Y) (((X) << (Y)) | ((X) >> (__CHAR_BIT__ * sizeof (X) - Y)))\n");
@@ -929,6 +932,7 @@ LDV extension
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
     LDV_MAX (expression, conditional-expression)
+    LDV_ABS (expression)
 */
 static void
 ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
@@ -951,6 +955,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
     case LDV_COND_EXPR_SECOND:
     case LDV_COND_EXPR_THIRD:
     case LDV_COND_EXPR_FOURTH:
+    case LDV_COND_EXPR_FIFTH:
       if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_SECOND)
         {
           if ((logical_or_expr = LDV_COND_EXPR_LOGICAL_OR_EXPR (cond_expr)))
@@ -962,26 +967,35 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
         }
       else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_THIRD)
         ldv_c_backend_print (indent_level, true, "LDV_MIN (");
-      else
+      else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FOURTH)
         ldv_c_backend_print (indent_level, true, "LDV_MAX (");
+      else
+        ldv_c_backend_print (indent_level, true, "LDV_ABS (");
+
+      if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FIFTH && (location = LDV_COND_EXPR_LOCATION (cond_expr)))
+        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         ldv_print_expr (indent_level, expr);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "expression of conditional expression was not printed");
 
-      if ((location = LDV_COND_EXPR_LOCATION (cond_expr)))
+      if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_FIFTH && (location = LDV_COND_EXPR_LOCATION (cond_expr)))
         ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, ":");
-      else
+      else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_THIRD
+        || LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FOURTH)
         ldv_c_backend_print (indent_level, true, ",");
 
-      if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
-        ldv_print_cond_expr (indent_level, cond_expr_next);
-      else
-        LDV_PRETTY_PRINT_WARN (indent_level, "conditional expression of conditional expression was not printed");
+      if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_FIFTH)
+        {
+          if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
+            ldv_print_cond_expr (indent_level, cond_expr_next);
+          else
+            LDV_PRETTY_PRINT_WARN (indent_level, "conditional expression of conditional expression was not printed");
+        }
 
       if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, ")");
