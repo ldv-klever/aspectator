@@ -38,6 +38,10 @@
 #define LDV_OP3 TREE_OPERAND (t, 2)
 #define LDV_OP4 TREE_OPERAND (t, 3)
 
+/* This is copypasted from C-backend. */
+#define LDV_CONVERT_WARN(t) warning (0, "LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
+#define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
+
 
 typedef struct ldv_var_array_internal
 {
@@ -181,6 +185,7 @@ ldv_match_expr (tree t)
         /* They have one operand. */
         case ADDR_EXPR:
         case TRUTH_NOT_EXPR:
+        case VA_ARG_EXPR:
           ldv_match_expr (LDV_OP1);
 
           break;
@@ -206,6 +211,7 @@ ldv_match_expr (tree t)
         case MODIFY_EXPR:
         case TRUTH_ANDIF_EXPR:
         case TRUTH_ORIF_EXPR:
+        case TRUTH_XOR_EXPR:
           ldv_match_expr (LDV_OP1);
           ldv_match_expr (LDV_OP2);
 
@@ -250,7 +256,7 @@ ldv_match_expr (tree t)
           break;
 
         default:
-          fatal_error ("incorrect expression code");
+          LDV_CONVERT_WARN (t);
         }
 
       break;
@@ -301,7 +307,7 @@ ldv_match_expr (tree t)
           break;
 
         default:
-          fatal_error ("incorrect reference code");
+          LDV_CONVERT_WARN (t);
         }
 
       break;
@@ -358,7 +364,7 @@ ldv_match_expr (tree t)
           break;
 
         default:
-          fatal_error ("incorrect statement code");
+          LDV_CONVERT_WARN (t);
         }
 
       break;
@@ -396,7 +402,7 @@ ldv_match_expr (tree t)
           break;
 
         default:
-          fatal_error ("incorrect exceptional code");
+          LDV_CONVERT_WARN (t);
         }
 
       break;
@@ -444,12 +450,12 @@ ldv_match_expr (tree t)
           break;
 
         default:
-          fatal_error ("incorrect variable length expression code");
+          LDV_CONVERT_WARN (t);
         }
       break;
 
     default:
-      fatal_error ("incorrect class code");
+      LDV_CONVERT_WARN (t);
     }
 }
 
