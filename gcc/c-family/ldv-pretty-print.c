@@ -17,6 +17,8 @@
 static ldv_location_ptr ldv_declarator_location (ldv_declarator_ptr);
 static ldv_location_ptr ldv_direct_declarator_location (ldv_direct_declarator_ptr);
 
+static bool ldv_isglobal_var_was_printed (tree t);
+
 static void ldv_print_abstract_declarator (unsigned int, ldv_abstract_declarator_ptr);
 static void ldv_print_additive_expr (unsigned int, ldv_additive_expr_ptr);
 static void ldv_print_and_expr (unsigned int, ldv_and_expr_ptr);
@@ -142,6 +144,56 @@ ldv_direct_declarator_location (ldv_direct_declarator_ptr direct_declarator)
     }
 
   return NULL;
+}
+
+static bool ldv_isglobal_var_was_printed (tree t)
+{
+  struct ldv_global_var_name 
+  {
+    const char *name;
+    struct ldv_global_var_name *next;
+  };
+  static struct ldv_global_var_name *global_var_names = NULL;
+  struct ldv_global_var_name *global_var_name_cur;
+  ldv_identifier_ptr identifier;
+  
+  /* Do not consider anything else except variables. Moreover take into 
+     account just that variables that have initializers. */
+  if (TREE_CODE (t) != VAR_DECL || !DECL_INITIAL (t))
+    return false;
+    
+  if ((identifier = ldv_convert_identifier (t)) && LDV_IDENTIFIER_STR (identifier))
+    {
+      /* If there isn't any global variable name then just push it to the
+         list. */
+      if (!global_var_names)
+        {
+          global_var_names = XCNEW (struct ldv_global_var_name);
+          global_var_names->name = LDV_IDENTIFIER_STR (identifier);
+        }
+      /* Otherwise check whether a variable having the same name was processed. 
+         Keep a current one to the list. */
+      else
+        {
+          for (global_var_name_cur = global_var_names; ; global_var_name_cur = global_var_name_cur->next)
+            {
+              if (!strcmp (LDV_IDENTIFIER_STR (identifier), global_var_name_cur->name))
+                return true;  
+
+              if (global_var_name_cur->next)
+                continue;
+
+              break;
+            }
+   
+          global_var_name_cur->next = XCNEW (struct ldv_global_var_name);
+          global_var_name_cur->next->name = LDV_IDENTIFIER_STR (identifier);
+        }
+    }
+  else
+    LDV_WARN ("can't find variable name");
+
+  return false;
 }
 
 /*
@@ -3474,6 +3526,18 @@ ldv_print_translation_unit (tree t, bool isdecl)
 
   /* At the beginning of the whole file print auxiliary initialization. */
   ldv_print_aux_init ();
+
+  /* To prevent redefinition of global variables print them just one time. In
+     fact this causes problem when we have something like this in source code:
+       int dupl = 0;
+       extern int dupl;
+     that after all becomes:
+       int dupl = 0;
+       int dupl = 0;
+     Filter entities here to prevent any memory allocation and warning messages.
+   */
+  if (ldv_isglobal_var_was_printed (t))
+    return;
 
   /* This is the artificial function added just to correspond to the C standard.
      We don't collect all external declaration together now and print them

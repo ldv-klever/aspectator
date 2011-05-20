@@ -6,6 +6,7 @@
 #include "ldv-grammar.h"
 
 
-ldv_ext_decl_ptr ldv_convert_ext_decl (tree, bool);
+extern ldv_ext_decl_ptr ldv_convert_ext_decl (tree, bool);
+extern ldv_identifier_ptr ldv_convert_identifier (tree);
 
 #endif /* LDV_CONVERT */

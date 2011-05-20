@@ -69,7 +69,6 @@ static ldv_expr_statement_ptr ldv_convert_expr_statement (tree);
 static ldv_floating_constant_ptr ldv_convert_floating_constant (tree);
 static ldv_func_def_ptr ldv_convert_func_def (tree);
 static ldv_decl_spec_ptr ldv_convert_func_spec (tree);
-static ldv_identifier_ptr ldv_convert_identifier (tree);
 static ldv_inclusive_or_expr_ptr ldv_convert_inclusive_or_expr (tree, unsigned int);
 static ldv_init_declarator_ptr ldv_convert_init_declarator (tree);
 static ldv_init_declarator_list_ptr ldv_convert_init_declarator_list (tree);
@@ -2775,7 +2774,7 @@ identifier:
     identifier identifier-nondigit
     identifier digit
 */
-static ldv_identifier_ptr
+ldv_identifier_ptr
 ldv_convert_identifier (tree t)
 {
   ldv_identifier_ptr identifier;
