@@ -2823,6 +2823,7 @@ GNU extension
 
 primary-expression:
     ( compound-statement )
+    __builtin_va_arg ( assignment-expression , type-name )
 */
 static void
 ldv_print_primary_expr (unsigned int indent_level, ldv_primary_expr_ptr primary_expr)
@@ -2832,6 +2833,8 @@ ldv_print_primary_expr (unsigned int indent_level, ldv_primary_expr_ptr primary_
   ldv_str_literal_ptr str_literal;
   ldv_expr_ptr expr;
   ldv_compound_statement_ptr compound_statement;
+  ldv_assignment_expr_ptr assignment_expr;
+  ldv_type_name_ptr type_name;
 
   switch (LDV_PRIMARY_EXPR_KIND (primary_expr))
     {
@@ -2878,6 +2881,25 @@ ldv_print_primary_expr (unsigned int indent_level, ldv_primary_expr_ptr primary_
         ldv_print_compound_statement (indent_level, compound_statement);
       else
         LDV_PRETTY_PRINT_WARN (indent_level, "compound statement of primary expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      break;
+
+    case LDV_PRIMARY_EXPR_SIXTH:
+      ldv_c_backend_print (indent_level, true, "__builtin_va_arg (");
+
+      if ((assignment_expr = LDV_PRIMARY_EXPR_ASSIGNMENT_EXPR (primary_expr)))
+        ldv_print_assignment_expr (indent_level, assignment_expr);
+      else
+        LDV_PRETTY_PRINT_WARN (indent_level, "assignment expression of primary expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ",");
+
+      if ((type_name = LDV_PRIMARY_EXPR_TYPE_NAME (primary_expr)))
+        ldv_print_type_name (indent_level, type_name);
+      else
+        LDV_PRETTY_PRINT_WARN (indent_level, "type name of primary expression was not printed");
 
       ldv_c_backend_print (indent_level, true, ")");
 

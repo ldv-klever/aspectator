@@ -209,6 +209,7 @@ GNU extension
 
 primary-expression:
     ( compound-statement )
+    __builtin_va_arg ( assignment-expression , type-name )
 */
 enum ldv_primary_expr_kind
 {
@@ -216,7 +217,8 @@ enum ldv_primary_expr_kind
   LDV_PRIMARY_EXPR_SECOND,
   LDV_PRIMARY_EXPR_THIRD,
   LDV_PRIMARY_EXPR_FOURTH,
-  LDV_PRIMARY_EXPR_FIFTH
+  LDV_PRIMARY_EXPR_FIFTH,
+  LDV_PRIMARY_EXPR_SIXTH
 };
 struct ldv_primary_expr
 {
@@ -226,6 +228,8 @@ struct ldv_primary_expr
   ldv_str_literal_ptr str_literal;
   struct ldv_expr *expr;
   struct ldv_compound_statement *compound_statement;
+  struct ldv_assignment_expr *assignment_expr;
+  struct ldv_type_name *type_name;
 };
 typedef struct ldv_primary_expr *ldv_primary_expr_ptr;
 #define LDV_PRIMARY_EXPR_KIND(primary_expr)               (primary_expr->kind)
@@ -234,6 +238,8 @@ typedef struct ldv_primary_expr *ldv_primary_expr_ptr;
 #define LDV_PRIMARY_EXPR_STR_LITERAL(primary_expr)        (primary_expr->str_literal)
 #define LDV_PRIMARY_EXPR_EXPR(primary_expr)               (primary_expr->expr)
 #define LDV_PRIMARY_EXPR_COMPOUND_STATEMENT(primary_expr) (primary_expr->compound_statement)
+#define LDV_PRIMARY_EXPR_ASSIGNMENT_EXPR(primary_expr)    (primary_expr->assignment_expr)
+#define LDV_PRIMARY_EXPR_TYPE_NAME(primary_expr)          (primary_expr->type_name)
 
 /*
 designator:

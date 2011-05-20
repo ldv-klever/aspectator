@@ -2400,6 +2400,7 @@ ldv_convert_exclusive_or_expr (tree t, unsigned int recursion_limit)
   switch (TREE_CODE (t))
     {
     case BIT_XOR_EXPR:
+    case TRUTH_XOR_EXPR:
       LDV_EXCLUSIVE_OR_EXPR_KIND (exclusive_or_expr) = LDV_EXCLUSIVE_OR_EXPR_SECOND;
 
       if ((op1 = LDV_OP_FIRST (t)))
@@ -4105,12 +4106,14 @@ GNU extension
 
 primary-expression:
     ( compound-statement )
+    __builtin_va_arg ( assignment-expression , type-name )
 */
 static ldv_primary_expr_ptr
 ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 {
   ldv_primary_expr_ptr primary_expr;
   tree initial;
+  tree op1, type;
   /* tree type, cast; */
 
   primary_expr = XCNEW (struct ldv_primary_expr);
@@ -4180,6 +4183,21 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
       else
         LDV_WARN ("can't find compound statement of primary expression");
 
+      break;
+
+    case VA_ARG_EXPR:
+      LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_SIXTH;
+    
+      if ((op1 = LDV_OP_FIRST (t)))
+        LDV_PRIMARY_EXPR_ASSIGNMENT_EXPR (primary_expr) = ldv_convert_assignment_expr (op1, recursion_limit);
+      else
+        LDV_WARN ("can't find the first operand of variable argument expression");
+    
+      if ((type = TREE_TYPE (t)))
+        LDV_PRIMARY_EXPR_TYPE_NAME (primary_expr) = ldv_convert_type_name (type);
+      else
+        LDV_WARN ("can't find type of variable argument expression");
+    
       break;
 
     default:
