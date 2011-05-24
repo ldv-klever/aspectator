@@ -39,7 +39,7 @@
 #define LDV_OP4 TREE_OPERAND (t, 3)
 
 /* This is copypasted from C-backend. */
-#define LDV_CONVERT_WARN(t) warning (0, "LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
+#define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
 #define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
 
 
