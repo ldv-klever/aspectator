@@ -14,7 +14,7 @@
 
 
 #define LDV_CONVERT_EXPR_RECURSION_LIMIT 10
-#define LDV_CONVERT_WARN(t) warning (0, "LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
+#define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
 #define LDV_OP_FIRST(t) TREE_OPERAND (t, 0)
 #define LDV_OP_SECOND(t) TREE_OPERAND (t, 1)
 #define LDV_OP_THIRD(t) TREE_OPERAND (t, 2)
