@@ -300,6 +300,13 @@ ldv_match_expr (tree t)
 
           break;
 
+        /* It has two operands. */
+        case MEM_REF:
+          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP2);
+
+          break;
+
         /* It has one operand. */
         case INDIRECT_REF:
           ldv_match_expr (LDV_OP1);
