@@ -4114,6 +4114,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
   ldv_primary_expr_ptr primary_expr;
   tree initial;
   tree op1, type;
+  tree op2, op11, indirect_ref;
   /* tree type, cast; */
 
   primary_expr = XCNEW (struct ldv_primary_expr);
@@ -4198,6 +4199,46 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
       else
         LDV_WARN ("can't find type of variable argument expression");
     
+      break;
+
+    case MEM_REF:
+      if (!(op1 = LDV_OP_FIRST (t)))
+        LDV_WARN ("can't find the first operand of memory reference expression");
+        
+      if (!(op2 = LDV_OP_SECOND (t)))
+        LDV_WARN ("can't find the second operand of memory reference expression");
+    
+      if (op1 && op2)
+        {
+          /* We can avoid memory reference and use simply referenced entity
+             instead in this case. */
+          if (integer_zerop (op2))
+            {
+              if ((op11 = LDV_OP_FIRST (op1)))
+                {
+                  /* Use corresponding variable or parameter. */
+                  if (TREE_CODE (op1) == ADDR_EXPR)
+                    {
+                      LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FIRST;
+                      LDV_PRIMARY_EXPR_IDENTIFIER (primary_expr) = ldv_convert_identifier (op11);
+                    }
+                  else
+                    {
+                      if (!(indirect_ref = build1 (INDIRECT_REF, TREE_TYPE (op1), op1)))
+                        {
+                          LDV_WARN ("can't build indirect reference for cast expression");
+                          break;
+                        }
+                      
+                      LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FOURTH;
+                      LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (indirect_ref, recursion_limit - 1);
+                    }
+                }
+              else  
+                LDV_WARN ("can't find the first operand of address expression");
+            }
+        }
+
       break;
 
     default:
