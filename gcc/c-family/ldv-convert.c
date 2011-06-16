@@ -1031,7 +1031,26 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
       LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
 
       if ((type = TREE_TYPE (t)))
-        LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
+        {
+          /* It was noticed that on x86 (32 bit) architecture there is a "problem"
+             with __builtin_va_start and similar functions because of their
+             parameters have reference type. Thus in their calls casting to
+             reference type is performed. But we wouldn't like to introduce
+             references in C so just ignore this casting at all. */
+          if (TREE_CODE (type) == REFERENCE_TYPE)
+            {
+              LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+              
+              if ((op1 = LDV_OP_FIRST (t)))
+                LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
+              else
+                LDV_WARN ("can't find the first operand of cast expression");
+              
+              break;
+            }
+          else
+            LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
+        }
       else
         LDV_WARN ("can't find type name of cast expression");
 
