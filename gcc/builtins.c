@@ -51,6 +51,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "diagnostic-core.h"
 #include "builtins.h"
 
+/* LDV extension begin. */
+
+/* This include is explicitly required since the given file isn't related with
+   c-family/c-common.h file where LDV pretty printer interface is included. */
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 
 #ifndef PAD_VARARGS_DOWN
 #define PAD_VARARGS_DOWN BYTES_BIG_ENDIAN
@@ -8410,6 +8418,17 @@ fold_builtin_memory_op (location_t loc, tree dest, tree src,
 {
   tree destvar, srcvar, expr;
 
+  /* LDV extension begin. */
+  
+  /* If we want to produce C source code after all, then prevent such built-in 
+     function folding since it replaces original function calls with something
+     else. For instance, this is the case for some invocations of
+     __builtin_memcpy that are changed with MEM_REF (issue #1165). */
+  if (ldv_is_c_backend_enabled())
+    return NULL_TREE;
+  
+  /* LDV extension end. */
+  
   if (! validate_arg (dest, POINTER_TYPE)
       || ! validate_arg (src, POINTER_TYPE)
       || ! validate_arg (len, INTEGER_TYPE))
