@@ -56,6 +56,7 @@ along with GCC; see the file COPYING3.  If not see
 /* This include is explicitly required since the given file isn't related with
    c-family/c-common.h file where LDV pretty printer interface is included. */
 #include "ldv-cbe-core.h"
+#include "ldv-opts.h"
 
 /* LDV extension end. */
 
@@ -8425,6 +8426,10 @@ fold_builtin_memory_op (location_t loc, tree dest, tree src,
      else. For instance, this is the case for some invocations of
      __builtin_memcpy that are changed with MEM_REF (issue #1165). */
   if (ldv_is_c_backend_enabled())
+    return NULL_TREE;
+  
+  /* Aspectator itself also doesn't like MEM_REF. So skip this converting. */
+  if (ldv_isldv())
     return NULL_TREE;
   
   /* LDV extension end. */
