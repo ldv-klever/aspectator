@@ -1650,7 +1650,9 @@ ldv_weave_var_source (ldv_i_var_ptr var, ldv_ppk pp_kind)
   aspected_name = ldv_create_aspected_name (var->name);
 
   /* Obtain a function declaratation with a corresponding name. */
-  if (pp_kind == LDV_PP_SET || pp_kind == LDV_PP_GET)
+  if (pp_kind == LDV_PP_SET
+    || pp_kind == LDV_PP_SET_LOCAL || pp_kind == LDV_PP_SET_GLOBAL
+    || pp_kind == LDV_PP_GET)
     {
       ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aspected_name, var->name);
 

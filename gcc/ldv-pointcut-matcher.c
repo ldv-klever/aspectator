@@ -152,6 +152,9 @@ ldv_match_expr (tree t)
   expanded_location func_close_brace_location;
   unsigned HOST_WIDE_INT ix;
   tree index, value;
+  bool isvar_global;
+  tree list = NULL_TREE;
+  expanded_location var_func_location;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -226,11 +229,61 @@ ldv_match_expr (tree t)
 
         /* They have two operands. */
         case COMPOUND_EXPR:
-        case MODIFY_EXPR:
         case TRUTH_ANDIF_EXPR:
         case TRUTH_ORIF_EXPR:
         case TRUTH_XOR_EXPR:
           ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP2);
+
+          break;
+
+        /* It also has two operands but may be involved in set/get pointcuts. */
+        case MODIFY_EXPR:
+
+          /* See just on a modified parameter or a variable declaration. */
+          if (TREE_CODE (LDV_OP1) == PARM_DECL || TREE_CODE (LDV_OP1) == VAR_DECL)
+            {
+              /* Find out a variable context. */
+              if (DECL_CONTEXT (LDV_OP1) && (TREE_CODE (DECL_CONTEXT (LDV_OP1)) == FUNCTION_DECL))
+                isvar_global = false;
+              else
+                isvar_global = true;
+
+              /* Match just named variables. */
+              if (DECL_NAME (LDV_OP1) && (TREE_CODE (DECL_NAME (LDV_OP1)) == IDENTIFIER_NODE))
+                {
+                  if (isvar_global)
+                    ldv_match_var (LDV_OP1, LDV_PP_SET_GLOBAL);
+                  else
+                    ldv_match_var (LDV_OP1, LDV_PP_SET_LOCAL);
+
+                  /* Instance a matched advice. Note that for global variables ldv
+                     function declarations are printed after a variable declaration, for
+                     local variables directly before a function declaration as well as
+                     for parameter declarations. */
+                  if (isvar_global)
+                    var_func_location = expand_location (DECL_SOURCE_LOCATION (LDV_OP1));
+                  else
+                    var_func_location = expand_location (DECL_SOURCE_LOCATION (DECL_CONTEXT (LDV_OP1)));
+
+                  ldv_weave_advice (&var_func_location, NULL);
+
+                  /* Finish matching. */
+                  ldv_i_match = NULL;
+
+                  /* Change a modifier to an aspect function call if a set was matched. */
+                  if (ldv_func_called_matched)
+                    {
+                      /* Create a list of arguments of a called in future function. */
+                      list = build_tree_list (NULL_TREE, LDV_OP2);
+
+                      /* Create an aspect function call with corresponding arguments. */
+                      LDV_OP2 = build_function_call (DECL_SOURCE_LOCATION (ldv_func_called_matched), ldv_func_called_matched, list);
+
+                      ldv_func_called_matched = NULL;
+                    }
+                }
+            }
           ldv_match_expr (LDV_OP2);
 
           break;
