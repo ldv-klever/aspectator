@@ -151,10 +151,19 @@ ldv_match_expr (tree t)
   struct function *cfunc = NULL;
   expanded_location func_close_brace_location;
   unsigned HOST_WIDE_INT ix;
-  tree index, value;
+  tree index = NULL, value = NULL;
   bool isvar_global;
   tree list = NULL_TREE;
   expanded_location var_func_location;
+  unsigned int arg_numb;
+  ldv_func_arg_info_ptr func_arg_info_new = NULL;
+  tree op1 = NULL_TREE;
+  unsigned int array_size;
+  ldv_var_array_ptr var_array = NULL;
+  ldv_list_ptr var_array_list = NULL;
+  tree array_size_tree = NULL_TREE;
+  call_expr_arg_iterator iter;
+  tree arg = NULL_TREE;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -550,30 +559,127 @@ ldv_match_expr (tree t)
             && (func_called = TREE_OPERAND (func_called_addr, 0))
             && TREE_CODE (func_called) == FUNCTION_DECL)
             {
+              ldv_func_arg_info_list = NULL;
+
+              /* Store information on called function arguments values by walking
+                 through tree lists. */
+              arg_numb = 0;
+              FOR_EACH_CALL_EXPR_ARG (arg, iter, t)
+                {
+                  arg_numb++;
+                  func_arg_info_new = ldv_create_func_arg_info ();
+
+                  func_arg_info_new->arg_numb = arg_numb;
+
+                  ldv_list_push_back (&ldv_func_arg_info_list, func_arg_info_new);
+
+                  /* Argument is the first operand of the NOP expression now. */
+                  if (!(arg = TREE_OPERAND (arg, 0)))
+                    continue;
+
+                  switch (TREE_CODE (arg))
+                    {
+                    case ADDR_EXPR:
+                      op1 = TREE_OPERAND (arg, 0);
+
+                      /* Function, variable and field declarations that have an array
+                         type are interest for us at the moment. */
+                      switch (TREE_CODE (op1))
+                        {
+                        case VAR_DECL:
+                          /* Just those variables for which we can obtain their
+                             array type sizes are of interest. */
+                          if ((array_size_tree = LDV_ARRAY_SIZE (op1)))
+                            {
+                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                              /* Store an one dimensional arrary size of a variable used as
+                                 a value of a function argument. */
+                              func_arg_info_new->one_dim_array_size = TREE_INT_CST_LOW (array_size_tree) + 1;
+                            }
+
+                          break;
+
+                        default:
+                          if ((array_size = ldv_array_field_size (arg)))
+                            {
+                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                              /* Store an one dimensional arrary size of a field used as a
+                                 value of a function argument. */
+                              func_arg_info_new->one_dim_array_size = array_size;
+                            }
+                        }
+
+                      break;
+
+                    case VAR_DECL:
+                      /* See on whether for this variable size was stored. */
+                      for (var_array_list = ldv_var_array_list
+                        ; var_array_list
+                        ; var_array_list = ldv_list_get_next (var_array_list))
+                        {
+                          var_array = (ldv_var_array_ptr) ldv_list_get_data (var_array_list);
+
+                          /* Compare unique ids. */
+                          if (var_array->uid == DECL_UID (arg)
+                            && var_array->issize_specified)
+                            {
+                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                              /* Store an one dimensional arrary size refferenced by a
+                                 variable used as a value of a function argument. */
+                              func_arg_info_new->one_dim_array_size = var_array->array_size;
+                            }
+                        }
+
+                      break;
+
+                    case FUNCTION_DECL:
+                      /* Just named functions are of interest. */
+                      if (DECL_NAME(arg))
+                        {
+                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_FUNC_NAME;
+                          /* Store a function name used as a value of a
+                             function argument. */
+                          func_arg_info_new->func_name = IDENTIFIER_POINTER (DECL_NAME (arg));
+                        }
+
+                       break;
+
+                    default: ;
+                    }
+                }
+
               /* Try to match a function declaration for a call join point. */
               ldv_match_func (func_called, LDV_PP_CALL);
 
-              /* Obtain a function close brace location. A function structure is
-                 available for a function that has a definition. For a function
-                 that has a declaration a place of its finishing ';' is used. */
-              if ((cfunc = DECL_STRUCT_FUNCTION (func_called)) != NULL)
-                func_close_brace_location = expand_location (cfunc->function_end_locus);
-              else
-                func_close_brace_location = expand_location (DECL_SOURCE_LOCATION (func_called));
-
-              /* Weave a matched advice. */
-              ldv_weave_advice (NULL, &func_close_brace_location);
-
-              /* Finish matching. */
-              ldv_i_match = NULL;
-
-              /* Change a function call to an aspect function call if it's
-                 matched. */
-              if (ldv_func_called_matched)
+              if (ldv_i_match)
                 {
-                  TREE_OPERAND (func_called_addr, 0) = ldv_func_called_matched;
-                  ldv_func_called_matched = NULL;
+                  /* Obtain a function close brace location. A function structure is
+                     available for a function that has a definition. For a function
+                     that has a declaration a place of its finishing ';' is used. */
+                  if ((cfunc = DECL_STRUCT_FUNCTION (func_called)) != NULL)
+                    func_close_brace_location = expand_location (cfunc->function_end_locus);
+                  else
+                    func_close_brace_location = expand_location (DECL_SOURCE_LOCATION (func_called));
+
+                  /* Weave a matched advice. */
+                  ldv_weave_advice (NULL, &func_close_brace_location);
+
+                  /* Finish matching. */
+                  ldv_i_match = NULL;
+
+                  /* Change a function call to an aspect function call if it's
+                     matched. */
+                  if (ldv_func_called_matched)
+                    {
+                      TREE_OPERAND (func_called_addr, 0) = ldv_func_called_matched;
+                      ldv_func_called_matched = NULL;
+                    }
                 }
+
+              ldv_func_arg_info_list = NULL;
             }
           /* A function can be called not only by means of its name but also
              by means of a function pointer that may be a structure field. But
@@ -759,7 +865,7 @@ if (0)
       if (TREE_CODE (LDV_OP1) == PARM_DECL || TREE_CODE (LDV_OP1) == VAR_DECL)
         {
           ldv_ismodified_first = true;
-
+/*TODO*/
           /* For generated by gcc variables try to remember information on
              array sizes that may have types on which variables point. */
           if (!DECL_NAME (LDV_OP1) && (array_size = ldv_array_field_size (LDV_OP2)))
