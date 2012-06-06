@@ -1652,7 +1652,8 @@ ldv_weave_var_source (ldv_i_var_ptr var, ldv_ppk pp_kind)
   /* Obtain a function declaratation with a corresponding name. */
   if (pp_kind == LDV_PP_SET
     || pp_kind == LDV_PP_SET_LOCAL || pp_kind == LDV_PP_SET_GLOBAL
-    || pp_kind == LDV_PP_GET)
+    || pp_kind == LDV_PP_GET
+    || pp_kind == LDV_PP_GET_LOCAL || pp_kind == LDV_PP_GET_GLOBAL)
     {
       ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aspected_name, var->name);
 
