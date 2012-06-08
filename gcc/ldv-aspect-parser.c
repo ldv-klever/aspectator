@@ -1679,7 +1679,7 @@ yyreduce:
       if (strcmp ("pointcut", p_keyword))
         {
           ldv_print_info_location ((yylsp[(1) - (4)]), LDV_ERROR_BISON, "incorrect keyword \"%s\" was used", p_keyword);
-          fatal_error ("use \"pointcut\" keyword");
+          fatal_error ("use one of the following keywords: \"pointcut\", \"before\", \"after\", \"around\"");
         }
 
       /* Delete an unneeded identifier. */
@@ -3457,7 +3457,9 @@ ldv_print_info_location (yyltype loc, const char *info_kind, const char *format,
     fatal_error ("don't use location tracking beyond lex or bison information");
 
   va_start (ap, format);
-  fprintf (LDV_INFO_STREAM, "%s: %s:%d.%d-%d.%d: ", info_kind, loc.file_name, loc.first_line, loc.first_column, loc.last_line, loc.last_column);
+  /* Use a previous last line since a current value points to a following
+     character. */
+  fprintf (LDV_INFO_STREAM, "%s: %s:%d.%d-%d.%d: ", info_kind, loc.file_name, loc.first_line, loc.first_column, loc.last_line, (loc.last_column - 1));
   vfprintf (LDV_INFO_STREAM, format, ap);
   va_end (ap);
 
@@ -3500,11 +3502,9 @@ yyerror (char const *format, ...)
 
   va_end (ap);
 
-  ldv_print_info_location (yylloc, LDV_ERROR_BISON, "incorrect syntax in aspect file");
+  ldv_print_info_location (yylloc, LDV_ERROR_BISON, "aspect file processed has incorrect syntax");
 
-  /* So, finish a program execution since in an aspect file a syntax error was
-     found. */
-  fatal_error ("exit after syntax error in aspect file");
+  fatal_error ("terminate work after syntax error happened");
 }
 
 int
@@ -3519,13 +3519,12 @@ yylex (void)
   ldv_file_ptr file = NULL;
   ldv_id_ptr id = NULL;
   ldv_int_ptr integer = NULL;
-  bool whitespace = true;
   unsigned int arg_numb;
   ldv_ab_arg_ptr ab_arg_new = NULL;
   ldv_ab_general_ptr ab_general_new = NULL;
 
-  /* Skip nonsignificant whitespaces and move a lexer location. */
-  while (whitespace)
+  /* Skip nonsignificant whitespaces and move a current position. */
+  while (1)
     {
       c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -3534,21 +3533,20 @@ yylex (void)
         case ' ':
         case '\t':
           ldv_set_last_column (yylloc.last_column + 1);
-          break;
+          continue;
 
         case '\n':
           ldv_set_last_line (yylloc.last_line + 1);
           ldv_set_last_column (1);
-          break;
+          continue;
 
         default:
-          whitespace = false;
-          break;
+          /* Push back a first nonwhitespace character. */
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
         }
-    }
 
-  /* Push back a first nonwhitespace character. */
-  ldv_ungetc (c, LDV_ASPECT_STREAM);
+      break;
+    }
 
   /* Examine whether a C or C++ comment is encountered. Skip a corresponding
      comment if so and continue parsing. */
