@@ -33,6 +33,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 bool ldv_cpp_isldv = false;
 bool ldv_cpp_isinfo_matching_table = false;
+int ldv_cpp_ldv_stage = -1;
 
 char *
 ldv_copy_str (const char *str)
@@ -214,6 +215,13 @@ void
 ldv_set_ldv_opts (bool ldv_isinfo_matching_table)
 {
   ldv_cpp_isinfo_matching_table = ldv_isinfo_matching_table;
+}
+
+void
+ldv_set_ldv_stage (int gcc_ldv_stage)
+{
+  /* Set an ldv stage from gcc to cpp. */
+  ldv_cpp_ldv_stage = gcc_ldv_stage;
 }
 
 char *

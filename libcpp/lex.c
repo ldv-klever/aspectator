@@ -2010,14 +2010,14 @@ _cpp_lex_direct (cpp_reader *pfile)
 
   /* LDV extension beginning. */
 
-  /* Exchange '#' with '$' and vise versa to process aspect directives. */
-  if (ldv_cpp_isldv)
+  /* Exchange '#' with '@' and vise versa to process aspect directives. */
+  if (ldv_cpp_ldv_stage == 0)
     {
       if (c == '#')
         {
-          c = '$';
+          c = '@';
         }
-      else if (c == '$')
+      else if (c == '@')
         {
           c = '#';
         }

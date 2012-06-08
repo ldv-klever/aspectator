@@ -1995,8 +1995,9 @@ toplev_main (int argc, char **argv)
          preprocessing. */  
       if (ldv_isldv_stage_preprocessing ())
         {
-          /* This will make GCC preprocessor to treat '$' as '#' and v.v. */
+          /* This will make GCC preprocessor to treat '@' as '#' and v.v. */
           ldv_set_ldv (ldv_isldv ());
+          ldv_set_ldv_stage (ldv_get_ldv_stage ());
         }
       else
         {

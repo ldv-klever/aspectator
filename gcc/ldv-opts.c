@@ -58,10 +58,10 @@ enum { LDV_STAGE_PREPROCESSING = 0, LDV_STAGE_FIRST, LDV_STAGE_SECOND, LDV_STAGE
 /* Flag that is true if ldv modifications are made and false otherwise. */
 static bool ldv;
 /* A current ldv stage. */
-static unsigned int ldv_stage;
+static int ldv_stage;
 
 
-unsigned int
+int
 ldv_get_ldv_stage (void)
 {
   return ldv_stage;
@@ -71,7 +71,7 @@ void
 ldv_handle_options (void)
 {
   char *stage_str = NULL;
-  unsigned int stage;
+  int stage;
 
   /* Obtain a ldv aspect file name. */
   ldv_aspect_fname = getenv (LDV_ASPECT_FILE_ENV);
@@ -123,7 +123,7 @@ ldv_handle_options (void)
         {
           stage = atoi (stage_str);
 
-          if (stage <= LDV_STAGE_FOURTH)
+          if (stage >= LDV_STAGE_PREPROCESSING && stage <= LDV_STAGE_FOURTH)
             {
               ldv_stage = stage;
               ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);

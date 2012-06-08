@@ -20,7 +20,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define _LDV_OPTS_H_
 
 
-extern unsigned int ldv_get_ldv_stage (void);
+extern int ldv_get_ldv_stage (void);
 extern void ldv_handle_options (void);
 extern bool ldv_isldv (void);
 extern bool ldv_isldv_stage_preprocessing (void);
