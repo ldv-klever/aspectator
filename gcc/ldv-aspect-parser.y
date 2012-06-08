@@ -54,6 +54,12 @@ $ bison ldv-aspect-parser.y
 #define LDV_BODY_PATTERN_RES                "res"
 #define LDV_BODY_PATTERN_RET_TYPE           "ret_type"
 
+#define ldv_set_first_line(val)    yylloc.first_line = (val); ldv_print_info (LDV_INFO_LEX, "%d: first line is \"%d\"", __LINE__, yylloc.first_line);
+#define ldv_set_last_line(val)     yylloc.last_line = (val); ldv_print_info (LDV_INFO_LEX, "%d: last line is \"%d\"", __LINE__, yylloc.last_line);
+#define ldv_set_first_column(val)  yylloc.first_column = (val); ldv_print_info (LDV_INFO_LEX, "%d: first column is \"%d\"", __LINE__, yylloc.first_column);
+#define ldv_set_last_column(val)   yylloc.last_column = (val); ldv_print_info (LDV_INFO_LEX, "%d: last column is \"%d\"", __LINE__, yylloc.last_column);
+#define ldv_set_file_name(val)     yylloc.file_name = (val); ldv_print_info (LDV_INFO_LEX, "%d: file name is \"%s\"", __LINE__, yylloc.file_name);
+
 
 /* Specify own location tracking type. */
 typedef struct YYLTYPE
@@ -205,10 +211,13 @@ static int yylex (void);
 {
   /* Initialize the beginning location and aspect file. */
   @$.first_line = @$.last_line = 1;
+  ldv_set_first_line (@$.first_line);
+  ldv_set_last_line (@$.last_line);
   @$.first_column = @$.last_column = 1;
+  ldv_set_first_column (@$.first_column);
+  ldv_set_last_column (@$.last_column);
   @$.file_name = ldv_aspect_fname;
-
-  ldv_print_info (LDV_INFO_LEX, "initial file name and position is \"%s:%d:%d\"", @$.file_name, @$.first_line, @$.first_column);
+  ldv_set_file_name (@$.file_name);
 }
 
 %%
@@ -1659,12 +1668,12 @@ yylex (void)
         {
         case ' ':
         case '\t':
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
           break;
 
         case '\n':
-          ++yylloc.last_line;
-          yylloc.last_column = 1;
+          ldv_set_last_line (yylloc.last_line + 1);
+          ldv_set_last_column (1);
           break;
 
         default:
@@ -1687,11 +1696,10 @@ yylex (void)
              character. */
           c_next = ldv_getc (LDV_ASPECT_STREAM);
 
-          /* Drop a C++ comment '//...\n' from '//' up to the end of a line. */
+          /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
+             Don't track a current file position. */
           if (c_next != EOF && c_next == '/')
             {
-              yylloc.last_column += 2;
-
               while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
                 {
                   if (c == '\n')
@@ -1700,17 +1708,17 @@ yylex (void)
                       break;
                     }
 
-                  ++yylloc.last_column;
                   ldv_print_info (LDV_INFO_IO, "dropped C++ comment character \"%c\"", ldv_end_of_line (c));
                 }
 
-              /* To process following whitespaces and comments. */
               return yylex ();
             }
-          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. */
+          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
+             current file position, since '*_/' can be placed at another line
+             and there may be other symbols after it. */
           else if (c_next != EOF && c_next == '*')
             {
-              yylloc.last_column += 2;
+              ldv_set_last_column (yylloc.last_column + 2);
 
               while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
                 {
@@ -1721,13 +1729,12 @@ yylex (void)
 
                       if (c_next != EOF && c_next == '/')
                         {
-                          yylloc.last_column += 2;
-                          /* To process following whitespaces and comments. */
+                          ldv_set_last_column (yylloc.last_column + 2);
                           return yylex ();
                         }
                       else
                         {
-                          ++yylloc.last_column;
+                          ldv_set_last_column (yylloc.last_column + 1);
                           ldv_ungetc (c_next, LDV_ASPECT_STREAM);
                         }
                     }
@@ -1735,11 +1742,11 @@ yylex (void)
                      position. */
                   else if (c == '\n')
                     {
-                      ++yylloc.last_line;
-                      yylloc.last_column = 1;
+                      ldv_set_last_line (yylloc.last_line + 1);
+                      ldv_set_last_column (1);
                     }
                   else
-                    ++yylloc.last_column;
+                    ldv_set_last_column (yylloc.last_column + 1);
 
                   ldv_print_info (LDV_INFO_IO, "dropped C comment character \"%c\"", ldv_end_of_line (c));
                 }
@@ -1792,27 +1799,26 @@ yylex (void)
                      ldv_putc_string (c_next, file_name);
                    }
 
-                  ldv_print_info (LDV_INFO_LEX, "change a current file name from \"%s\" to \"%s\"", yylloc.file_name, ldv_get_str(file_name));
-                  yylloc.file_name = ldv_get_str(file_name);
+                  ldv_set_file_name (ldv_get_str(file_name));
                 }
 
               /* Update the current line with respect to a special line. */
               if (!line_numb
                 && (fscanf(LDV_ASPECT_STREAM, "%u", &line_numb) == 1))
                 {
-                  yylloc.last_line = line_numb;
-                  yylloc.last_column = 1;
+                  ldv_set_last_line (line_numb);
+                  ldv_set_last_column (1);
                 }
 
               if (c == '\n')
                 {
+                  /* Don't ungetc the end of line to avoid line enlarging. */
                   break;
                 }
 
               ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c));
             }
 
-          /* To process following whitespaces and comments. */
           return yylex ();
         }
       else
@@ -1823,8 +1829,8 @@ yylex (void)
     }
 
   /* Initialize a first line and a first column. */
-  yylloc.first_line = yylloc.last_line;
-  yylloc.first_column = yylloc.last_column;
+  ldv_set_first_line (yylloc.last_line);
+  ldv_set_first_column (yylloc.last_column);
 
   /* Get a first character of a token. */
   c = ldv_getc (LDV_ASPECT_STREAM);
@@ -1832,7 +1838,7 @@ yylex (void)
   /* Reach the end of a file. So teh aspect parser must finish work. */
   if (c == EOF)
     {
-      ldv_print_info (LDV_INFO_LEX, "lex reached end of file");
+      ldv_print_info (LDV_INFO_LEX, "lex reached the end of file");
       return 0;
     }
 
@@ -1845,11 +1851,14 @@ yylex (void)
 
       do
         {
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
 
           /* Process a end of a line inside a body. */
           if (c == '\n')
-            ++yylloc.last_line;
+            {
+              ldv_set_last_line (yylloc.last_line + 1);
+              ldv_set_last_column (1);
+            }
 
           /* Process special patterns inside a body. */
           if (c == '$')
@@ -1994,7 +2003,7 @@ yylex (void)
                       break;
                     }
 
-                  ++yylloc.last_column;
+                  ldv_set_last_column (yylloc.last_column + 1);
                   ldv_putc_id (c, id);
                 }
             }
@@ -2023,13 +2032,13 @@ yylex (void)
   /* Parse a file name that is in the form "file_name" */
   if (c == '"')
     {
-      ++yylloc.last_column;
+      ldv_set_last_column (yylloc.last_column + 1);
       file = ldv_create_file ();
 
       do
         {
           c = ldv_getc (LDV_ASPECT_STREAM);
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
 
           if (c == '"')
             {
@@ -2044,7 +2053,7 @@ yylex (void)
         ldv_putc_file (c, file);
 
         if (c == '\n')
-          fatal_error ("don't use end of lines in file pathes");
+          fatal_error ("file path isn't terminated with quote - it's terminated with the end of line");
         }
       while (c != EOF);
 
@@ -2065,7 +2074,7 @@ yylex (void)
       /* Get the rest of an identifier. */
       do
         {
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
           ldv_putc_id (c, id);
           c = ldv_getc (LDV_ASPECT_STREAM);
         }
@@ -2217,7 +2226,7 @@ yylex (void)
       /* Get the rest of an integer number. */
       do
         {
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
           integer->numb = 10 * integer->numb + (c - '0');
           c = ldv_getc (LDV_ASPECT_STREAM);
         }
@@ -2234,7 +2243,7 @@ yylex (void)
       return LDV_INT_NUMB;
   }
 
-  ++yylloc.last_column;
+  ldv_set_last_column (yylloc.last_column + 1);
 
   /* After all parse multicharacter tokens. */
   if (c == '|' || c == '&' || c == '.')
@@ -2244,8 +2253,7 @@ yylex (void)
       /* Or boolean operator '||' */
       if (c == '|' && c_next == '|')
         {
-          ++yylloc.last_column;
-
+          ldv_set_last_column (yylloc.last_column + 1);
           ldv_print_info (LDV_INFO_LEX, "lex parsed or boolean operator");
 
           return LDV_OR;
@@ -2254,8 +2262,7 @@ yylex (void)
       /* And boolean operator '&&' */
       if (c == '&' && c_next == '&')
         {
-          ++yylloc.last_column;
-
+          ldv_set_last_column (yylloc.last_column + 1);
           ldv_print_info (LDV_INFO_LEX, "lex parsed and boolean operator");
 
           return LDV_AND;
@@ -2264,15 +2271,14 @@ yylex (void)
       /* Either C ellipsis '...' or ldv any parameters '..'. */
       if (c == '.' && c_next == '.')
         {
-          ++yylloc.last_column;
+          ldv_set_last_column (yylloc.last_column + 1);
 
           /* See on a next character. */
           c_next = ldv_getc (LDV_ASPECT_STREAM);
 
           if (c_next == '.')
             {
-              ++yylloc.last_column;
-
+              ldv_set_last_column (yylloc.last_column + 1);
               ldv_print_info (LDV_INFO_LEX, "lex parsed ellipsis");
 
               return LDV_ELLIPSIS;
@@ -2280,7 +2286,6 @@ yylex (void)
           else
             {
               ldv_ungetc (c_next, LDV_ASPECT_STREAM);
-
               ldv_print_info (LDV_INFO_LEX, "lex parsed any parameters wildcard");
 
               return LDV_ANY_PARAMS;
