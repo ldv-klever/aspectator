@@ -466,15 +466,6 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 }
 
 void
-ldv_puts_id (const char *str, ldv_id_ptr id)
-{
-  if (id)
-    ldv_puts_str (str, id->id_name, LDV_T_ID);
-  else
-    fatal_error ("id pointer wasn't initialized");
-}
-
-void
 ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 {
   char *str_text = NULL;
@@ -538,6 +529,33 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 }
 
 void
+ldv_putc_string (unsigned char c, ldv_str_ptr string)
+{
+  if (string)
+    ldv_putc_str (c, string, LDV_T_STRING);
+  else
+    fatal_error ("string pointer wasn't initialized");
+}
+
+void
+ldv_putc_text (unsigned char c, ldv_text_ptr text)
+{
+  if (text)
+    ldv_putc_str (c, text->text, LDV_T_TEXT);
+  else
+    fatal_error ("text pointer wasn't initialized");
+}
+
+void
+ldv_puts_id (const char *str, ldv_id_ptr id)
+{
+  if (id)
+    ldv_puts_str (str, id->id_name, LDV_T_ID);
+  else
+    fatal_error ("id pointer wasn't initialized");
+}
+
+void
 ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
 {
   const char *c = NULL;
@@ -560,15 +578,6 @@ ldv_puts_string (const char *str, ldv_str_ptr string)
     ldv_puts_str (str, string, LDV_T_STRING);
   else
     fatal_error ("string pointer wasn't initialized");
-}
-
-void
-ldv_putc_text (unsigned char c, ldv_text_ptr text)
-{
-  if (text)
-    ldv_putc_str (c, text->text, LDV_T_TEXT);
-  else
-    fatal_error ("text pointer wasn't initialized");
 }
 
 void
