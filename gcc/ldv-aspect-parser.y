@@ -207,6 +207,8 @@ static int yylex (void);
   @$.first_line = @$.last_line = 1;
   @$.first_column = @$.last_column = 1;
   @$.file_name = ldv_aspect_fname;
+
+  ldv_print_info (LDV_INFO_LEX, "initial file name and position is \"%s:%d:%d\"", @$.file_name, @$.first_line, @$.first_column);
 }
 
 %%
@@ -1637,6 +1639,7 @@ yylex (void)
   int c;
   int c_next;
   unsigned int line_numb;
+  ldv_str_ptr file_name;
   int brace_count = 0;
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
@@ -1760,22 +1763,23 @@ yylex (void)
      the following format:
        # \d+ "[^"]+" \d+
      where the first number denotes the following line number in the file
-     specified inside "". There are may be less or more numbers at the end of
-     such lines. */
+     specified inside quotes. There are may be less or more numbers at the end
+     of such lines. A current position isn't tracked while processing such
+     lines. */
   while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
     {
-      /* A possible comment beginning. */
       if (c == '#')
         {
           line_numb = 0;
 
-          ++yylloc.last_column;
-
           while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
             {
-              /* TODO Read a file name and change it to report errors correctly. */
+              /* Read a file name specified and change a current file name
+                 respectively to report error locations correctly. */
               if (c == '"')
                 {
+                  file_name = ldv_create_string ();
+
                   while ((c_next = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
                    {
                      ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c_next));
@@ -1785,7 +1789,11 @@ yylex (void)
                           break;
                        }
 
+                     ldv_putc_string (c_next, file_name);
                    }
+
+                  ldv_print_info (LDV_INFO_LEX, "change a current file name from \"%s\" to \"%s\"", yylloc.file_name, ldv_get_str(file_name));
+                  yylloc.file_name = ldv_get_str(file_name);
                 }
 
               /* Update the current line with respect to a special line. */
