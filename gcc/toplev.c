@@ -1990,10 +1990,19 @@ toplev_main (int argc, char **argv)
         
       /* At the beginning specify that nothing was matched. */  
       ldv_set_nomatch ();  
-        
-      /* Obtain all joinpoints before any file analysis. */
-      ldv_aspect_parser ();
-      
+
+      /* Obtain all pointcuts before any file analysis at all stages except
+         preprocessing. */  
+      if (ldv_isldv_stage_preprocessing ())
+        {
+          /* This will make GCC preprocessor to treat '$' as '#' and v.v. */
+          ldv_set_ldv (ldv_isldv ());
+        }
+      else
+        {
+          ldv_aspect_parser ();
+        }
+
       if (ldv_isldv_stage_first ())
         {
           /* Make the necessary includes in file to be analyzed. */

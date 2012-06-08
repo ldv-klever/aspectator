@@ -28,6 +28,7 @@ along with this program; see the file COPYING3.  If not see
 /* LDV extension beginning. */
 
 #include "ldv-cpp-advice-weaver.h"
+#include "ldv-cpp-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
 
 /* LDV extension end. */
@@ -2006,6 +2007,23 @@ _cpp_lex_direct (cpp_reader *pfile)
 
   LINEMAP_POSITION_FOR_COLUMN (result->src_loc, pfile->line_table,
 			       CPP_BUF_COLUMN (buffer, buffer->cur));
+
+  /* LDV extension beginning. */
+
+  /* Exchange '#' with '$' and vise versa to process aspect directives. */
+  if (ldv_cpp_isldv)
+    {
+      if (c == '#')
+        {
+          c = '$';
+        }
+      else if (c == '$')
+        {
+          c = '#';
+        }
+    }
+
+  /* LDV extension end. */
 
   switch (c)
     {

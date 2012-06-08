@@ -52,7 +52,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 
 /* Define four ldv stages constants. */
-enum { LDV_STAGE_FIRST = 1, LDV_STAGE_SECOND, LDV_STAGE_THIRD, LDV_STAGE_FOURTH };
+enum { LDV_STAGE_PREPROCESSING = 0, LDV_STAGE_FIRST, LDV_STAGE_SECOND, LDV_STAGE_THIRD, LDV_STAGE_FOURTH };
 
 
 /* Flag that is true if ldv modifications are made and false otherwise. */
@@ -123,13 +123,13 @@ ldv_handle_options (void)
         {
           stage = atoi (stage_str);
 
-          if (stage >= LDV_STAGE_FIRST && stage <= LDV_STAGE_FOURTH)
+          if (stage <= LDV_STAGE_FOURTH)
             {
               ldv_stage = stage;
               ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
             }
           else
-            fatal_error ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_STAGE_FIRST, LDV_STAGE_FOURTH);
+            fatal_error ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_STAGE_PREPROCESSING, LDV_STAGE_FOURTH);
         }
       else
         fatal_error ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
@@ -173,6 +173,12 @@ bool
 ldv_isldv (void)
 {
   return ldv;
+}
+
+bool
+ldv_isldv_stage_preprocessing (void)
+{
+  return (ldv_stage == LDV_STAGE_PREPROCESSING);
 }
 
 bool

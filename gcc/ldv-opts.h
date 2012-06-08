@@ -23,6 +23,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 extern unsigned int ldv_get_ldv_stage (void);
 extern void ldv_handle_options (void);
 extern bool ldv_isldv (void);
+extern bool ldv_isldv_stage_preprocessing (void);
 extern bool ldv_isldv_stage_first (void);
 extern bool ldv_isldv_stage_second (void);
 extern bool ldv_isldv_stage_third (void);

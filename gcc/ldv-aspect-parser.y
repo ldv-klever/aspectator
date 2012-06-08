@@ -16,6 +16,12 @@ more details.
 You should have received a copy of the GNU General Public License along with
 C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* To produce corresponding C file on the basis of this bison grammar file you
+need to go to the sources root directory and execute there:
+$ cd gcc
+$ bison ldv-aspect-parser.y
+*/
+
 %{
 
 /* For ISALPHA, ISDIGIT, etc. functions. */
@@ -1630,6 +1636,7 @@ yylex (void)
 {
   int c;
   int c_next;
+  unsigned int line_numb;
   int brace_count = 0;
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
@@ -1741,6 +1748,64 @@ yylex (void)
               if (c_next != EOF)
                 ldv_ungetc (c_next, LDV_ASPECT_STREAM);
             }
+        }
+      else
+        {
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
+          break;
+        }
+    }
+
+  /* Examine whether a special preprocessor line is encountered. This line has
+     the following format:
+       # \d+ "[^"]+" \d+
+     where the first number denotes the following line number in the file
+     specified inside "". There are may be less or more numbers at the end of
+     such lines. */
+  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+    {
+      /* A possible comment beginning. */
+      if (c == '#')
+        {
+          line_numb = 0;
+
+          ++yylloc.last_column;
+
+          while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+            {
+              /* TODO Read a file name and change it to report errors correctly. */
+              if (c == '"')
+                {
+                  while ((c_next = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                   {
+                     ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c_next));
+
+                     if (c_next == '"')
+                       {
+                          break;
+                       }
+
+                   }
+                }
+
+              /* Update the current line with respect to a special line. */
+              if (!line_numb
+                && (fscanf(LDV_ASPECT_STREAM, "%u", &line_numb) == 1))
+                {
+                  yylloc.last_line = line_numb;
+                  yylloc.last_column = 1;
+                }
+
+              if (c == '\n')
+                {
+                  break;
+                }
+
+              ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c));
+            }
+
+          /* To process following whitespaces and comments. */
+          return yylex ();
         }
       else
         {

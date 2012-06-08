@@ -417,7 +417,9 @@ void
 ldv_open_file_streams (void)
 {
   /* Open file streams in depend on a given ldv stage. */
-  if (ldv_isldv_stage_first ())
+  if (ldv_isldv_stage_preprocessing ())
+    /* Preprocess a given aspect file as well as the standard C file. */;
+  else if (ldv_isldv_stage_first ())
     ldv_open_aspect_stream ();
   else if (ldv_isldv_stage_second () || ldv_isldv_stage_third () || ldv_isldv_stage_fourth ())
     {
