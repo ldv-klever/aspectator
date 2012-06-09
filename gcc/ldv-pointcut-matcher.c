@@ -585,9 +585,11 @@ ldv_match_expr (tree t)
 
                   ldv_list_push_back (&ldv_func_arg_info_list, func_arg_info_new);
 
-                  /* Argument is the first operand of the NOP expression now. */
-                  if (!(arg = TREE_OPERAND (arg, 0)))
-                    continue;
+                  /* Argument may be the first operand of the NOP expression. */
+                  if (TREE_CODE (arg) == NOP_EXPR)
+                    {
+                      arg = TREE_OPERAND (arg, 0);
+                    }
 
                   switch (TREE_CODE (arg))
                     {
