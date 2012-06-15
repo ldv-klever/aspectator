@@ -85,6 +85,8 @@ extern const char *ldv_dir_temp;
 extern ldv_list_ptr ldv_decl_for_print_list;
 extern ldv_text_ptr ldv_func_defs_for_print;
 
+
+extern void ldv_create_files (void);
 extern void ldv_copy_file (const char *, FILE *);
 extern const char *ldv_empty_str (void);
 extern char ldv_end_of_line (int);

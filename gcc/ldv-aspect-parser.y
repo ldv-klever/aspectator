@@ -246,7 +246,7 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
       if (strcmp ("pointcut", p_keyword))
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect keyword \"%s\" was used", p_keyword);
-          fatal_error ("use one of the following keywords: \"pointcut\", \"before\", \"after\", \"around\"");
+          fatal_error ("use one of the following keywords: \"pointcut\", \"before\", \"after\", \"around\", \"new\"");
         }
 
       /* Delete an unneeded identifier. */
@@ -307,10 +307,12 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
         a_declaration->a_kind = LDV_A_BEFORE;
       else if (!strcmp ("around", a_kind))
         a_declaration->a_kind = LDV_A_AROUND;
+      else if (!strcmp ("new", a_kind))
+        a_declaration->a_kind = LDV_A_NEW;
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect advice declaration kind \"%s\" was used", a_kind);
-          fatal_error ("use \"after\", \"around\", \"before\" advice declaration kind");
+          fatal_error ("use \"after\", \"around\", \"before\", \"new\" advice declaration kind");
         }
 
       /* Set a composite pointcut from a corresponding rule. */

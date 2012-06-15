@@ -2006,6 +2006,9 @@ toplev_main (int argc, char **argv)
 
       if (ldv_isldv_stage_first ())
         {
+          /* Create required files. */
+          ldv_create_files ();
+
           /* Make the necessary includes in file to be analyzed. */
           ldv_make_includes ();
       

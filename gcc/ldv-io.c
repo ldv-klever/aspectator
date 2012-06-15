@@ -80,6 +80,45 @@ static void ldv_open_preprocessed_stream (bool);
 
 
 void
+ldv_create_files (void)
+{
+  ldv_adef_ptr adef = NULL;
+  ldv_list_ptr adef_list = NULL;
+  char *fname = NULL;
+  char *fcontent = NULL;
+  FILE *fstream = NULL;
+
+  for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
+    {
+      adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+
+      if (adef->a_declaration->a_kind == LDV_A_NEW)
+        {
+          /* Count advice weavings. */
+          ++(adef->use_counter);
+
+          fname = ldv_get_str (adef->a_declaration->c_pointcut->p_pointcut->pp_signature->pps_file->file_name->file_name);
+          fcontent = ldv_copy_str (ldv_get_body_text (adef->a_body));
+          fcontent = ldv_trunkate_braces (fcontent);
+
+          if ((fstream = fopen (fname, "w")) == NULL)
+            fatal_error ("can%'t open file \"%s\" for write: %m", fname);
+
+          ldv_print_info (LDV_INFO_IO, "file \"%s\" was created successfully", fname);
+
+          if (fputs (fcontent, fstream) == EOF)
+            fatal_error ("can%'t write to file \"%s\": %m", fname);
+
+          fclose (fstream);
+
+          ldv_print_info (LDV_INFO_IO, "file \"%s\" was written successfully", fname);
+        }
+    }
+
+  ldv_print_info (LDV_INFO_IO, "finish files creature");
+}
+
+void
 ldv_copy_file (const char *fname, FILE *stream)
 {
   FILE *fstream = NULL;
