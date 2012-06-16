@@ -3716,18 +3716,22 @@ yylex (void)
 
       do
         {
-          ldv_set_last_column (yylloc.last_column + 1);
-
-          /* Process a end of a line inside a body. */
+          /* Process the end of line inside a body. */
           if (c == '\n')
             {
               ldv_set_last_line (yylloc.last_line + 1);
               ldv_set_last_column (1);
+              /* Reset initial position as well. */
+              ldv_set_first_line (yylloc.last_line);
+              ldv_set_first_column (yylloc.last_column);
             }
 
           /* Process special patterns inside a body. */
           if (c == '$')
             {
+              /* Move first column pointer to the beginning of pattern. */
+              ldv_set_first_column (yylloc.last_column);
+
               id = ldv_create_id ();
 
               while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
@@ -3881,6 +3885,9 @@ yylex (void)
             brace_count++;
           else if (c == '}')
             brace_count--;
+
+          if (c != '\n')
+            ldv_set_last_column (yylloc.last_column + 1);
 
           if (c == '}' && !brace_count)
             break;
