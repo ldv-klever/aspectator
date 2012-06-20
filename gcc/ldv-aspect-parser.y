@@ -1582,6 +1582,8 @@ ldv_parse_unsigned_integer (unsigned int *integer)
   unsigned int unsigned_integer_read;
   int matches;
 
+  errno = 0;
+
   matches = fscanf(LDV_ASPECT_STREAM, "%u", &unsigned_integer_read);
 
   if (matches == 1)
@@ -1591,7 +1593,7 @@ ldv_parse_unsigned_integer (unsigned int *integer)
       /* Count the number of bytes read and return it. */
       return strlen(ldv_itoa(*integer));
     }
-  else if (!errno)
+  else if (errno != 0)
     fatal_error ("can%'t read aspect stream: %m");
 
   /* Don't assign any value to integer passed through parameter. 0 bytes were
@@ -1679,6 +1681,7 @@ yylex (void)
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
   ldv_id_ptr id = NULL;
+  unsigned int i;
   ldv_int_ptr integer = NULL;
   unsigned int arg_numb;
   ldv_ab_arg_ptr ab_arg_new = NULL;
@@ -2248,32 +2251,24 @@ yylex (void)
       ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", ldv_get_id_name (id));
       return LDV_ID;
     }
-
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
   /* Parse some integer number. It consists of digits. */
-  if (ISDIGIT (c))
+  if ((byte_count = ldv_parse_unsigned_integer (&i)))
     {
-      /* Return back the first digit of an integer. */
-      ldv_ungetc (c, LDV_ASPECT_STREAM);
-
       integer = ldv_create_int ();
-      integer->numb = 0;
+      integer->numb = i;
 
-      if ((byte_count = ldv_parse_unsigned_integer (&integer->numb)))
-        {
-          /* Move current position properly. */
-          ldv_set_last_column (yylloc.last_column + byte_count);
+      /* Move current position properly. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
 
-          /* Set a corresponding semantic value. */
-          yylval.integer = integer;
+      /* Set a corresponding semantic value. */
+      yylval.integer = integer;
 
-          ldv_print_info (LDV_INFO_LEX, "lex parsed integer number \"%d\"", ldv_get_int (integer));
+      ldv_print_info (LDV_INFO_LEX, "lex parsed integer number \"%d\"", ldv_get_int (integer));
 
-          return LDV_INT_NUMB;
-        }
-      else
-        fatal_error ("integer wasn't read by some reason");
-  }
-
+      return LDV_INT_NUMB;
+    }
+  c = ldv_getc (LDV_ASPECT_STREAM);
   ldv_set_last_column (yylloc.last_column + 1);
 
   /* After all parse multicharacter tokens. */
