@@ -85,6 +85,7 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static bool ldv_issymbol_id (int c);
+static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
 static ldv_pps_ptr_quals_ptr ldv_set_ptr_quals (ldv_pps_declspecs_ptr);
 static void yyerror (char const *, ...);
@@ -1575,6 +1576,29 @@ ldv_issymbol_id (int c)
   return false;
 }
 
+unsigned int
+ldv_parse_unsigned_integer (unsigned int *integer)
+{
+  unsigned int unsigned_integer_read;
+  int matches;
+
+  matches = fscanf(LDV_ASPECT_STREAM, "%u", &unsigned_integer_read);
+
+  if (matches == 1)
+    {
+      /* Assign read from stream integer to integer passed through parameter. */
+      *integer = unsigned_integer_read;
+      /* Count the number of bytes read and return it. */
+      return strlen(ldv_itoa(*integer));
+    }
+  else if (!errno)
+    fatal_error ("can%'t read aspect stream: %m");
+
+  /* Don't assign any value to integer passed through parameter. 0 bytes were
+     read from stream. */
+  return 0;
+}
+
 void
 ldv_print_info_location (yyltype loc, const char *info_kind, const char *format, ...)
 {
@@ -1659,6 +1683,7 @@ yylex (void)
   unsigned int arg_numb;
   ldv_ab_arg_ptr ab_arg_new = NULL;
   ldv_ab_general_ptr ab_general_new = NULL;
+  unsigned int byte_count;
 
   /* Skip nonsignificant whitespaces and move a current position. */
   while (1)
@@ -1804,7 +1829,7 @@ yylex (void)
 
               /* Update the current line with respect to a special line. */
               if (!line_numb
-                && (fscanf(LDV_ASPECT_STREAM, "%u", &line_numb) == 1))
+                && (ldv_parse_unsigned_integer (&line_numb) > 0))
                 {
                   ldv_set_last_line (line_numb);
                   ldv_set_last_column (1);
@@ -2227,27 +2252,26 @@ yylex (void)
   /* Parse some integer number. It consists of digits. */
   if (ISDIGIT (c))
     {
+      /* Return back the first digit of an integer. */
+      ldv_ungetc (c, LDV_ASPECT_STREAM);
+
       integer = ldv_create_int ();
       integer->numb = 0;
 
-      /* Get the rest of an integer number. */
-      do
+      if ((byte_count = ldv_parse_unsigned_integer (&integer->numb)))
         {
-          ldv_set_last_column (yylloc.last_column + 1);
-          integer->numb = 10 * integer->numb + (c - '0');
-          c = ldv_getc (LDV_ASPECT_STREAM);
+          /* Move current position properly. */
+          ldv_set_last_column (yylloc.last_column + byte_count);
+
+          /* Set a corresponding semantic value. */
+          yylval.integer = integer;
+
+          ldv_print_info (LDV_INFO_LEX, "lex parsed integer number \"%d\"", ldv_get_int (integer));
+
+          return LDV_INT_NUMB;
         }
-      while (ISDIGIT (c));
-
-      /* Back a last obtained nonidentidier symbol. */
-      ldv_ungetc (c, LDV_ASPECT_STREAM);
-
-      /* Set a corresponding semantic value. */
-      yylval.integer = integer;
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed integer number \"%d\"", ldv_get_int (integer));
-
-      return LDV_INT_NUMB;
+      else
+        fatal_error ("integer wasn't read by some reason");
   }
 
   ldv_set_last_column (yylloc.last_column + 1);

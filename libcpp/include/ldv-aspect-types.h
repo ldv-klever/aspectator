@@ -62,10 +62,10 @@ typedef ldv_string *ldv_str_ptr;
 /* These constants are for a list of strings. */
 enum { LDV_STRING_LEN_ADD = 10, LDV_STRING_LEN_START = 20 };
 
-/* Integer number = integer number. */
+/* Integer number = integer number (unsigned). */
 typedef struct ldv_int_internal
 {
-  int numb;
+  unsigned int numb;
 } ldv_int;
 typedef ldv_int *ldv_int_ptr;
 
