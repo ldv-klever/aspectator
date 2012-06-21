@@ -73,6 +73,40 @@ typedef struct YYLTYPE
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
 
+/* Relation between a keyword and a corresponding token. */
+struct ldv_keyword_token
+{
+  const char *keyword;
+  int token;
+};
+
+/* Map between keywords and tokens. */
+struct ldv_keyword_token ldv_keyword_token_map [] = {
+    {"typedef", LDV_TYPEDEF}
+  , {"extern", LDV_EXTERN}
+  , {"static", LDV_STATIC}
+  , {"auto", LDV_AUTO}
+  , {"register", LDV_REGISTER}
+  , {"void", LDV_VOID}
+  , {"char", LDV_CHAR}
+  , {"int", LDV_INT}
+  , {"float", LDV_FLOAT}
+  , {"double", LDV_DOUBLE}
+  , {"_Bool", LDV_BOOL}
+  , {"_Complex", LDV_COMPLEX}
+  , {"short", LDV_SHORT}
+  , {"long", LDV_LONG}
+  , {"signed", LDV_SIGNED}
+  , {"unsigned", LDV_UNSIGNED}
+  , {"struct", LDV_STRUCT}
+  , {"union", LDV_UNION}
+  , {"enum", LDV_ENUM}
+  , {"const", LDV_CONST}
+  , {"restrict", LDV_RESTRICT}
+  , {"volatile", LDV_VOLATILE}
+  , {"inline", LDV_INLINE}
+  , {NULL, 0}
+};
 
 /* The named pointcuts list. */
 static ldv_list_ptr ldv_n_pointcut_list = NULL;
@@ -84,7 +118,8 @@ static bool ldv_istype_spec = true;
 static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
-static bool ldv_issymbol_id (int c);
+static int ldv_get_id_kind (char *id);
+static unsigned int ldv_parse_id (char *id);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
 static ldv_pps_ptr_quals_ptr ldv_set_ptr_quals (ldv_pps_declspecs_ptr);
@@ -1567,13 +1602,66 @@ ldv_create_pp_signature (void)
   return pp_signature;
 }
 
-bool
-ldv_issymbol_id (int c)
+int
+ldv_get_id_kind (char *id)
 {
-  if (ISALPHA (c) || ISDIGIT (c) || c == '_')
-    return true;
+  int i;
 
-  return false;
+  /* Check whether an identifier is a C declaration specifier keyword. */
+  for (i = 0; ldv_keyword_token_map[i].keyword; i++)
+    {
+      if (!strcmp(id, ldv_keyword_token_map[i].keyword))
+        {
+          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", id);
+          return ldv_keyword_token_map[i].token;
+        }
+    }
+
+  /* A typedef name is encountered when type specifiers are parsed and a
+     nonkeyword identifier was met. */
+  if (!ldv_istype_spec)
+    {
+      ldv_istype_spec = true;
+
+      ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", id);
+      return LDV_TYPEDEF_NAME;
+    }
+
+  ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
+  return LDV_ID;
+}
+
+/* Correct identifier or C keyword begins with any character (in a low or an
+   upper case) or '_'.  Subsequent identifier symbols are characters, digits and
+   '_'. */
+unsigned int
+ldv_parse_id (char *id)
+{
+  int c;
+  unsigned int byte_count = 0;
+  ldv_str_ptr str = NULL;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  if (ISIDST (c))
+    {
+      str = ldv_create_string ();
+
+      /* Get the rest of an identifier. */
+      do
+        {
+          byte_count++;
+          ldv_putc_string (c, str);
+          c = ldv_getc (LDV_ASPECT_STREAM);
+        }
+      while (ISIDNUM (c));
+
+      /* Assign read identifier to identifier passed through parameter. */
+      id = ldv_get_str (str);
+      return byte_count;
+    }
+
+  return 0;
 }
 
 unsigned int
@@ -1680,6 +1768,7 @@ yylex (void)
   int brace_count = 0;
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
+  char *str = NULL;
   ldv_id_ptr id = NULL;
   unsigned int i;
   ldv_int_ptr integer = NULL;
@@ -1901,7 +1990,7 @@ yylex (void)
                 {
                   /* Stop and process an obtained pattern when an identifier is
                      complited. */
-                  if (!ldv_issymbol_id (c))
+                  if (!ISIDNUM (c))
                     {
                       /* Compare an initial part of a pattern with
                          'arg'. '\d+' must foolow 'arg'. */
@@ -2099,167 +2188,32 @@ yylex (void)
       return LDV_FILE;
     }
 
-  /* Parse some identifier or a C keyword. It begins with any character (in a
-     low or an upper case) or '_'.  Subsequent identifier symbols are an
-     characters, any digits and '_'. */
-  if (ISALPHA (c) || c == '_' || c == '$')
+  /* Parse some identifier or a C keyword. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+  if ((byte_count = ldv_parse_id (str)))
     {
+      /* Move current position properly. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
+
+      /* Initialize corresponding internal structure. */
       id = ldv_create_id ();
-
-      /* Get the rest of an identifier. */
-      do
-        {
-          ldv_set_last_column (yylloc.last_column + 1);
-          ldv_putc_id (c, id);
-          c = ldv_getc (LDV_ASPECT_STREAM);
-        }
-      while (ldv_issymbol_id (c) || c == '$');
-
-      /* Back a last obtained nonidentidier symbol. */
-      ldv_ungetc (c, LDV_ASPECT_STREAM);
+      ldv_puts_id (str, id);
 
       /* Set a corresponding semantic value. */
       yylval.id = id;
 
-      /* Check whether an identifier is a C declaration specifier keyword. */
-      if (!strcmp (ldv_get_id_name (id), "typedef"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_TYPEDEF;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "extern"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_EXTERN;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "static"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_STATIC;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "auto"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_AUTO;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "register"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_REGISTER;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "void"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_VOID;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "char"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_CHAR;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "int"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_INT;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "float"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_FLOAT;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "double"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_DOUBLE;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "_Bool"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_BOOL;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "_Complex"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_COMPLEX;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "short"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_SHORT;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "long"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_LONG;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "signed"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_SIGNED;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "unsigned"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_UNSIGNED;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "struct"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_STRUCT;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "union"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_UNION;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "enum"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_ENUM;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "const"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_CONST;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "restrict"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_RESTRICT;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "volatile"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_VOLATILE;
-        }
-      else if (!strcmp (ldv_get_id_name (id), "inline"))
-        {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", ldv_get_id_name (id));
-          return LDV_INLINE;
-        }
-
-      /* A typedef name is encountered when type specifiers are parsed and a
-         nonkeyword identifier was met. */
-      if (!ldv_istype_spec)
-        {
-          ldv_istype_spec = true;
-
-          ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", ldv_get_id_name (id));
-          return LDV_TYPEDEF_NAME;
-        }
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", ldv_get_id_name (id));
-      return LDV_ID;
+      return ldv_get_id_kind (str);
     }
-  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
   /* Parse some integer number. It consists of digits. */
   if ((byte_count = ldv_parse_unsigned_integer (&i)))
     {
-      integer = ldv_create_int ();
-      integer->numb = i;
-
       /* Move current position properly. */
       ldv_set_last_column (yylloc.last_column + byte_count);
+
+      /* Initialize corresponding internal structure. */
+      integer = ldv_create_int ();
+      integer->numb = i;
 
       /* Set a corresponding semantic value. */
       yylval.integer = integer;
@@ -2268,10 +2222,10 @@ yylex (void)
 
       return LDV_INT_NUMB;
     }
-  c = ldv_getc (LDV_ASPECT_STREAM);
-  ldv_set_last_column (yylloc.last_column + 1);
 
   /* After all parse multicharacter tokens. */
+  c = ldv_getc (LDV_ASPECT_STREAM);
+  ldv_set_last_column (yylloc.last_column + 1);
   if (c == '|' || c == '&' || c == '.')
     {
       c_next = ldv_getc (LDV_ASPECT_STREAM);
