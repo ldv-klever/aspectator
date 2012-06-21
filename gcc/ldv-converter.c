@@ -195,7 +195,7 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
       break;
 
     default:
-      fatal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
+      LDV_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
 
   return declarator_list;
@@ -228,7 +228,7 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
       return ldv_convert_internal_to_declspecs (type->ptr_type);
 
     default:
-      fatal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
+      LDV_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
 }
 

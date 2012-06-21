@@ -3610,7 +3610,7 @@ ldv-io.o : ldv-io.c \
   ldv-core.h ldv-io.h ldv-opts.h
 ldv-opts.o : ldv-opts.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) $(C_COMMON_H) toplev.h \
-  ldv-opts.h ldv-io.h
+  ldv-core.h ldv-opts.h ldv-io.h
 ldv-pointcut-matcher.o : ldv-pointcut-matcher.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h $(TREE_H) c-lang.h $(C_TREE_H) tree-iterator.h function.h \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \

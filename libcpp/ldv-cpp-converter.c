@@ -152,7 +152,7 @@ ldv_convert_declspecs_declarator_to_internal (ldv_pps_declspecs_ptr declspecs, l
       break;
 
     default:
-      ldv_cpp_fatal_error ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator_cur->pps_declarator_kind);
+      LDV_CPP_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator_cur->pps_declarator_kind);
     }
 
   return type;
@@ -186,7 +186,7 @@ ldv_convert_func_signature_to_internal (ldv_pps_decl_ptr pps_func)
       return i_func;
     }
 
-  ldv_cpp_fatal_error ("can't convert function signature from declaration form to the internal type representation");
+  LDV_CPP_FATAL_ERROR ("can't convert function signature from declaration form to the internal type representation");
   return NULL;
 }
 
@@ -283,7 +283,9 @@ ldv_convert_typedecl_signature_to_internal (ldv_pps_decl_ptr pps_typedecl)
   else if (pps_declspecs->isenum)
     i_typedecl->itd_kind = LDV_ITD_ENUM;
   else
-    ldv_cpp_fatal_error ("incorrect type declaration information kind \"%d\" is used", i_typedecl->itd_kind);
+    {
+      LDV_CPP_FATAL_ERROR ("incorrect type declaration information kind \"%d\" is used", i_typedecl->itd_kind);
+    }
 
   return i_typedecl;
 }
@@ -316,7 +318,7 @@ ldv_convert_var_signature_to_internal (ldv_pps_decl_ptr pps_var)
       return i_var;
     }
 
-  ldv_cpp_fatal_error ("can't convert variable signature from declaration form to the internal type representation");
+  LDV_CPP_FATAL_ERROR ("can't convert variable signature from declaration form to the internal type representation");
 
   return NULL;
 }

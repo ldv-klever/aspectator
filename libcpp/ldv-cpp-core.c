@@ -67,7 +67,7 @@ ldv_cpp_get_body_text (ldv_ab_ptr body)
   if (body)
     return ldv_cpp_get_str (body->ab_text);
 
-  ldv_cpp_fatal_error ("body pointer wasn't initialized");
+  LDV_CPP_FATAL_ERROR ("body pointer wasn't initialized");
 
   return NULL;
 }
@@ -78,7 +78,7 @@ ldv_cpp_get_file_name (ldv_file_ptr file)
   if (file)
     return ldv_cpp_get_str (file->file_name);
 
-  ldv_cpp_fatal_error ("file pointer wasn't initialized");
+  LDV_CPP_FATAL_ERROR ("file pointer wasn't initialized");
 
   return NULL;
 }
@@ -89,7 +89,7 @@ ldv_cpp_get_id_name (ldv_id_ptr id)
   if (id)
     return ldv_cpp_get_str (id->id_name);
 
-  ldv_cpp_fatal_error ("id pointer wasn't initialized");
+  LDV_CPP_FATAL_ERROR ("id pointer wasn't initialized");
 
   return NULL;
 }
@@ -100,7 +100,7 @@ ldv_cpp_get_str (ldv_str_ptr str)
   if (str)
     return str->text;
 
-  ldv_cpp_fatal_error ("string pointer wasn't initialized");
+  LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
 
   return NULL;
 }
@@ -238,7 +238,7 @@ ldv_trunkate_braces (char *str)
         }
     }
 
-  ldv_cpp_fatal_error ("can't trunkate braces from \"%s\" string", str);
+  LDV_CPP_FATAL_ERROR ("can't trunkate braces from \"%s\" string", str);
 
   return NULL;
 }

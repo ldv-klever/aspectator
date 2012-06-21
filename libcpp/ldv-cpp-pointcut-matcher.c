@@ -174,13 +174,13 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
           break;
 
         default:
-          ldv_cpp_fatal_error ("incorrect primitive pointcut kind \"%d\" is used", pp_kind);
+          LDV_CPP_FATAL_ERROR ("incorrect primitive pointcut kind \"%d\" is used", pp_kind);
         }
 
       break;
 
     default:
-      ldv_cpp_fatal_error ("incorrect composite pointcut kind \"%d\" is used", c_pointcut->cp_kind);
+      LDV_CPP_FATAL_ERROR ("incorrect composite pointcut kind \"%d\" is used", c_pointcut->cp_kind);
     }
 
   return false;
@@ -735,7 +735,9 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                  be just 1 since there isn't continuos sequences of '..'
                  wildcards in the matching table at the moment. */
               if (j == 0 && i > 0 && !param_matching_table[i - 1][j])
-                ldv_cpp_fatal_error ("Can't find 'true' path in the first column of matching table");
+                {
+                  LDV_CPP_FATAL_ERROR ("Can't find 'true' path in the first column of matching table");
+                }
 
               /* "Next parameter". */
               if (i > 0 && j > 0 && param_matching_table[i - 1][j - 1])
@@ -750,7 +752,9 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
               else if (j > 0 && param_matching_table[i][j - 1])
                 j--;
               else
-                ldv_cpp_fatal_error ("Can't find 'true' path in the matching table");
+                {
+                  LDV_CPP_FATAL_ERROR ("Can't find 'true' path in the matching table");
+                }
 
               /* Push a current element of the matching table to the beginning
                  of the 'true' way. */
@@ -948,7 +952,9 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 /* Delete a '..' wildcard list element. */
                 ldv_list_delete (&second->param, param_second_list);
               else
-                ldv_cpp_fatal_error ("Meet something that isn't '..' wildcard that catches nothing at the end of arguments lists");
+                {
+                  LDV_CPP_FATAL_ERROR ("Meet something that isn't '..' wildcard that catches nothing at the end of arguments lists");
+                }
             }
 
           if (ldv_cpp_isinfo_matching_table)
@@ -976,7 +982,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       break;
 
     default:
-      ldv_cpp_fatal_error ("incorrect type information kind \"%d\" is used", first->it_kind);
+      LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", first->it_kind);
     }
 
   /* Types are equal. */

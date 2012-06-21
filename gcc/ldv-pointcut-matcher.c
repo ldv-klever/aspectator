@@ -866,7 +866,7 @@ ldv_match_typedecl (tree t, const char *file_path)
       break;
 
     default:
-      fatal_error ("incorrect type type");
+      LDV_FATAL_ERROR ("incorrect type type");
     }
 
   typedecl->file_path = file_path;

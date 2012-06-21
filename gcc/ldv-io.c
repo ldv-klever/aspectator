@@ -102,12 +102,16 @@ ldv_create_files (void)
           fcontent = ldv_trunkate_braces (fcontent);
 
           if ((fstream = fopen (fname, "w")) == NULL)
-            fatal_error ("can%'t open file \"%s\" for write: %m", fname);
+            {
+              LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", fname);
+            }
 
           ldv_print_info (LDV_INFO_IO, "file \"%s\" was created successfully", fname);
 
           if (fputs (fcontent, fstream) == EOF)
-            fatal_error ("can%'t write to file \"%s\": %m", fname);
+            {
+              LDV_FATAL_ERROR ("can%'t write to file \"%s\": %m", fname);
+            }
 
           fclose (fstream);
 
@@ -125,7 +129,9 @@ ldv_copy_file (const char *fname, FILE *stream)
   int c;
 
   if ((fstream = fopen (fname, "r")) == NULL)
-    fatal_error ("can%'t open file \"%s\" for read: %m", fname);
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", fname);
+    }
 
   ldv_print_info (LDV_INFO_IO, "file \"%s\" that content will be copied was successfully opened for write", fname);
 
@@ -359,7 +365,9 @@ ldv_open_advice_weaved_stream (void)
         }
 
       if ((ldv_advice_weaved_stream = fopen (advice_weaved_fname, "w")) == NULL)
-        fatal_error ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
+        {
+          LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
+        }
 
       ldv_print_info (LDV_INFO_IO, "advice weaved file \"%s\" was successfully opened for write", advice_weaved_fname);
     }
@@ -373,7 +381,9 @@ ldv_open_advice_weaved_stream (void)
       sprintf (advice_weaved_fname, "%s%s%s", ldv_dir_res, fname, LDV_ADVICE_WEAVED_EXTENSION);
 
       if ((ldv_advice_weaved_stream = fopen (advice_weaved_fname, "w")) == NULL)
-        fatal_error ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
+        {
+          LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
+        }
 
       ldv_print_info (LDV_INFO_IO, "advice weaved file \"%s\" was successfully opened for write", advice_weaved_fname);
     }
@@ -383,7 +393,9 @@ void
 ldv_open_aspect_stream (void)
 {
   if ((ldv_aspect_stream = fopen (ldv_aspect_fname, "r")) == NULL)
-    fatal_error ("can%'t open file \"%s\" for read: %m", ldv_aspect_fname);
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", ldv_aspect_fname);
+    }
 
   ldv_print_info (LDV_INFO_IO, "aspect file \"%s\" was successfully opened for read", ldv_aspect_fname);
 }
@@ -392,7 +404,9 @@ void
 ldv_open_main_stream (void)
 {
   if ((ldv_main_stream = fopen (main_input_filename, "r")) == NULL)
-    fatal_error ("can%'t open file \"%s\" for read: %m", main_input_filename);
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", main_input_filename);
+    }
 
   ldv_print_info (LDV_INFO_IO, "main file \"%s\" was successfully opened for read", main_input_filename);
 }
@@ -439,14 +453,18 @@ ldv_open_preprocessed_stream (bool iswrite)
   if (iswrite)
     {
       if ((ldv_preprocessed_stream = fopen (preprocessed_fname, "w+")) == NULL)
-        fatal_error ("can%'t open file \"%s\" for read and write: %m", preprocessed_fname);
+        {
+          LDV_FATAL_ERROR ("can%'t open file \"%s\" for read and write: %m", preprocessed_fname);
+        }
 
       ldv_print_info (LDV_INFO_IO, "Preprocessed file \"%s\" was successfully opened for read and write", preprocessed_fname);
     }
   else
     {
       if ((ldv_preprocessed_stream = fopen (preprocessed_fname, "r")) == NULL)
-        fatal_error ("can%'t open file \"%s\" for read: %m", preprocessed_fname);
+        {
+          LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", preprocessed_fname);
+        }
 
       ldv_print_info (LDV_INFO_IO, "Preprocessed file \"%s\" was successfully opened for read", preprocessed_fname);
     }
@@ -472,7 +490,9 @@ ldv_open_file_streams (void)
         }
     }
   else
-    fatal_error ("ldv stage '%d' wasn't processed", ldv_get_ldv_stage ());
+    {
+      LDV_FATAL_ERROR ("ldv stage '%d' wasn't processed", ldv_get_ldv_stage ());
+    }
 }
 
 void
@@ -620,7 +640,9 @@ ldv_putc (int c, FILE *stream)
 {
   /* Finish work if can not write a given character to a given stream. */
   if (putc (c, stream) != c)
-    fatal_error ("character \"%c\" wasn't put to stream", c);
+    {
+      LDV_FATAL_ERROR ("character \"%c\" wasn't put to stream", c);
+    }
 
   ldv_print_info (LDV_INFO_IO, "put character \"%c\"", ldv_end_of_line (c));
 }
@@ -631,7 +653,9 @@ ldv_puts (const char *str, FILE *stream)
   const char *c = NULL;
 
   if (!str)
-    fatal_error ("symbol pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
+    }
 
   /* Put each symbol of a string to a stream. */
   for (c = str; c && *c; c++)
@@ -645,7 +669,9 @@ ldv_putsn (const char *str, FILE *stream, int n)
   int i;
 
   if (!str)
-    fatal_error ("symbol pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
+    }
 
   /* Put each symbol of a string to a stream. */
   for (c = str, i = 0; c && *c && i < n; c++, i++)
@@ -666,7 +692,9 @@ ldv_ungetc (int c, FILE *stream)
 {
   /* Finish work if can not back a character to a stream. */
   if (ungetc (c, stream) != c)
-    fatal_error ("character \"%c\" wasn't back to stream", c);
+    {
+      LDV_FATAL_ERROR ("character \"%c\" wasn't back to stream", c);
+    }
 
   ldv_print_info (LDV_INFO_IO, "unget character \"%c\"", ldv_end_of_line (c));
 }

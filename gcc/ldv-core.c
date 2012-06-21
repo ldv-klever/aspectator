@@ -197,8 +197,7 @@ ldv_create_str (ldv_token_k token_kind)
       break;
 
     default:
-      fatal_error ("unrecognize ldv token kind \"%d\"", token_kind);
-      break;
+      LDV_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
     }
 
   string = XCNEW (ldv_string);
@@ -243,7 +242,9 @@ ldv_delete_body (ldv_ab_ptr body)
       ldv_print_info (LDV_INFO_MEM, "body memory was free");
     }
   else
-    fatal_error ("body pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("body pointer wasn't initialized");
+    }
 }
 
 void
@@ -257,7 +258,9 @@ ldv_delete_file (ldv_file_ptr file)
       ldv_print_info (LDV_INFO_MEM, "file memory was free");
     }
   else
-    fatal_error ("file pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("file pointer wasn't initialized");
+    }
 }
 
 void
@@ -271,7 +274,9 @@ ldv_delete_id (ldv_id_ptr id)
       ldv_print_info (LDV_INFO_MEM, "identifier memory was free");
     }
   else
-    fatal_error ("id pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("id pointer wasn't initialized");
+    }
 }
 
 void
@@ -283,7 +288,9 @@ ldv_delete_int (ldv_int_ptr integer)
       ldv_print_info (LDV_INFO_MEM, "integer number memory was free");
     }
   else
-    fatal_error ("integer pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("integer pointer wasn't initialized");
+    }
 }
 
 void
@@ -298,7 +305,9 @@ ldv_delete_str (ldv_str_ptr str)
       ldv_print_info (LDV_INFO_MEM, "string memory was free");
     }
   else
-    fatal_error ("string pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 }
 
 void
@@ -312,7 +321,9 @@ ldv_delete_text (ldv_text_ptr text)
       ldv_print_info (LDV_INFO_MEM, "text memory was free");
     }
   else
-    fatal_error ("text pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
 }
 
 const char *
@@ -357,7 +368,9 @@ ldv_get_int (ldv_int_ptr integer)
   if (integer)
     return integer->numb;
   else
-    fatal_error ("integer pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("integer pointer wasn't initialized");
+    }
 }
 
 char *
@@ -372,7 +385,9 @@ ldv_get_text (ldv_text_ptr text)
   if (text)
     return ldv_get_str (text->text);
   else
-    fatal_error ("text pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
 }
 
 ldv_pps_declspecs_ptr
@@ -444,7 +459,9 @@ ldv_putc_body (unsigned char c, ldv_ab_ptr body)
   if (body)
     ldv_putc_str (c, body->ab_text, LDV_T_B);
   else
-    fatal_error ("body pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("body pointer wasn't initialized");
+    }
 }
 
 void
@@ -453,7 +470,9 @@ ldv_putc_file (unsigned char c, ldv_file_ptr file)
   if (file)
     ldv_putc_str (c, file->file_name, LDV_T_FILE);
   else
-    fatal_error ("file pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("file pointer wasn't initialized");
+    }
 }
 
 void
@@ -462,7 +481,9 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
   if (id)
     ldv_putc_str (c, id->id_name, LDV_T_ID);
   else
-    fatal_error ("id pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("id pointer wasn't initialized");
+    }
 }
 
 void
@@ -472,7 +493,9 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
   unsigned int len_add;
 
   if (!string)
-    fatal_error ("string pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 
   /* An additional string length depends on a ldv token kind. */
   switch (token_kind)
@@ -498,8 +521,7 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
       break;
 
     default:
-      fatal_error ("unrecognize ldv token kind \"%d\"", token_kind);
-      break;
+      LDV_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
     }
 
   /* If a character can be added to a current string text, do it. */
@@ -534,7 +556,9 @@ ldv_putc_string (unsigned char c, ldv_str_ptr string)
   if (string)
     ldv_putc_str (c, string, LDV_T_STRING);
   else
-    fatal_error ("string pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 }
 
 void
@@ -543,7 +567,9 @@ ldv_putc_text (unsigned char c, ldv_text_ptr text)
   if (text)
     ldv_putc_str (c, text->text, LDV_T_TEXT);
   else
-    fatal_error ("text pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
 }
 
 void
@@ -552,7 +578,9 @@ ldv_puts_id (const char *str, ldv_id_ptr id)
   if (id)
     ldv_puts_str (str, id->id_name, LDV_T_ID);
   else
-    fatal_error ("id pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("id pointer wasn't initialized");
+    }
 }
 
 void
@@ -561,10 +589,14 @@ ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
   const char *c = NULL;
 
   if (!str)
-    fatal_error ("symbol pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
+    }
 
   if (!string)
-    fatal_error ("string pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 
   /* Put every symbol of a string to an internal string. */
   for (c = str; c && *c; c++)
@@ -577,7 +609,9 @@ ldv_puts_string (const char *str, ldv_str_ptr string)
   if (string)
     ldv_puts_str (str, string, LDV_T_STRING);
   else
-    fatal_error ("string pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 }
 
 void
@@ -586,5 +620,7 @@ ldv_puts_text (const char *str, ldv_text_ptr text)
   if (text)
     ldv_puts_str (str, text->text, LDV_T_TEXT);
   else
-    fatal_error ("text pointer wasn't initialized");
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
 }

@@ -141,7 +141,7 @@ ldv_add_id_declarator (ldv_pps_decl_ptr decl, const char *name)
       return ;
     }
 
-  fatal_error ("can't add identifier declarator to the end of declarator chain");
+  LDV_FATAL_ERROR ("can't add identifier declarator to the end of declarator chain");
 }
 
 char *
@@ -219,7 +219,7 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
         }
     }
 
-  fatal_error ("can't remove identifier declarator from the end of declarator chain");
+  LDV_FATAL_ERROR ("can't remove identifier declarator from the end of declarator chain");
 }
 
 const char *
@@ -240,7 +240,7 @@ ldv_get_arg_type_name (unsigned int arg_numb)
         return ldv_get_str (str);
     }
 
-  fatal_error ("required argument type name has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  LDV_FATAL_ERROR ("required argument type name has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 int
@@ -269,7 +269,7 @@ ldv_get_arg_size (unsigned int arg_numb)
         }
     }
 
-  fatal_error ("required argument size has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  LDV_FATAL_ERROR ("required argument size has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *
@@ -298,7 +298,7 @@ ldv_get_arg_value (unsigned int arg_numb)
         }
     }
 
-  fatal_error ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *
@@ -319,7 +319,7 @@ ldv_get_param_name (unsigned int param_numb)
         return ldv_get_str (param_str);
     }
 
-  fatal_error ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_numb, (i - 1));
+  LDV_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_numb, (i - 1));
 }
 
 bool
@@ -387,7 +387,9 @@ ldv_make_aux_func_param_list (ldv_i_type_ptr func_type)
   if ((param_list
     && (param = (ldv_i_param_ptr) ldv_list_get_data (param_list)) && !ldv_isvoid (param->type))
     || str_list)
-    fatal_error ("the numbers of function parameters and auxiliary parameter names don't coincide");
+    {
+      LDV_FATAL_ERROR ("the numbers of function parameters and auxiliary parameter names don't coincide");
+    }
 }
 
 void
@@ -551,7 +553,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_info (LDV_INFO_WEAVE, "body pattern aspect function name \"%s\" was weaved", ldv_aspect_func_name);
                 }
               else
-                fatal_error ("body aspect function name pattern is used in case when there is no function name");
+                {
+                  LDV_FATAL_ERROR ("body aspect function name pattern is used in case when there is no function name");
+                }
             }
         }
 
@@ -571,7 +575,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_info (LDV_INFO_WEAVE, "body pattern function name \"%s\" was weaved", ldv_func_name);
                 }
               else
-                fatal_error ("body function name pattern is used in case when there is no function name");
+                {
+                  LDV_FATAL_ERROR ("body function name pattern is used in case when there is no function name");
+                }
             }
         }
 
@@ -883,7 +889,7 @@ ldv_print_direct_declarator (ldv_list_ptr declarator_list)
       break;
 
     default:
-      fatal_error ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
+      LDV_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
     }
 }
 
@@ -925,7 +931,7 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
         break;
 
       default:
-        fatal_error ("incorrect type declaration information kind \"%d\" is used", typedecl->itd_kind);
+        LDV_FATAL_ERROR ("incorrect type declaration information kind \"%d\" is used", typedecl->itd_kind);
     }
 
   ldv_print_str (typedecl->name);
@@ -1288,7 +1294,9 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Place (aspect) function declarations immediately after the end of
              a function definition, i.e. after a close brace. */
           if (!close_brace)
-            fatal_error ("for function \"%s\" location of close brace isn't specified", func_source->name);
+            {
+              LDV_FATAL_ERROR ("for function \"%s\" location of close brace isn't specified", func_source->name);
+            }
 
           func_decl_for_print_new->file = (*close_brace).file;
           aspect_func_decl_for_print_new->file = (*close_brace).file;
@@ -1462,7 +1470,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             break;
 
           default:
-            fatal_error ("incorrect advice kind \"%d\" is used", a_kind);
+            LDV_FATAL_ERROR ("incorrect advice kind \"%d\" is used", a_kind);
           }
 
         body_text = ldv_copy_str (ldv_get_body_text (ldv_i_match->a_definition->a_body));
@@ -1599,7 +1607,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       break;
 
     default:
-      fatal_error ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
+      LDV_FATAL_ERROR ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
     }
 }
 

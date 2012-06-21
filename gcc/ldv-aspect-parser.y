@@ -282,7 +282,7 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
       if (strcmp ("pointcut", p_keyword))
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect keyword \"%s\" was used", p_keyword);
-          fatal_error ("use one of the following keywords: \"pointcut\", \"before\", \"after\", \"around\", \"new\"");
+          LDV_FATAL_ERROR ("use one of the following keywords: \"pointcut\", \"before\", \"after\", \"around\", \"new\"");
         }
 
       /* Delete an unneeded identifier. */
@@ -348,7 +348,7 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect advice declaration kind \"%s\" was used", a_kind);
-          fatal_error ("use \"after\", \"around\", \"before\", \"new\" advice declaration kind");
+          LDV_FATAL_ERROR ("use \"after\", \"around\", \"before\", \"new\" advice declaration kind");
         }
 
       /* Set a composite pointcut from a corresponding rule. */
@@ -394,7 +394,9 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       if (c_pointcut)
         $$ = c_pointcut;
       else
-        fatal_error ("undefined pointcut with name \"%s\" was used", p_name);
+        {
+          LDV_FATAL_ERROR ("undefined pointcut with name \"%s\" was used", p_name);
+        }
     }
   | primitive_pointcut /* The primitive poincut form is described below. */
     {
@@ -515,7 +517,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect primitive pointcut kind \"%s\" was used", pp_kind);
-          fatal_error ("use \"call\", \"define\", \"execution\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
+          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
         }
 
       /* Set a primitive pointcut signature from a corresponding rule. */
@@ -732,7 +734,9 @@ c_declaration:
         }
 
       if (!isdecl_kind_specified)
-        fatal_error ("declaration kind can't be determined");
+        {
+          LDV_FATAL_ERROR ("declaration kind can't be determined");
+        }
     };
 
 c_declaration_specifiers:
@@ -1570,10 +1574,10 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
       break;
 
     default:
-      fatal_error ("incorrect primitive pointcut signature kind \"%d\" is used", pps_kind);
+      LDV_FATAL_ERROR ("incorrect primitive pointcut signature kind \"%d\" is used", pps_kind);
     }
 
-  fatal_error ("incorrect primitive pointcut kind \"%d\" is used with primitive pointcut signature kind \"%d\"", pp_kind, pps_kind);
+  LDV_FATAL_ERROR ("incorrect primitive pointcut kind \"%d\" is used with primitive pointcut signature kind \"%d\"", pp_kind, pps_kind);
 }
 
 ldv_cp_ptr
@@ -1682,7 +1686,9 @@ ldv_parse_unsigned_integer (unsigned int *integer)
       return strlen(ldv_itoa(*integer));
     }
   else if (errno != 0)
-    fatal_error ("can%'t read aspect stream: %m");
+    {
+      LDV_FATAL_ERROR ("can%'t read aspect stream: %m");
+    }
 
   /* Don't assign any value to integer passed through parameter. 0 bytes were
      read from stream. */
@@ -1705,7 +1711,9 @@ ldv_print_info_location (yyltype loc, const char *info_kind, const char *format,
         return;
     }
   else if (strcmp (info_kind, LDV_ERROR_BISON) && strcmp (info_kind, LDV_ERROR_LEX))
-    fatal_error ("don't use location tracking beyond lex or bison information");
+    {
+      LDV_FATAL_ERROR ("don't use location tracking beyond lex or bison information");
+    }
 
   va_start (ap, format);
   /* Use a previous last line since a current value points to a following
@@ -1755,7 +1763,7 @@ yyerror (char const *format, ...)
 
   ldv_print_info_location (yylloc, LDV_ERROR_BISON, "aspect file processed has incorrect syntax");
 
-  fatal_error ("terminate work after syntax error happened");
+  LDV_FATAL_ERROR ("terminate work after syntax error happened");
 }
 
 int
@@ -2118,7 +2126,7 @@ yylex (void)
                       else
                         {
                           ldv_print_info_location (yylloc, LDV_ERROR_LEX, "incorrect body pattern \"%s\" was used", ldv_get_id_name (id));
-                          fatal_error ("use \"argN\", \"arg_typeN\", \"arg_sizeN\", \"arg_valueN\", \"func_name\", \"aspect_func_name\", \"proceed\", \"res\", \"ret_type\" body patterns");
+                          LDV_FATAL_ERROR ("use \"argN\", \"arg_typeN\", \"arg_sizeN\", \"arg_valueN\", \"func_name\", \"aspect_func_name\", \"proceed\", \"res\", \"ret_type\" body patterns");
                         }
 
                       break;
@@ -2177,7 +2185,9 @@ yylex (void)
         ldv_putc_file (c, file);
 
         if (c == '\n')
-          fatal_error ("file path isn't terminated with quote - it's terminated with the end of line");
+          {
+            LDV_FATAL_ERROR ("file path isn't terminated with quote - it's terminated with the end of line");
+          }
         }
       while (c != EOF);
 

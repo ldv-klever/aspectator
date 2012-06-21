@@ -57,7 +57,9 @@ ldv_list_delete (ldv_list_ptr_ptr list_first, ldv_list_ptr list)
   ldv_list_ptr list_prev;
 
   if (!list_first || !list)
-    ldv_cpp_fatal_error ("can't delete element of empty list or for empty list element");
+    {
+      LDV_CPP_FATAL_ERROR ("can't delete element of empty list or for empty list element");
+    }
 
   /* Return 0 if a first element of a list is deleted. */
   if (*list_first == list)
@@ -96,10 +98,14 @@ void *
 ldv_list_get_data (ldv_list_ptr list)
 {
   if (!list)
-    ldv_cpp_fatal_error ("can't get data of empty list");
+    {
+      LDV_CPP_FATAL_ERROR ("can't get data of empty list");
+    }
 
   if (!list->data)
-    ldv_cpp_fatal_error ("can't get empty data of list");
+    {
+      LDV_CPP_FATAL_ERROR ("can't get empty data of list");
+    }
 
   return list->data;
 }
@@ -108,7 +114,9 @@ ldv_list_ptr
 ldv_list_get_next (ldv_list_ptr list)
 {
   if (!list)
-    ldv_cpp_fatal_error ("can't get next element of empty list");
+    {
+      LDV_CPP_FATAL_ERROR ("can't get next element of empty list");
+    }
 
   return list->next;
 }
@@ -119,7 +127,9 @@ ldv_list_get_last (ldv_list_ptr list)
   ldv_list_ptr list_cur = NULL;
 
   if (!list)
-    ldv_cpp_fatal_error ("can't get the last element of empty list");
+    {
+      LDV_CPP_FATAL_ERROR ("can't get the last element of empty list");
+    }
 
   /* Walk to a last element of a list and return it. */
   for (list_cur = list
@@ -135,7 +145,9 @@ ldv_list_get_prev (ldv_list_ptr list_first, ldv_list_ptr list)
   ldv_list_ptr list_cur = NULL;
 
   if (!list_first || !list)
-    ldv_cpp_fatal_error ("can't get previous element of empty list or for empty list element");
+    {
+      LDV_CPP_FATAL_ERROR ("can't get previous element of empty list or for empty list element");
+    }
 
   if (list_first == list)
     return list_first;
@@ -148,7 +160,7 @@ ldv_list_get_prev (ldv_list_ptr list_first, ldv_list_ptr list)
         return list_cur;
     }
 
-  ldv_cpp_fatal_error ("can't get the previous element of list");
+  LDV_CPP_FATAL_ERROR ("can't get the previous element of list");
 
   return NULL;
 }
@@ -248,7 +260,9 @@ void
 ldv_list_set_data (ldv_list_ptr list, void *data)
 {
   if (!list)
-    ldv_cpp_fatal_error ("can't set data for empty list");
+    {
+      LDV_CPP_FATAL_ERROR ("can't set data for empty list");
+    }
 
   list->data = data;
 }

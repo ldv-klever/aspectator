@@ -26,6 +26,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "diagnostic-core.h"
 #include "toplev.h"
 
+#include "ldv-core.h"
 #include "ldv-io.h"
 #include "ldv-opts.h"
 
@@ -129,10 +130,14 @@ ldv_handle_options (void)
               ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
             }
           else
-            fatal_error ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_STAGE_PREPROCESSING, LDV_STAGE_FOURTH);
+            {
+              LDV_FATAL_ERROR ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_STAGE_PREPROCESSING, LDV_STAGE_FOURTH);
+            }
         }
       else
-        fatal_error ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
+        {
+          LDV_FATAL_ERROR ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
+        }
 
       if ((ldv_dir_res = getenv (LDV_DIR_RES_ENV)))
         ldv_print_info (LDV_INFO_IO, "directory for results \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_res, LDV_DIR_RES_ENV);
