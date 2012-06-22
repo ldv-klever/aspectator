@@ -1671,6 +1671,10 @@ ldv_parse_file_name (char **file_name)
 
       /* Assign read file name to file name passed through parameter. */
       *file_name = ldv_get_str (str);
+
+      /* Move current position properly. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
+
       return byte_count;
     }
 
@@ -1714,6 +1718,10 @@ ldv_parse_id (char **id)
     {
       /* Assign read identifier to identifier passed through parameter. */
       *id = ldv_get_str (str);
+
+      /* Move current position properly. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
+
       return byte_count;
     }
 
@@ -1726,6 +1734,7 @@ ldv_parse_unsigned_integer (unsigned int *integer)
 {
   unsigned int unsigned_integer_read;
   int matches;
+  unsigned int byte_count;
 
   errno = 0;
 
@@ -1735,8 +1744,12 @@ ldv_parse_unsigned_integer (unsigned int *integer)
     {
       /* Assign read from stream integer to integer passed through parameter. */
       *integer = unsigned_integer_read;
-      /* Count the number of bytes read and return it. */
-      return strlen(ldv_itoa(*integer));
+
+      /* Count the number of bytes read, move current position properly and
+         return the number of bytes read. */
+      byte_count = strlen(ldv_itoa(*integer));
+      ldv_set_last_column (yylloc.last_column + byte_count);
+      return byte_count;
     }
   else if (errno != 0)
     {
@@ -1836,7 +1849,6 @@ yylex (void)
   unsigned int arg_numb;
   ldv_ab_arg_ptr ab_arg_new = NULL;
   ldv_ab_general_ptr ab_general_new = NULL;
-  unsigned int byte_count;
 
   /* Skip nonsignificant whitespaces and move a current position. */
   while (1)
@@ -2216,11 +2228,8 @@ yylex (void)
 
   /* Parse a file name. */
   ldv_ungetc (c, LDV_ASPECT_STREAM);
-  if ((byte_count = ldv_parse_file_name (&str)))
+  if (ldv_parse_file_name (&str))
     {
-      /* Move current position properly. */
-      ldv_set_last_column (yylloc.last_column + byte_count);
-
       /* Initialize corresponding internal structure. */
       file = ldv_create_file ();
       ldv_puts_file (str, file);
@@ -2239,11 +2248,8 @@ yylex (void)
     }
 
   /* Parse some identifier or a C keyword. */
-  if ((byte_count = ldv_parse_id (&str)))
+  if (ldv_parse_id (&str))
     {
-      /* Move current position properly. */
-      ldv_set_last_column (yylloc.last_column + byte_count);
-
       /* Initialize corresponding internal structure. */
       id = ldv_create_id ();
       ldv_puts_id (str, id);
@@ -2255,11 +2261,8 @@ yylex (void)
     }
 
   /* Parse some integer number. It consists of digits. */
-  if ((byte_count = ldv_parse_unsigned_integer (&i)))
+  if (ldv_parse_unsigned_integer (&i))
     {
-      /* Move current position properly. */
-      ldv_set_last_column (yylloc.last_column + byte_count);
-
       /* Initialize corresponding internal structure. */
       integer = ldv_create_int ();
       integer->numb = i;
