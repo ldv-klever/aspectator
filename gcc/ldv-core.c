@@ -573,6 +573,17 @@ ldv_putc_text (unsigned char c, ldv_text_ptr text)
 }
 
 void
+ldv_puts_file (const char *str, ldv_file_ptr file)
+{
+  if (file)
+    ldv_puts_str (str, file->file_name, LDV_T_FILE);
+  else
+    {
+      LDV_FATAL_ERROR ("file pointer wasn't initialized");
+    }
+}
+
+void
 ldv_puts_id (const char *str, ldv_id_ptr id)
 {
   if (id)

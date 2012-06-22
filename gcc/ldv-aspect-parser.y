@@ -119,6 +119,7 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
+static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
@@ -1635,6 +1636,51 @@ ldv_get_id_kind (char *id)
   return LDV_ID;
 }
 
+/* Correct file name has the form "file_name" */
+unsigned int
+ldv_parse_file_name (char **file_name)
+{
+  int c;
+  unsigned int byte_count = 0;
+  ldv_str_ptr str = NULL;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  /* Quote begins a file name. */
+  if (c == '"')
+    {
+      byte_count++;
+      str = ldv_create_string ();
+
+      /* Get the rest of a file name. */
+      while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+        {
+          byte_count++;
+
+          /* Second quote finishes a given file name. */
+          if (c == '"')
+            break;
+
+          if (c == '\n')
+            {
+              LDV_FATAL_ERROR ("file path isn't terminated with quote - it's terminated with the end of line");
+            }
+
+          ldv_putc_string (c, str);
+        }
+
+      /* Assign read file name to file name passed through parameter. */
+      *file_name = ldv_get_str (str);
+      return byte_count;
+    }
+
+  /* Push back a non file name character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
+  /* That is identifier wasn't read. */
+  return 0;
+}
+
 /* Correct identifier or C keyword begins with any character (in a low or an
    upper case) or '_'.  Subsequent identifier symbols are characters, digits and
    '_'. */
@@ -1659,8 +1705,6 @@ ldv_parse_id (char **id)
           c = ldv_getc (LDV_ASPECT_STREAM);
         }
       while (ISIDNUM (c));
-
-
     }
 
   /* Push back a first nonidentifier character. */
@@ -1969,7 +2013,7 @@ yylex (void)
   /* Get a first character of a token. */
   c = ldv_getc (LDV_ASPECT_STREAM);
 
-  /* Reach the end of a file. So teh aspect parser must finish work. */
+  /* Reach the end of a file. So aspect parser must finish its work. */
   if (c == EOF)
     {
       ldv_print_info (LDV_INFO_LEX, "lex reached the end of file");
@@ -2170,35 +2214,22 @@ yylex (void)
       return LDV_BODY;
     }
 
-  /* Parse a file name that is in the form "file_name" */
-  if (c == '"')
+  /* Parse a file name. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+  if ((byte_count = ldv_parse_file_name (&str)))
     {
-      ldv_set_last_column (yylloc.last_column + 1);
+      /* Move current position properly. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
+
+      /* Initialize corresponding internal structure. */
       file = ldv_create_file ();
+      ldv_puts_file (str, file);
 
-      do
-        {
-          c = ldv_getc (LDV_ASPECT_STREAM);
-          ldv_set_last_column (yylloc.last_column + 1);
-
-          if (c == '"')
-            {
-              if (!strcmp (ldv_get_file_name (file), "$this"))
-                file->isthis = true;
-              else
-                file->isthis = false;
-
-              break;
-            }
-
-        ldv_putc_file (c, file);
-
-        if (c == '\n')
-          {
-            LDV_FATAL_ERROR ("file path isn't terminated with quote - it's terminated with the end of line");
-          }
-        }
-      while (c != EOF);
+      /* Check a special file name pattern that refer to a file processed. */
+      if (!strcmp (str, "$this"))
+        file->isthis = true;
+      else
+        file->isthis = false;
 
       /* Set a corresponding semantic value. */
       yylval.file = file;
@@ -2208,7 +2239,6 @@ yylex (void)
     }
 
   /* Parse some identifier or a C keyword. */
-  ldv_ungetc (c, LDV_ASPECT_STREAM);
   if ((byte_count = ldv_parse_id (&str)))
     {
       /* Move current position properly. */
