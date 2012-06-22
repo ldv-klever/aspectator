@@ -119,6 +119,7 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
+static int ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
@@ -1637,6 +1638,97 @@ ldv_get_id_kind (char *id)
   return LDV_ID;
 }
 
+int
+ldv_parse_comments (void)
+{
+  int c, c_next;
+
+  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+    {
+      /* A possible comment beginning. */
+      if (c == '/')
+        {
+          /* Define a comment type (C or C++) by means of a following
+             character. */
+          c_next = ldv_getc (LDV_ASPECT_STREAM);
+
+          /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
+             Don't track a current file position. */
+          if (c_next != EOF && c_next == '/')
+            {
+              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                {
+                  /* Push back the end of line to calculate position properly. */
+                  if (c == '\n')
+                    {
+                      ldv_ungetc (c, LDV_ASPECT_STREAM);
+                      break;
+                    }
+
+                  ldv_print_info (LDV_INFO_IO, "dropped C++ comment character \"%c\"", ldv_end_of_line (c));
+                }
+
+              /* So, we'll skip following whitespaces and comments if so. */
+              return 1;
+            }
+          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
+             current file position, since '*_/' can be placed at another line
+             and there may be other symbols after it. */
+          else if (c_next != EOF && c_next == '*')
+            {
+              ldv_set_last_column (yylloc.last_column + 2);
+
+              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                {
+                  /* See whether a C comment end is reached. */
+                  if (c == '*')
+                    {
+                      c_next = ldv_getc (LDV_ASPECT_STREAM);
+
+                      if (c_next != EOF && c_next == '/')
+                        {
+                          ldv_set_last_column (yylloc.last_column + 2);
+                          /* So, we'll skip following whitespaces and comments if so. */
+                          return 1;
+                        }
+                      else
+                        {
+                          ldv_set_last_column (yylloc.last_column + 1);
+                          ldv_ungetc (c_next, LDV_ASPECT_STREAM);
+                        }
+                    }
+                  /* If the end of line is encountered, enlarge a current line
+                     position. */
+                  else if (c == '\n')
+                    {
+                      ldv_set_last_line (yylloc.last_line + 1);
+                      ldv_set_last_column (1);
+                    }
+                  else
+                    ldv_set_last_column (yylloc.last_column + 1);
+
+                  ldv_print_info (LDV_INFO_IO, "dropped C comment character \"%c\"", ldv_end_of_line (c));
+                }
+            }
+          else
+            {
+              /* Push back non comment characters. */
+              ldv_ungetc (c, LDV_ASPECT_STREAM);
+              ldv_ungetc (c_next, LDV_ASPECT_STREAM);
+            }
+        }
+      else
+        {
+          /* Push back a non comment character. */
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
+          break;
+        }
+    }
+
+  /* No comments were parsed. */
+  return 0;
+}
+
 /* Correct file name has the form "file_name" */
 unsigned int
 ldv_parse_file_name (char **file_name)
@@ -1886,84 +1978,8 @@ yylex (void)
 
   /* Examine whether a C or C++ comment is encountered. Skip a corresponding
      comment if so and continue parsing. */
-  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-    {
-      /* A possible comment beginning. */
-      if (c == '/')
-        {
-          /* Define a comment type (C or C++) by means of a following
-             character. */
-          c_next = ldv_getc (LDV_ASPECT_STREAM);
-
-          /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
-             Don't track a current file position. */
-          if (c_next != EOF && c_next == '/')
-            {
-              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                {
-                  if (c == '\n')
-                    {
-                      ldv_ungetc (c, LDV_ASPECT_STREAM);
-                      break;
-                    }
-
-                  ldv_print_info (LDV_INFO_IO, "dropped C++ comment character \"%c\"", ldv_end_of_line (c));
-                }
-
-              return yylex ();
-            }
-          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
-             current file position, since '*_/' can be placed at another line
-             and there may be other symbols after it. */
-          else if (c_next != EOF && c_next == '*')
-            {
-              ldv_set_last_column (yylloc.last_column + 2);
-
-              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                {
-                  /* See whether a C comment end is reached. */
-                  if (c == '*')
-                    {
-                      c_next = ldv_getc (LDV_ASPECT_STREAM);
-
-                      if (c_next != EOF && c_next == '/')
-                        {
-                          ldv_set_last_column (yylloc.last_column + 2);
-                          return yylex ();
-                        }
-                      else
-                        {
-                          ldv_set_last_column (yylloc.last_column + 1);
-                          ldv_ungetc (c_next, LDV_ASPECT_STREAM);
-                        }
-                    }
-                  /* If the end of line is encountered, enlarge a current line
-                     position. */
-                  else if (c == '\n')
-                    {
-                      ldv_set_last_line (yylloc.last_line + 1);
-                      ldv_set_last_column (1);
-                    }
-                  else
-                    ldv_set_last_column (yylloc.last_column + 1);
-
-                  ldv_print_info (LDV_INFO_IO, "dropped C comment character \"%c\"", ldv_end_of_line (c));
-                }
-            }
-          else
-            {
-              ldv_ungetc (c, LDV_ASPECT_STREAM);
-
-              if (c_next != EOF)
-                ldv_ungetc (c_next, LDV_ASPECT_STREAM);
-            }
-        }
-      else
-        {
-          ldv_ungetc (c, LDV_ASPECT_STREAM);
-          break;
-        }
-    }
+  if (ldv_parse_comments ())
+    return yylex ();
 
   /* Examine whether a special preprocessor line is encountered. This line has
      the following format:
