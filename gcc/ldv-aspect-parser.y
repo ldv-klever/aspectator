@@ -122,6 +122,7 @@ static int ldv_get_id_kind (char *id);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
+static void ldv_parse_whitespaces (void);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
 static ldv_pps_ptr_quals_ptr ldv_set_ptr_quals (ldv_pps_declspecs_ptr);
 static void yyerror (char const *, ...);
@@ -1762,6 +1763,36 @@ ldv_parse_unsigned_integer (unsigned int *integer)
 }
 
 void
+ldv_parse_whitespaces (void)
+{
+  int c;
+
+  while (1)
+    {
+      c = ldv_getc (LDV_ASPECT_STREAM);
+
+      switch (c)
+        {
+        case ' ':
+        case '\t':
+          ldv_set_last_column (yylloc.last_column + 1);
+          continue;
+
+        case '\n':
+          ldv_set_last_line (yylloc.last_line + 1);
+          ldv_set_last_column (1);
+          continue;
+
+        default:
+          /* Push back a first nonwhitespace character. */
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
+        }
+
+      break;
+    }
+}
+
+void
 ldv_print_info_location (yyltype loc, const char *info_kind, const char *format, ...)
 {
   va_list ap;
@@ -1850,30 +1881,8 @@ yylex (void)
   ldv_ab_arg_ptr ab_arg_new = NULL;
   ldv_ab_general_ptr ab_general_new = NULL;
 
-  /* Skip nonsignificant whitespaces and move a current position. */
-  while (1)
-    {
-      c = ldv_getc (LDV_ASPECT_STREAM);
-
-      switch (c)
-        {
-        case ' ':
-        case '\t':
-          ldv_set_last_column (yylloc.last_column + 1);
-          continue;
-
-        case '\n':
-          ldv_set_last_line (yylloc.last_line + 1);
-          ldv_set_last_column (1);
-          continue;
-
-        default:
-          /* Push back a first nonwhitespace character. */
-          ldv_ungetc (c, LDV_ASPECT_STREAM);
-        }
-
-      break;
-    }
+  /* Skip nonsignificant whitespaces from the beginning of a current line. */
+  ldv_parse_whitespaces ();
 
   /* Examine whether a C or C++ comment is encountered. Skip a corresponding
      comment if so and continue parsing. */
