@@ -244,7 +244,7 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
-static unsigned int ldv_parse_id (char *id);
+static unsigned int ldv_parse_id (char **id);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
 static ldv_pps_ptr_quals_ptr ldv_set_ptr_quals (ldv_pps_declspecs_ptr);
@@ -3504,7 +3504,7 @@ ldv_get_id_kind (char *id)
    upper case) or '_'.  Subsequent identifier symbols are characters, digits and
    '_'. */
 unsigned int
-ldv_parse_id (char *id)
+ldv_parse_id (char **id)
 {
   int c;
   unsigned int byte_count = 0;
@@ -3525,11 +3525,20 @@ ldv_parse_id (char *id)
         }
       while (ISIDNUM (c));
 
+
+    }
+
+  /* Push back a first nonidentifier character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
+  if (str)
+    {
       /* Assign read identifier to identifier passed through parameter. */
-      id = ldv_get_str (str);
+      *id = ldv_get_str (str);
       return byte_count;
     }
 
+  /* That is identifier wasn't read. */
   return 0;
 }
 
@@ -4065,7 +4074,7 @@ yylex (void)
 
   /* Parse some identifier or a C keyword. */
   ldv_ungetc (c, LDV_ASPECT_STREAM);
-  if ((byte_count = ldv_parse_id (str)))
+  if ((byte_count = ldv_parse_id (&str)))
     {
       /* Move current position properly. */
       ldv_set_last_column (yylloc.last_column + byte_count);
