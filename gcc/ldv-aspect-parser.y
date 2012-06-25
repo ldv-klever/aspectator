@@ -120,6 +120,7 @@ static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
 static int ldv_parse_comments (void);
+static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id);
 static int ldv_parse_preprocessor_directives (void);
@@ -1730,6 +1731,61 @@ ldv_parse_comments (void)
   return 0;
 }
 
+/* We aren't interested in advice body content, except for correct determinition
+   of the advice body end (that is '}') and aspect patterns. */
+unsigned int
+ldv_parse_advice_body (ldv_ab_ptr *body)
+{
+  int c;
+  int brace_count = 0;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  /* Open brace begins an advice body. */
+  if (c == '{')
+    {
+      * body = ldv_create_body ();
+
+      do
+        {
+          /* Process the end of line inside a body. */
+          if (c == '\n')
+            {
+              ldv_set_last_line (yylloc.last_line + 1);
+              ldv_set_last_column (1);
+              /* Reset initial position as well. */
+              ldv_set_first_line (yylloc.last_line);
+              ldv_set_first_column (yylloc.last_column);
+            }
+
+          ldv_putc_body (c, *body);
+
+          /* Increase/decrease a brace counter to skip '{...}' construction
+             inside a body. */
+          if (c == '{')
+            brace_count++;
+          else if (c == '}')
+            brace_count--;
+
+          if (c != '\n')
+            ldv_set_last_column (yylloc.last_column + 1);
+
+          if (c == '}' && !brace_count)
+            break;
+        }
+      while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF);
+
+      /* Advice body was parsed successfully. */
+      return 1;
+    }
+
+  /* Push back a non advice body character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
+  /* That is advice body wasn't read. */
+  return 0;
+}
+
 /* Correct file name has the form "file_name" */
 unsigned int
 ldv_parse_file_name (char **file_name)
@@ -1775,7 +1831,7 @@ ldv_parse_file_name (char **file_name)
   /* Push back a non file name character. */
   ldv_ungetc (c, LDV_ASPECT_STREAM);
 
-  /* That is identifier wasn't read. */
+  /* That is file name wasn't read. */
   return 0;
 }
 
@@ -2032,18 +2088,13 @@ yyerror (char const *format, ...)
 int
 yylex (void)
 {
-  int c;
-  int c_next;
-  int brace_count = 0;
+  int c, c_next;
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
   char *str = NULL;
   ldv_id_ptr id = NULL;
   unsigned int i;
   ldv_int_ptr integer = NULL;
-  unsigned int arg_numb;
-  ldv_ab_arg_ptr ab_arg_new = NULL;
-  ldv_ab_general_ptr ab_general_new = NULL;
 
   /* Skip nonsignificant whitespaces from the beginning of a current line. */
   ldv_parse_whitespaces ();
@@ -2071,193 +2122,12 @@ yylex (void)
       return 0;
     }
 
-  /* Parse an advice body. The lexer isn't interested in its contents, except
-     for correct determinition of the advice body end (that is '}') and body
-     patterns. */
-  if (c == '{')
+  /* Push back non EOF character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
+  /* Parse an advice body. */
+  if (ldv_parse_advice_body (&body))
     {
-      body = ldv_create_body ();
-
-      do
-        {
-          /* Process the end of line inside a body. */
-          if (c == '\n')
-            {
-              ldv_set_last_line (yylloc.last_line + 1);
-              ldv_set_last_column (1);
-              /* Reset initial position as well. */
-              ldv_set_first_line (yylloc.last_line);
-              ldv_set_first_column (yylloc.last_column);
-            }
-
-          /* Process special patterns inside a body. */
-          if (c == '$')
-            {
-              /* Move first column pointer to the beginning of pattern. */
-              ldv_set_first_column (yylloc.last_column);
-
-              id = ldv_create_id ();
-
-              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                {
-                  /* Stop and process an obtained pattern when an identifier is
-                     complited. */
-                  if (!ISIDNUM (c))
-                    {
-                      /* Compare an initial part of a pattern with
-                         'arg'. '\d+' must foolow 'arg'. */
-                      if (!strncmp (ldv_get_id_name (id), LDV_BODY_PATTERN_ARG, strlen (LDV_BODY_PATTERN_ARG))
-                        && ISDIGIT (*(ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG))))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern argument");
-
-                          /* The rest part of a pattern must have format '\d+'. */
-                          arg_numb = atoi (ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG));
-
-                          ab_arg_new = ldv_create_body_arg ();
-
-                          ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_arg, ab_arg_new);
-                        }
-                      /* Compare an initial part of a pattern with
-                         'arg_type'. '\d+' must foolow 'arg_type'. */
-                      else if (!strncmp (ldv_get_id_name (id), LDV_BODY_PATTERN_ARG_TYPE, strlen (LDV_BODY_PATTERN_ARG_TYPE))
-                        && ISDIGIT (*(ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_TYPE))))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern argument type");
-
-                          /* The rest part of a pattern must have format '\d+'. */
-                          arg_numb = atoi (ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_TYPE));
-
-                          ab_arg_new = ldv_create_body_arg ();
-
-                          ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_arg_type, ab_arg_new);
-                        }
-                      /* Compare an initial part of a pattern with
-                         'arg_size'. '\d+' must foolow 'arg_size'. */
-                      else if (!strncmp (ldv_get_id_name (id), LDV_BODY_PATTERN_ARG_SIZE, strlen (LDV_BODY_PATTERN_ARG_SIZE))
-                        && ISDIGIT (*(ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_SIZE))))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern argument size");
-
-                          /* The rest part of a pattern must have format '\d+'. */
-                          arg_numb = atoi (ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_SIZE));
-
-                          ab_arg_new = ldv_create_body_arg ();
-
-                          ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_arg_size, ab_arg_new);
-                        }
-                      /* Compare an initial part of a pattern with
-                         'arg_value'. '\d+' must foolow 'arg_value'. */
-                      else if (!strncmp (ldv_get_id_name (id), LDV_BODY_PATTERN_ARG_VALUE, strlen (LDV_BODY_PATTERN_ARG_VALUE))
-                        && ISDIGIT (*(ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_VALUE))))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern argument ");
-
-                          /* The rest part of a pattern must have format '\d+'. */
-                          arg_numb = atoi (ldv_get_id_name (id) + strlen (LDV_BODY_PATTERN_ARG_VALUE));
-
-                          ab_arg_new = ldv_create_body_arg ();
-
-                          ab_arg_new->arg_numb = arg_numb;
-                          ab_arg_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_arg_value, ab_arg_new);
-                        }
-                      /* Compare a pattern with 'aspect_func_name'. */
-                      else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_ASPECT_FUNC_NAME))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern aspect function name");
-
-                          ab_general_new = ldv_create_body_general ();
-
-                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_aspect_func_name, ab_general_new);
-                        }
-                      /* Compare a pattern with 'func_name'. */
-                      else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_FUNC_NAME))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern function name");
-
-                          ab_general_new = ldv_create_body_general ();
-
-                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_func_name, ab_general_new);
-                        }
-                      /* Compare a pattern with 'proceed'. */
-                      else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_PROCEED))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern proceed");
-
-                          ab_general_new = ldv_create_body_general ();
-
-                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_proceed, ab_general_new);
-                        }
-                      /* Compare a pattern with 'res'. */
-                      else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_RES))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body pattern result");
-
-                          ab_general_new = ldv_create_body_general ();
-
-                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_res, ab_general_new);
-                        }
-                      /* Compare a pattern with 'ret_type'. */
-                      else if (!strcmp (ldv_get_id_name (id), LDV_BODY_PATTERN_RET_TYPE))
-                        {
-                          ldv_print_info (LDV_INFO_LEX, "lex parsed body return type to be weaved \"%s\"", ldv_get_id_name (id));
-
-                          ab_general_new = ldv_create_body_general ();
-
-                          ab_general_new->arg_place = LDV_STR_OFFSET (ldv_get_body_text (body));
-
-                          ldv_list_push_back (&body->ab_ret_type, ab_general_new);
-                        }
-                      else
-                        {
-                          ldv_print_info_location (yylloc, LDV_ERROR_LEX, "incorrect body pattern \"%s\" was used", ldv_get_id_name (id));
-                          LDV_FATAL_ERROR ("use \"argN\", \"arg_typeN\", \"arg_sizeN\", \"arg_valueN\", \"func_name\", \"aspect_func_name\", \"proceed\", \"res\", \"ret_type\" body patterns");
-                        }
-
-                      break;
-                    }
-
-                  ldv_set_last_column (yylloc.last_column + 1);
-                  ldv_putc_id (c, id);
-                }
-            }
-
-          ldv_putc_body (c, body);
-
-          /* Increase/decrease a brace counter to skip '{...}' construction
-             inside a body. */
-          if (c == '{')
-            brace_count++;
-          else if (c == '}')
-            brace_count--;
-
-          if (c != '\n')
-            ldv_set_last_column (yylloc.last_column + 1);
-
-          if (c == '}' && !brace_count)
-            break;
-        }
-      while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF);
-
       /* Set a corresponding semantic value. */
       yylval.body = body;
 
@@ -2266,7 +2136,6 @@ yylex (void)
     }
 
   /* Parse a file name. */
-  ldv_ungetc (c, LDV_ASPECT_STREAM);
   if (ldv_parse_file_name (&str))
     {
       /* Initialize corresponding internal structure. */
