@@ -32,6 +32,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_STR_OFFSET(str) ((strlen (str) - 1))
 
 
+extern ldv_aspect_pattern_ptr ldv_create_aspect_pattern (void);
+extern ldv_aspect_pattern_param_ptr ldv_create_aspect_pattern_param (void);
 extern ldv_ab_ptr ldv_create_body (void);
 extern ldv_ab_arg_ptr ldv_create_body_arg (void);
 extern ldv_ab_general_ptr ldv_create_body_general (void);

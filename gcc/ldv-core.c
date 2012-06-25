@@ -36,6 +36,28 @@ static void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
 static void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
 
 
+ldv_aspect_pattern_ptr
+ldv_create_aspect_pattern (void)
+{
+  ldv_aspect_pattern_ptr aspect_pattern = NULL;
+
+  aspect_pattern = XCNEW (ldv_aspect_pattern);
+  ldv_print_info (LDV_INFO_MEM, "aspect pattern memory was released");
+
+  return aspect_pattern;
+}
+
+ldv_aspect_pattern_param_ptr
+ldv_create_aspect_pattern_param (void)
+{
+  ldv_aspect_pattern_param_ptr param = NULL;
+
+  param = XCNEW (ldv_aspect_pattern_param);
+  ldv_print_info (LDV_INFO_MEM, "aspect pattern parameter memory was released");
+
+  return param;
+}
+
 ldv_ab_ptr
 ldv_create_body (void)
 {

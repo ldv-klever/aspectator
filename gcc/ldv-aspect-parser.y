@@ -121,8 +121,12 @@ static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
 static int ldv_parse_comments (void);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
+static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
+static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
+static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
+static int ldv_parse_aspect_pattern_known_value (char const **str);
 static unsigned int ldv_parse_file_name (char **file_name);
-static unsigned int ldv_parse_id (char **id);
+static unsigned int ldv_parse_id (char **id, bool accept_digits);
 static int ldv_parse_preprocessor_directives (void);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_parse_whitespaces (void);
@@ -1786,6 +1790,206 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
   return 0;
 }
 
+ldv_aspect_pattern_ptr
+ldv_parse_aspect_pattern (void)
+{
+  int c;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  char *str = NULL;
+  unsigned int integer;
+  ldv_list_ptr params = NULL;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  /* '$' begins an aspect pattern. */
+  if (c == '$')
+    {
+      ldv_set_last_column (yylloc.last_column + 1);
+      pattern = ldv_create_aspect_pattern ();
+
+      /* Parse aspect pattern name. */
+      if (ldv_parse_id (&str, false))
+        {
+          pattern->name = str;
+          ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern name \"%s\"", pattern->name);
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("aspect pattern hasn't a name!");
+        }
+
+      /* Some aspect patterns require corresponding argument numbers. */
+      if (ldv_parse_unsigned_integer (&integer))
+        {
+          pattern->arg_numb = integer;
+          ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern argument number \"%u\"", pattern->arg_numb);
+        }
+      else if (!strcmp (pattern->name, "arg")
+        || !strcmp (pattern->name, "arg_type")
+        || !strcmp (pattern->name, "arg_size")
+        || !strcmp (pattern->name, "arg_value"))
+        {
+          LDV_FATAL_ERROR ("aspect pattern \"%s\" requires corresponding argument number to be specified", pattern->name);
+        }
+
+      /* Parse aspect pattern parameters if so. */
+      if ((params = ldv_parse_aspect_pattern_params ()))
+        {
+          pattern->params = params;
+        }
+
+      return pattern;
+    }
+  else
+    {
+      /* Push back a non aspect pattern character. */
+      ldv_ungetc (c, LDV_ASPECT_STREAM);
+    }
+
+  /* That is aspect pattern wasn't read. */
+  return NULL;
+}
+
+ldv_aspect_pattern_param_ptr
+ldv_parse_aspect_pattern_param (void)
+{
+  ldv_aspect_pattern_param_ptr param = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  char *str = NULL;
+  unsigned int integer;
+
+  param = ldv_create_aspect_pattern_param ();
+
+  if ((pattern = ldv_parse_aspect_pattern ()))
+    {
+      param->kind = LDV_ASPECT_PATTERN_ASPECT_PATTERN;
+      param->aspect_pattern = pattern;
+
+      ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter that is aspect pattern");
+
+      return param;
+    }
+
+  if (ldv_parse_unsigned_integer (&integer))
+    {
+      param->kind = LDV_ASPECT_PATTERN_INTEGER;
+      param->integer = integer;
+
+      ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter \"%u\"", integer);
+
+      return param;
+    }
+
+  if (ldv_parse_id (&str, true))
+    {
+      param->kind = LDV_ASPECT_PATTERN_STRING;
+      param->string = str;
+
+      ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter \"%s\"", str);
+
+      return param;
+    }
+
+  /* That is aspect pattern parameter wasn't read. */
+  return NULL;
+}
+
+ldv_list_ptr
+ldv_parse_aspect_pattern_params (void)
+{
+  int c;
+  ldv_list_ptr params = NULL;
+  ldv_aspect_pattern_param_ptr param = NULL;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  /* '<' begins an aspect pattern parameters list. */
+  if (c == '<')
+    {
+      ldv_set_last_column (yylloc.last_column + 1);
+
+      while (1)
+        {
+          if ((param = ldv_parse_aspect_pattern_param ()))
+            {
+              ldv_list_push_back (&params, param);
+            }
+          else
+            {
+              LDV_FATAL_ERROR ("aspect pattern parameter wasn't parsed");
+            }
+
+          /* Next symbol may be either ',' (that means that there is some other
+             aspect pattern parameters) or '>' (that finishes parameters list). */
+          ldv_set_last_column (yylloc.last_column + 1);
+          switch (c = ldv_getc (LDV_ASPECT_STREAM))
+            {
+            case ',':
+              break;
+
+            case '>':
+              return params;
+
+            default:
+              LDV_FATAL_ERROR ("aspect pattern parameters list has incorrect format!");
+            }
+        }
+    }
+  else
+    {
+      /* Push back a non aspect pattern parameter character. */
+      ldv_ungetc (c, LDV_ASPECT_STREAM);
+    }
+
+  /* That is aspect pattern parameter wasn't read. */
+  return NULL;
+}
+
+int
+ldv_parse_aspect_pattern_known_value (char const **str)
+{
+  ldv_aspect_pattern_ptr pattern = NULL;
+  ldv_aspect_pattern_param_ptr param = NULL;
+
+  /* First of all try to parse aspect pattern. */
+  if ((pattern = ldv_parse_aspect_pattern ()))
+    {
+      /* Just environment variables and current instrumented file can be
+         calculated without matching. */
+      if (!strcmp (pattern->name, "env"))
+        {
+          if (!pattern->params || ldv_list_get_next (pattern->params)
+            || !(param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params))
+            || !(param->kind == LDV_ASPECT_PATTERN_STRING))
+            {
+              LDV_FATAL_ERROR ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
+            }
+
+          if (!(*str = getenv (param->string)))
+            {
+              LDV_FATAL_ERROR ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
+            }
+
+          return 1;
+        }
+      else if (!strcmp (pattern->name, "this"))
+        {
+          /* Do not evaluate a value of this aspect pattern since it doesn't
+             matter. */
+          *str = "$this";
+
+          return 1;
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("aspect pattern \"%s\" cannot be calculated without matching", pattern->name);
+        }
+    }
+
+  /* That is aspect pattern wasn't read. */
+  return 0;
+}
+
 /* Correct file name has the form "file_name" */
 unsigned int
 ldv_parse_file_name (char **file_name)
@@ -1793,6 +1997,7 @@ ldv_parse_file_name (char **file_name)
   int c;
   unsigned int byte_count = 0;
   ldv_str_ptr str = NULL;
+  char const *aspect_pattern_value = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -1802,9 +2007,19 @@ ldv_parse_file_name (char **file_name)
       byte_count++;
       str = ldv_create_string ();
 
-      /* Get the rest of a file name. */
-      while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+      /* Get the rest of a file name. Note, that there may be aspect patterns
+         with known values in this name. */
+      while (1)
         {
+          if (ldv_parse_aspect_pattern_known_value (&aspect_pattern_value))
+            {
+              ldv_puts_string (aspect_pattern_value, str);
+              continue;
+            }
+
+          if ((c = ldv_getc (LDV_ASPECT_STREAM)) == EOF)
+            break;
+
           byte_count++;
 
           /* Second quote finishes a given file name. */
@@ -1839,7 +2054,7 @@ ldv_parse_file_name (char **file_name)
    upper case) or '_'.  Subsequent identifier symbols are characters, digits and
    '_'. */
 unsigned int
-ldv_parse_id (char **id)
+ldv_parse_id (char **id, bool accept_digits)
 {
   int c;
   unsigned int byte_count = 0;
@@ -1858,7 +2073,7 @@ ldv_parse_id (char **id)
           ldv_putc_string (c, str);
           c = ldv_getc (LDV_ASPECT_STREAM);
         }
-      while (ISIDNUM (c));
+      while (accept_digits ? ISIDNUM (c) : ISIDST (c));
     }
 
   /* Push back a first nonidentifier character. */
@@ -2151,12 +2366,12 @@ yylex (void)
       /* Set a corresponding semantic value. */
       yylval.file = file;
 
-      ldv_print_info (LDV_INFO_LEX, "lex parsed file \"%s\"", ldv_get_file_name (file));
+      ldv_print_info (LDV_INFO_LEX, "lex parsed file name \"%s\"", ldv_get_file_name (file));
       return LDV_FILE;
     }
 
   /* Parse some identifier or a C keyword. */
-  if (ldv_parse_id (&str))
+  if (ldv_parse_id (&str, true))
     {
       /* Initialize corresponding internal structure. */
       id = ldv_create_id ();

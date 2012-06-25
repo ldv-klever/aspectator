@@ -283,6 +283,32 @@ typedef struct ldv_advice_declaration_internal
 } ldv_advice_declaration;
 typedef ldv_advice_declaration *ldv_adecl_ptr;
 
+/* Aspect pattern has the following format:
+     pattern = $name[arg_numb][<params>]
+     name = [_a-zA-Z]+
+     arg_numb = [0-9]+
+     params = param | params param
+     param = pattern | [0-9]+ | [_a-zA-Z][_a-zA-Z0-9]+
+*/
+typedef enum { LDV_ASPECT_PATTERN_ASPECT_PATTERN, LDV_ASPECT_PATTERN_INTEGER, LDV_ASPECT_PATTERN_STRING } ldv_aspect_pattern_param_kind;
+struct ldv_aspect_pattern_internal;
+typedef struct ldv_aspect_pattern_param_internal
+{
+  ldv_aspect_pattern_param_kind kind;
+  struct ldv_aspect_pattern_internal *aspect_pattern;
+  unsigned int integer;
+  char *string;
+} ldv_aspect_pattern_param;
+typedef ldv_aspect_pattern_param *ldv_aspect_pattern_param_ptr;
+
+typedef struct ldv_aspect_pattern_internal
+{
+  char *name;
+  unsigned int arg_numb;
+  ldv_list_ptr params;
+} ldv_aspect_pattern;
+typedef ldv_aspect_pattern *ldv_aspect_pattern_ptr;
+
 /* Body argument pattern to be weaved = argument number corresponding to a
    function argument + argument place in body. */
 typedef struct ldv_ab_arg_internal
