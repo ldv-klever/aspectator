@@ -122,6 +122,7 @@ static int ldv_get_id_kind (char *id);
 static int ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id);
+static int ldv_parse_preprocessor_directives (void);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_parse_whitespaces (void);
 static void ldv_print_info_location (yyltype, const char *, const char *, ...) ATTRIBUTE_PRINTF_3;
@@ -1822,6 +1823,79 @@ ldv_parse_id (char **id)
   return 0;
 }
 
+/* Preprocessor special directives have the following format:
+     # \d+ "[^"]+" \d+
+   where the first number denotes the following line number in the file
+   specified inside quotes. There are may be less or more numbers at the end
+   of such lines. A current position isn't tracked while processing such
+   lines. */
+int
+ldv_parse_preprocessor_directives (void)
+{
+  int c, c_next;
+  unsigned int line_numb;
+  ldv_str_ptr file_name;
+
+  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+    {
+      if (c == '#')
+        {
+          line_numb = 0;
+
+          while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+            {
+              /* Read a file name specified and change a current file name
+                 respectively to report error locations correctly. */
+              if (c == '"')
+                {
+                  file_name = ldv_create_string ();
+
+                  while ((c_next = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                   {
+                     ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c_next));
+
+                     if (c_next == '"')
+                       {
+                          break;
+                       }
+
+                     ldv_putc_string (c_next, file_name);
+                   }
+
+                  ldv_set_file_name (ldv_get_str(file_name));
+                }
+
+              /* Update the current line with respect to a special line. */
+              if (!line_numb
+                && (ldv_parse_unsigned_integer (&line_numb) > 0))
+                {
+                  ldv_set_last_line (line_numb);
+                  ldv_set_last_column (1);
+                }
+
+              if (c == '\n')
+                {
+                  /* Don't ungetc the end of line to avoid line enlarging. */
+                  break;
+                }
+
+              ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c));
+            }
+
+          /* So, lexer should be envolved from the beginning. */
+          return 1;
+        }
+      else
+        {
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
+          break;
+        }
+    }
+
+  /* That is a special preprocessor directive wasn't read. */
+  return 0;
+}
+
 unsigned int
 ldv_parse_unsigned_integer (unsigned int *integer)
 {
@@ -1960,8 +2034,6 @@ yylex (void)
 {
   int c;
   int c_next;
-  unsigned int line_numb;
-  ldv_str_ptr file_name;
   int brace_count = 0;
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
@@ -1981,67 +2053,9 @@ yylex (void)
   if (ldv_parse_comments ())
     return yylex ();
 
-  /* Examine whether a special preprocessor line is encountered. This line has
-     the following format:
-       # \d+ "[^"]+" \d+
-     where the first number denotes the following line number in the file
-     specified inside quotes. There are may be less or more numbers at the end
-     of such lines. A current position isn't tracked while processing such
-     lines. */
-  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-    {
-      if (c == '#')
-        {
-          line_numb = 0;
-
-          while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-            {
-              /* Read a file name specified and change a current file name
-                 respectively to report error locations correctly. */
-              if (c == '"')
-                {
-                  file_name = ldv_create_string ();
-
-                  while ((c_next = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                   {
-                     ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c_next));
-
-                     if (c_next == '"')
-                       {
-                          break;
-                       }
-
-                     ldv_putc_string (c_next, file_name);
-                   }
-
-                  ldv_set_file_name (ldv_get_str(file_name));
-                }
-
-              /* Update the current line with respect to a special line. */
-              if (!line_numb
-                && (ldv_parse_unsigned_integer (&line_numb) > 0))
-                {
-                  ldv_set_last_line (line_numb);
-                  ldv_set_last_column (1);
-                }
-
-              if (c == '\n')
-                {
-                  /* Don't ungetc the end of line to avoid line enlarging. */
-                  break;
-                }
-
-              ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c));
-            }
-
-          return yylex ();
-        }
-      else
-        {
-          ldv_ungetc (c, LDV_ASPECT_STREAM);
-          break;
-        }
-    }
+  /* Examine whether a special preprocessor line is encountered. */
+  if (ldv_parse_preprocessor_directives ())
+    return yylex ();
 
   /* Initialize a first line and a first column. */
   ldv_set_first_line (yylloc.last_line);
