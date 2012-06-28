@@ -1805,6 +1805,10 @@ ldv_parse_aspect_pattern (void)
   if (c == '$')
     {
       ldv_set_last_column (yylloc.last_column + 1);
+
+      /* Move first column pointer to the beginning of pattern. */
+      ldv_set_first_column (yylloc.last_column);
+
       pattern = ldv_create_aspect_pattern ();
 
       /* Parse aspect pattern name. */
@@ -1982,6 +1986,12 @@ ldv_parse_aspect_pattern_known_value (char const **str)
         }
       else
         {
+          /* Increase and decrease a current last column position artificially
+             to meet standard error conditions and print information on errors
+             properly. */
+          ldv_set_last_column (yylloc.last_column + 1);
+          ldv_print_info_location (yylloc, LDV_ERROR_LEX, "incorrect aspect pattern \"%s\" was used", pattern->name);
+          ldv_set_last_column (yylloc.last_column - 1);
           LDV_FATAL_ERROR ("aspect pattern \"%s\" cannot be calculated without matching", pattern->name);
         }
     }
