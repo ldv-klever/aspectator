@@ -244,12 +244,12 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
-static int ldv_parse_comments (void);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
 static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
 static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
 static int ldv_parse_aspect_pattern_known_value (char const **str);
+static char *ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id, bool accept_digits);
 static int ldv_parse_preprocessor_directives (void);
@@ -3509,97 +3509,6 @@ ldv_get_id_kind (char *id)
   return LDV_ID;
 }
 
-int
-ldv_parse_comments (void)
-{
-  int c, c_next;
-
-  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-    {
-      /* A possible comment beginning. */
-      if (c == '/')
-        {
-          /* Define a comment type (C or C++) by means of a following
-             character. */
-          c_next = ldv_getc (LDV_ASPECT_STREAM);
-
-          /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
-             Don't track a current file position. */
-          if (c_next != EOF && c_next == '/')
-            {
-              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                {
-                  /* Push back the end of line to calculate position properly. */
-                  if (c == '\n')
-                    {
-                      ldv_ungetc (c, LDV_ASPECT_STREAM);
-                      break;
-                    }
-
-                  ldv_print_info (LDV_INFO_IO, "dropped C++ comment character \"%c\"", ldv_end_of_line (c));
-                }
-
-              /* So, we'll skip following whitespaces and comments if so. */
-              return 1;
-            }
-          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
-             current file position, since '*_/' can be placed at another line
-             and there may be other symbols after it. */
-          else if (c_next != EOF && c_next == '*')
-            {
-              ldv_set_last_column (yylloc.last_column + 2);
-
-              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
-                {
-                  /* See whether a C comment end is reached. */
-                  if (c == '*')
-                    {
-                      c_next = ldv_getc (LDV_ASPECT_STREAM);
-
-                      if (c_next != EOF && c_next == '/')
-                        {
-                          ldv_set_last_column (yylloc.last_column + 2);
-                          /* So, we'll skip following whitespaces and comments if so. */
-                          return 1;
-                        }
-                      else
-                        {
-                          ldv_set_last_column (yylloc.last_column + 1);
-                          ldv_ungetc (c_next, LDV_ASPECT_STREAM);
-                        }
-                    }
-                  /* If the end of line is encountered, enlarge a current line
-                     position. */
-                  else if (c == '\n')
-                    {
-                      ldv_set_last_line (yylloc.last_line + 1);
-                      ldv_set_last_column (1);
-                    }
-                  else
-                    ldv_set_last_column (yylloc.last_column + 1);
-
-                  ldv_print_info (LDV_INFO_IO, "dropped C comment character \"%c\"", ldv_end_of_line (c));
-                }
-            }
-          else
-            {
-              /* Push back non comment characters. */
-              ldv_ungetc (c, LDV_ASPECT_STREAM);
-              ldv_ungetc (c_next, LDV_ASPECT_STREAM);
-            }
-        }
-      else
-        {
-          /* Push back a non comment character. */
-          ldv_ungetc (c, LDV_ASPECT_STREAM);
-          break;
-        }
-    }
-
-  /* No comments were parsed. */
-  return 0;
-}
-
 /* We aren't interested in advice body content, except for correct determinition
    of the advice body end (that is '}') and aspect patterns. */
 unsigned int
@@ -3609,6 +3518,7 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
   int brace_count = 1;
   ldv_aspect_pattern_ptr pattern = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
+  char *comment = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -3628,6 +3538,14 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
               body_pattern->pattern = pattern;
               body_pattern->place = LDV_STR_OFFSET (ldv_get_body_text (*body));
               ldv_list_push_back (&((*body)->patterns), body_pattern);
+              continue;
+            }
+
+          /* Parse comments inside a body. We should keep them since there may
+             be model comments through them. */
+          if ((comment = ldv_parse_comments ()))
+            {
+              ldv_puts_body (comment, *body);
               continue;
             }
 
@@ -3881,6 +3799,108 @@ ldv_parse_aspect_pattern_known_value (char const **str)
 
   /* That is aspect pattern wasn't read. */
   return 0;
+}
+
+char *
+ldv_parse_comments (void)
+{
+  int c, c_next;
+  ldv_text_ptr comment = NULL;
+
+  while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+    {
+      /* A possible comment beginning. */
+      if (c == '/')
+        {
+          /* Define a comment type (C or C++) by means of a following
+             character. */
+          c_next = ldv_getc (LDV_ASPECT_STREAM);
+
+          /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
+             Don't track a current file position. */
+          if (c_next != EOF && c_next == '/')
+            {
+              comment = ldv_create_text ();
+              ldv_puts_text ("//", comment);
+
+              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                {
+                  /* Push back the end of line to calculate position properly. */
+                  if (c == '\n')
+                    {
+                      ldv_ungetc (c, LDV_ASPECT_STREAM);
+                      break;
+                    }
+
+                  ldv_putc_text (c, comment);
+                  ldv_print_info (LDV_INFO_IO, "read C++ comment character \"%c\"", ldv_end_of_line (c));
+                }
+
+              /* So, we'll skip following whitespaces and comments if so. */
+              return ldv_get_text (comment);
+            }
+          /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
+             current file position, since '*_/' can be placed at another line
+             and there may be other symbols after it. */
+          else if (c_next != EOF && c_next == '*')
+            {
+              comment = ldv_create_text ();
+              ldv_puts_text ("/*", comment);
+              ldv_set_last_column (yylloc.last_column + 2);
+
+              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                {
+                  /* See whether a C comment end is reached. */
+                  if (c == '*')
+                    {
+                      c_next = ldv_getc (LDV_ASPECT_STREAM);
+
+                      if (c_next != EOF && c_next == '/')
+                        {
+                          ldv_puts_text ("*/", comment);
+                          ldv_set_last_column (yylloc.last_column + 2);
+                          /* So, we'll skip following whitespaces and comments if so. */
+                          return ldv_get_text (comment);
+                        }
+                      else
+                        {
+                          ldv_set_last_column (yylloc.last_column + 1);
+                          ldv_ungetc (c_next, LDV_ASPECT_STREAM);
+                        }
+                    }
+                  /* If the end of line is encountered, enlarge a current line
+                     position. */
+                  else if (c == '\n')
+                    {
+                      ldv_set_last_line (yylloc.last_line + 1);
+                      ldv_set_last_column (1);
+                    }
+                  else
+                    ldv_set_last_column (yylloc.last_column + 1);
+
+                  ldv_putc_text (c, comment);
+                  ldv_print_info (LDV_INFO_IO, "read C comment character \"%c\"", ldv_end_of_line (c));
+                }
+
+              LDV_FATAL_ERROR ("End of file is reached but C comment \"%s\" isn't completed", ldv_get_text (comment));
+            }
+          else
+            {
+              /* Push back non comment characters. */
+              ldv_ungetc (c, LDV_ASPECT_STREAM);
+              ldv_ungetc (c_next, LDV_ASPECT_STREAM);
+            }
+        }
+      else
+        {
+          /* Push back a non comment character. */
+          ldv_ungetc (c, LDV_ASPECT_STREAM);
+          break;
+        }
+    }
+
+  /* No comments were parsed. */
+  return NULL;
 }
 
 /* Correct file name has the form "file_name" */

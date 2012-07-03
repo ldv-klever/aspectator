@@ -584,6 +584,17 @@ ldv_putc_text (unsigned char c, ldv_text_ptr text)
 }
 
 void
+ldv_puts_body (const char *str, ldv_ab_ptr body)
+{
+  if (body)
+    ldv_puts_str (str, body->ab_text, LDV_T_B);
+  else
+    {
+      LDV_FATAL_ERROR ("body pointer wasn't initialized");
+    }
+}
+
+void
 ldv_puts_file (const char *str, ldv_file_ptr file)
 {
   if (file)
