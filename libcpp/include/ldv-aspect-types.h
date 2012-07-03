@@ -309,38 +309,21 @@ typedef struct ldv_aspect_pattern_internal
 } ldv_aspect_pattern;
 typedef ldv_aspect_pattern *ldv_aspect_pattern_ptr;
 
-/* Body argument pattern to be weaved = argument number corresponding to a
-   function argument + argument place in body. */
-typedef struct ldv_ab_arg_internal
+/* Body aspect pattern to be weaved = aspect pattern + pattern place in body. */
+typedef struct ldv_ab_aspect_pattern_internal
 {
-  unsigned int arg_numb;
-  int arg_place;
-} ldv_ab_arg;
-typedef ldv_ab_arg *ldv_ab_arg_ptr;
-
-/* Body pattern (non argument) to be weaved = argument place in body. */
-typedef struct ldv_ab_general_internal
-{
-  int arg_place;
-} ldv_ab_general;
-typedef ldv_ab_general *ldv_ab_general_ptr;
+  ldv_aspect_pattern_ptr pattern;
+  int place;
+} ldv_ab_aspect_pattern;
+typedef ldv_ab_aspect_pattern *ldv_ab_aspect_pattern_ptr;
 
 /* Body string beginning maximum length and its growth are specified. */
 typedef enum { LDV_B_LEN_ADD = 50, LDV_B_LEN_START = 100 } ldv_abl;
-/* Body = string + arguments to be weaved + results to be weaved
-   + proceeds to be weaved. */
+/* Body = string + aspect patterns to be weaved. */
 typedef struct ldv_advice_body_internal
 {
   ldv_str_ptr ab_text;
-  ldv_list_ptr ab_arg;
-  ldv_list_ptr ab_arg_type;
-  ldv_list_ptr ab_arg_size;
-  ldv_list_ptr ab_arg_value;
-  ldv_list_ptr ab_func_name;
-  ldv_list_ptr ab_aspect_func_name;
-  ldv_list_ptr ab_res;
-  ldv_list_ptr ab_ret_type;
-  ldv_list_ptr ab_proceed;
+  ldv_list_ptr patterns;
 } ldv_advice_body;
 typedef ldv_advice_body *ldv_ab_ptr;
 

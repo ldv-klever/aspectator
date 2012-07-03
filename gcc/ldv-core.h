@@ -35,8 +35,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 extern ldv_aspect_pattern_ptr ldv_create_aspect_pattern (void);
 extern ldv_aspect_pattern_param_ptr ldv_create_aspect_pattern_param (void);
 extern ldv_ab_ptr ldv_create_body (void);
-extern ldv_ab_arg_ptr ldv_create_body_arg (void);
-extern ldv_ab_general_ptr ldv_create_body_general (void);
+extern ldv_ab_aspect_pattern_ptr ldv_create_body_aspect_pattern (void);
 extern ldv_pps_declarator_ptr ldv_create_declarator (void);
 extern ldv_file_ptr ldv_create_file (void);
 extern ldv_id_ptr ldv_create_id (void);

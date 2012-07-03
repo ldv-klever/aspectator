@@ -1741,17 +1741,36 @@ unsigned int
 ldv_parse_advice_body (ldv_ab_ptr *body)
 {
   int c;
-  int brace_count = 0;
+  int brace_count = 1;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  ldv_ab_aspect_pattern_ptr body_pattern = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
   /* Open brace begins an advice body. */
   if (c == '{')
     {
-      * body = ldv_create_body ();
+      *body = ldv_create_body ();
+      ldv_putc_body (c, *body);
+      ldv_set_last_column (yylloc.last_column + 1);
 
-      do
+      while (1)
         {
+          /* Parse aspect patterns inside an advice body. */
+          if ((pattern = ldv_parse_aspect_pattern ()))
+            {
+              body_pattern = ldv_create_body_aspect_pattern ();
+              body_pattern->pattern = pattern;
+              body_pattern->place = LDV_STR_OFFSET (ldv_get_body_text (*body));
+              ldv_list_push_back (&((*body)->patterns), body_pattern);
+              continue;
+            }
+
+          if ((c = ldv_getc (LDV_ASPECT_STREAM)) == EOF)
+            {
+              LDV_FATAL_ERROR ("End of file is reached but advice body \"%s\" isn't completed", ldv_get_body_text (*body));
+            }
+
           /* Process the end of line inside a body. */
           if (c == '\n')
             {
@@ -1760,9 +1779,12 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
               /* Reset initial position as well. */
               ldv_set_first_line (yylloc.last_line);
               ldv_set_first_column (yylloc.last_column);
+              ldv_putc_body (c, *body);
+              continue;
             }
 
           ldv_putc_body (c, *body);
+          ldv_set_last_column (yylloc.last_column + 1);
 
           /* Increase/decrease a brace counter to skip '{...}' construction
              inside a body. */
@@ -1771,13 +1793,9 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
           else if (c == '}')
             brace_count--;
 
-          if (c != '\n')
-            ldv_set_last_column (yylloc.last_column + 1);
-
           if (c == '}' && !brace_count)
             break;
         }
-      while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF);
 
       /* Advice body was parsed successfully. */
       return 1;

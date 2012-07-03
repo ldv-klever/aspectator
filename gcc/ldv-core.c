@@ -71,26 +71,15 @@ ldv_create_body (void)
   return body;
 }
 
-ldv_ab_arg_ptr
-ldv_create_body_arg (void)
+ldv_ab_aspect_pattern_ptr
+ldv_create_body_aspect_pattern (void)
 {
-  ldv_ab_arg_ptr body_arg = NULL;
+  ldv_ab_aspect_pattern_ptr pattern = NULL;
 
-  body_arg = XCNEW (ldv_ab_arg);
-  ldv_print_info (LDV_INFO_MEM, "body argument pattern  memory was released");
+  pattern = XCNEW (ldv_ab_aspect_pattern);
+  ldv_print_info (LDV_INFO_MEM, "advice body aspect pattern memory was released");
 
-  return body_arg;
-}
-
-ldv_ab_general_ptr
-ldv_create_body_general (void)
-{
-  ldv_ab_general_ptr body_general = NULL;
-
-  body_general = XCNEW (ldv_ab_general);
-  ldv_print_info (LDV_INFO_MEM, "body pattern memory was released");
-
-  return body_general;
+  return pattern;
 }
 
 ldv_pps_declarator_ptr
