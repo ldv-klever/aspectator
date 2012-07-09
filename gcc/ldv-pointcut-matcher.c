@@ -614,6 +614,18 @@ ldv_match_expr (tree t)
 
                           break;
 
+                        case FUNCTION_DECL:
+                          /* Just named functions are of interest. */
+                          if (DECL_NAME (op1))
+                            {
+                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_FUNC_NAME;
+                              /* Store a function name used as a value of a
+                                 function argument. */
+                              func_arg_info_new->func_name = IDENTIFIER_POINTER (DECL_NAME (op1));
+                            }
+
+                           break;
+
                         default:
                           if ((array_size = ldv_array_field_size (arg)))
                             {
@@ -648,18 +660,6 @@ ldv_match_expr (tree t)
                         }
 
                       break;
-
-                    case FUNCTION_DECL:
-                      /* Just named functions are of interest. */
-                      if (DECL_NAME(arg))
-                        {
-                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_FUNC_NAME;
-                          /* Store a function name used as a value of a
-                             function argument. */
-                          func_arg_info_new->func_name = IDENTIFIER_POINTER (DECL_NAME (arg));
-                        }
-
-                       break;
 
                     default: ;
                     }
