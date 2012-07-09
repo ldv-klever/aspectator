@@ -2218,28 +2218,33 @@ ldv_parse_preprocessor_directives (void)
 unsigned int
 ldv_parse_unsigned_integer (unsigned int *integer)
 {
-  unsigned int unsigned_integer_read;
-  int matches;
-  unsigned int byte_count;
+  int c;
+  unsigned int byte_count = 0;
+  unsigned int integer_read = 0;
 
-  errno = 0;
+  c = ldv_getc (LDV_ASPECT_STREAM);
 
-  matches = fscanf(LDV_ASPECT_STREAM, "%u", &unsigned_integer_read);
+  if (ISDIGIT (c))
+    {
+      do
+        {
+          integer_read = 10 * integer_read + (c - '0');
+          byte_count++;
+          c = ldv_getc (LDV_ASPECT_STREAM);
+        }
+      while (ISDIGIT (c));
+    }
 
-  if (matches == 1)
+  /* Push back a first nondigit character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
+  if (byte_count)
     {
       /* Assign read from stream integer to integer passed through parameter. */
-      *integer = unsigned_integer_read;
-
-      /* Count the number of bytes read, move current position properly and
-         return the number of bytes read. */
-      byte_count = strlen(ldv_itoa(*integer));
+      *integer = integer_read;
+      /* Move z current position properly and return the number of bytes read. */
       ldv_set_last_column (yylloc.last_column + byte_count);
       return byte_count;
-    }
-  else if (errno != 0)
-    {
-      LDV_FATAL_ERROR ("can%'t read aspect stream: %m");
     }
 
   /* Don't assign any value to integer passed through parameter. 0 bytes were
