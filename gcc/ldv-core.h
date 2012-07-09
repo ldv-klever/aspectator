@@ -56,6 +56,8 @@ extern void ldv_delete_text (ldv_text_ptr);
 
 extern const char *ldv_itoa (unsigned int);
 
+extern char *ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr);
+
 extern char *ldv_get_body_text (ldv_ab_ptr);
 extern char *ldv_get_file_name (ldv_file_ptr);
 extern char *ldv_get_id_name (ldv_id_ptr);

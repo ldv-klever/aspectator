@@ -356,6 +356,27 @@ ldv_itoa (unsigned int n)
 }
 
 char *
+ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr pattern)
+{
+  ldv_aspect_pattern_param_ptr param = NULL;
+  char *value = NULL;
+
+  if (!pattern->params || ldv_list_get_next (pattern->params)
+    || !(param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params))
+    || !(param->kind == LDV_ASPECT_PATTERN_STRING))
+    {
+      LDV_FATAL_ERROR ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
+    }
+
+  if (!(value = getenv (param->string)))
+    {
+      LDV_FATAL_ERROR ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
+    }
+
+  return value;
+}
+
+char *
 ldv_get_body_text (ldv_ab_ptr body)
 {
   return ldv_cpp_get_body_text (body);

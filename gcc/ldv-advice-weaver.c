@@ -527,6 +527,10 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                 ldv_puts_text (LDV_FUNC_RES, body_with_patterns);
               else if (!strcmp(pattern->name, "ret_type"))
                 ldv_puts_text (LDV_FUNC_RET_TYPE, body_with_patterns);
+              else if (!strcmp(pattern->name, "env"))
+                {
+                  ldv_puts_text (ldv_get_aspect_pattern_env (pattern), body_with_patterns);
+                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);

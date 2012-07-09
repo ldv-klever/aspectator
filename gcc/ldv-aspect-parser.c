@@ -3754,7 +3754,6 @@ int
 ldv_parse_aspect_pattern_known_value (char const **str)
 {
   ldv_aspect_pattern_ptr pattern = NULL;
-  ldv_aspect_pattern_param_ptr param = NULL;
 
   /* First of all try to parse aspect pattern. */
   if ((pattern = ldv_parse_aspect_pattern ()))
@@ -3763,17 +3762,7 @@ ldv_parse_aspect_pattern_known_value (char const **str)
          calculated without matching. */
       if (!strcmp (pattern->name, "env"))
         {
-          if (!pattern->params || ldv_list_get_next (pattern->params)
-            || !(param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params))
-            || !(param->kind == LDV_ASPECT_PATTERN_STRING))
-            {
-              LDV_FATAL_ERROR ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
-            }
-
-          if (!(*str = getenv (param->string)))
-            {
-              LDV_FATAL_ERROR ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
-            }
+          *str = ldv_get_aspect_pattern_env (pattern);
 
           return 1;
         }
