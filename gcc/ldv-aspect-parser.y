@@ -1938,11 +1938,14 @@ ldv_parse_comments (void)
         {
           /* Define a comment type (C or C++) by means of a following
              character. */
-          c_next = ldv_getc (LDV_ASPECT_STREAM);
+          if ((c_next = ldv_getc (LDV_ASPECT_STREAM)) == EOF)
+            {
+              LDV_FATAL_ERROR ("end of file is reached, but comment isn't completed");
+            }
 
           /* Drop a C++ comment '//...\n' from '//' up to the end of a line.
              Don't track a current file position. */
-          if (c_next != EOF && c_next == '/')
+          if (c_next == '/')
             {
               comment = ldv_create_text ();
               ldv_puts_text ("//", comment);
@@ -1966,7 +1969,7 @@ ldv_parse_comments (void)
           /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
              current file position, since '*_/' can be placed at another line
              and there may be other symbols after it. */
-          else if (c_next != EOF && c_next == '*')
+          else if (c_next == '*')
             {
               comment = ldv_create_text ();
               ldv_puts_text ("/*", comment);
@@ -2011,8 +2014,9 @@ ldv_parse_comments (void)
           else
             {
               /* Push back non comment characters. */
-              ldv_ungetc (c, LDV_ASPECT_STREAM);
               ldv_ungetc (c_next, LDV_ASPECT_STREAM);
+              ldv_ungetc (c, LDV_ASPECT_STREAM);
+              break;
             }
         }
       else
