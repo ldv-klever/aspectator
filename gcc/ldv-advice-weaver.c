@@ -293,7 +293,7 @@ ldv_get_arg_value (unsigned int arg_numb)
           else
             {
               ldv_print_info (LDV_INFO_WEAVE, "body pattern argument value for \"%d\" function argument can't be weaved", arg_numb);
-              return 0;
+              return NULL;
             }
         }
     }
@@ -410,7 +410,12 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 {
   char *body_text = NULL;
   const char *func_call = NULL;
-  ldv_text_ptr body_with_patterns;
+  ldv_list_ptr body_patterns = NULL;
+  ldv_ab_aspect_pattern_ptr body_pattern = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  const char *func_arg = NULL;
+  int func_arg_size;
+  ldv_text_ptr body_with_patterns = NULL;
   const char *body_c = NULL;
   int body_p;
   bool isres_needed = true;
@@ -444,6 +449,92 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
     {
       /* Copy a non pattern text of a body. */
       ldv_putc_text (*body_c, body_with_patterns);
+
+      /* Evaluate aspect patterns if so was placed at a given point of a body
+         and print corresponding text instead of it. */
+      for (body_patterns = body->patterns
+        ; body_patterns
+        ; body_patterns = ldv_list_get_next (body_patterns))
+        {
+          body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+
+          if (body_pattern->place == body_p)
+            {
+              pattern = body_pattern->pattern;
+
+              /* Aspect patterns that can be evaluated on the basis of matching
+                 information. */
+              if (!strcmp(pattern->name, "arg"))
+                {
+                  func_arg = ldv_get_param_name (pattern->arg_numb);
+                  ldv_puts_text (func_arg, body_with_patterns);
+                }
+              else if (!strcmp(pattern->name, "arg_type"))
+                {
+                  func_arg = ldv_get_arg_type_name (pattern->arg_numb);
+                  ldv_puts_text (func_arg, body_with_patterns);
+                }
+              else if (!strcmp(pattern->name, "arg_size"))
+                {
+                  func_arg_size = ldv_get_arg_size (pattern->arg_numb);
+
+                  /* Print stub '-1' when an argument size isn't specified. */
+                  if (func_arg_size == -1)
+                    {
+                      ldv_puts_text ("-1", body_with_patterns);
+                      ldv_print_info (LDV_INFO_WEAVE, "generate stub \"-1\" for aspect pattern \"%s\"", pattern->name);
+                    }
+                  else
+                    {
+                      func_arg = ldv_itoa ((unsigned int) func_arg_size);
+                      ldv_puts_text (func_arg, body_with_patterns);
+                    }
+                }
+              else if (!strcmp(pattern->name, "arg_value"))
+                {
+                  func_arg = ldv_get_arg_value (pattern->arg_numb);
+
+                  /* Print stub 'NULL' when an argument size isn't specified. */
+                  if (func_arg == NULL)
+                    {
+                      ldv_putc_text ('0', body_with_patterns);
+                      ldv_print_info (LDV_INFO_WEAVE, "generate stub \"0\" for aspect pattern \"%s\"", pattern->name);
+                    }
+                  else
+                    ldv_puts_text (func_arg, body_with_patterns);
+                }
+              else if (!strcmp(pattern->name, "aspect_func_name"))
+                {
+                  if (ldv_aspect_func_name)
+                    ldv_puts_text (ldv_aspect_func_name, body_with_patterns);
+                  else
+                    {
+                      LDV_FATAL_ERROR ("no function name was found for aspect pattern \"%s\"", pattern->name);
+                    }
+                }
+              else if (!strcmp(pattern->name, "func_name"))
+                {
+                  if (ldv_func_name)
+                    ldv_puts_text (ldv_func_name, body_with_patterns);
+                  else
+                    {
+                      LDV_FATAL_ERROR ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
+                    }
+                }
+              else if (!strcmp(pattern->name, "proceed"))
+                ldv_puts_text (func_call, body_with_patterns);
+              else if (!strcmp(pattern->name, "res"))
+                ldv_puts_text (LDV_FUNC_RES, body_with_patterns);
+              else if (!strcmp(pattern->name, "ret_type"))
+                ldv_puts_text (LDV_FUNC_RET_TYPE, body_with_patterns);
+              else
+                {
+                  LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
+                }
+
+              ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
+            }
+        }
     }
 
   body_text = ldv_copy_str (ldv_get_text (body_with_patterns));
