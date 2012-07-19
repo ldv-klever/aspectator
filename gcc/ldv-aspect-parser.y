@@ -572,7 +572,7 @@ primitive_pointcut_signature: /* It's a primitive pointcut signature, the part o
 
       $$ = pp_signature;
     }
-  | hash_opt primitive_pointcut_signature_declaration
+  | typedef_marker_opt primitive_pointcut_signature_declaration
     {
       ldv_pps_ptr pp_signature = NULL;
 
@@ -589,11 +589,11 @@ primitive_pointcut_signature: /* It's a primitive pointcut signature, the part o
 
 /* This rule is implemented just to fix a parsing bug because of typedef
    name placed at the beginning of a declaration signature. In that case
-   hash simbol must prevent that typedef name. Otherwise nothing is
+   caret simbol must prevent that typedef name. Otherwise nothing is
    needed.*/
-hash_opt:
+typedef_marker_opt:
 
-  | '#'
+  | '^'
 
 primitive_pointcut_signature_macro: /* It's a macro primitive pointcut signature, the one of primitive pointcut signatures. */
   LDV_ID /* A macro primitive pointcut signature is in the form: "macro_name". It's macro definition. */
