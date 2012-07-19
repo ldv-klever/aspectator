@@ -46,7 +46,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
   value = ldv_convert_body_to_macro (ldv_i_match->a_definition->a_body);
 
   /* Create a macro function definition. */
-  if (ldv_i_match->i_macro->macro_param)
+  if (ldv_i_match->i_macro->macro_kind == LDV_PPS_MACRO_FUNC)
     {
       /* Count a lenght and the number of all macro function definition parameters. */
       for (i_macro_param_list = ldv_i_match->i_macro->macro_param, param_len = 0, param_numb = 0

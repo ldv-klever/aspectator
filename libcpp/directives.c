@@ -612,6 +612,12 @@ do_define (cpp_reader *pfile)
 
       map = linemap_lookup (pfile->line_table, pfile->directive_line);
   
+      /* Understand whether a macro function or a macro definition is given. */
+      if (node->value.macro->fun_like)
+        i_macro->macro_kind = LDV_PPS_MACRO_FUNC;
+      else
+        i_macro->macro_kind = LDV_PPS_MACRO_DEF;
+  
       /* Remember a macro name and a name of file containing a given macro. */
       i_macro->macro_name = (const char *) (NODE_NAME (node));
       i_macro->file_path = map->to_file;

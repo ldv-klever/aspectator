@@ -96,8 +96,10 @@ typedef ldv_file *ldv_file_ptr;
 
 /* Macro primitive pointcut signature = macro definition name + macro
    function parameters. */
+typedef enum { LDV_PPS_MACRO_DEF, LDV_PPS_MACRO_FUNC } ldv_pps_macro_k;
 typedef struct ldv_primitive_pointcut_signature_macro_internal
 {
+  ldv_pps_macro_k pps_macro_kind;
   ldv_id_ptr macro_name;
   ldv_list_ptr macro_param_list;
 } ldv_primitive_pointcut_signature_macro;
@@ -397,6 +399,7 @@ typedef ldv_info_func *ldv_i_func_ptr;
 /* Macro declaration information = macro name + macroparameters + scope file. */
 typedef struct ldv_info_macro_internal
 {
+  ldv_pps_macro_k macro_kind;
   const char *macro_name;
   ldv_list_ptr macro_param;
   const char *file_path;

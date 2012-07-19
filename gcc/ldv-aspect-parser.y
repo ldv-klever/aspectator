@@ -220,6 +220,7 @@ static int yylex (void);
 %type <pp_signature>    primitive_pointcut_signature
 %type <pps_macro>       primitive_pointcut_signature_macro
 %type <list>            macro_param
+%type <list>            macro_param_opt
 %type <pps_file>        primitive_pointcut_signature_file
 %type <pps_decl>        primitive_pointcut_signature_declaration
 %type <pps_decl>        c_declaration
@@ -602,22 +603,28 @@ primitive_pointcut_signature_macro: /* It's a macro primitive pointcut signature
       macro = XCNEW (ldv_primitive_pointcut_signature_macro);
       ldv_print_info (LDV_INFO_MEM, "macro primitive pointcut signature memory was released");
 
+      /* Specify that macro definition signature is parsed. */
+      macro->pps_macro_kind = LDV_PPS_MACRO_DEF;
+
       /* Set a macro primitive pointcut signature macro name from a lexer identifier. */
       macro->macro_name = $1;
 
       /* Specify that there is no macro parameters at all. */
       macro->macro_param_list = NULL;
 
-      ldv_print_info (LDV_INFO_BISON, "bison parsed macro signature");
+      ldv_print_info (LDV_INFO_BISON, "bison parsed macro definition signature");
 
       $$ = macro;
     }
-  | LDV_ID '(' macro_param ')' /* A macro primitive pointcut signature is in the form: "macro_name (macro_parameters)". It's macro function. */
+  | LDV_ID '(' macro_param_opt ')' /* A macro primitive pointcut signature is in the form: "macro_name (macro_parameters)". It's macro function. */
     {
       ldv_pps_macro_ptr macro = NULL;
 
       macro = XCNEW (ldv_primitive_pointcut_signature_macro);
       ldv_print_info (LDV_INFO_MEM, "macro primitive pointcut signature memory was released");
+
+      /* Specify that macro function signature is parsed. */
+      macro->pps_macro_kind = LDV_PPS_MACRO_FUNC;
 
       /* Set a macro primitive pointcut signature macro name from a lexer identifier. */
       macro->macro_name = $1;
@@ -644,6 +651,16 @@ primitive_pointcut_signature_file: /* It's a file primitive pointcut signature, 
       ldv_print_info (LDV_INFO_BISON, "bison parsed file signature");
 
       $$ = file;
+    };
+
+macro_param_opt:
+  /* I.e. an empty list of macro parameters. */
+    {
+      $$ = NULL;
+    }
+  | macro_param
+    {
+      $$ = $1;
     };
 
 macro_param: /* It's a macro function parameters, the part of macro primitive pointcut signature. */

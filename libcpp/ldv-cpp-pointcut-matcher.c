@@ -345,6 +345,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
   /* Set an aspect macro. */
   i_match->i_macro_aspect = macro_aspect;
 
+  /* Compare macro kinds. */
+  if (i_match->i_macro->macro_kind != i_match->i_macro_aspect->macro_kind)
+    return false;
+
   /* Compare macro names. */
   if (strcmp (macro_source->macro_name, macro_aspect->macro_name))
     return false;
