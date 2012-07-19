@@ -338,6 +338,7 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 {
   ldv_i_macro_ptr macro_source = NULL, macro_aspect = NULL;
   ldv_list_ptr i_macro_param_first_list = NULL, i_macro_param_second_list = NULL;
+  const char *i_macro_param_first = NULL, *i_macro_param_second = NULL;
 
   macro_source = i_match->i_macro;
   macro_aspect = ldv_convert_macro_signature_to_internal (pps_macro);
@@ -361,7 +362,9 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
     ; i_macro_param_first_list && i_macro_param_second_list
     ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
     {
-      if (strcmp((const char *) ldv_list_get_data (i_macro_param_first_list), (const char *) ldv_list_get_data (i_macro_param_second_list)))
+      i_macro_param_first = (const char *) ldv_list_get_data (i_macro_param_first_list);
+      i_macro_param_second = (const char *) ldv_list_get_data (i_macro_param_second_list);
+      if (strcmp(i_macro_param_first, i_macro_param_second))
         return false;
     }
 

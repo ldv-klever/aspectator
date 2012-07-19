@@ -584,6 +584,8 @@ do_define (cpp_reader *pfile)
   const struct line_map *map = NULL;
   ldv_i_macro_ptr i_macro = NULL;
   unsigned int i;
+  char *macro_param_name = NULL;
+  const char *macro_param_ellipsis = "...";
   
   /* LDV extension end. */  
 
@@ -625,8 +627,17 @@ do_define (cpp_reader *pfile)
   
       /* Remember macro parameters. */
       for (i = 0; i < node->value.macro->paramc; ++i)
-        ldv_list_push_back (&i_macro->macro_param, (char *) NODE_NAME (node->value.macro->params[i]));
-  
+        {
+          macro_param_name = (char *) NODE_NAME (node->value.macro->params[i]);
+          
+          /* Use the standard designition (ellipsis) for variadic macro
+           * parameters. */
+          if (!strcmp ("__VA_ARGS__", macro_param_name))
+            macro_param_name = (char *) macro_param_ellipsis;
+          
+          ldv_list_push_back (&i_macro->macro_param, macro_param_name);
+        }
+        
       /* Try to match macro. */
       ldv_match_macro (i_macro);
     }

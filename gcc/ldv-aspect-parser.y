@@ -677,6 +677,27 @@ macro_param: /* It's a macro function parameters, the part of macro primitive po
       ldv_list_push_back (&$1, $3);
 
       $$ = $1;
+    }
+  | LDV_ELLIPSIS /* Single ellipsis is used as a macro parameter. */
+    {
+      ldv_list_ptr macro_param_list = NULL;
+      ldv_id_ptr id = ldv_create_id ();
+
+      ldv_puts_id ("...", id);
+
+      ldv_list_push_back (&macro_param_list, id);
+
+      $$ = macro_param_list;
+    }
+  | macro_param ',' LDV_ELLIPSIS /* Ellipsis finishes a macro parameter list. */
+    {
+      ldv_id_ptr id = ldv_create_id ();
+
+      ldv_puts_id ("...", id);
+
+      ldv_list_push_back (&$1, id);
+
+      $$ = $1;
     };
 
 primitive_pointcut_signature_declaration:
