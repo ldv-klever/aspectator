@@ -639,7 +639,7 @@ void
 ldv_putc (int c, FILE *stream)
 {
   /* Finish work if can not write a given character to a given stream. */
-  if (putc (c, stream) != c)
+  if (putc (c, stream) != (unsigned char) c)
     {
       LDV_FATAL_ERROR ("character \"%c\" wasn't put to stream", c);
     }
