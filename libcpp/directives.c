@@ -583,7 +583,8 @@ do_define (cpp_reader *pfile)
 
   const struct line_map *map = NULL;
   ldv_i_macro_ptr i_macro = NULL;
-  unsigned int i;
+  int i;
+  const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
   const char *macro_param_ellipsis = "...";
   
@@ -628,13 +629,29 @@ do_define (cpp_reader *pfile)
       /* Remember macro parameters. */
       for (i = 0; i < node->value.macro->paramc; ++i)
         {
-          macro_param_name = (char *) NODE_NAME (node->value.macro->params[i]);
+          macro_param_name_original = (char *) NODE_NAME (node->value.macro->params[i]);
           
-          /* Use the standard designition (ellipsis) for variadic macro
-           * parameters. */
-          if (!strcmp ("__VA_ARGS__", macro_param_name))
-            macro_param_name = (char *) macro_param_ellipsis;
-          
+          /* Check the last parameter since it may be variadic and should be
+           * processed respectively. */
+          if (node->value.macro->variadic && i == node->value.macro->paramc - 1)
+            {
+              /* Use the standard designition (ellipsis) for variadic macro
+               * parameters instead of __VA_ARGS__. */
+              if (!strcmp ("__VA_ARGS__", macro_param_name_original))
+                macro_param_name = (char *) macro_param_ellipsis;
+              /* Named variadic parameters. Use a name with ellipsis how it was
+               * in original source code. */
+              else
+                {
+                  macro_param_name = (char *) xmalloc (sizeof (char) * (strlen (macro_param_name_original) + 3 + 1));
+                  sprintf (macro_param_name, "%s...", macro_param_name_original);
+                }
+            }
+          else
+            {
+              macro_param_name = (char *) macro_param_name_original;
+            }
+              
           ldv_list_push_back (&i_macro->macro_param, macro_param_name);
         }
         

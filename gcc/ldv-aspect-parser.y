@@ -689,6 +689,16 @@ macro_param: /* It's a macro function parameters, the part of macro primitive po
 
       $$ = macro_param_list;
     }
+  | LDV_ID LDV_ELLIPSIS /* Identifier and following ellipsis are used for named variadic parameters. */
+    {
+      ldv_list_ptr macro_param_list = NULL;
+
+      ldv_puts_id ("...", $1);
+
+      ldv_list_push_back (&macro_param_list, $1);
+
+      $$ = macro_param_list;
+    }
   | macro_param ',' LDV_ELLIPSIS /* Ellipsis finishes a macro parameter list. */
     {
       ldv_id_ptr id = ldv_create_id ();
