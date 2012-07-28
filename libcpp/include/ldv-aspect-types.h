@@ -382,6 +382,7 @@ typedef struct ldv_func_arg_info_internal
 {
   ldv_func_arg_info_k func_arg_info_kind;
   unsigned int arg_numb;
+  const char *arg_name;
   const char *func_name;
   unsigned int one_dim_array_size;
 } ldv_func_arg_info;
