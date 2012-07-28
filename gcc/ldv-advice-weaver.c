@@ -570,6 +570,25 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                  information and environment variable values. */
               if ((text = ldv_evaluate_aspect_pattern (pattern)))
                 ldv_puts_text (text, body_with_patterns);
+              else if (!strcmp (pattern->name, "fprintf"))
+                {
+                  /* Output information specified by the 2d parameter to the
+                   * file specified by the 1st one. */
+                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params);
+                  param2 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (ldv_list_get_next (pattern->params));
+
+                  if (param1->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+                    file_name = param1->aspect_pattern->value;
+                  else if (param1->kind == LDV_ASPECT_PATTERN_STRING)
+                    file_name = param1->string;
+
+                  if (param2->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+                    text = ldv_evaluate_aspect_pattern (param2->aspect_pattern);
+                  else if (param2->kind == LDV_ASPECT_PATTERN_STRING)
+                    text = param2->string;
+
+                  fprintf (ldv_open_file_stream (file_name), "%s\n", text);
+                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
