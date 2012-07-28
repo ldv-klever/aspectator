@@ -305,7 +305,8 @@ typedef ldv_aspect_pattern_param *ldv_aspect_pattern_param_ptr;
 
 typedef struct ldv_aspect_pattern_internal
 {
-  char *name;
+  const char *name;
+  const char *value;
   unsigned int arg_numb;
   ldv_list_ptr params;
 } ldv_aspect_pattern;

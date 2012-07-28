@@ -1822,9 +1822,15 @@ ldv_parse_aspect_pattern (void)
 
       /* Parse aspect pattern parameters if so. */
       if ((params = ldv_parse_aspect_pattern_params ()))
-        {
-          pattern->params = params;
-        }
+        pattern->params = params;
+
+      /* Evaluate environment variables immediately after parsing. */
+      if (!strcmp (pattern->name, "env"))
+        pattern->value = ldv_get_aspect_pattern_env (pattern);
+
+      /* Use a special value for aspect pattern pointing to a file instrumented. */
+      if (!strcmp (pattern->name, "this"))
+        pattern->value = "$this";
 
       return pattern;
     }
@@ -1941,19 +1947,9 @@ ldv_parse_aspect_pattern_known_value (char const **str)
   /* First of all try to parse aspect pattern. */
   if ((pattern = ldv_parse_aspect_pattern ()))
     {
-      /* Just environment variables and current instrumented file can be
-         calculated without matching. */
-      if (!strcmp (pattern->name, "env"))
+      if (pattern->value)
         {
-          *str = ldv_get_aspect_pattern_env (pattern);
-
-          return 1;
-        }
-      else if (!strcmp (pattern->name, "this"))
-        {
-          /* Do not evaluate a value of this aspect pattern since it doesn't
-             matter. */
-          *str = "$this";
+          *str = pattern->value;
 
           return 1;
         }
