@@ -470,6 +470,21 @@ ldv_open_preprocessed_stream (bool iswrite)
     }
 }
 
+FILE *
+ldv_open_file_stream (const char *file_name)
+{
+  FILE *file_stream;
+
+  if ((file_stream = fopen (file_name, "w+")) == NULL)
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", file_name);
+    }
+
+  ldv_print_info (LDV_INFO_IO, "file \"%s\" was successfully opened for write", file_name);
+
+  return file_stream;
+}
+
 void
 ldv_open_file_streams (void)
 {
