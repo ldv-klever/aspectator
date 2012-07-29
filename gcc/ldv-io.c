@@ -86,6 +86,13 @@ ldv_create_files (void)
   ldv_list_ptr adef_list = NULL;
   char *fname = NULL;
   char *fcontent = NULL;
+  ldv_text_ptr body_with_patterns = NULL;
+  const char *body_c = NULL;
+  int body_p;
+  ldv_list_ptr body_patterns = NULL;
+  ldv_ab_aspect_pattern_ptr body_pattern = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  ldv_aspect_pattern_param_ptr param = NULL;
   FILE *fstream = NULL;
 
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
@@ -101,6 +108,52 @@ ldv_create_files (void)
           fcontent = ldv_copy_str (ldv_get_body_text (adef->a_body));
           fcontent = ldv_trunkate_braces (fcontent);
 
+          /* Instance different body patterns if it's needed. */
+          body_with_patterns = ldv_create_text ();
+
+          /* Walk through a body text to find places body patterns (just $sign,
+           * $env and isempty_sign_foreach_sign) to be printed. */
+          for (body_c = fcontent, body_p = 1; *body_c; body_c++, body_p++)
+            {
+              /* Copy a non pattern text of a body. */
+              ldv_putc_text (*body_c, body_with_patterns);
+
+              for (body_patterns = adef->a_body->patterns
+                ; body_patterns
+                ; body_patterns = ldv_list_get_next (body_patterns))
+                {
+                  body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+
+                  if (body_pattern->place == body_p)
+                    {
+                      pattern = body_pattern->pattern;
+
+                      if (!strcmp (pattern->name, "env"))
+                        ldv_puts_text (pattern->value, body_with_patterns);
+                      else if (!strcmp (pattern->name, "sign"))
+                        {
+                          ldv_puts_text ("$sign", body_with_patterns);
+                        }
+                      else if (!strcmp (pattern->name, "isempty_sign_foreach_sign"))
+                        {
+                          param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params);
+
+                          ldv_puts_text ("$isempty_sign_foreach_sign<\"", body_with_patterns);
+                          ldv_puts_text (param->string, body_with_patterns);
+                          ldv_puts_text ("\">", body_with_patterns);
+                        }
+                      else
+                        {
+                          LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
+                        }
+
+                      ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
+
+                      break;
+                    }
+                }
+            }
+
           if ((fstream = fopen (fname, "w")) == NULL)
             {
               LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", fname);
@@ -108,7 +161,7 @@ ldv_create_files (void)
 
           ldv_print_info (LDV_INFO_IO, "file \"%s\" was created successfully", fname);
 
-          if (fputs (fcontent, fstream) == EOF)
+          if (fputs (ldv_get_text (body_with_patterns), fstream) == EOF)
             {
               LDV_FATAL_ERROR ("can%'t write to file \"%s\": %m", fname);
             }
