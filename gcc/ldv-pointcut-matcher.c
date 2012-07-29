@@ -591,7 +591,8 @@ ldv_match_expr (tree t)
                       arg = TREE_OPERAND (arg, 0);
                     }
 
-                  if (DECL_NAME (arg) && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
+                  if (DECL_P (arg) && DECL_NAME (arg)
+                    && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
                     func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
 
                   switch (TREE_CODE (arg))
