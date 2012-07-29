@@ -292,6 +292,11 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern)
     text = LDV_FUNC_RET_TYPE;
   else if (!strcmp (pattern->name, "env"))
     text = pattern->value;
+  else if (!strcmp (pattern->name, "arg_sign"))
+    {
+      /* TODO. */
+      text = "";
+    }
 
   return text;
 }
