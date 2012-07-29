@@ -600,6 +600,8 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                 }
 
               ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
+
+              break;
             }
         }
     }
