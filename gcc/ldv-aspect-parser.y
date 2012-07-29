@@ -122,6 +122,7 @@ static int ldv_get_id_kind (char *id);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
 static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
+static unsigned int ldv_parse_aspect_pattern_param_str (char **str);
 static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
 static int ldv_parse_aspect_pattern_known_value (char const **str);
 static char *ldv_parse_comments (void);
@@ -1869,7 +1870,7 @@ ldv_parse_aspect_pattern_param (void)
       param->kind = LDV_ASPECT_PATTERN_INTEGER;
       param->integer = integer;
 
-      ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter \"%u\"", integer);
+      ldv_print_info (LDV_INFO_LEX, "lex parsed unsigned int aspect pattern parameter \"%u\"", integer);
 
       return param;
     }
@@ -1879,13 +1880,65 @@ ldv_parse_aspect_pattern_param (void)
       param->kind = LDV_ASPECT_PATTERN_STRING;
       param->string = str;
 
-      ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter \"%s\"", str);
+      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
+
+      return param;
+    }
+
+  if (ldv_parse_aspect_pattern_param_str (&str))
+    {
+      param->kind = LDV_ASPECT_PATTERN_STRING;
+      param->string = str;
+
+      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
 
       return param;
     }
 
   /* That is aspect pattern parameter wasn't read. */
   return NULL;
+}
+
+unsigned int
+ldv_parse_aspect_pattern_param_str (char **str)
+{
+  int c;
+  unsigned int byte_count = 0;
+  ldv_str_ptr str_read = NULL;
+
+  c = ldv_getc (LDV_ASPECT_STREAM);
+
+  /* String aspect pattern parameter is a sequence of characters in quotes. */
+  if (c == '"')
+    {
+      byte_count++;
+      str_read = ldv_create_string ();
+
+      /* Get the rest of string. */
+      while (1)
+        {
+          c = ldv_getc (LDV_ASPECT_STREAM);
+          byte_count++;
+
+          if (c == '"')
+            break;
+
+          ldv_putc_string (c, str_read);
+        }
+    }
+
+  if (byte_count)
+    {
+      /* Assign read from stream string to string passed through parameter. */
+      *str = ldv_get_str (str_read);
+      /* Move current position properly and return the number of bytes read. */
+      ldv_set_last_column (yylloc.last_column + byte_count);
+      return byte_count;
+    }
+
+  /* Don't assign any value to string passed through parameter. 0 bytes were
+     read from stream. */
+  return 0;
 }
 
 ldv_list_ptr
@@ -2279,7 +2332,7 @@ ldv_parse_unsigned_integer (unsigned int *integer)
     {
       /* Assign read from stream integer to integer passed through parameter. */
       *integer = integer_read;
-      /* Move z current position properly and return the number of bytes read. */
+      /* Move current position properly and return the number of bytes read. */
       ldv_set_last_column (yylloc.last_column + byte_count);
       return byte_count;
     }
