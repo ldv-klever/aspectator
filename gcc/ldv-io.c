@@ -92,7 +92,6 @@ ldv_create_files (void)
   ldv_list_ptr body_patterns = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
   ldv_aspect_pattern_ptr pattern = NULL;
-  ldv_aspect_pattern_param_ptr param = NULL;
   FILE *fstream = NULL;
 
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
@@ -130,18 +129,6 @@ ldv_create_files (void)
 
                       if (!strcmp (pattern->name, "env"))
                         ldv_puts_text (pattern->value, body_with_patterns);
-                      else if (!strcmp (pattern->name, "sign"))
-                        {
-                          ldv_puts_text ("$sign", body_with_patterns);
-                        }
-                      else if (!strcmp (pattern->name, "isempty_sign_foreach_sign"))
-                        {
-                          param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params);
-
-                          ldv_puts_text ("$isempty_sign_foreach_sign<\"", body_with_patterns);
-                          ldv_puts_text (param->string, body_with_patterns);
-                          ldv_puts_text ("\">", body_with_patterns);
-                        }
                       else
                         {
                           LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
