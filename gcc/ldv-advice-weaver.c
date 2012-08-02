@@ -81,6 +81,7 @@ static void ldv_delete_aux_func_param_list (ldv_i_type_ptr);
 static void ldv_delete_id_declarator (ldv_list_ptr);
 static const char *ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr);
 static const char *ldv_get_arg_name (unsigned int);
+static const char *ldv_get_arg_sign (unsigned int);
 static const char *ldv_get_arg_type_name (unsigned int);
 static int ldv_get_arg_size (unsigned int);
 static const char *ldv_get_arg_value (unsigned int);
@@ -293,12 +294,38 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern)
   else if (!strcmp (pattern->name, "env"))
     text = pattern->value;
   else if (!strcmp (pattern->name, "arg_sign"))
-    {
-      /* TODO. */
-      text = "";
-    }
+    text = ldv_get_arg_sign (pattern->arg_numb);
 
   return text;
+}
+
+const char *
+ldv_get_arg_sign (unsigned int arg_numb)
+{
+  unsigned int i;
+  ldv_list_ptr func_arg_info_list = NULL;
+  ldv_func_arg_info_ptr func_arg_info = NULL;
+
+  /* Walk through function arguments to find appropriate. */
+  for (i = 1, func_arg_info_list = ldv_func_arg_info_list
+    ; func_arg_info_list
+    ; i++, func_arg_info_list = ldv_list_get_next (func_arg_info_list))
+    {
+      func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
+
+      if (i == arg_numb)
+        {
+          if (func_arg_info->sign)
+            return func_arg_info->sign;
+          else
+            {
+              ldv_print_info (LDV_INFO_WEAVE, "body pattern argument sign for \"%d\" function argument can't be weaved", arg_numb);
+              return NULL;
+            }
+        }
+    }
+
+  LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *

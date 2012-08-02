@@ -593,12 +593,22 @@ ldv_match_expr (tree t)
 
                   if (DECL_P (arg) && DECL_NAME (arg)
                     && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
-                    func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
+                    {
+                      func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
+                      /* Here argument sign equals to declaration name passed. */
+                      func_arg_info_new->sign = func_arg_info_new->arg_name;
+                    }
 
                   switch (TREE_CODE (arg))
                     {
                     case ADDR_EXPR:
                       op1 = TREE_OPERAND (arg, 0);
+
+                      /* Argument sign equals to declaration name which address
+                       * is passed. */
+                      if (DECL_P (op1) && DECL_NAME (op1)
+                        && (TREE_CODE (DECL_NAME (op1)) == IDENTIFIER_NODE))
+                        func_arg_info_new->sign = IDENTIFIER_POINTER (DECL_NAME (op1));
 
                       /* Function, variable and field declarations that have an array
                          type are interest for us at the moment. */
