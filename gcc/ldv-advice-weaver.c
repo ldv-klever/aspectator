@@ -319,8 +319,8 @@ ldv_get_arg_sign (unsigned int arg_numb)
             return func_arg_info->sign;
           else
             {
-              ldv_print_info (LDV_INFO_WEAVE, "body pattern argument sign for \"%d\" function argument can't be weaved", arg_numb);
-              return NULL;
+              ldv_print_info (LDV_INFO_WEAVE, "body pattern argument sign for \"%d\" function argument can't be weaved, so use stub instead", arg_numb);
+              return "NOT_ARG_SIGN";
             }
         }
     }
