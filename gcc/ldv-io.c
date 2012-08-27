@@ -515,7 +515,7 @@ ldv_open_file_stream (const char *file_name)
 {
   FILE *file_stream;
 
-  if ((file_stream = fopen (file_name, "w+")) == NULL)
+  if ((file_stream = fopen (file_name, "a+")) == NULL)
     {
       LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", file_name);
     }
