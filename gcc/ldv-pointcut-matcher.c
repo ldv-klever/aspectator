@@ -85,6 +85,7 @@ static bool isfunc_vars;
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
 static ldv_var_array_ptr ldv_create_var_array (void);
+static const char *ldv_get_arg_sign (tree);
 static void ldv_match_expr (tree);
 static void ldv_visualize_expr (tree, int);
 static void ldv_visualize_body (tree);
@@ -138,6 +139,29 @@ ldv_create_var_array (void)
   ldv_print_info (LDV_INFO_MEM, "variable array memory was released");
 
   return var_array;
+}
+
+const char *
+ldv_get_arg_sign (tree t)
+{
+  tree op1 = NULL_TREE;
+  const char *arg_sign = NULL;
+
+  /* Argument signature equals to declaration name passed. */
+  if (DECL_P (t) && DECL_NAME (t)
+    && (TREE_CODE (DECL_NAME (t)) == IDENTIFIER_NODE))
+    arg_sign = IDENTIFIER_POINTER (DECL_NAME (t));
+  /* Argument signature equals to field name. */
+  else if (TREE_CODE (t) == COMPONENT_REF)
+    {
+      op1 = TREE_OPERAND (t, 1);
+
+      if (DECL_P (op1) && DECL_NAME (op1)
+        && (TREE_CODE (DECL_NAME (op1)) == IDENTIFIER_NODE))
+        arg_sign = IDENTIFIER_POINTER (DECL_NAME (op1));
+    }
+
+  return arg_sign;
 }
 
 void
@@ -591,24 +615,21 @@ ldv_match_expr (tree t)
                       arg = TREE_OPERAND (arg, 0);
                     }
 
+                  /* Argument name can be calculated just in case when some
+                   * declaration name is passed as a function parameter
+                   * directly. */
                   if (DECL_P (arg) && DECL_NAME (arg)
                     && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
-                    {
-                      func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
-                      /* Here argument sign equals to declaration name passed. */
-                      func_arg_info_new->sign = func_arg_info_new->arg_name;
-                    }
+                    func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
+
+                  func_arg_info_new->sign = ldv_get_arg_sign (arg);
 
                   switch (TREE_CODE (arg))
                     {
                     case ADDR_EXPR:
                       op1 = TREE_OPERAND (arg, 0);
 
-                      /* Argument sign equals to declaration name which address
-                       * is passed. */
-                      if (DECL_P (op1) && DECL_NAME (op1)
-                        && (TREE_CODE (DECL_NAME (op1)) == IDENTIFIER_NODE))
-                        func_arg_info_new->sign = IDENTIFIER_POINTER (DECL_NAME (op1));
+                      func_arg_info_new->sign = ldv_get_arg_sign (op1);
 
                       /* Function, variable and field declarations that have an array
                          type are interest for us at the moment. */
