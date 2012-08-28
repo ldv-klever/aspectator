@@ -34,6 +34,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 static ldv_str_ptr ldv_create_str (ldv_token_k);
 static void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
 static void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
+static unsigned int ldv_unique_numb = 0;
 
 
 ldv_aspect_pattern_ptr
@@ -420,6 +421,44 @@ ldv_get_text (ldv_text_ptr text)
     {
       LDV_FATAL_ERROR ("text pointer wasn't initialized");
     }
+}
+
+unsigned int
+ldv_get_unique_numb(void)
+{
+  const char *file_name = NULL;
+  FILE *stream;
+  unsigned int first_unique_numb = 0;
+
+  /* Try to initialize first unique number on the basis of value stored in a
+   * special file or use default value as initializer (0). */
+  if (!ldv_unique_numb
+    && (file_name = getenv ("LDV_UNIQUE_NUMB"))
+    && (stream = ldv_open_file_stream (file_name, "r")))
+    {
+      if (fscanf (stream, "%u", &first_unique_numb) == 1)
+        {
+          ldv_unique_numb = first_unique_numb;
+          fclose (stream);
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("can't read unsigned integer from file '%s'", file_name);
+        }
+    }
+
+  /* Next unique number is following for the current one. */
+  ldv_unique_numb++;
+
+  /* Try to dump a current unique number to the special file. */
+  if ((file_name = getenv ("LDV_UNIQUE_NUMB"))
+    && (stream = ldv_open_file_stream (file_name, "w")))
+    {
+      fprintf (stream, "%u", ldv_unique_numb);
+      fclose (stream);
+    }
+
+  return ldv_unique_numb;
 }
 
 ldv_pps_declspecs_ptr

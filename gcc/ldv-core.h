@@ -65,6 +65,8 @@ extern int ldv_get_int (ldv_int_ptr);
 extern char *ldv_get_str (ldv_str_ptr);
 extern char *ldv_get_text (ldv_text_ptr);
 
+extern unsigned int ldv_get_unique_numb(void);
+
 
 extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr);
 

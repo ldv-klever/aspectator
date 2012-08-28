@@ -59,7 +59,6 @@ typedef enum { LDV_PADDING_AFTER, LDV_PADDING_BEFORE, LDV_PADDING_NONE } ldv_pad
 expanded_location ldv_decl_beginning_location;
 
 static const char *ldv_aspect_func_name = NULL;
-static unsigned int ldv_aspected_name_numb = 1;
 static ldv_list_ptr ldv_func_arg_type_decl_list = NULL;
 static ldv_list_ptr ldv_func_arg_type_name_list = NULL;
 static ldv_text_ptr ldv_func_call = NULL;
@@ -153,16 +152,13 @@ ldv_create_aspected_name (const char *name)
   char *aspected_name = NULL;
   const char *aspected_name_numb;
 
-  aspected_name_numb = ldv_itoa (ldv_aspected_name_numb);
+  aspected_name_numb = ldv_itoa (ldv_get_unique_numb ());
 
   /* Aspected name = ldv prefix + _ + original name + _ + unique number. */
   aspected_name = XCNEWVEC (char, strlen (LDV_ASPECTED_NAME_PREFIX) + 1 + strlen (name) + 1 + strlen (aspected_name_numb) + 1);
   ldv_print_info (LDV_INFO_MEM, "aspected name memory was released");
 
   sprintf (aspected_name, "%s_%s_%s", LDV_ASPECTED_NAME_PREFIX, name, aspected_name_numb);
-
-  /* Increase an aspected name number for a following aspected name. */
-  ldv_aspected_name_numb++;
 
   return aspected_name;
 }
