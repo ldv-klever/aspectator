@@ -97,7 +97,7 @@ extern FILE *ldv_get_preprocessed_stream (void);
 extern int ldv_getc (FILE *);
 extern const char *ldv_gets (FILE *);
 extern void ldv_make_includes (void);
-extern FILE *ldv_open_file_stream (const char *);
+extern FILE *ldv_open_file_stream (const char *, const char *);
 extern void ldv_open_file_streams (void);
 extern void ldv_print_info (const char *, const char *, ...) ATTRIBUTE_PRINTF_2;
 extern void ldv_print_to_awfile (void);

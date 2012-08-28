@@ -619,7 +619,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   else if (param2->kind == LDV_ASPECT_PATTERN_STRING)
                     text = param2->string;
 
-                  fprintf (ldv_open_file_stream (file_name), "%s\n", text);
+                  fprintf (ldv_open_file_stream (file_name, "a+"), "%s\n", text);
                 }
               else
                 {
