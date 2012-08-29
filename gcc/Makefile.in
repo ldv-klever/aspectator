@@ -3603,7 +3603,7 @@ ldv-converter.o : ldv-converter.c \
 ldv-core.o : ldv-core.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h \
-  ldv-core.h ldv-io.h
+  ldv-core.h ldv-io.h ldv-opts.h
 ldv-io.o : ldv-io.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \

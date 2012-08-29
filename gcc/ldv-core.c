@@ -29,6 +29,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-aspect-types.h"
 #include "ldv-core.h"
 #include "ldv-io.h"
+#include "ldv-opts.h"
 
 
 static ldv_str_ptr ldv_create_str (ldv_token_k);
@@ -450,8 +451,11 @@ ldv_get_unique_numb(void)
   /* Next unique number is following for the current one. */
   ldv_unique_numb++;
 
-  /* Try to dump a current unique number to the special file. */
-  if ((file_name = getenv ("LDV_UNIQUE_NUMB"))
+  /* Try to dump a current unique number to the special file. Do not do this at
+   * the third stage since the fourth stage should use the same set of numbers
+   * as the third one. */
+  if (!ldv_isldv_stage_third ()
+    && (file_name = getenv ("LDV_UNIQUE_NUMB"))
     && (stream = ldv_open_file_stream (file_name, "w")))
     {
       fprintf (stream, "%u", ldv_unique_numb);
