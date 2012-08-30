@@ -44,6 +44,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
+#include "ldv-opts.h"
 #include "ldv-pointcut-matcher.h"
 
 
@@ -85,7 +86,7 @@ static bool isfunc_vars;
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
 static ldv_var_array_ptr ldv_create_var_array (void);
-static const char *ldv_get_arg_sign (tree);
+static const char *ldv_get_arg_sign (tree, enum ldv_arg_signs);
 static void ldv_match_expr (tree);
 static void ldv_visualize_expr (tree, int);
 static void ldv_visualize_body (tree);
@@ -142,24 +143,56 @@ ldv_create_var_array (void)
 }
 
 const char *
-ldv_get_arg_sign (tree t)
+ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 {
-  tree op1 = NULL_TREE;
-  const char *arg_sign = NULL;
+  tree op1 = NULL_TREE, op2 = NULL_TREE;
+  const char *arg_sign = NULL, *field_sign = NULL, *struct_sign = NULL;
+  char *arg_sign_p = NULL;
+
+  /* Skip any '*' and '&' used before identifiers. */
+  if (TREE_CODE (t) == ADDR_EXPR || TREE_CODE (t) == INDIRECT_REF)
+    {
+      op1 = TREE_OPERAND (t, 0);
+      return ldv_get_arg_sign (op1, ldv_arg_sign);
+    }
 
   /* Argument signature equals to declaration name passed. */
   if (DECL_P (t) && DECL_NAME (t)
     && (TREE_CODE (DECL_NAME (t)) == IDENTIFIER_NODE))
     arg_sign = IDENTIFIER_POINTER (DECL_NAME (t));
-  /* Argument signature equals to field name. */
+  /* Argument signature equals to field name possibly complemented with a number
+   * of names of structures/fields containing it. */
   else if (TREE_CODE (t) == COMPONENT_REF)
     {
-      op1 = TREE_OPERAND (t, 1);
+      /* Calculate field signature. */
+      op2 = TREE_OPERAND (t, 1);
 
-      if (DECL_P (op1) && DECL_NAME (op1)
-        && (TREE_CODE (DECL_NAME (op1)) == IDENTIFIER_NODE))
-        arg_sign = IDENTIFIER_POINTER (DECL_NAME (op1));
+      if (DECL_P (op2) && DECL_NAME (op2)
+        && (TREE_CODE (DECL_NAME (op2)) == IDENTIFIER_NODE))
+        field_sign = IDENTIFIER_POINTER (DECL_NAME (op2));
+
+      /* "Complex identifier" means "simple identifier" together with a name of
+       * structure/field containing this field. */
+      if (ldv_arg_sign == LDV_ARG_SIGN_COMPLEX_ID)
+        {
+          /* Calculate container structure/field signature. */
+          op1 = TREE_OPERAND (t, 0);
+          struct_sign = ldv_get_arg_sign (op1, LDV_ARG_SIGN_SIMPLE_ID);
+
+          arg_sign_p = XCNEWVEC (char, (strlen (struct_sign) + 1 + strlen (field_sign) + 1));
+
+          sprintf(arg_sign_p, "%s_%s", struct_sign, field_sign);
+          arg_sign = arg_sign_p;
+        }
+      /* Otherwise calculate argument signature as "simple identifier", i.e. as
+       * a variable, argument or field name. */
+      else
+        arg_sign = field_sign;
     }
+
+  /* Argument signature can't be exctracted, so use stub instead. */
+  if (!arg_sign)
+    return "NOT_ARG_SIGN";
 
   return arg_sign;
 }
@@ -473,7 +506,7 @@ ldv_match_expr (tree t)
           ldv_match_expr (LDV_OP1);
           ldv_match_expr (LDV_OP2);
 
-          /* Fird operand provides a field offset. */
+          /* Third operand provides a field offset. */
 
           break;
 
@@ -622,14 +655,12 @@ ldv_match_expr (tree t)
                     && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
                     func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
 
-                  func_arg_info_new->sign = ldv_get_arg_sign (arg);
+                  func_arg_info_new->sign = ldv_get_arg_sign (arg, ldv_get_arg_sign_algo ());
 
                   switch (TREE_CODE (arg))
                     {
                     case ADDR_EXPR:
                       op1 = TREE_OPERAND (arg, 0);
-
-                      func_arg_info_new->sign = ldv_get_arg_sign (op1);
 
                       /* Function, variable and field declarations that have an array
                          type are interest for us at the moment. */
@@ -1106,7 +1137,7 @@ ldv_visualize_expr (tree t, int offset)
     case tcc_declaration:
       /* Print an entity name if so. */
       if (DECL_NAME (t) && (TREE_CODE (DECL_NAME (t)) == IDENTIFIER_NODE))
-       fprintf (LDV_EXPR_VISUALIZATION_STREAM, " %s", IDENTIFIER_POINTER (DECL_NAME (t)));
+        fprintf (LDV_EXPR_VISUALIZATION_STREAM, " %s", IDENTIFIER_POINTER (DECL_NAME (t)));
       else
         /* Print 'name' for an unnamed entity like in c-pretty-print.c. */
         fprintf (LDV_EXPR_VISUALIZATION_STREAM, " %4x", ((unsigned)((unsigned long)(t) & 0xffff)));

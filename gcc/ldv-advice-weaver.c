@@ -310,15 +310,7 @@ ldv_get_arg_sign (unsigned int arg_numb)
       func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
 
       if (i == arg_numb)
-        {
-          if (func_arg_info->sign)
-            return func_arg_info->sign;
-          else
-            {
-              ldv_print_info (LDV_INFO_WEAVE, "body pattern argument sign for \"%d\" function argument can't be weaved, so use stub instead", arg_numb);
-              return "NOT_ARG_SIGN";
-            }
-        }
+        return func_arg_info->sign;
     }
 
   LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));

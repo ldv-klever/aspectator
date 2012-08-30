@@ -3614,7 +3614,7 @@ ldv-opts.o : ldv-opts.c \
 ldv-pointcut-matcher.o : ldv-pointcut-matcher.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h $(TREE_H) c-lang.h $(C_TREE_H) tree-iterator.h function.h \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \
-  ldv-advice-weaver.h ldv-aspect-parser.h ldv-converter.h ldv-core.h ldv-io.h ldv-pointcut-matcher.h    
+  ldv-advice-weaver.h ldv-aspect-parser.h ldv-converter.h ldv-core.h ldv-io.h ldv-opts.h ldv-pointcut-matcher.h    
 
 # LDV extension end.
 

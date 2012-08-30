@@ -20,6 +20,14 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define _LDV_OPTS_H_
 
 
+enum ldv_arg_signs
+{
+  LDV_ARG_SIGN_SIMPLE_ID = 1,
+  LDV_ARG_SIGN_COMPLEX_ID
+};
+
+
+extern enum ldv_arg_signs ldv_get_arg_sign_algo (void);
 extern int ldv_get_ldv_stage (void);
 extern void ldv_handle_options (void);
 extern bool ldv_isldv (void);

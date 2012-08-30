@@ -33,6 +33,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #define LDV_ISENV_SET(env) (getenv (env) ? true : false)
 
+
+#define LDV_ARG_SIGN_ENV                            "LDV_ARG_SIGN"
 #define LDV_ASPECT_FILE_ENV                         "LDV_ASPECT_FILE"
 #define LDV_EXPRESSION_VISUALIZATON_ENV             "LDV_EXPRESSION_VISUALIZATON"
 #define LDV_DIR_ORIG_ENV                            "LDV_DIR_ORIG"
@@ -58,9 +60,17 @@ enum { LDV_STAGE_PREPROCESSING = 0, LDV_STAGE_FIRST, LDV_STAGE_SECOND, LDV_STAGE
 
 /* Flag that is true if ldv modifications are made and false otherwise. */
 static bool ldv;
+/* One of argument signature extraction algorithms. */
+static enum ldv_arg_signs ldv_arg_sign;
 /* A current ldv stage. */
 static int ldv_stage;
 
+
+enum ldv_arg_signs
+ldv_get_arg_sign_algo (void)
+{
+  return ldv_arg_sign;
+}
 
 int
 ldv_get_ldv_stage (void)
@@ -72,6 +82,7 @@ void
 ldv_handle_options (void)
 {
   char *stage_str = NULL;
+  char *arg_sign = NULL;
   int stage;
 
   /* Obtain a ldv aspect file name. */
@@ -162,6 +173,17 @@ ldv_handle_options (void)
         }
       else
         ldv_isdir_orig = false;
+
+      if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)) && !strcmp (arg_sign, "COMPLEX_ID"))
+        {
+          ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
+          ldv_print_info (LDV_INFO_IO, "calculate argument signature as complex identifier");
+        }
+      else
+        {
+          ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
+          ldv_print_info (LDV_INFO_IO, "calculate argument signature as simple identifier");
+        }
 
       /* Open necessary file streams. */
       ldv_open_file_streams ();
