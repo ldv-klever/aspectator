@@ -174,10 +174,22 @@ ldv_handle_options (void)
       else
         ldv_isdir_orig = false;
 
-      if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)) && !strcmp (arg_sign, "COMPLEX_ID"))
+      if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)))
         {
-          ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
-          ldv_print_info (LDV_INFO_IO, "calculate argument signature as complex identifier");
+          if (!strcmp (arg_sign, "SIMPLE_ID"))
+            {
+              ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
+              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"simple identifiers\"");
+            }
+          else if (!strcmp (arg_sign, "COMPLEX_ID"))
+            {
+              ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
+              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"complex identifiers\"");
+            }
+          else
+            {
+              LDV_FATAL_ERROR ("specified by means of environment variable \"%s\" algorithm of argument signatures extraction \"%s\" isn't supported", LDV_ARG_SIGN_ENV, arg_sign);
+            }
         }
       else
         {
