@@ -145,24 +145,28 @@ ldv_create_var_array (void)
 const char *
 ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 {
-  tree op1 = NULL_TREE, op2 = NULL_TREE;
+  tree record_type = NULL_TREE, op1 = NULL_TREE, op2 = NULL_TREE;
   const char *arg_sign = NULL, *field_sign = NULL, *struct_sign = NULL;
   char *arg_sign_p = NULL;
 
   /* Skip any '*' and '&' used before identifiers. */
-  if (TREE_CODE (t) == ADDR_EXPR || TREE_CODE (t) == INDIRECT_REF)
+  if (t && (TREE_CODE (t) == ADDR_EXPR || TREE_CODE (t) == INDIRECT_REF))
     {
       op1 = TREE_OPERAND (t, 0);
       return ldv_get_arg_sign (op1, ldv_arg_sign);
     }
 
   /* Argument signature equals to declaration name passed. */
-  if (DECL_P (t) && DECL_NAME (t)
+  if (t && DECL_P (t) && DECL_NAME (t)
     && (TREE_CODE (DECL_NAME (t)) == IDENTIFIER_NODE))
     arg_sign = IDENTIFIER_POINTER (DECL_NAME (t));
+  /* Argument signature equals to type name passed. */
+  else if (t && (TREE_CODE (t) == RECORD_TYPE || TREE_CODE (t) == UNION_TYPE)
+    && TYPE_NAME (t))
+    arg_sign = IDENTIFIER_POINTER (TYPE_NAME (t));
   /* Argument signature equals to field name possibly complemented with a number
-   * of names of structures/fields containing it. */
-  else if (TREE_CODE (t) == COMPONENT_REF)
+   * of names of structures containing it. */
+  else if (t && TREE_CODE (t) == COMPONENT_REF)
     {
       /* Calculate field signature. */
       op2 = TREE_OPERAND (t, 1);
@@ -172,16 +176,17 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
         field_sign = IDENTIFIER_POINTER (DECL_NAME (op2));
 
       /* "Complex identifier" means "simple identifier" together with a name of
-       * structure/field containing this field. */
+       * structure containing this field. */
       if (ldv_arg_sign == LDV_ARG_SIGN_COMPLEX_ID)
         {
-          /* Calculate container structure/field signature. */
-          op1 = TREE_OPERAND (t, 0);
-          struct_sign = ldv_get_arg_sign (op1, LDV_ARG_SIGN_SIMPLE_ID);
+          /* Calculate signature of a structure containing a given field. */
+          record_type = DECL_CONTEXT (op2);
 
-          arg_sign_p = XCNEWVEC (char, (strlen (struct_sign) + 1 + strlen (field_sign) + 1));
+          struct_sign = ldv_get_arg_sign (record_type, LDV_ARG_SIGN_SIMPLE_ID);
 
-          sprintf(arg_sign_p, "%s_%s", struct_sign, field_sign);
+          arg_sign_p = XCNEWVEC (char, (strlen (field_sign) + 4 + strlen (struct_sign) + 1));
+
+          sprintf(arg_sign_p, "%s_of_%s", field_sign, struct_sign);
           arg_sign = arg_sign_p;
         }
       /* Otherwise calculate argument signature as "simple identifier", i.e. as
