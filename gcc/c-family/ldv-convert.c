@@ -4557,7 +4557,9 @@ ldv_convert_statement (tree t)
 
     case COND_EXPR:
     case SWITCH_EXPR:
-      if (TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
+      /* In this case we have conditional expression (... ? ... : ...). */
+      if (TREE_CODE (t) == COND_EXPR
+        && TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
         {
           LDV_STATEMENT_KIND (statement) = LDV_EXPR_STATEMENT;
           LDV_STATEMENT_EXPR_STATEMENT (statement) = ldv_convert_expr_statement (t);
