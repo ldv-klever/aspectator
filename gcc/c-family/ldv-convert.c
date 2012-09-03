@@ -1058,12 +1058,12 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
           if (TREE_CODE (type) == REFERENCE_TYPE)
             {
               LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
-              
+
               if ((op1 = LDV_OP_FIRST (t)))
                 LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
               else
                 LDV_WARN ("can't find the first operand of cast expression");
-              
+
               break;
             }
           else
@@ -1165,14 +1165,14 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
 
     case ABS_EXPR:
       LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
-      
+
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op1, recursion_limit);
       else
         LDV_WARN ("can't find the first operand of conditional expression");
 
       LDV_COND_EXPR_LOCATION (cond_expr) = ldv_convert_location (t);
-      
+
       break;
 
     default:
@@ -4224,17 +4224,17 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 
     case VA_ARG_EXPR:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_SIXTH;
-    
+
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_PRIMARY_EXPR_ASSIGNMENT_EXPR (primary_expr) = ldv_convert_assignment_expr (op1, recursion_limit);
       else
         LDV_WARN ("can't find the first operand of variable argument expression");
-    
+
       if ((type = TREE_TYPE (t)))
         LDV_PRIMARY_EXPR_TYPE_NAME (primary_expr) = ldv_convert_type_name (type);
       else
         LDV_WARN ("can't find type of variable argument expression");
-    
+
       break;
 
     default:
@@ -4339,32 +4339,25 @@ ldv_convert_selection_statement (tree t)
   switch (TREE_CODE (t))
     {
     case COND_EXPR:
-      if (TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
+      if ((cond_expr = COND_EXPR_COND (t)))
+        LDV_SELECTION_STATEMENT_EXPR (selection_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+      else
+        LDV_WARN ("can't find conditional expression");
+
+      if ((then_statement = COND_EXPR_THEN (t)))
+        LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = ldv_convert_statement (then_statement);
+      else
+        LDV_WARN ("can't find then statement");
+
+      if ((else_statement = COND_EXPR_ELSE (t)))
         {
-          /* TODO is this needed? */;
+          LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN_ELSE;
+          LDV_SELECTION_STATEMENT_STATEMENT2 (selection_statement) = ldv_convert_statement (else_statement);
         }
       else
-        {
-          if ((cond_expr = COND_EXPR_COND (t)))
-            LDV_SELECTION_STATEMENT_EXPR (selection_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
-          else
-            LDV_WARN ("can't find conditional expression");
+        LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN;
 
-          if ((then_statement = COND_EXPR_THEN (t)))
-            LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = ldv_convert_statement (then_statement);
-          else
-            LDV_WARN ("can't find then statement");
-
-          if ((else_statement = COND_EXPR_ELSE (t)))
-            {
-              LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN_ELSE;
-              LDV_SELECTION_STATEMENT_STATEMENT2 (selection_statement) = ldv_convert_statement (else_statement);
-            }
-          else
-            LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN;
-
-          LDV_SELECTION_STATEMENT_LOCATION (selection_statement) = ldv_convert_location (t);
-        }
+      LDV_SELECTION_STATEMENT_LOCATION (selection_statement) = ldv_convert_location (t);
 
       break;
 
@@ -4564,8 +4557,16 @@ ldv_convert_statement (tree t)
 
     case COND_EXPR:
     case SWITCH_EXPR:
-      LDV_STATEMENT_KIND (statement) = LDV_SELECTION_STATEMENT;
-      LDV_STATEMENT_SELECTION_STATEMENT (statement) = ldv_convert_selection_statement (t);
+      if (TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
+        {
+          LDV_STATEMENT_KIND (statement) = LDV_EXPR_STATEMENT;
+          LDV_STATEMENT_EXPR_STATEMENT (statement) = ldv_convert_expr_statement (t);
+        }
+      else
+        {
+          LDV_STATEMENT_KIND (statement) = LDV_SELECTION_STATEMENT;
+          LDV_STATEMENT_SELECTION_STATEMENT (statement) = ldv_convert_selection_statement (t);
+        }
 
       break;
 
