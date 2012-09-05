@@ -1937,7 +1937,11 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
       LDV_DIRECT_DECLARATOR_KIND (direct_declarator_next) = LDV_DIRECT_DECLARATOR_THIRD;
       LDV_DIRECT_DECLARATOR_DIRECT_DECLARATOR (direct_declarator_next) = direct_declarator_prev;
 
-      if (TYPE_DOMAIN (t) && ((array_size = TYPE_MAX_VALUE (TYPE_DOMAIN (t))) || (array_size = TYPE_MIN_VALUE (TYPE_DOMAIN (t)))))
+      /* If field declation has array type with flexible number of elements [],
+         then TYPE_SIZE is NULL (#3378). */
+      if (TYPE_DOMAIN (t)
+        && TYPE_SIZE (t)
+        && ((array_size = TYPE_MAX_VALUE (TYPE_DOMAIN (t))) || (array_size = TYPE_MIN_VALUE (TYPE_DOMAIN (t)))))
         {
           ldv_constant_current = NULL;
           LDV_DIRECT_DECLARATOR_ASSIGNMENT_EXPR (direct_declarator_next) = ldv_convert_assignment_expr (array_size, LDV_CONVERT_EXPR_RECURSION_LIMIT);
