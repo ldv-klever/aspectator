@@ -3524,6 +3524,7 @@ ldv_convert_logical_and_expr (tree t, unsigned int recursion_limit)
   switch (TREE_CODE (t))
     {
     case TRUTH_ANDIF_EXPR:
+    case TRUTH_AND_EXPR:
       LDV_LOGICAL_AND_EXPR_KIND (logical_and_expr) = LDV_LOGICAL_AND_EXPR_SECOND;
 
       if ((op1 = LDV_OP_FIRST (t)))
@@ -3571,6 +3572,7 @@ ldv_convert_logical_or_expr (tree t, unsigned int recursion_limit)
   switch (TREE_CODE (t))
     {
     case TRUTH_ORIF_EXPR:
+    case TRUTH_OR_EXPR:
       LDV_LOGICAL_OR_EXPR_KIND (logical_or_expr) = LDV_LOGICAL_OR_EXPR_SECOND;
 
       if ((op1 = LDV_OP_FIRST (t)))
