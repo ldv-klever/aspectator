@@ -834,6 +834,19 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
 
   switch (TREE_CODE (t))
     {
+    /* Simply process the first operand of NON_LVALUE_EXPR as well as for
+       SAVE_EXPR in ldv_convert_expr. */
+    case NON_LVALUE_EXPR:
+      if ((op1 = LDV_OP_FIRST (t)))
+        {
+          LDV_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_FIRST;
+          LDV_ASSIGNMENT_EXPR_COND_EXPR (assignment_expr) = ldv_convert_cond_expr (op1, recursion_limit);
+        }
+      else
+        LDV_WARN ("can't find the first operand of non lvalue expression");
+
+      break;
+
     case MODIFY_EXPR:
       LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_SECOND;
 
