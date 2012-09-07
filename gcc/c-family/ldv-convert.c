@@ -4226,6 +4226,12 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 
       break;
 
+    case BIND_EXPR:
+      LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FIFTH;
+      LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr) = ldv_convert_compound_statement (t);
+
+      break;
+
     case VA_ARG_EXPR:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_SIXTH;
 
