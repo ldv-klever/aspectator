@@ -709,6 +709,14 @@ macro_param: /* It's a macro function parameters, the part of macro primitive po
       ldv_list_push_back (&$1, id);
 
       $$ = $1;
+    }
+  | macro_param ',' LDV_ID LDV_ELLIPSIS /* Identifier and following ellipsis (named variadic parameters) finishes a macro parameter list. */
+    {
+      ldv_puts_id ("...", $3);
+
+      ldv_list_push_back (&$1, $3);
+
+      $$ = $1;
     };
 
 primitive_pointcut_signature_declaration:
