@@ -110,6 +110,8 @@ struct ldv_keyword_token ldv_keyword_token_map [] = {
 
 /* The named pointcuts list. */
 static ldv_list_ptr ldv_n_pointcut_list = NULL;
+/* Flag says whether it's parsed macro signature or not. */
+static bool ldv_ismacro;
 /* Flag true if some type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_istype_spec = true;
@@ -545,7 +547,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
     };
 
 primitive_pointcut_signature: /* It's a primitive pointcut signature, the part of primitive pointcut. */
-  primitive_pointcut_signature_macro /* The macro primitive poincut signature form is described below. */
+  { ldv_ismacro = true; } primitive_pointcut_signature_macro { ldv_ismacro = false; } /* The macro primitive poincut signature form is described below. */
     {
       ldv_pps_ptr pp_signature = NULL;
 
@@ -555,7 +557,7 @@ primitive_pointcut_signature: /* It's a primitive pointcut signature, the part o
       pp_signature->pps_kind = LDV_PPS_DEFINE;
 
       /* Specify a macro signature. */
-      pp_signature->pps_macro = $1;
+      pp_signature->pps_macro = $2;
 
       $$ = pp_signature;
     }
@@ -1677,13 +1679,18 @@ ldv_get_id_kind (char *id)
 {
   int i;
 
-  /* Check whether an identifier is a C declaration specifier keyword. */
-  for (i = 0; ldv_keyword_token_map[i].keyword; i++)
+  /* Do not bind an identifier with some C keyword when parse a macro
+     signature. */
+  if (!ldv_ismacro)
     {
-      if (!strcmp(id, ldv_keyword_token_map[i].keyword))
+      /* Check whether an identifier is a C declaration specifier keyword. */
+      for (i = 0; ldv_keyword_token_map[i].keyword; i++)
         {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", id);
-          return ldv_keyword_token_map[i].token;
+          if (!strcmp(id, ldv_keyword_token_map[i].keyword))
+            {
+              ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", id);
+              return ldv_keyword_token_map[i].token;
+            }
         }
     }
 
