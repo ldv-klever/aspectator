@@ -30,12 +30,12 @@ enum ldv_arg_signs
 extern enum ldv_arg_signs ldv_get_arg_sign_algo (void);
 extern int ldv_get_ldv_stage (void);
 extern void ldv_handle_options (void);
-extern bool ldv_isldv (void);
-extern bool ldv_isldv_stage_preprocessing (void);
-extern bool ldv_isldv_stage_first (void);
-extern bool ldv_isldv_stage_second (void);
-extern bool ldv_isldv_stage_third (void);
-extern bool ldv_isldv_stage_fourth (void);
+extern bool ldv (void);
+extern bool ldv_aspect_preprocessing (void);
+extern bool ldv_file_preparation (void);
+extern bool ldv_macro_instrumentation (void);
+extern bool ldv_instrumentation (void);
+extern bool ldv_compilation (void);
 
 
 #endif /* _LDV_OPTS_H_ */

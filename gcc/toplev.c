@@ -1983,7 +1983,7 @@ toplev_main (int argc, char **argv)
   ldv_handle_options ();
 
   /* Perform needed actions for different ldv stages if needed. */
-  if (ldv_isldv ())
+  if (ldv ())
     {
       /* Pass some options to cpp preprocessor library. */  
       ldv_set_ldv_opts (ldv_isinfo_matching_table); 
@@ -1993,10 +1993,10 @@ toplev_main (int argc, char **argv)
 
       /* Obtain all pointcuts before any file analysis at all stages except
          preprocessing. */  
-      if (ldv_isldv_stage_preprocessing ())
+      if (ldv_aspect_preprocessing ())
         {
           /* This will make GCC preprocessor to treat '@' as '#' and v.v. */
-          ldv_set_ldv (ldv_isldv ());
+          ldv_set_ldv (ldv ());
           ldv_set_ldv_stage (ldv_get_ldv_stage ());
         }
       else
@@ -2004,7 +2004,7 @@ toplev_main (int argc, char **argv)
           ldv_aspect_parser ();
         }
 
-      if (ldv_isldv_stage_first ())
+      if (ldv_file_preparation ())
         {
           /* Create required files. */
           ldv_create_files ();
@@ -2016,10 +2016,10 @@ toplev_main (int argc, char **argv)
           return (SUCCESS_EXIT_CODE);
         }    
        
-      if (ldv_isldv_stage_second ())
+      if (ldv_macro_instrumentation ())
         {
           /* Set ldv flag, advice definition list and stage for cpp preprocessor. */
-          ldv_set_ldv (ldv_isldv ());
+          ldv_set_ldv (ldv ());
           ldv_set_isprint_signature_of_matched_by_name (ldv_isprint_signature_of_matched_by_name);
         }
     }
@@ -2042,9 +2042,9 @@ toplev_main (int argc, char **argv)
   /* Perform postparsing actions. */
 
   /* Perform needed actions for different ldv stages if needed. */
-  if (ldv_isldv ())
+  if (ldv ())
     {
-      if (ldv_isldv_stage_third ())
+      if (ldv_instrumentation ())
         {
           /* Print needed declarations and definitions to a file processed. */
           ldv_print_to_awfile ();

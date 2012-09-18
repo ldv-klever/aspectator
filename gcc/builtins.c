@@ -8429,7 +8429,7 @@ fold_builtin_memory_op (location_t loc, tree dest, tree src,
     return NULL_TREE;
   
   /* Aspectator itself also doesn't like MEM_REF. So skip this converting. */
-  if (ldv_isldv())
+  if (ldv ())
     return NULL_TREE;
   
   /* LDV extension end. */

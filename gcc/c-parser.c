@@ -1665,7 +1665,7 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
               /* LDV extension beginning. */
 
               /* Save information on a end of a function declaration, i.e. ';'. */
-              if (ldv_isldv ())
+              if (ldv ())
                 {
                   if (c_parser_next_token_is (parser, CPP_SEMICOLON))
                     DECL_SOURCE_LOCATION (d) = c_parser_peek_token (parser)->location;    
@@ -2325,7 +2325,7 @@ c_parser_enum_specifier (c_parser *parser)
       if (ident)
         {
           /* Type declaration matching and weaving are needed just on the third ldv stage. */  
-          if (ldv_isldv_stage_third ())
+          if (ldv_instrumentation ())
             {        
               /* Try to match an enumeral typedecl. Note that a context of a typedecl is
                  defined by its open brace location. */
@@ -2572,7 +2572,7 @@ c_parser_struct_or_union_specifier (c_parser *parser)
       if (ident)
         {
           /* Type declaration matching and weaving are needed just on the third ldv stage. */  
-          if (ldv_isldv_stage_third ())
+          if (ldv_instrumentation ())
             {        
               /* Try to match a struct or union typedecl. Note that a context of 
                  a typedecl is defined by its open brace location. */

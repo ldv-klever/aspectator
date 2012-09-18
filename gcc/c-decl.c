@@ -1890,7 +1890,7 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 		  
 		  /* Ignore duplicates connected with woven function
 		     definitions. */
-		  if (ldv_isldv())
+		  if (ldv ())
 		    {
 		      tree name = DECL_NAME (olddecl);
 		      const char *name_str = NULL;
@@ -8372,11 +8372,11 @@ finish_function (void)
  
   /* LDV extension beginning. */
 
-  if (ldv_isldv ())
+  if (ldv ())
     {
       /* Function matching and corresponding advice weaving are needed just on 
        * the third and fourth ldv stages. */  
-      if (ldv_isldv_stage_third () || ldv_isldv_stage_fourth ())
+      if (ldv_instrumentation () || ldv_compilation ())
         {
           /* Try to match a function declaration for an execution join point. */
           ldv_match_func (fndecl, LDV_PP_EXECUTION);

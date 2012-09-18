@@ -31,9 +31,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_CPP_ERROR_STREAM    (stderr)
 
 
-bool ldv_cpp_isldv = false;
+bool ldv_cpp = false;
 bool ldv_cpp_isinfo_matching_table = false;
-int ldv_cpp_ldv_stage = -1;
+int ldv_cpp_stage = -1;
 
 char *
 ldv_copy_str (const char *str)
@@ -205,23 +205,23 @@ ldv_isvoid (ldv_i_type_ptr type)
 }
 
 void
-ldv_set_ldv (bool gcc_ldv)
+ldv_set_ldv (bool ldv_gcc)
 {
   /* Set an ldv flag from gcc to cpp. */
-  ldv_cpp_isldv = gcc_ldv;
+  ldv_cpp = ldv_gcc;
 }
 
 void
-ldv_set_ldv_opts (bool ldv_isinfo_matching_table)
+ldv_set_ldv_opts (bool ldv_gcc_isinfo_matching_table)
 {
-  ldv_cpp_isinfo_matching_table = ldv_isinfo_matching_table;
+  ldv_cpp_isinfo_matching_table = ldv_gcc_isinfo_matching_table;
 }
 
 void
-ldv_set_ldv_stage (int gcc_ldv_stage)
+ldv_set_ldv_stage (int ldv_gcc_stage)
 {
   /* Set an ldv stage from gcc to cpp. */
-  ldv_cpp_ldv_stage = gcc_ldv_stage;
+  ldv_cpp_stage = ldv_gcc_stage;
 }
 
 char *

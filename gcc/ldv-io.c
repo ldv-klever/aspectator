@@ -529,16 +529,16 @@ void
 ldv_open_file_streams (void)
 {
   /* Open file streams in depend on a given ldv stage. */
-  if (ldv_isldv_stage_preprocessing ())
+  if (ldv_aspect_preprocessing ())
     /* Preprocess a given aspect file as well as the standard C file. */;
-  else if (ldv_isldv_stage_first ())
+  else if (ldv_file_preparation ())
     ldv_open_aspect_stream ();
-  else if (ldv_isldv_stage_second () || ldv_isldv_stage_third () || ldv_isldv_stage_fourth ())
+  else if (ldv_macro_instrumentation () || ldv_instrumentation () || ldv_compilation ())
     {
       /* Open an aspect stream for read. */
       ldv_open_aspect_stream ();
 
-      if (ldv_isldv_stage_third ())
+      if (ldv_instrumentation ())
         {
           ldv_open_main_stream ();
           ldv_open_advice_weaved_stream ();

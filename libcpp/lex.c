@@ -682,7 +682,7 @@ _cpp_clean_line (cpp_reader *pfile)
 
 	      /* Ignore backslashes encountered during the aspect
 	         preprocessing stage (#865, comment 20). */
-	      if (ldv_cpp_ldv_stage == 0)
+	      if (ldv_cpp_stage == 0)
 		pbackslash = NULL;
 	
 	      /* LDV extension end. */
@@ -2020,7 +2020,7 @@ _cpp_lex_direct (cpp_reader *pfile)
   /* LDV extension beginning. */
 
   /* Exchange '#' with '@' and vise versa to process aspect directives. */
-  if (ldv_cpp_ldv_stage == 0)
+  if (ldv_cpp_stage == 0)
     {
       if (c == '#')
         {

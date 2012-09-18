@@ -454,7 +454,7 @@ ldv_get_unique_numb(void)
   /* Try to dump a current unique number to the special file. Do not do this at
    * the third stage since the fourth stage should use the same set of numbers
    * as the third one. */
-  if (!ldv_isldv_stage_third ()
+  if (!ldv_instrumentation ()
     && (file_name = getenv ("LDV_UNIQUE_NUMB"))
     && (stream = ldv_open_file_stream (file_name, "w")))
     {

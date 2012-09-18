@@ -1275,7 +1275,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       func_aspect = ldv_i_match->i_func_aspect;
       func_source = ldv_i_match->i_func;
 
-      if (ldv_isldv_stage_third ())
+      if (ldv_instrumentation ())
         {
           ldv_func_call = ldv_create_text ();
 
@@ -1424,7 +1424,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_func_arg_type_name_list = NULL;
           ldv_func_va_init = NULL;
         }
-      else if (ldv_isldv_stage_fourth ())
+      else if (ldv_compilation ())
         {
           /* Change a source function name for an execution join point just one
              time. */
@@ -1438,7 +1438,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
     case LDV_I_TYPE:
       /* A type declaration weaving is needed just at the third ldv stage. */
-      if (ldv_isldv_stage_third ())
+      if (ldv_instrumentation ())
       {
         typedecl_for_print_new = ldv_create_decl_for_print ();
 
@@ -1483,7 +1483,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     case LDV_I_VAR:
       var = ldv_i_match->i_var;
 
-      if (ldv_isldv_stage_third ())
+      if (ldv_instrumentation ())
         {
           ldv_func_call = ldv_create_text ();
 
@@ -1595,7 +1595,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_func_arg_type_decl_list = NULL;
           ldv_func_arg_type_name_list = NULL;
         }
-      else if (ldv_isldv_stage_fourth ())
+      else if (ldv_compilation ())
         ldv_weave_var_source (var, pp_kind);
 
       break;

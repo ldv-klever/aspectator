@@ -609,7 +609,7 @@ do_define (cpp_reader *pfile)
 
   /* LDV extension beginning. */
   
-  if (ldv_cpp_isldv)
+  if (ldv_cpp)
     {
       i_macro = ldv_create_info_macro ();
 

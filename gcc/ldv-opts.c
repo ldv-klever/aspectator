@@ -55,11 +55,11 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 
 /* Define four ldv stages constants. */
-enum { LDV_STAGE_PREPROCESSING = 0, LDV_STAGE_FIRST, LDV_STAGE_SECOND, LDV_STAGE_THIRD, LDV_STAGE_FOURTH };
+enum { LDV_ASPECT_PREPROCESSING = 0, LDV_FILE_PREPARATION, LDV_MACRO_INSTRUMENTATION, LDV_INSTRUMENTATION, LDV_COMPILATION };
 
 
 /* Flag that is true if ldv modifications are made and false otherwise. */
-static bool ldv;
+static bool isldv;
 /* One of argument signature extraction algorithms. */
 static enum ldv_arg_signs ldv_arg_sign;
 /* A current ldv stage. */
@@ -92,7 +92,7 @@ ldv_handle_options (void)
      initializations. */
   if (ldv_aspect_fname)
     {
-      ldv = true;
+      isldv = true;
 
       ldv_print_info (LDV_INFO_IO, "aspect file \"%s\" is specified by means of environment variable \"%s\"", ldv_aspect_fname, LDV_ASPECT_FILE_ENV);
 
@@ -135,14 +135,14 @@ ldv_handle_options (void)
         {
           stage = atoi (stage_str);
 
-          if (stage >= LDV_STAGE_PREPROCESSING && stage <= LDV_STAGE_FOURTH)
+          if (stage >= LDV_ASPECT_PREPROCESSING && stage <= LDV_COMPILATION)
             {
               ldv_stage = stage;
               ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
             }
           else
             {
-              LDV_FATAL_ERROR ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_STAGE_PREPROCESSING, LDV_STAGE_FOURTH);
+              LDV_FATAL_ERROR ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_ASPECT_PREPROCESSING, LDV_COMPILATION);
             }
         }
       else
@@ -205,41 +205,41 @@ ldv_handle_options (void)
       ldv_func_defs_for_print = NULL;
     }
   else
-    ldv = false;
+    isldv = false;
 }
 
 bool
-ldv_isldv (void)
+ldv (void)
 {
-  return ldv;
+  return isldv;
 }
 
 bool
-ldv_isldv_stage_preprocessing (void)
+ldv_aspect_preprocessing (void)
 {
-  return (ldv_stage == LDV_STAGE_PREPROCESSING);
+  return (ldv_stage == LDV_ASPECT_PREPROCESSING);
 }
 
 bool
-ldv_isldv_stage_first (void)
+ldv_file_preparation (void)
 {
-  return (ldv_stage == LDV_STAGE_FIRST);
+  return (ldv_stage == LDV_FILE_PREPARATION);
 }
 
 bool
-ldv_isldv_stage_second (void)
+ldv_macro_instrumentation (void)
 {
-  return (ldv_stage == LDV_STAGE_SECOND);
+  return (ldv_stage == LDV_MACRO_INSTRUMENTATION);
 }
 
 bool
-ldv_isldv_stage_third (void)
+ldv_instrumentation (void)
 {
-  return (ldv_stage == LDV_STAGE_THIRD);
+  return (ldv_stage == LDV_INSTRUMENTATION);
 }
 
 bool
-ldv_isldv_stage_fourth (void)
+ldv_compilation (void)
 {
-  return (ldv_stage == LDV_STAGE_FOURTH);
+  return (ldv_stage == LDV_COMPILATION);
 }

@@ -42,9 +42,9 @@ typedef enum { LDV_T_FILE, LDV_T_ID, LDV_T_B, LDV_T_STRING, LDV_T_TEXT } ldv_tok
 
 
 /* Flags specify what ldv actions must be performed. */
-extern bool ldv_cpp_isldv;
+extern bool ldv_cpp;
 extern bool ldv_cpp_isinfo_matching_table;
-extern int ldv_cpp_ldv_stage;
+extern int ldv_cpp_stage;
 
 
 extern char *ldv_copy_str (const char *);
