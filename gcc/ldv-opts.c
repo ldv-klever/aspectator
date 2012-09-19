@@ -83,6 +83,7 @@ ldv_handle_options (void)
   char *stage_str = NULL;
   char *arg_sign = NULL;
   int stage;
+  char *output_fname = NULL;
 
   /* Obtain a ldv aspect file name. */
   ldv_aspect_fname = getenv (LDV_ASPECT_FILE_ENV);
@@ -187,6 +188,12 @@ ldv_handle_options (void)
           ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
           ldv_print_info (LDV_INFO_IO, "calculate argument signature as simple identifier");
         }
+
+      /* Use output file name specified by means of environment variable instead
+         of the one specified by -o. This is required at instrumentation stage
+         for which -fsyntax-only is used and gcc removes -o value. */
+      if ((output_fname = getenv ("LDV_OUT")))
+        ldv_set_output_fname (output_fname);
 
       /* Open necessary file streams. */
       ldv_open_file_streams ();
