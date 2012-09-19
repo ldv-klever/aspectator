@@ -599,6 +599,22 @@ compile_file (void)
      what's left of the symbol table output.  */
   timevar_pop (TV_PARSE);
 
+  /* LDV extension beginning. */
+
+  /* Perform postparsing actions for different ldv stages if needed. */
+  if (ldv ())
+    {
+      if (ldv_instrumentation ())
+        {
+          /* Print needed declarations and definitions to a file processed. */
+          ldv_print_to_awfile ();
+          /* Finish compilation to avoid assembler code in output. */
+          return;
+        }    
+    }
+
+  /* LDV extension end. */
+
   if (flag_syntax_only || flag_wpa)
     return;
 
@@ -2036,22 +2052,6 @@ toplev_main (int argc, char **argv)
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)
     do_compile ();
-
-  /* LDV extension beginning. */
-
-  /* Perform postparsing actions. */
-
-  /* Perform needed actions for different ldv stages if needed. */
-  if (ldv ())
-    {
-      if (ldv_instrumentation ())
-        {
-          /* Print needed declarations and definitions to a file processed. */
-          ldv_print_to_awfile ();
-        }    
-    }
-
-  /* LDV extension end. */
 
   if (warningcount || errorcount)
     print_ignored_options ();
