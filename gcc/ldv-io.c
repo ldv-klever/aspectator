@@ -70,13 +70,13 @@ ldv_list_ptr ldv_decl_for_print_list;
 /* Auxiliary function definitions to be printed. */
 ldv_text_ptr ldv_func_defs_for_print;
 
-static FILE *ldv_advice_weaved_stream = NULL;
+static FILE *ldv_instrumented_file_stream = NULL;
 static FILE *ldv_aspect_stream = NULL;
 static FILE *ldv_main_stream = NULL;
 static FILE *ldv_file_prepared_stream = NULL;
 
 
-static void ldv_open_advice_weaved_stream (void);
+static void ldv_open_instrumented_file_stream (void);
 static void ldv_open_aspect_stream (void);
 static void ldv_open_main_stream (void);
 static void ldv_open_file_prepared_stream (void);
@@ -199,9 +199,9 @@ ldv_empty_str (void)
 }
 
 FILE *
-ldv_get_advice_weaved_stream (void)
+ldv_get_instrumented_file_stream (void)
 {
-  return ldv_advice_weaved_stream;
+  return ldv_instrumented_file_stream;
 }
 
 FILE *
@@ -379,57 +379,14 @@ ldv_make_includes (void)
 }
 
 void
-ldv_open_advice_weaved_stream (void)
+ldv_open_instrumented_file_stream (void)
 {
-  char *advice_weaved_fname = NULL;
-  const char *fname = NULL;
-  const char *dname = NULL;
-
-  if (ldv_isdir_orig)
+  if ((ldv_instrumented_file_stream = fopen (ldv_output_fname, "w")) == NULL)
     {
-      fname = main_input_filename;
-
-      /* Separate an absolute path to a file with the relative one. */
-      if (fname && fname[0] == '/')
-        {
-          /* An advice weaved file name is 'file name + LDV_ADVICE_WEAVED_EXTENSION'. */
-          advice_weaved_fname = XCNEWVEC (char, (strlen (fname) + strlen (LDV_ADVICE_WEAVED_EXTENSION) + 2));
-
-          sprintf (advice_weaved_fname, "%s%s", fname, LDV_ADVICE_WEAVED_EXTENSION);
-        }
-      else
-        {
-          dname = get_src_pwd ();
-
-          /* An advice weaved file name is 'directory name + / + file name + LDV_ADVICE_WEAVED_EXTENSION'. */
-          advice_weaved_fname = XCNEWVEC (char, (strlen (dname) + strlen (fname) + strlen (LDV_ADVICE_WEAVED_EXTENSION) + 2));
-
-          sprintf (advice_weaved_fname, "%s/%s%s", dname, fname, LDV_ADVICE_WEAVED_EXTENSION);
-        }
-
-      if ((ldv_advice_weaved_stream = fopen (advice_weaved_fname, "w")) == NULL)
-        {
-          LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
-        }
-
-      ldv_print_info (LDV_INFO_IO, "advice weaved file \"%s\" was successfully opened for write", advice_weaved_fname);
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
     }
-  else
-    {
-      fname = lbasename (main_input_filename);
 
-      /* An advice weaved file name is 'results directory + file base name + LDV_ADVICE_WEAVED_EXTENSION'. */
-      advice_weaved_fname = XCNEWVEC (char, (strlen (ldv_dir_res) + strlen (fname) + strlen (LDV_ADVICE_WEAVED_EXTENSION) + 1));
-
-      sprintf (advice_weaved_fname, "%s%s%s", ldv_dir_res, fname, LDV_ADVICE_WEAVED_EXTENSION);
-
-      if ((ldv_advice_weaved_stream = fopen (advice_weaved_fname, "w")) == NULL)
-        {
-          LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", advice_weaved_fname);
-        }
-
-      ldv_print_info (LDV_INFO_IO, "advice weaved file \"%s\" was successfully opened for write", advice_weaved_fname);
-    }
+  ldv_print_info (LDV_INFO_IO, "Instrumented file \"%s\" was successfully opened for write", ldv_output_fname);
 }
 
 void
@@ -496,7 +453,7 @@ ldv_open_file_streams (void)
       if (ldv_instrumentation ())
         {
           ldv_open_main_stream ();
-          ldv_open_advice_weaved_stream ();
+          ldv_open_instrumented_file_stream ();
         }
     }
   else
@@ -613,11 +570,11 @@ ldv_print_to_awfile (void)
                          string. */
                       if (!isline_beginning_printed)
                         {
-                          symbol_printed_numb = ldv_putsn (line, LDV_ADVICE_WEAVED_STREAM, decl_for_print->column);
+                          symbol_printed_numb = ldv_putsn (line, LDV_INSTRUMENTED_FILE_STREAM, decl_for_print->column);
                           isline_beginning_printed = true;
                         }
 
-                      ldv_puts (ldv_get_text (decl_for_print->decl), LDV_ADVICE_WEAVED_STREAM);
+                      ldv_puts (ldv_get_text (decl_for_print->decl), LDV_INSTRUMENTED_FILE_STREAM);
                     }
                 }
             }
@@ -626,12 +583,12 @@ ldv_print_to_awfile (void)
       /* Print the rest of a source code line if its beginning was already
          printed. */
       if (isline_beginning_printed)
-        ldv_puts (line + symbol_printed_numb, LDV_ADVICE_WEAVED_STREAM);
+        ldv_puts (line + symbol_printed_numb, LDV_INSTRUMENTED_FILE_STREAM);
       else
-        ldv_puts (line, LDV_ADVICE_WEAVED_STREAM);
+        ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
 
       /* Put the end of a line to the end. */
-      ldv_putc ('\n', LDV_ADVICE_WEAVED_STREAM);
+      ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
 
       /* Enlarge a line number in a currently processed file. Special
          preprocessor directives are skipped. */
@@ -642,7 +599,7 @@ ldv_print_to_awfile (void)
   /* Add auxiliary function definitions to the end of an advice weaved file if
      it's needed. */
   if (ldv_func_defs_for_print)
-    ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_ADVICE_WEAVED_STREAM);
+    ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_INSTRUMENTED_FILE_STREAM);
 }
 
 void

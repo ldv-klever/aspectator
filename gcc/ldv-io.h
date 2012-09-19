@@ -39,11 +39,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_ERROR_BISON     "ERROR BISON"
 #define LDV_ERROR_LEX       "ERROR LEX"
 
-#define LDV_ADVICE_WEAVED_EXTENSION     ".aw"
-#define LDV_MACRO_ASPECTED_EXTENSION    ".ma"
-#define LDV_NO_COMMENT_EXTENSION        ".nc"
-
-#define LDV_ADVICE_WEAVED_STREAM        (ldv_get_advice_weaved_stream ())
+#define LDV_INSTRUMENTED_FILE_STREAM    (ldv_get_instrumented_file_stream ())
 #define LDV_ASPECT_STREAM               (ldv_get_aspect_stream ())
 #define LDV_EXPR_VISUALIZATION_STREAM   (stderr)
 #define LDV_INFO_STREAM                 (stderr)
@@ -89,7 +85,7 @@ extern void ldv_create_files (void);
 extern void ldv_copy_file (const char *, FILE *);
 extern const char *ldv_empty_str (void);
 extern char ldv_end_of_line (int);
-extern FILE *ldv_get_advice_weaved_stream (void);
+extern FILE *ldv_get_instrumented_file_stream (void);
 extern FILE *ldv_get_aspect_stream (void);
 extern FILE *ldv_get_main_stream (void);
 extern FILE *ldv_get_file_prepared_stream (void);
