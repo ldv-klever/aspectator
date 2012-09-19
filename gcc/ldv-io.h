@@ -73,7 +73,6 @@ extern bool ldv_isinfo_mem;
 extern bool ldv_isexpr_visualization;
 extern bool ldv_isprint_signature_of_matched_by_name;
 
-extern bool ldv_isdir_orig;
 extern const char *ldv_dir_res;
 extern const char *ldv_dir_temp;
 

@@ -58,10 +58,6 @@ bool ldv_isexpr_visualization;
    is needed. */
 bool ldv_isprint_signature_of_matched_by_name;
 
-/* Flag specifies whether files obtaining during a ldv work will be
-   written to a directory where a source code file is placed or to results and
-   temporaries directories. */
-bool ldv_isdir_orig;
 /* Directories for results and temporaries. */
 const char *ldv_dir_res;
 const char *ldv_dir_temp;

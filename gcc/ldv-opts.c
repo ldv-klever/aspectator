@@ -37,7 +37,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_ARG_SIGN_ENV                            "LDV_ARG_SIGN"
 #define LDV_ASPECT_FILE_ENV                         "LDV_ASPECT_FILE"
 #define LDV_EXPRESSION_VISUALIZATON_ENV             "LDV_EXPRESSION_VISUALIZATON"
-#define LDV_DIR_ORIG_ENV                            "LDV_DIR_ORIG"
 #define LDV_DIR_RES_ENV                             "LDV_DIR_RES"
 #define LDV_DIR_TEMP_ENV                            "LDV_DIR_TEMP"
 #define LDV_INFO_ENV                                "LDV_INFO"
@@ -165,14 +164,6 @@ ldv_handle_options (void)
           ldv_dir_temp = ldv_empty_str ();
           ldv_print_info (LDV_INFO_IO, "current working directory will be used for temporaries");
         }
-
-      if (getenv (LDV_DIR_ORIG_ENV))
-        {
-          ldv_isdir_orig = true;
-          ldv_print_info (LDV_INFO_IO, "ldv files will be written to directory where source file is placed");
-        }
-      else
-        ldv_isdir_orig = false;
 
       if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)))
         {
