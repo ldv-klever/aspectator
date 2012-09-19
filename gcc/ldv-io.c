@@ -34,6 +34,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-opts.h"
 
 
+/* Output file name. */
+const char *ldv_output_fname = NULL;
+
 /* An aspect file name. */
 const char *ldv_aspect_fname;
 const char *ldv_aspect_fname_base;
@@ -70,13 +73,13 @@ ldv_text_ptr ldv_func_defs_for_print;
 static FILE *ldv_advice_weaved_stream = NULL;
 static FILE *ldv_aspect_stream = NULL;
 static FILE *ldv_main_stream = NULL;
-static FILE *ldv_preprocessed_stream = NULL;
+static FILE *ldv_file_prepared_stream = NULL;
 
 
 static void ldv_open_advice_weaved_stream (void);
 static void ldv_open_aspect_stream (void);
 static void ldv_open_main_stream (void);
-static void ldv_open_preprocessed_stream (bool);
+static void ldv_open_file_prepared_stream (void);
 
 
 void
@@ -214,9 +217,9 @@ ldv_get_main_stream (void)
 }
 
 FILE *
-ldv_get_preprocessed_stream (void)
+ldv_get_file_prepared_stream (void)
 {
-  return ldv_preprocessed_stream;
+  return ldv_file_prepared_stream;
 }
 
 int
@@ -276,14 +279,14 @@ ldv_make_includes (void)
   char *include = NULL;
   bool isaround = false;
 
-  ldv_open_preprocessed_stream (true);
+  ldv_open_file_prepared_stream ();
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
     {
       /* Just copy a file itself. This is needed in case when no advices were
          specified. */
-      ldv_copy_file (main_input_filename, LDV_PREPROCESSED_STREAM);
+      ldv_copy_file (main_input_filename, LDV_FILE_PREPARED_STREAM);
 
       ldv_i_match = NULL;
 
@@ -319,7 +322,7 @@ ldv_make_includes (void)
           include = ldv_copy_str (ldv_get_body_text (adef->a_body));
           include = ldv_trunkate_braces (include);
 
-          ldv_puts (include, LDV_PREPROCESSED_STREAM);
+          ldv_puts (include, LDV_FILE_PREPARED_STREAM);
           ldv_print_info (LDV_INFO_WEAVE, "include was weaved for around advice");
         }
     }
@@ -342,13 +345,13 @@ ldv_make_includes (void)
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
               include = ldv_trunkate_braces (include);
 
-              ldv_puts (include, LDV_PREPROCESSED_STREAM);
+              ldv_puts (include, LDV_FILE_PREPARED_STREAM);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for before advice");
             }
         }
 
       /* Then copy a file itself. */
-      ldv_copy_file (main_input_filename, LDV_PREPROCESSED_STREAM);
+      ldv_copy_file (main_input_filename, LDV_FILE_PREPARED_STREAM);
 
       /* Then copy all after includes. */
       for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
@@ -365,13 +368,13 @@ ldv_make_includes (void)
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
               include = ldv_trunkate_braces (include);
 
-              ldv_puts (include, LDV_PREPROCESSED_STREAM);
+              ldv_puts (include, LDV_FILE_PREPARED_STREAM);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for after advice");
             }
         }
     }
 
-  fclose (LDV_PREPROCESSED_STREAM);
+  fclose (LDV_FILE_PREPARED_STREAM);
   ldv_print_info (LDV_INFO_IO, "finish make includes");
 }
 
@@ -452,62 +455,14 @@ ldv_open_main_stream (void)
 }
 
 static void
-ldv_open_preprocessed_stream (bool iswrite)
+ldv_open_file_prepared_stream (void)
 {
-  char *preprocessed_fname = NULL;
-  const char *fname = NULL;
-  const char *dname = NULL;
-
-  if (ldv_isdir_orig)
+  if ((ldv_file_prepared_stream = fopen (ldv_output_fname, "w")) == NULL)
     {
-      fname = main_input_filename;
-
-      /* Separate an absolute path to a file with the relative one. */
-      if (fname && fname[0] == '/')
-        {
-          /* A preprocessed file name is 'file name + LDV_PREPROCESSED_EXTENSION'. */
-          preprocessed_fname = XCNEWVEC (char, (strlen (fname) + strlen (LDV_PREPROCESSED_EXTENSION) + 2));
-
-          sprintf (preprocessed_fname, "%s%s", fname, LDV_PREPROCESSED_EXTENSION);
-        }
-      else
-        {
-          dname = get_src_pwd ();
-
-          /* A preprocessed file name is 'directory name + / + file name + LDV_PREPROCESSED_EXTENSION'. */
-          preprocessed_fname = XCNEWVEC (char, (strlen (dname) + strlen (fname) + strlen (LDV_PREPROCESSED_EXTENSION) + 2));
-
-          sprintf (preprocessed_fname, "%s/%s%s", dname, fname, LDV_PREPROCESSED_EXTENSION);
-        }
-    }
-  else
-    {
-      fname = lbasename (main_input_filename);
-
-      /* A preprocessed file name is 'results directory + file name base + LDV_PREPROCESSED_EXTENSION'. */
-      preprocessed_fname = XCNEWVEC (char, (strlen (ldv_dir_res) + strlen (fname) + strlen (LDV_PREPROCESSED_EXTENSION) + 1));
-
-      sprintf (preprocessed_fname, "%s%s%s", ldv_dir_res, fname, LDV_PREPROCESSED_EXTENSION);
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
     }
 
-  if (iswrite)
-    {
-      if ((ldv_preprocessed_stream = fopen (preprocessed_fname, "w+")) == NULL)
-        {
-          LDV_FATAL_ERROR ("can%'t open file \"%s\" for read and write: %m", preprocessed_fname);
-        }
-
-      ldv_print_info (LDV_INFO_IO, "Preprocessed file \"%s\" was successfully opened for read and write", preprocessed_fname);
-    }
-  else
-    {
-      if ((ldv_preprocessed_stream = fopen (preprocessed_fname, "r")) == NULL)
-        {
-          LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", preprocessed_fname);
-        }
-
-      ldv_print_info (LDV_INFO_IO, "Preprocessed file \"%s\" was successfully opened for read", preprocessed_fname);
-    }
+  ldv_print_info (LDV_INFO_IO, "Prepared file \"%s\" was successfully opened for write", ldv_output_fname);
 }
 
 FILE *
@@ -740,6 +695,13 @@ ldv_set_nomatch (void)
 {
   /* Specify that nothing was matched at the beginning. */
   ldv_i_match = NULL;
+}
+
+void
+ldv_set_output_fname (const char *fname)
+{
+  /* Output file name is required to produce prepared and instrumented files. */
+  ldv_output_fname = fname;
 }
 
 void

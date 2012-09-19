@@ -827,6 +827,15 @@ c_common_post_options (const char **pfilename)
   if (out_fname == NULL || !strcmp (out_fname, "-"))
     out_fname = "";
 
+  /* LDV extension beginning. */
+  
+  /* Specify output file name for aspectator. It is required at file preparation
+     and instrumentation stages because of they have specific output. */
+  if (ldv ())
+    ldv_set_output_fname (out_fname);
+  
+  /* LDV extension end. */
+
   if (cpp_opts->deps.style == DEPS_NONE)
     check_deps_environment_vars ();
 

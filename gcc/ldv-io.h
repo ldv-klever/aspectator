@@ -50,7 +50,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_STREAM                 (stderr)
 #define LDV_MAIN_STREAM                 (ldv_get_main_stream ())
 #define LDV_MATCHED_BY_NAME             (stderr)
-#define LDV_PREPROCESSED_STREAM         (ldv_get_preprocessed_stream ())
+#define LDV_FILE_PREPARED_STREAM        (ldv_get_file_prepared_stream ())
 
 
 typedef struct ldv_decl_for_print_internal
@@ -93,7 +93,7 @@ extern char ldv_end_of_line (int);
 extern FILE *ldv_get_advice_weaved_stream (void);
 extern FILE *ldv_get_aspect_stream (void);
 extern FILE *ldv_get_main_stream (void);
-extern FILE *ldv_get_preprocessed_stream (void);
+extern FILE *ldv_get_file_prepared_stream (void);
 extern int ldv_getc (FILE *);
 extern const char *ldv_gets (FILE *);
 extern void ldv_make_includes (void);
@@ -105,6 +105,7 @@ extern void ldv_putc (int, FILE *);
 extern void ldv_puts (const char *, FILE *);
 extern int ldv_putsn (const char *, FILE *, int);
 extern void ldv_set_nomatch (void);
+extern void ldv_set_output_fname (const char *);
 extern void ldv_ungetc (int, FILE *);
 
 

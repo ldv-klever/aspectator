@@ -45,7 +45,9 @@ never after.
 /* LDV extension begin. */
 
 /* Since c-common.h is included in all major files dealing with C files
-   processing we put here the LDV pretty printer interface. */
+   processing we put here aspectator and LDV C back-end interfaces. */
+#include "ldv-io.h"
+#include "ldv-opts.h"
 #include "ldv-cbe-core.h"
 #include "ldv-pretty-print.h"
 

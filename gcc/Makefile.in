@@ -2109,7 +2109,7 @@ c-family/c-common.o : c-family/c-common.c $(CONFIG_H) $(SYSTEM_H) coretypes.h \
 	$(BUILTINS_DEF) $(CGRAPH_H) $(BASIC_BLOCK_H) $(TARGET_DEF_H) \
 	$(LIBFUNCS_H) \
 	gt-c-family-c-common.h \
-	ldv-cbe-core.h c-family/ldv-pretty-print.h
+	ldv-io.h ldv-opts.h ldv-cbe-core.h c-family/ldv-pretty-print.h
 
 c-family/c-cppbuiltin.o : c-family/c-cppbuiltin.c $(CONFIG_H) $(SYSTEM_H) \
 	coretypes.h $(TM_H) $(TREE_H) version.h $(C_COMMON_H) $(C_PRAGMA_H) \
