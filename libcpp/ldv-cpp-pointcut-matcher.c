@@ -32,8 +32,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* Macro from ldv-io.h that's needed for printing of matched just by name
    macros. */
 #define LDV_MATCHED_BY_NAME             (stderr)
-/* Macro from ldv-io.h that's needed for file pathes matching. */
-#define LDV_PREPROCESSED_EXTENSION      ".p"
 
 
 /* An advice definitions list. */
@@ -286,11 +284,6 @@ ldv_match_file_signature (const char *file_path, ldv_pps_file_ptr pps_file)
 
   file_path_aspect = ldv_cpp_get_file_name (pps_file->file_name);
   file_path_source = ldv_copy_str (file_path);
-
-  /* Check whether a source code file path ends with the ldv extension. Drop it
-     if so. */
-  if (LDV_STR_END_EQ (LDV_PREPROCESSED_EXTENSION, file_path_source))
-    *(file_path_source + (strlen (file_path_source) - strlen (LDV_PREPROCESSED_EXTENSION))) = '\0';
 
   /* Files are matched by pathes to them. If a file path obtained from an aspect
      file is a part of an entity file path, then it is considered as matched. */

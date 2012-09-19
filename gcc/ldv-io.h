@@ -42,7 +42,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_ADVICE_WEAVED_EXTENSION     ".aw"
 #define LDV_MACRO_ASPECTED_EXTENSION    ".ma"
 #define LDV_NO_COMMENT_EXTENSION        ".nc"
-#define LDV_PREPROCESSED_EXTENSION      ".p"
 
 #define LDV_ADVICE_WEAVED_STREAM        (ldv_get_advice_weaved_stream ())
 #define LDV_ASPECT_STREAM               (ldv_get_aspect_stream ())
