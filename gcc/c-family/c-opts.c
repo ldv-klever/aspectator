@@ -721,6 +721,16 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	out_fname = arg;
       else
 	error ("output filename specified twice");
+
+      /* LDV extension beginning. */
+
+      /* Specify output file name for aspectator. It is required at file 
+         preparation and instrumentation stages because of they have specific
+         output. */
+      ldv_set_output_fname (out_fname);
+
+      /* LDV extension end. */
+
       break;
 
       /* We need to handle the -pedantic switches here, rather than in
@@ -826,15 +836,6 @@ c_common_post_options (const char **pfilename)
 
   if (out_fname == NULL || !strcmp (out_fname, "-"))
     out_fname = "";
-
-  /* LDV extension beginning. */
-  
-  /* Specify output file name for aspectator. It is required at file preparation
-     and instrumentation stages because of they have specific output. */
-  if (ldv ())
-    ldv_set_output_fname (out_fname);
-  
-  /* LDV extension end. */
 
   if (cpp_opts->deps.style == DEPS_NONE)
     check_deps_environment_vars ();
