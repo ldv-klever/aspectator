@@ -42,14 +42,14 @@ ldv_cpp_define (struct cpp_reader *pfile)
   char *value = NULL;
   unsigned int printed_len;
 
-  name = ldv_i_match->i_macro->macro_name;
+  name = ldv_i_match->i_macro_aspect->macro_name;
   value = ldv_convert_body_to_macro (ldv_i_match->a_definition->a_body);
 
   /* Create a macro function definition. */
-  if (ldv_i_match->i_macro->macro_kind == LDV_PPS_MACRO_FUNC)
+  if (ldv_i_match->i_macro_aspect->macro_kind == LDV_PPS_MACRO_FUNC)
     {
       /* Count a lenght and the number of all macro function definition parameters. */
-      for (i_macro_param_list = ldv_i_match->i_macro->macro_param, param_len = 0, param_numb = 0
+      for (i_macro_param_list = ldv_i_match->i_macro_aspect->macro_param, param_len = 0, param_numb = 0
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list), ++param_numb)
         param_len += strlen ((const char *) ldv_list_get_data (i_macro_param_list));
@@ -60,7 +60,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
       printed_len = 0;
       printed_len += sprintf (define + printed_len, "%s(", name);
 
-      for (i_macro_param_list = ldv_i_match->i_macro->macro_param
+      for (i_macro_param_list = ldv_i_match->i_macro_aspect->macro_param
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
         {
@@ -95,7 +95,7 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 {
   const char *name = NULL;
 
-  name = ldv_i_match->i_macro->macro_name;
+  name = ldv_i_match->i_macro_aspect->macro_name;
 
   /* Undef a matched macro definition. It may be either a simple macro
      definition or a macro function definition. */
