@@ -278,7 +278,7 @@ typedef ldv_named_pointcut *ldv_np_ptr;
 
 /* Advice declaration = advice kind + composite pointcut. Advice weaving
    depends on an advice kind.*/
-typedef enum { LDV_A_AFTER, LDV_A_AROUND, LDV_A_BEFORE, LDV_A_NEW } ldv_ak;
+typedef enum { LDV_A_AFTER, LDV_A_AROUND, LDV_A_BEFORE, LDV_A_NEW, LDV_A_INFO } ldv_ak;
 typedef struct ldv_advice_declaration_internal
 {
   ldv_ak a_kind;
