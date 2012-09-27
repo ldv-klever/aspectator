@@ -655,8 +655,8 @@ do_define (cpp_reader *pfile)
           ldv_list_push_back (&i_macro->macro_param, macro_param_name);
         }
         
-      /* Try to match macro. */
-      ldv_match_macro (i_macro);
+      /* Try to match macro definition. */
+      ldv_match_macro (i_macro, LDV_PP_DEFINE);
     }
       
   /* LDV extension end. */  

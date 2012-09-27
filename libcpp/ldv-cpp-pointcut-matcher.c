@@ -97,7 +97,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
         {
         case LDV_PP_DEFINE:
         case LDV_PP_EXPAND:
-          if (i_kind == LDV_I_MACRO && ldv_match_macro_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_macro))
+          if (i_kind == LDV_I_MACRO && i_match->pp_kind == pp_kind && ldv_match_macro_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_macro))
             return true;
 
           break;
@@ -212,7 +212,7 @@ ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
 }
 
 void
-ldv_match_macro (ldv_i_macro_ptr i_macro)
+ldv_match_macro (ldv_i_macro_ptr i_macro, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -228,6 +228,7 @@ ldv_match_macro (ldv_i_macro_ptr i_macro)
   i_match = ldv_create_info_match ();
 
   i_match->i_kind = LDV_I_MACRO;
+  i_match->pp_kind = pp_kind;
   i_match->i_macro = i_macro;
 
   /* Walk through an advice definitions list to find matches. */
