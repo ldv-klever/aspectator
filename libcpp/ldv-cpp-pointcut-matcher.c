@@ -96,6 +96,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
       switch (pp_kind)
         {
         case LDV_PP_DEFINE:
+        case LDV_PP_EXPAND:
           if (i_kind == LDV_I_MACRO && ldv_match_macro_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_macro))
             return true;
 
@@ -330,7 +331,6 @@ bool
 ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 {
   ldv_i_macro_ptr macro_source = NULL, macro_aspect = NULL;
-  const char *i_macro_param_first = NULL, *i_macro_param_second = NULL;
 
   macro_source = i_match->i_macro;
   macro_aspect = ldv_convert_macro_signature_to_internal (pps_macro);

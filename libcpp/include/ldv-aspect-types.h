@@ -231,6 +231,7 @@ typedef ldv_primitive_pointcut_signature *ldv_pps_ptr;
    primitive pointcut signature and vice versa. There are following relations
    between them:
    LDV_PPS_DEFINE - LDV_PP_DEFINE
+   LDV_PPS_DEFINE - LDV_PP_EXPAND
    LDV_PPS_FILE - LDV_PP_FILE
    LDV_PPS_FILE - LDV_PP_INFILE
    LDV_PPS_DECL - LDV_PP_CALL
@@ -245,7 +246,7 @@ typedef ldv_primitive_pointcut_signature *ldv_pps_ptr;
    LDV_PPS_DECL - LDV_PP_SET_GLOBAL
    LDV_PPS_DECL - LDV_PP_SET_LOCAL
    Matching depends on a primitive pointcut kind. */
-typedef enum { LDV_PP_CALL, LDV_PP_DEFINE, LDV_PP_EXECUTION, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
+typedef enum { LDV_PP_CALL, LDV_PP_DEFINE, LDV_PP_EXECUTION, LDV_PP_EXPAND, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
 typedef struct ldv_primitive_pointcut_internal
 {
   ldv_ppk pp_kind;

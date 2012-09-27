@@ -653,16 +653,16 @@ static const yytype_int8 yyrhs[] =
 static const yytype_uint16 yyrline[] =
 {
        0,   274,   274,   276,   281,   287,   319,   341,   380,   414,
-     430,   446,   464,   482,   490,   550,   550,   550,   564,   578,
-     597,   599,   602,   622,   644,   661,   664,   670,   678,   684,
-     695,   705,   715,   725,   731,   750,   811,   821,   831,   841,
-     854,   857,   863,   863,   863,   869,   881,   893,   905,   917,
-     931,   944,   957,   970,   983,   996,  1009,  1022,  1040,  1058,
-    1076,  1094,  1094,  1108,  1108,  1122,  1122,  1136,  1152,  1164,
-    1176,  1190,  1204,  1212,  1229,  1235,  1260,  1279,  1282,  1288,
-    1305,  1324,  1327,  1334,  1337,  1343,  1347,  1359,  1359,  1371,
-    1388,  1406,  1425,  1438,  1457,  1478,  1484,  1493,  1502,  1508,
-    1514,  1540,  1559,  1562,  1569,  1572
+     430,   446,   464,   482,   490,   552,   552,   552,   566,   580,
+     599,   601,   604,   624,   646,   663,   666,   672,   680,   686,
+     697,   707,   717,   727,   733,   752,   813,   823,   833,   843,
+     856,   859,   865,   865,   865,   871,   883,   895,   907,   919,
+     933,   946,   959,   972,   985,   998,  1011,  1024,  1042,  1060,
+    1078,  1096,  1096,  1110,  1110,  1124,  1124,  1138,  1154,  1166,
+    1178,  1192,  1206,  1214,  1231,  1237,  1262,  1281,  1284,  1290,
+    1307,  1326,  1329,  1336,  1339,  1345,  1349,  1361,  1361,  1373,
+    1390,  1408,  1427,  1440,  1459,  1480,  1486,  1495,  1504,  1510,
+    1516,  1542,  1561,  1564,  1571,  1574
 };
 #endif
 
@@ -1966,6 +1966,8 @@ yyreduce:
         p_pointcut->pp_kind = LDV_PP_DEFINE;
       else if (!strcmp ("execution", pp_kind))
         p_pointcut->pp_kind = LDV_PP_EXECUTION;
+      else if (!strcmp ("expand", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_EXPAND;
       else if (!strcmp ("file", pp_kind))
         p_pointcut->pp_kind = LDV_PP_FILE;
       else if (!strcmp ("get", pp_kind))
@@ -1991,7 +1993,7 @@ yyreduce:
       else
         {
           ldv_print_info_location ((yylsp[(1) - (4)]), LDV_ERROR_BISON, "incorrect primitive pointcut kind \"%s\" was used", pp_kind);
-          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
+          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"expand\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
         }
 
       /* Set a primitive pointcut signature from a corresponding rule. */
@@ -2009,17 +2011,17 @@ yyreduce:
     break;
 
   case 15:
-#line 550 "ldv-aspect-parser.y"
+#line 552 "ldv-aspect-parser.y"
     { ldv_ismacro = true; ;}
     break;
 
   case 16:
-#line 550 "ldv-aspect-parser.y"
+#line 552 "ldv-aspect-parser.y"
     { ldv_ismacro = false; ;}
     break;
 
   case 17:
-#line 551 "ldv-aspect-parser.y"
+#line 553 "ldv-aspect-parser.y"
     {
       ldv_pps_ptr pp_signature = NULL;
 
@@ -2036,7 +2038,7 @@ yyreduce:
     break;
 
   case 18:
-#line 565 "ldv-aspect-parser.y"
+#line 567 "ldv-aspect-parser.y"
     {
       ldv_pps_ptr pp_signature = NULL;
 
@@ -2053,7 +2055,7 @@ yyreduce:
     break;
 
   case 19:
-#line 579 "ldv-aspect-parser.y"
+#line 581 "ldv-aspect-parser.y"
     {
       ldv_pps_ptr pp_signature = NULL;
 
@@ -2070,7 +2072,7 @@ yyreduce:
     break;
 
   case 22:
-#line 603 "ldv-aspect-parser.y"
+#line 605 "ldv-aspect-parser.y"
     {
       ldv_pps_macro_ptr macro = NULL;
 
@@ -2093,7 +2095,7 @@ yyreduce:
     break;
 
   case 23:
-#line 623 "ldv-aspect-parser.y"
+#line 625 "ldv-aspect-parser.y"
     {
       ldv_pps_macro_ptr macro = NULL;
 
@@ -2116,7 +2118,7 @@ yyreduce:
     break;
 
   case 24:
-#line 645 "ldv-aspect-parser.y"
+#line 647 "ldv-aspect-parser.y"
     {
       ldv_pps_file_ptr file = NULL;
 
@@ -2133,21 +2135,21 @@ yyreduce:
     break;
 
   case 25:
-#line 661 "ldv-aspect-parser.y"
+#line 663 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     ;}
     break;
 
   case 26:
-#line 665 "ldv-aspect-parser.y"
+#line 667 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[(1) - (1)].list);
     ;}
     break;
 
   case 27:
-#line 671 "ldv-aspect-parser.y"
+#line 673 "ldv-aspect-parser.y"
     {
       ldv_list_ptr macro_param_list = NULL;
 
@@ -2158,7 +2160,7 @@ yyreduce:
     break;
 
   case 28:
-#line 679 "ldv-aspect-parser.y"
+#line 681 "ldv-aspect-parser.y"
     {
       ldv_list_push_back (&(yyvsp[(1) - (3)].list), (yyvsp[(3) - (3)].id));
 
@@ -2167,7 +2169,7 @@ yyreduce:
     break;
 
   case 29:
-#line 685 "ldv-aspect-parser.y"
+#line 687 "ldv-aspect-parser.y"
     {
       ldv_list_ptr macro_param_list = NULL;
       ldv_id_ptr id = ldv_create_id ();
@@ -2181,7 +2183,7 @@ yyreduce:
     break;
 
   case 30:
-#line 696 "ldv-aspect-parser.y"
+#line 698 "ldv-aspect-parser.y"
     {
       ldv_list_ptr macro_param_list = NULL;
 
@@ -2194,7 +2196,7 @@ yyreduce:
     break;
 
   case 31:
-#line 706 "ldv-aspect-parser.y"
+#line 708 "ldv-aspect-parser.y"
     {
       ldv_id_ptr id = ldv_create_id ();
 
@@ -2207,7 +2209,7 @@ yyreduce:
     break;
 
   case 32:
-#line 716 "ldv-aspect-parser.y"
+#line 718 "ldv-aspect-parser.y"
     {
       ldv_puts_id ("...", (yyvsp[(3) - (4)].id));
 
@@ -2218,14 +2220,14 @@ yyreduce:
     break;
 
   case 33:
-#line 726 "ldv-aspect-parser.y"
+#line 728 "ldv-aspect-parser.y"
     {
       (yyval.pps_decl) = (yyvsp[(1) - (1)].pps_decl);
     ;}
     break;
 
   case 34:
-#line 732 "ldv-aspect-parser.y"
+#line 734 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -2247,7 +2249,7 @@ yyreduce:
     break;
 
   case 35:
-#line 751 "ldv-aspect-parser.y"
+#line 753 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr decl = NULL;
       ldv_pps_declarator_ptr declarator = NULL;
@@ -2309,7 +2311,7 @@ yyreduce:
     break;
 
   case 36:
-#line 812 "ldv-aspect-parser.y"
+#line 814 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2322,7 +2324,7 @@ yyreduce:
     break;
 
   case 37:
-#line 822 "ldv-aspect-parser.y"
+#line 824 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2335,7 +2337,7 @@ yyreduce:
     break;
 
   case 38:
-#line 832 "ldv-aspect-parser.y"
+#line 834 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2348,7 +2350,7 @@ yyreduce:
     break;
 
   case 39:
-#line 842 "ldv-aspect-parser.y"
+#line 844 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2361,38 +2363,38 @@ yyreduce:
     break;
 
   case 40:
-#line 854 "ldv-aspect-parser.y"
+#line 856 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = NULL;
     ;}
     break;
 
   case 41:
-#line 858 "ldv-aspect-parser.y"
+#line 860 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = (yyvsp[(1) - (1)].pps_declspecs);
     ;}
     break;
 
   case 42:
-#line 863 "ldv-aspect-parser.y"
+#line 865 "ldv-aspect-parser.y"
     { ldv_istype_spec = false; ;}
     break;
 
   case 43:
-#line 863 "ldv-aspect-parser.y"
+#line 865 "ldv-aspect-parser.y"
     { ldv_istype_spec = true; ;}
     break;
 
   case 44:
-#line 864 "ldv-aspect-parser.y"
+#line 866 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = (yyvsp[(2) - (3)].pps_declspecs);
     ;}
     break;
 
   case 45:
-#line 870 "ldv-aspect-parser.y"
+#line 872 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2407,7 +2409,7 @@ yyreduce:
     break;
 
   case 46:
-#line 882 "ldv-aspect-parser.y"
+#line 884 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2422,7 +2424,7 @@ yyreduce:
     break;
 
   case 47:
-#line 894 "ldv-aspect-parser.y"
+#line 896 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2437,7 +2439,7 @@ yyreduce:
     break;
 
   case 48:
-#line 906 "ldv-aspect-parser.y"
+#line 908 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2452,7 +2454,7 @@ yyreduce:
     break;
 
   case 49:
-#line 918 "ldv-aspect-parser.y"
+#line 920 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2467,7 +2469,7 @@ yyreduce:
     break;
 
   case 50:
-#line 932 "ldv-aspect-parser.y"
+#line 934 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2483,7 +2485,7 @@ yyreduce:
     break;
 
   case 51:
-#line 945 "ldv-aspect-parser.y"
+#line 947 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2499,7 +2501,7 @@ yyreduce:
     break;
 
   case 52:
-#line 958 "ldv-aspect-parser.y"
+#line 960 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2515,7 +2517,7 @@ yyreduce:
     break;
 
   case 53:
-#line 971 "ldv-aspect-parser.y"
+#line 973 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2531,7 +2533,7 @@ yyreduce:
     break;
 
   case 54:
-#line 984 "ldv-aspect-parser.y"
+#line 986 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2547,7 +2549,7 @@ yyreduce:
     break;
 
   case 55:
-#line 997 "ldv-aspect-parser.y"
+#line 999 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2563,7 +2565,7 @@ yyreduce:
     break;
 
   case 56:
-#line 1010 "ldv-aspect-parser.y"
+#line 1012 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2579,7 +2581,7 @@ yyreduce:
     break;
 
   case 57:
-#line 1023 "ldv-aspect-parser.y"
+#line 1025 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2600,7 +2602,7 @@ yyreduce:
     break;
 
   case 58:
-#line 1041 "ldv-aspect-parser.y"
+#line 1043 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2621,7 +2623,7 @@ yyreduce:
     break;
 
   case 59:
-#line 1059 "ldv-aspect-parser.y"
+#line 1061 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2642,7 +2644,7 @@ yyreduce:
     break;
 
   case 60:
-#line 1077 "ldv-aspect-parser.y"
+#line 1079 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2663,12 +2665,12 @@ yyreduce:
     break;
 
   case 61:
-#line 1094 "ldv-aspect-parser.y"
+#line 1096 "ldv-aspect-parser.y"
     { ldv_istype_spec = true; ;}
     break;
 
   case 62:
-#line 1095 "ldv-aspect-parser.y"
+#line 1097 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2685,12 +2687,12 @@ yyreduce:
     break;
 
   case 63:
-#line 1108 "ldv-aspect-parser.y"
+#line 1110 "ldv-aspect-parser.y"
     { ldv_istype_spec = true; ;}
     break;
 
   case 64:
-#line 1109 "ldv-aspect-parser.y"
+#line 1111 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2707,12 +2709,12 @@ yyreduce:
     break;
 
   case 65:
-#line 1122 "ldv-aspect-parser.y"
+#line 1124 "ldv-aspect-parser.y"
     { ldv_istype_spec = true; ;}
     break;
 
   case 66:
-#line 1123 "ldv-aspect-parser.y"
+#line 1125 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2729,7 +2731,7 @@ yyreduce:
     break;
 
   case 67:
-#line 1137 "ldv-aspect-parser.y"
+#line 1139 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2746,7 +2748,7 @@ yyreduce:
     break;
 
   case 68:
-#line 1153 "ldv-aspect-parser.y"
+#line 1155 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2761,7 +2763,7 @@ yyreduce:
     break;
 
   case 69:
-#line 1165 "ldv-aspect-parser.y"
+#line 1167 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2776,7 +2778,7 @@ yyreduce:
     break;
 
   case 70:
-#line 1177 "ldv-aspect-parser.y"
+#line 1179 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2791,7 +2793,7 @@ yyreduce:
     break;
 
   case 71:
-#line 1191 "ldv-aspect-parser.y"
+#line 1193 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2806,7 +2808,7 @@ yyreduce:
     break;
 
   case 72:
-#line 1205 "ldv-aspect-parser.y"
+#line 1207 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed declarator");
 
@@ -2815,7 +2817,7 @@ yyreduce:
     break;
 
   case 73:
-#line 1213 "ldv-aspect-parser.y"
+#line 1215 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
       ldv_list_ptr declarator_list = NULL;
@@ -2835,7 +2837,7 @@ yyreduce:
     break;
 
   case 74:
-#line 1230 "ldv-aspect-parser.y"
+#line 1232 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed direct declarator of associativity");
 
@@ -2844,7 +2846,7 @@ yyreduce:
     break;
 
   case 75:
-#line 1236 "ldv-aspect-parser.y"
+#line 1238 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -2872,7 +2874,7 @@ yyreduce:
     break;
 
   case 76:
-#line 1261 "ldv-aspect-parser.y"
+#line 1263 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -2891,21 +2893,21 @@ yyreduce:
     break;
 
   case 77:
-#line 1279 "ldv-aspect-parser.y"
+#line 1281 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     ;}
     break;
 
   case 78:
-#line 1283 "ldv-aspect-parser.y"
+#line 1285 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[(1) - (1)].list);
     ;}
     break;
 
   case 79:
-#line 1289 "ldv-aspect-parser.y"
+#line 1291 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
       ldv_list_ptr declarator_list = NULL;
@@ -2925,7 +2927,7 @@ yyreduce:
     break;
 
   case 80:
-#line 1306 "ldv-aspect-parser.y"
+#line 1308 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -2944,42 +2946,42 @@ yyreduce:
     break;
 
   case 81:
-#line 1324 "ldv-aspect-parser.y"
+#line 1326 "ldv-aspect-parser.y"
     {
       (yyval.integer) = NULL;
     ;}
     break;
 
   case 82:
-#line 1328 "ldv-aspect-parser.y"
+#line 1330 "ldv-aspect-parser.y"
     {
       (yyval.integer) = (yyvsp[(1) - (1)].integer);
     ;}
     break;
 
   case 83:
-#line 1334 "ldv-aspect-parser.y"
+#line 1336 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = NULL;
     ;}
     break;
 
   case 84:
-#line 1338 "ldv-aspect-parser.y"
+#line 1340 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = (yyvsp[(1) - (1)].pps_declspecs);
     ;}
     break;
 
   case 85:
-#line 1344 "ldv-aspect-parser.y"
+#line 1346 "ldv-aspect-parser.y"
     {
       (yyval.pps_declspecs) = (yyvsp[(1) - (1)].pps_declspecs);
     ;}
     break;
 
   case 86:
-#line 1348 "ldv-aspect-parser.y"
+#line 1350 "ldv-aspect-parser.y"
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2992,12 +2994,12 @@ yyreduce:
     break;
 
   case 87:
-#line 1359 "ldv-aspect-parser.y"
+#line 1361 "ldv-aspect-parser.y"
     { /* It's a hack!!! It's needed to alow a correct processing of typedefs names inside a parameter list. */ ldv_istype_spec = true; ;}
     break;
 
   case 88:
-#line 1360 "ldv-aspect-parser.y"
+#line 1362 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr func_arg = NULL;
 
@@ -3012,7 +3014,7 @@ yyreduce:
     break;
 
   case 89:
-#line 1372 "ldv-aspect-parser.y"
+#line 1374 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr func_arg = NULL;
       ldv_list_ptr func_arg_list = NULL;
@@ -3030,7 +3032,7 @@ yyreduce:
     break;
 
   case 90:
-#line 1389 "ldv-aspect-parser.y"
+#line 1391 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_list_ptr func_arg_list = NULL;
@@ -3051,7 +3053,7 @@ yyreduce:
     break;
 
   case 91:
-#line 1407 "ldv-aspect-parser.y"
+#line 1409 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
 
@@ -3071,7 +3073,7 @@ yyreduce:
     break;
 
   case 92:
-#line 1426 "ldv-aspect-parser.y"
+#line 1428 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -3087,7 +3089,7 @@ yyreduce:
     break;
 
   case 93:
-#line 1439 "ldv-aspect-parser.y"
+#line 1441 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -3109,7 +3111,7 @@ yyreduce:
     break;
 
   case 94:
-#line 1458 "ldv-aspect-parser.y"
+#line 1460 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -3131,7 +3133,7 @@ yyreduce:
     break;
 
   case 95:
-#line 1479 "ldv-aspect-parser.y"
+#line 1481 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
@@ -3140,7 +3142,7 @@ yyreduce:
     break;
 
   case 96:
-#line 1485 "ldv-aspect-parser.y"
+#line 1487 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
@@ -3149,7 +3151,7 @@ yyreduce:
     break;
 
   case 97:
-#line 1493 "ldv-aspect-parser.y"
+#line 1495 "ldv-aspect-parser.y"
     {
       ldv_list_ptr declarator_list = NULL;
 
@@ -3162,14 +3164,14 @@ yyreduce:
     break;
 
   case 98:
-#line 1503 "ldv-aspect-parser.y"
+#line 1505 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[(1) - (1)].list);
     ;}
     break;
 
   case 99:
-#line 1509 "ldv-aspect-parser.y"
+#line 1511 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed direct abstract declarator of associativity");
 
@@ -3178,7 +3180,7 @@ yyreduce:
     break;
 
   case 100:
-#line 1515 "ldv-aspect-parser.y"
+#line 1517 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3206,7 +3208,7 @@ yyreduce:
     break;
 
   case 101:
-#line 1541 "ldv-aspect-parser.y"
+#line 1543 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3225,28 +3227,28 @@ yyreduce:
     break;
 
   case 102:
-#line 1559 "ldv-aspect-parser.y"
+#line 1561 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     ;}
     break;
 
   case 103:
-#line 1563 "ldv-aspect-parser.y"
+#line 1565 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[(1) - (1)].list);
     ;}
     break;
 
   case 104:
-#line 1569 "ldv-aspect-parser.y"
+#line 1571 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     ;}
     break;
 
   case 105:
-#line 1573 "ldv-aspect-parser.y"
+#line 1575 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[(1) - (1)].list);
     ;}
@@ -3254,7 +3256,7 @@ yyreduce:
 
 
 /* Line 1267 of yacc.c.  */
-#line 3258 "ldv-aspect-parser.c"
+#line 3260 "ldv-aspect-parser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -3474,7 +3476,7 @@ yyreturn:
 }
 
 
-#line 1577 "ldv-aspect-parser.y"
+#line 1579 "ldv-aspect-parser.y"
 
 
 void
@@ -3504,6 +3506,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
   /* There are following relations between a primitive pointcut signature kind
      and a primitive pointcut kind:
        LDV_PPS_DEFINE - LDV_PP_DEFINE
+       LDV_PPS_DEFINE - LDV_PP_EXPAND
        LDV_PPS_FILE - LDV_PP_FILE
        LDV_PPS_FILE - LDV_PP_INFILE
        LDV_PPS_DECL - LDV_PP_CALL
@@ -3520,7 +3523,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
   switch (pps_kind)
     {
     case LDV_PPS_DEFINE:
-      if (pp_kind == LDV_PP_DEFINE)
+      if (pp_kind == LDV_PP_DEFINE || pp_kind == LDV_PP_EXPAND)
         return ;
 
       break;

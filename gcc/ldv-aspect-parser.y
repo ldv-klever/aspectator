@@ -505,6 +505,8 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
         p_pointcut->pp_kind = LDV_PP_DEFINE;
       else if (!strcmp ("execution", pp_kind))
         p_pointcut->pp_kind = LDV_PP_EXECUTION;
+      else if (!strcmp ("expand", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_EXPAND;
       else if (!strcmp ("file", pp_kind))
         p_pointcut->pp_kind = LDV_PP_FILE;
       else if (!strcmp ("get", pp_kind))
@@ -530,7 +532,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect primitive pointcut kind \"%s\" was used", pp_kind);
-          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
+          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"expand\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
         }
 
       /* Set a primitive pointcut signature from a corresponding rule. */
@@ -1603,6 +1605,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
   /* There are following relations between a primitive pointcut signature kind
      and a primitive pointcut kind:
        LDV_PPS_DEFINE - LDV_PP_DEFINE
+       LDV_PPS_DEFINE - LDV_PP_EXPAND
        LDV_PPS_FILE - LDV_PP_FILE
        LDV_PPS_FILE - LDV_PP_INFILE
        LDV_PPS_DECL - LDV_PP_CALL
@@ -1619,7 +1622,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
   switch (pps_kind)
     {
     case LDV_PPS_DEFINE:
-      if (pp_kind == LDV_PP_DEFINE)
+      if (pp_kind == LDV_PP_DEFINE || pp_kind == LDV_PP_EXPAND)
         return ;
 
       break;
