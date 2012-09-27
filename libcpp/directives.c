@@ -579,17 +579,6 @@ do_define (cpp_reader *pfile)
 {
   cpp_hashnode *node = lex_macro_node (pfile, true);
 
-  /* LDV extension beginning. */
-
-  const struct line_map *map = NULL;
-  ldv_i_macro_ptr i_macro = NULL;
-  int i;
-  const char *macro_param_name_original = NULL;
-  char *macro_param_name = NULL;
-  const char *macro_param_ellipsis = "...";
-  
-  /* LDV extension end. */  
-
   if (node)
     {
       /* If we have been requested to expand comments into macros,
@@ -610,54 +599,8 @@ do_define (cpp_reader *pfile)
   /* LDV extension beginning. */
   
   if (ldv_cpp)
-    {
-      i_macro = ldv_create_info_macro ();
-
-      map = linemap_lookup (pfile->line_table, pfile->directive_line);
-  
-      /* Understand whether a macro function or a macro definition is given. */
-      if (node->value.macro->fun_like)
-        i_macro->macro_kind = LDV_PPS_MACRO_FUNC;
-      else
-        i_macro->macro_kind = LDV_PPS_MACRO_DEF;
-  
-      /* Remember a macro name and a name of file containing a given macro. */
-      i_macro->macro_name = (const char *) (NODE_NAME (node));
-      i_macro->file_path = map->to_file;
-      i_macro->macro_param = NULL;
-  
-      /* Remember macro parameters. */
-      for (i = 0; i < node->value.macro->paramc; ++i)
-        {
-          macro_param_name_original = (char *) NODE_NAME (node->value.macro->params[i]);
-          
-          /* Check the last parameter since it may be variadic and should be
-           * processed respectively. */
-          if (node->value.macro->variadic && i == node->value.macro->paramc - 1)
-            {
-              /* Use the standard designition (ellipsis) for variadic macro
-               * parameters instead of __VA_ARGS__. */
-              if (!strcmp ("__VA_ARGS__", macro_param_name_original))
-                macro_param_name = (char *) macro_param_ellipsis;
-              /* Named variadic parameters. Use a name with ellipsis how it was
-               * in original source code. */
-              else
-                {
-                  macro_param_name = (char *) xmalloc (sizeof (char) * (strlen (macro_param_name_original) + 3 + 1));
-                  sprintf (macro_param_name, "%s...", macro_param_name_original);
-                }
-            }
-          else
-            {
-              macro_param_name = (char *) macro_param_name_original;
-            }
-              
-          ldv_list_push_back (&i_macro->macro_param, macro_param_name);
-        }
-        
-      /* Try to match macro definition. */
-      ldv_match_macro (i_macro, LDV_PP_DEFINE);
-    }
+    /* Try to match macro definition. */
+    ldv_match_macro (pfile, node, LDV_PP_DEFINE);
       
   /* LDV extension end. */  
 

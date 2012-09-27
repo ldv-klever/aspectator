@@ -212,11 +212,17 @@ ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
 }
 
 void
-ldv_match_macro (ldv_i_macro_ptr i_macro, ldv_ppk pp_kind)
+ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
-  ldv_i_match_ptr i_match = NULL;
+  ldv_i_match_ptr match = NULL;
+  ldv_i_macro_ptr macro = NULL;
+  const struct line_map *map = NULL;
+  int i;
+  const char *macro_param_name_original = NULL;
+  char *macro_param_name = NULL;
+  const char *macro_param_ellipsis = "...";
 
   /* There is no aspect definitions at all. */
   if (ldv_adef_list == NULL)
@@ -225,18 +231,62 @@ ldv_match_macro (ldv_i_macro_ptr i_macro, ldv_ppk pp_kind)
       return;
     }
 
-  i_match = ldv_create_info_match ();
+  match = ldv_create_info_match ();
 
-  i_match->i_kind = LDV_I_MACRO;
-  i_match->pp_kind = pp_kind;
-  i_match->i_macro = i_macro;
+  macro = ldv_create_info_macro ();
+
+  match->i_kind = LDV_I_MACRO;
+  match->pp_kind = pp_kind;
+  match->i_macro = macro;
+
+  map = linemap_lookup (pfile->line_table, pfile->directive_line);
+
+  /* Understand whether a macro function or a macro definition is given. */
+  if (node->value.macro->fun_like)
+    macro->macro_kind = LDV_PPS_MACRO_FUNC;
+  else
+    macro->macro_kind = LDV_PPS_MACRO_DEF;
+
+  /* Remember a macro name and a name of file containing a given macro. */
+  macro->macro_name = (const char *) (NODE_NAME (node));
+  macro->file_path = map->to_file;
+  macro->macro_param = NULL;
+
+  /* Remember macro parameters. */
+  for (i = 0; i < node->value.macro->paramc; ++i)
+    {
+      macro_param_name_original = (char *) NODE_NAME (node->value.macro->params[i]);
+
+      /* Check the last parameter since it may be variadic and should be
+       * processed respectively. */
+      if (node->value.macro->variadic && i == node->value.macro->paramc - 1)
+        {
+          /* Use the standard designition (ellipsis) for variadic macro
+           * parameters instead of __VA_ARGS__. */
+          if (!strcmp ("__VA_ARGS__", macro_param_name_original))
+            macro_param_name = (char *) macro_param_ellipsis;
+          /* Named variadic parameters. Use a name with ellipsis how it was
+           * in original source code. */
+          else
+            {
+              macro_param_name = (char *) xmalloc (sizeof (char) * (strlen (macro_param_name_original) + 3 + 1));
+              sprintf (macro_param_name, "%s...", macro_param_name_original);
+            }
+        }
+      else
+        {
+          macro_param_name = (char *) macro_param_name_original;
+        }
+
+      ldv_list_push_back (&macro->macro_param, macro_param_name);
+    }
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
 
-      if (ldv_match_cp (adef->a_declaration->c_pointcut, i_match))
+      if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
         {
           /* Do nothing if an advice was already applied. */
           if (adef->use_counter)
@@ -250,25 +300,25 @@ ldv_match_macro (ldv_i_macro_ptr i_macro, ldv_ppk pp_kind)
           /* To weave an advice of a given macro just one time. */
           ++(adef->use_counter);
 
-          ldv_i_match = i_match;
-          i_match->a_definition = adef;
+          ldv_i_match = match;
+          match->a_definition = adef;
 
           return;
         }
       /* Print signatures of matched by name but not by other signature
          macros if it's needed. */
-      else if (i_match->ismatched_by_name)
+      else if (match->ismatched_by_name)
         {
           if (ldv_cpp_isprint_signature_of_matched_by_name)
             {
               fprintf (LDV_MATCHED_BY_NAME, "\nThese macros were matched by name but have different signatures:\n  source macro: ");
-              ldv_print_macro (i_match->i_macro);
+              ldv_print_macro (match->i_macro);
               fprintf (LDV_MATCHED_BY_NAME, "\n  aspect macro: ");
-              ldv_print_macro (i_match->i_macro_aspect);
+              ldv_print_macro (match->i_macro_aspect);
               fprintf (LDV_MATCHED_BY_NAME, "\n");
             }
 
-          i_match->ismatched_by_name = false;
+          match->ismatched_by_name = false;
         }
     }
 
