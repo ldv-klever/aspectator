@@ -298,6 +298,10 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
 
           while (1)
             {
+              /* Print spaces between tokens if this is required. */
+              if (arg_values[j]->flags & PREV_WHITE)
+                ldv_puts_string (" ", macro_param_val);
+
               ldv_puts_string ((char *) cpp_token_as_text (pfile, arg_values[j]), macro_param_val);
 
               /* Jump through the CPP_EOF token for the next argument. */
@@ -306,9 +310,6 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
                 j += 2;
                 break;
               }
-              /* Print spaces between tokens. */
-              else
-                ldv_puts_string (" ", macro_param_val);
 
               /* Go to the following token. */
               j++;
