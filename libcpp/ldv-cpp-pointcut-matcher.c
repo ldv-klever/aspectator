@@ -228,6 +228,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
   char *macro_param_name = NULL;
   const char *macro_param_ellipsis = "...";
   ldv_str_ptr macro_param_val = NULL;
+  char *macro_param_val_str = NULL;
 
   /* There is no aspect definitions at all. */
   if (ldv_adef_list == NULL)
@@ -298,6 +299,11 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
 
           while (1)
             {
+              if (!arg_values[j])
+                {
+                  LDV_CPP_FATAL_ERROR ("Can't get the following token");
+                }
+
               /* CPP_EOF finishes current argument. */
               if (arg_values[j]->type == CPP_EOF)
                 {
@@ -316,7 +322,12 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
               if (arg_values[j]->flags & PREV_WHITE)
                 ldv_puts_string (" ", macro_param_val);
 
-              ldv_puts_string ((char *) cpp_token_as_text (pfile, arg_values[j]), macro_param_val);
+              if ((macro_param_val_str = (char *) cpp_token_as_text (pfile, arg_values[j])))
+                ldv_puts_string (macro_param_val_str, macro_param_val);
+              else
+                {
+                  LDV_CPP_FATAL_ERROR ("Can't convert token to text");
+                }
 
               /* Go to the following token. */
               j++;
