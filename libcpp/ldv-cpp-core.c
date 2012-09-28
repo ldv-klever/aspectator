@@ -65,7 +65,7 @@ char *
 ldv_cpp_get_body_text (ldv_ab_ptr body)
 {
   if (body)
-    return ldv_cpp_get_str (body->ab_text);
+    return ldv_get_str (body->ab_text);
 
   LDV_CPP_FATAL_ERROR ("body pointer wasn't initialized");
 
@@ -76,7 +76,7 @@ char *
 ldv_cpp_get_file_name (ldv_file_ptr file)
 {
   if (file)
-    return ldv_cpp_get_str (file->file_name);
+    return ldv_get_str (file->file_name);
 
   LDV_CPP_FATAL_ERROR ("file pointer wasn't initialized");
 
@@ -87,7 +87,7 @@ char *
 ldv_cpp_get_id_name (ldv_id_ptr id)
 {
   if (id)
-    return ldv_cpp_get_str (id->id_name);
+    return ldv_get_str (id->id_name);
 
   LDV_CPP_FATAL_ERROR ("id pointer wasn't initialized");
 
@@ -95,7 +95,7 @@ ldv_cpp_get_id_name (ldv_id_ptr id)
 }
 
 char *
-ldv_cpp_get_str (ldv_str_ptr str)
+ldv_get_str (ldv_str_ptr str)
 {
   if (str)
     return str->text;
@@ -192,6 +192,57 @@ ldv_create_info_var (void)
   return i_var;
 }
 
+ldv_str_ptr
+ldv_create_str (ldv_token_k token_kind)
+{
+  ldv_str_ptr string = NULL;
+  unsigned int len_start;
+
+  /* Start string length depends on a ldv token kind. */
+  switch (token_kind)
+    {
+    case LDV_T_FILE:
+      len_start = LDV_FILE_LEN_START;
+      break;
+
+    case LDV_T_B:
+      len_start = LDV_B_LEN_START;
+      break;
+
+    case LDV_T_ID:
+      len_start = LDV_ID_LEN_START;
+      break;
+
+    case LDV_T_STRING:
+      len_start = LDV_STRING_LEN_START;
+      break;
+
+    case LDV_T_TEXT:
+      len_start = LDV_TEXT_LEN_START;
+      break;
+
+    default:
+      LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
+    }
+
+  string = XCNEW (ldv_string);
+  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "string memory was released");*/
+
+  string->text = XCNEWVEC (char, (len_start + 1));
+  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "string text memory was released");*/
+
+  string->text[0] = '\0';
+  string->max_len = len_start;
+
+  return string;
+}
+
+ldv_str_ptr
+ldv_create_string (void)
+{
+  return ldv_create_str (LDV_T_STRING);
+}
+
 bool
 ldv_isvoid (ldv_i_type_ptr type)
 {
@@ -202,6 +253,116 @@ ldv_isvoid (ldv_i_type_ptr type)
     return false;
 
   return true;
+}
+
+FILE *
+ldv_open_file_stream (const char *file_name, const char *mode)
+{
+  FILE *file_stream;
+
+  if ((file_stream = fopen (file_name, mode)) == NULL)
+    {
+      LDV_CPP_FATAL_ERROR ("can't open file \"%s\" in mode \"%s\"", file_name, mode);
+    }
+
+  /* TODO #371 ldv_print_info (LDV_INFO_IO, "file \"%s\" was successfully opened in mode \"%s\"", file_name, mode); */
+
+  return file_stream;
+}
+
+void
+ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
+{
+  char *str_text = NULL;
+  unsigned int len_add;
+
+  if (!string)
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+
+  /* An additional string length depends on a ldv token kind. */
+  switch (token_kind)
+    {
+    case LDV_T_FILE:
+      len_add = LDV_FILE_LEN_ADD;
+      break;
+
+    case LDV_T_B:
+      len_add = LDV_B_LEN_ADD;
+      break;
+
+    case LDV_T_ID:
+      len_add = LDV_ID_LEN_ADD;
+      break;
+
+    case LDV_T_STRING:
+      len_add = LDV_STRING_LEN_ADD;
+      break;
+
+    case LDV_T_TEXT:
+      len_add = LDV_TEXT_LEN_ADD;
+      break;
+
+    default:
+      LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
+    }
+
+  /* If a character can be added to a current string text, do it. */
+  if (string->len < string->max_len)
+    {
+      string->text[string->len] = c;
+      string->text[string->len + 1] = '\0';
+      string->len++;
+    }
+  /* Otherwise a new memory is allocated for a large string text. */
+  else
+    {
+      /* Remember a current string text. */
+      str_text = XCNEWVEC (char, (string->len + 1));
+      memcpy (str_text, string->text, string->len + 1);
+
+      /* Allocate a new memory for a large string text. */
+      string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
+
+      /* Back a string text and increase its maximum length. */
+      memcpy (string->text, str_text, string->len + 1);
+      string->max_len += len_add;
+
+      /* Put a new character to a large string text. */
+      ldv_putc_str (c, string, token_kind);
+    }
+}
+
+void
+ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
+{
+  const char *c = NULL;
+
+  if (!str)
+    {
+      LDV_CPP_FATAL_ERROR ("symbol pointer wasn't initialized");
+    }
+
+  if (!string)
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+
+  /* Put every symbol of a string to an internal string. */
+  for (c = str; c && *c; c++)
+    ldv_putc_str (*c, string, token_kind);
+}
+
+void
+ldv_puts_string (const char *str, ldv_str_ptr string)
+{
+  if (string)
+    ldv_puts_str (str, string, LDV_T_STRING);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 }
 
 void

@@ -418,21 +418,6 @@ ldv_open_file_prepared_stream (void)
   ldv_print_info (LDV_INFO_IO, "Prepared file \"%s\" was successfully opened for write", ldv_output_fname);
 }
 
-FILE *
-ldv_open_file_stream (const char *file_name, const char *mode)
-{
-  FILE *file_stream;
-
-  if ((file_stream = fopen (file_name, mode)) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" in mode \"%s\": %m", file_name, mode);
-    }
-
-  ldv_print_info (LDV_INFO_IO, "file \"%s\" was successfully opened in mode \"%s\"", file_name, mode);
-
-  return file_stream;
-}
-
 void
 ldv_open_file_streams (void)
 {

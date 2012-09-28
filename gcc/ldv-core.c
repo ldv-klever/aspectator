@@ -32,9 +32,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-opts.h"
 
 
-static ldv_str_ptr ldv_create_str (ldv_token_k);
-static void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
-static void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
 static unsigned int ldv_unique_numb = 0;
 
 
@@ -178,57 +175,6 @@ ldv_create_ptr_quals (void)
   ldv_print_info (LDV_INFO_MEM, "declarator pointer qualifiers memory was released");
 
   return ptr_quals;
-}
-
-ldv_str_ptr
-ldv_create_str (ldv_token_k token_kind)
-{
-  ldv_str_ptr string = NULL;
-  unsigned int len_start;
-
-  /* Start string length depends on a ldv token kind. */
-  switch (token_kind)
-    {
-    case LDV_T_FILE:
-      len_start = LDV_FILE_LEN_START;
-      break;
-
-    case LDV_T_B:
-      len_start = LDV_B_LEN_START;
-      break;
-
-    case LDV_T_ID:
-      len_start = LDV_ID_LEN_START;
-      break;
-
-    case LDV_T_STRING:
-      len_start = LDV_STRING_LEN_START;
-      break;
-
-    case LDV_T_TEXT:
-      len_start = LDV_TEXT_LEN_START;
-      break;
-
-    default:
-      LDV_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
-    }
-
-  string = XCNEW (ldv_string);
-  ldv_print_info (LDV_INFO_MEM, "string memory was released");
-
-  string->text = XCNEWVEC (char, (len_start + 1));
-  ldv_print_info (LDV_INFO_MEM, "string text memory was released");
-
-  string->text[0] = '\0';
-  string->max_len = len_start;
-
-  return string;
-}
-
-ldv_str_ptr
-ldv_create_string (void)
-{
-  return ldv_create_str (LDV_T_STRING);
 }
 
 ldv_text_ptr
@@ -408,12 +354,6 @@ ldv_get_int (ldv_int_ptr integer)
 }
 
 char *
-ldv_get_str (ldv_str_ptr str)
-{
-  return ldv_cpp_get_str (str);
-}
-
-char *
 ldv_get_text (ldv_text_ptr text)
 {
   if (text)
@@ -562,70 +502,6 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 }
 
 void
-ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
-{
-  char *str_text = NULL;
-  unsigned int len_add;
-
-  if (!string)
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
-    }
-
-  /* An additional string length depends on a ldv token kind. */
-  switch (token_kind)
-    {
-    case LDV_T_FILE:
-      len_add = LDV_FILE_LEN_ADD;
-      break;
-
-    case LDV_T_B:
-      len_add = LDV_B_LEN_ADD;
-      break;
-
-    case LDV_T_ID:
-      len_add = LDV_ID_LEN_ADD;
-      break;
-
-    case LDV_T_STRING:
-      len_add = LDV_STRING_LEN_ADD;
-      break;
-
-    case LDV_T_TEXT:
-      len_add = LDV_TEXT_LEN_ADD;
-      break;
-
-    default:
-      LDV_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
-    }
-
-  /* If a character can be added to a current string text, do it. */
-  if (string->len < string->max_len)
-    {
-      string->text[string->len] = c;
-      string->text[string->len + 1] = '\0';
-      string->len++;
-    }
-  /* Otherwise a new memory is allocated for a large string text. */
-  else
-    {
-      /* Remember a current string text. */
-      str_text = XCNEWVEC (char, (string->len + 1));
-      memcpy (str_text, string->text, string->len + 1);
-
-      /* Allocate a new memory for a large string text. */
-      string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
-
-      /* Back a string text and increase its maximum length. */
-      memcpy (string->text, str_text, string->len + 1);
-      string->max_len += len_add;
-
-      /* Put a new character to a large string text. */
-      ldv_putc_str (c, string, token_kind);
-    }
-}
-
-void
 ldv_putc_string (unsigned char c, ldv_str_ptr string)
 {
   if (string)
@@ -677,37 +553,6 @@ ldv_puts_id (const char *str, ldv_id_ptr id)
   else
     {
       LDV_FATAL_ERROR ("id pointer wasn't initialized");
-    }
-}
-
-void
-ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
-{
-  const char *c = NULL;
-
-  if (!str)
-    {
-      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
-    }
-
-  if (!string)
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
-    }
-
-  /* Put every symbol of a string to an internal string. */
-  for (c = str; c && *c; c++)
-    ldv_putc_str (*c, string, token_kind);
-}
-
-void
-ldv_puts_string (const char *str, ldv_str_ptr string)
-{
-  if (string)
-    ldv_puts_str (str, string, LDV_T_STRING);
-  else
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
     }
 }
 

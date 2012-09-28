@@ -48,6 +48,7 @@ extern int ldv_cpp_stage;
 
 
 extern char *ldv_copy_str (const char *);
+
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);
 extern ldv_i_func_ptr ldv_create_info_func (void);
 extern ldv_i_macro_ptr ldv_create_info_macro (void);
@@ -56,15 +57,30 @@ extern ldv_i_param_ptr ldv_create_info_param (void);
 extern ldv_i_type_ptr ldv_create_info_type (void);
 extern ldv_i_typedecl_ptr ldv_create_info_typedecl (void);
 extern ldv_i_var_ptr ldv_create_info_var (void);
+
+extern ldv_str_ptr ldv_create_str (ldv_token_k);
+extern ldv_str_ptr ldv_create_string (void);
+
 extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
+
 extern char *ldv_cpp_get_body_text (ldv_ab_ptr);
 extern char *ldv_cpp_get_file_name (ldv_file_ptr);
 extern char *ldv_cpp_get_id_name (ldv_id_ptr);
-extern char *ldv_cpp_get_str (ldv_str_ptr);
+
+extern char *ldv_get_str (ldv_str_ptr);
+
 extern bool ldv_isvoid (ldv_i_type_ptr );
+
+extern FILE *ldv_open_file_stream (const char *, const char *);
+
+extern void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
+extern void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
+extern void ldv_puts_string (const char *, ldv_str_ptr);
+
 extern void ldv_set_ldv (bool);
 extern void ldv_set_ldv_opts (bool);
 extern void ldv_set_ldv_stage (int);
+
 extern char *ldv_trunkate_braces (char *);
 
 #endif /* _LDV_CPP_CORE_H_ */

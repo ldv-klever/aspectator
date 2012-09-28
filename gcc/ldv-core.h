@@ -44,7 +44,6 @@ extern ldv_pps_array_size_ptr ldv_create_pps_array_size (void);
 extern ldv_pps_decl_ptr ldv_create_pps_decl (void);
 extern ldv_pps_func_arg_ptr ldv_create_pps_func_arg (void);
 extern ldv_pps_ptr_quals_ptr ldv_create_ptr_quals (void);
-extern ldv_str_ptr ldv_create_string (void);
 extern ldv_text_ptr ldv_create_text (void);
 
 extern void ldv_delete_body (ldv_ab_ptr);
@@ -62,7 +61,6 @@ extern char *ldv_get_body_text (ldv_ab_ptr);
 extern char *ldv_get_file_name (ldv_file_ptr);
 extern char *ldv_get_id_name (ldv_id_ptr);
 extern int ldv_get_int (ldv_int_ptr);
-extern char *ldv_get_str (ldv_str_ptr);
 extern char *ldv_get_text (ldv_text_ptr);
 
 extern unsigned int ldv_get_unique_numb(void);
@@ -78,7 +76,6 @@ extern void ldv_putc_text (unsigned char, ldv_text_ptr);
 extern void ldv_puts_body (const char *, ldv_ab_ptr);
 extern void ldv_puts_file (const char *, ldv_file_ptr);
 extern void ldv_puts_id (const char *, ldv_id_ptr);
-extern void ldv_puts_string (const char *, ldv_str_ptr);
 extern void ldv_puts_text (const char *, ldv_text_ptr);
 
 
