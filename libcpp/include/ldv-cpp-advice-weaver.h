@@ -26,6 +26,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 struct cpp_reader;
 extern void ldv_cpp_define (struct cpp_reader *);
 extern void ldv_cpp_undef (struct cpp_reader *);
+extern void ldv_cpp_weave (void);
 extern void ldv_print_macro (ldv_i_macro_ptr);
 
 #endif /* _LDV_CPP_ADVICE_WEAVER_H_ */

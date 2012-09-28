@@ -29,6 +29,14 @@ along with this program; see the file COPYING3.  If not see
 #include "cpplib.h"
 #include "internal.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-cpp-advice-weaver.h"
+#include "ldv-cpp-core.h"
+#include "ldv-cpp-pointcut-matcher.h"
+
+/* LDV extension end. */
+
 typedef struct macro_arg macro_arg;
 struct macro_arg
 {
@@ -874,6 +882,26 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 
 	  if (macro->paramc > 0)
 	    replace_args (pfile, node, macro, (macro_arg *) buff->base);
+	
+	  /* LDV extension beginning. */
+  
+	  if (ldv_cpp)
+	    {
+	      /* Try to match macro definition. */
+	      ldv_match_macro (pfile, node, ((macro_arg *) buff->base)->first, LDV_PP_EXPAND);
+
+	      /* Weave macro expansion if macro was matched. */
+	      if (ldv_i_match)
+	        {
+	          ldv_cpp_weave ();
+          
+	          /* Matching is finished. */
+	          ldv_i_match = NULL;
+	        }
+	    }
+      
+	  /* LDV extension end. */  
+
 	  _cpp_release_buff (pfile, buff);
 	}
 

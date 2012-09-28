@@ -98,7 +98,11 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
         case LDV_PP_DEFINE:
         case LDV_PP_EXPAND:
           if (i_kind == LDV_I_MACRO && i_match->pp_kind == pp_kind && ldv_match_macro_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_macro))
-            return true;
+            {
+              i_match->p_pointcut = c_pointcut->p_pointcut;
+
+              return true;
+            }
 
           break;
 
@@ -212,17 +216,18 @@ ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
 }
 
 void
-ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, ldv_ppk pp_kind)
+ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_values, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_macro_ptr macro = NULL;
   const struct line_map *map = NULL;
-  int i;
+  int i, j;
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
   const char *macro_param_ellipsis = "...";
+  ldv_str_ptr macro_param_val = NULL;
 
   /* There is no aspect definitions at all. */
   if (ldv_adef_list == NULL)
@@ -279,6 +284,38 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, ldv_ppk pp_kind)
         }
 
       ldv_list_push_back (&macro->macro_param, macro_param_name);
+    }
+
+  /* Store macro argument actual values if so. */
+  if (arg_values)
+    {
+      /* All macro argument values are stored in one-dimensional array and
+       * separated by CPP_EOF. So use a global index to iterate through them. */
+      j = 0;
+      for (i = 0; i < node->value.macro->paramc; ++i)
+        {
+          macro_param_val = ldv_create_string ();
+
+          while (1)
+            {
+              ldv_puts_string ((char *) cpp_token_as_text (pfile, arg_values[j]), macro_param_val);
+
+              /* Jump through the CPP_EOF token for the next argument. */
+              if (arg_values[j + 1]->type == CPP_EOF)
+              {
+                j += 2;
+                break;
+              }
+              /* Print spaces between tokens. */
+              else
+                ldv_puts_string (" ", macro_param_val);
+
+              /* Go to the following token. */
+              j++;
+            }
+
+          ldv_list_push_back (&macro->macro_param_value, ldv_get_str (macro_param_val));
+        }
     }
 
   /* Walk through an advice definitions list to find matches. */

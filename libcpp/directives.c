@@ -29,9 +29,7 @@ along with this program; see the file COPYING3.  If not see
 
 /* LDV extension beginning. */
 
-#include "ldv-aspect-types.h"
 #include "ldv-cpp-core.h"
-#include "ldv-list.h"
 #include "ldv-cpp-pointcut-matcher.h"
 
 /* LDV extension end. */
@@ -600,7 +598,7 @@ do_define (cpp_reader *pfile)
   
   if (ldv_cpp)
     /* Try to match macro definition. */
-    ldv_match_macro (pfile, node, LDV_PP_DEFINE);
+    ldv_match_macro (pfile, node, NULL, LDV_PP_DEFINE);
       
   /* LDV extension end. */  
 

@@ -406,6 +406,7 @@ typedef struct ldv_info_macro_internal
   ldv_pps_macro_k macro_kind;
   const char *macro_name;
   ldv_list_ptr macro_param;
+  ldv_list_ptr macro_param_value;
   const char *file_path;
 } ldv_info_macro;
 typedef ldv_info_macro *ldv_i_macro_ptr;
