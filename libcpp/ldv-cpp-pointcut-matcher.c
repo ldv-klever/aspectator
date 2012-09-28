@@ -301,7 +301,8 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
             {
               if (!arg_values[j])
                 {
-                  LDV_CPP_FATAL_ERROR ("Can't get the following token");
+                  /* TODO. What happens here? LDV_CPP_FATAL_ERROR ("Can't get the following token"); */
+                  break;
                 }
 
               /* CPP_EOF finishes current argument. */
