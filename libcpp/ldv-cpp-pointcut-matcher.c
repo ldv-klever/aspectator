@@ -227,6 +227,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
   const char *macro_param_ellipsis = "...";
+  const cpp_token *arg_value = NULL;
   ldv_str_ptr macro_param_val = NULL;
   char *macro_param_val_str = NULL;
 
@@ -291,47 +292,53 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
   if (arg_values)
     {
       /* All macro argument values are stored in one-dimensional array and
-       * separated by CPP_EOF. So use a global index to iterate through them. */
+       * separated by CPP_EOF. So use a global index to iterate through them.
+       * Keep empty string as values for variadic macro parameters. */
       j = 0;
       for (i = 0; i < node->value.macro->paramc; ++i)
         {
           macro_param_val = ldv_create_string ();
 
-          while (1)
+          if (!node->value.macro->variadic || i != node->value.macro->paramc - 1)
             {
-              if (!arg_values[j])
+              while (1)
                 {
-                  /* TODO. What happens here? LDV_CPP_FATAL_ERROR ("Can't get the following token"); */
-                  break;
-                }
+                  arg_value = arg_values[j];
 
-              /* CPP_EOF finishes current argument. */
-              if (arg_values[j]->type == CPP_EOF)
-                {
+                  if (!arg_value)
+                    {
+                      LDV_CPP_FATAL_ERROR ("Can't get the following token");
+                      break;
+                    }
+
+                  /* CPP_EOF finishes current argument. */
+                  if (arg_value->type == CPP_EOF)
+                    {
+                      j++;
+                      break;
+                    }
+
+                  /* Skip auxiliary unspellable tokens. */
+                  if (arg_value->type == CPP_PADDING)
+                    {
+                      j++;
+                      continue;
+                    }
+
+                  /* Print spaces between tokens if this is required. */
+                  if (arg_value->flags & PREV_WHITE)
+                    ldv_puts_string (" ", macro_param_val);
+
+                  if ((macro_param_val_str = (char *) cpp_token_as_text (pfile, arg_value)))
+                    ldv_puts_string (macro_param_val_str, macro_param_val);
+                  else
+                    {
+                      LDV_CPP_FATAL_ERROR ("Can't convert token to text");
+                    }
+
+                  /* Go to the following token. */
                   j++;
-                  break;
                 }
-
-              /* Skip auxiliary unspellable tokens. */
-              if (arg_values[j]->type == CPP_PADDING)
-                {
-                  j++;
-                  continue;
-                }
-
-              /* Print spaces between tokens if this is required. */
-              if (arg_values[j]->flags & PREV_WHITE)
-                ldv_puts_string (" ", macro_param_val);
-
-              if ((macro_param_val_str = (char *) cpp_token_as_text (pfile, arg_values[j])))
-                ldv_puts_string (macro_param_val_str, macro_param_val);
-              else
-                {
-                  LDV_CPP_FATAL_ERROR ("Can't convert token to text");
-                }
-
-              /* Go to the following token. */
-              j++;
             }
 
           ldv_list_push_back (&macro->macro_param_value, ldv_get_str (macro_param_val));
