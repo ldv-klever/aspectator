@@ -40,6 +40,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
   ldv_list_ptr i_macro_param_list = NULL;
   unsigned int param_numb;
   unsigned int param_len;
+  unsigned int comma_numb;
   char *value = NULL;
   unsigned int printed_len;
 
@@ -55,8 +56,12 @@ ldv_cpp_define (struct cpp_reader *pfile)
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list), ++param_numb)
         param_len += strlen ((const char *) ldv_list_get_data (i_macro_param_list));
 
-      /* A Macro function definition for cpp_define function is 'name(param1,param2,...)=value'. */
-      define = XCNEWVEC (char, (strlen (name) + 1 + param_len + param_numb - 1 + 1 + 1 + strlen (value) + 1));
+      /* A Macro function definition for cpp_define function is
+         'name(param1,param2,...)=value'. Take into account that there may be
+         empty list of macro parameters. In this case commas number should be 0
+         (#3332). */
+      comma_numb = param_numb ? param_numb - 1 : 0;
+      define = XCNEWVEC (char, (strlen (name) + 1 + param_len + comma_numb + 1 + 1 + strlen (value) + 1));
 
       printed_len = 0;
       printed_len += sprintf (define + printed_len, "%s(", name);
