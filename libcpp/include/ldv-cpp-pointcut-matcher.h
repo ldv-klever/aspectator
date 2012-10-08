@@ -32,7 +32,7 @@ extern ldv_i_match_ptr ldv_i_match;
 extern bool ldv_match_cp (ldv_cp_ptr, ldv_i_match_ptr);
 extern bool ldv_match_file_signature (const char *, ldv_pps_file_ptr);
 extern bool ldv_match_func_signature (ldv_i_match_ptr, ldv_pps_decl_ptr);
-extern void ldv_match_macro (cpp_reader *, cpp_hashnode *, const cpp_token **, ldv_ppk);
+extern void ldv_match_macro (cpp_reader *, cpp_hashnode *, const cpp_token ***, ldv_ppk);
 extern bool ldv_match_macro_signature (ldv_i_match_ptr, ldv_pps_macro_ptr);
 extern bool ldv_match_typedecl_signature (ldv_i_match_ptr, ldv_pps_decl_ptr);
 extern bool ldv_match_var_signature (ldv_i_match_ptr, ldv_pps_decl_ptr);

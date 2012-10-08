@@ -216,7 +216,7 @@ ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
 }
 
 void
-ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_values, ldv_ppk pp_kind)
+ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_values, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -291,39 +291,30 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
   /* Store macro argument actual values if so. */
   if (arg_values)
     {
-      /* All macro argument values are stored in one-dimensional array and
-       * separated by CPP_EOF. So use a global index to iterate through them.
-       * Keep empty string as values for variadic macro parameters. */
-      j = 0;
       for (i = 0; i < node->value.macro->paramc; ++i)
         {
           macro_param_val = ldv_create_string ();
 
+          /* Keep empty string as values for variadic macro parameters. */
           if (!node->value.macro->variadic || i != node->value.macro->paramc - 1)
             {
-              while (1)
+              for (j = 0; 1; j++)
                 {
-                  arg_value = arg_values[j];
-
-                  if (!arg_value)
+                  if (!arg_values[i] || !arg_values[i][j])
                     {
                       LDV_CPP_FATAL_ERROR ("Can't get the following token");
                       break;
                     }
 
+                  arg_value = arg_values[i][j];
+
                   /* CPP_EOF finishes current argument. */
                   if (arg_value->type == CPP_EOF)
-                    {
-                      j++;
-                      break;
-                    }
+                    break;
 
                   /* Skip auxiliary unspellable tokens. */
                   if (arg_value->type == CPP_PADDING)
-                    {
-                      j++;
-                      continue;
-                    }
+                    continue;
 
                   /* Print spaces between tokens if this is required. */
                   if (arg_value->flags & PREV_WHITE)
@@ -335,9 +326,6 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token **arg_va
                     {
                       LDV_CPP_FATAL_ERROR ("Can't convert token to text");
                     }
-
-                  /* Go to the following token. */
-                  j++;
                 }
             }
 

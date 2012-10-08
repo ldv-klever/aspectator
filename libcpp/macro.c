@@ -835,6 +835,14 @@ static int
 enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 		     const cpp_token *result)
 {
+
+  /* LDV extension beginning. */
+  
+  const cpp_token ***ldv_macro_params;
+  int i;
+
+  /* LDV extension end. */  
+  
   /* The presence of a macro invalidates a file's controlling macro.  */
   pfile->mi_valid = false;
 
@@ -887,8 +895,13 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
   
 	  if (ldv_cpp)
 	    {
+	      ldv_macro_params = (const cpp_token ***) XNEWVEC (const cpp_token **, macro->paramc);
+
+	      for (i = 0; i < macro->paramc; i++)
+	        ldv_macro_params[i] = (((macro_arg *) buff->base)[i]).first;
+
 	      /* Try to match macro definition. */
-	      ldv_match_macro (pfile, node, ((macro_arg *) buff->base)->first, LDV_PP_EXPAND);
+	      ldv_match_macro (pfile, node, ldv_macro_params, LDV_PP_EXPAND);
 
 	      /* Weave macro expansion if macro was matched. */
 	      if (ldv_i_match)
