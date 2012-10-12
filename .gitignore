@@ -1,0 +1,4 @@
+# Prerequisites for GCC are added to sources during building.
+gmp/
+mpc/
+mpfr/
