@@ -335,6 +335,17 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 }
 
 void
+ldv_putc_string (unsigned char c, ldv_str_ptr string)
+{
+  if (string)
+    ldv_putc_str (c, string, LDV_T_STRING);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+}
+
+void
 ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
 {
   const char *c = NULL;

@@ -502,17 +502,6 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 }
 
 void
-ldv_putc_string (unsigned char c, ldv_str_ptr string)
-{
-  if (string)
-    ldv_putc_str (c, string, LDV_T_STRING);
-  else
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
-    }
-}
-
-void
 ldv_putc_text (unsigned char c, ldv_text_ptr text)
 {
   if (text)
