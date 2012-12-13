@@ -187,6 +187,108 @@ ldv_cpp_weave (void)
     }
 }
 
+const char *
+ldv_get_aspect_pattern_value_or_string (ldv_aspect_pattern_param_ptr param)
+{
+  /* In fact just known environment variable can keep value. This value was
+     already calculated in aspect parser. */
+  if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+    return param->aspect_pattern->value;
+  /* Return string itself. */
+  else if (param->kind == LDV_ASPECT_PATTERN_STRING)
+    return param->string;
+
+  LDV_CPP_FATAL_ERROR ("can't get aspect pattern value or string");
+
+  return NULL;
+}
+
+FILE *
+ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr param)
+{
+  /* Open file for write in append mode to avoid overwriting of already printed
+     data. */
+  return ldv_open_file_stream (ldv_get_aspect_pattern_value_or_string (param), "a+");
+}
+
+void
+ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr pattern_params)
+{
+  ldv_str_ptr conversion = NULL, text = NULL;
+  ldv_aspect_pattern_param_ptr param = NULL;
+
+  /* Unfortunately there is not built-in feature to printf array of integers and
+     strings. So we extract all conversions from a given format manually and
+     then use built-in fprintf for a single string or integer. Here is
+     description of conversion syntax:
+     http://www.gnu.org/software/libc/manual/html_node/Output-Conversion-Syntax.html
+     % [ param-no $] flags width [ . precision ] type conversion
+     % [ param-no $] flags width . * [ param-no $] type conversion
+  */
+  while (*format)
+    {
+      if (*format == '%')
+        {
+          /* Print previously collected text. */
+          if (text)
+            {
+              fprintf(file_stream, ldv_get_str (text));
+              text = NULL;
+            }
+
+          conversion = ldv_create_string ();
+          ldv_putc_string (*format, conversion);
+
+          /* Get the rest of conversion. */
+          format++;
+          while (*format)
+            {
+              ldv_putc_string (*format, conversion);
+
+              /* Formatted integer should be printed. */
+              if (*format == 'd')
+                {
+                  param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+                  fprintf (file_stream, ldv_get_str (conversion), param->integer);
+                  pattern_params = ldv_list_get_next (pattern_params);
+                  break;
+                }
+              /* Formatted string should be printed. */
+              else if (*format == 's')
+                {
+                  param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+                  fprintf (file_stream, ldv_get_str (conversion), param->string);
+                  pattern_params = ldv_list_get_next (pattern_params);
+                  break;
+                }
+              else if (*format == '%')
+                {
+                  fprintf(file_stream, "%s", ldv_get_str (conversion));
+                  break;
+                }
+
+              format++;
+            }
+        }
+      /* Collect text without conversions. Note that we can't output single
+         characters since this doesn't take into account multi character
+         sequences. */
+      else
+        {
+          if (!text)
+            text = ldv_create_string ();
+
+          ldv_putc_string (*format, text);
+        }
+
+      format++;
+    }
+
+  /* Print the rest of collected text. */
+  if (text)
+    fprintf(file_stream, ldv_get_str (text));
+}
+
 void
 ldv_print_macro (ldv_i_macro_ptr i_macro)
 {

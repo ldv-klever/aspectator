@@ -27,6 +27,13 @@ struct cpp_reader;
 extern void ldv_cpp_define (struct cpp_reader *);
 extern void ldv_cpp_undef (struct cpp_reader *);
 extern void ldv_cpp_weave (void);
+
+extern const char *ldv_get_aspect_pattern_value_or_string (ldv_aspect_pattern_param_ptr);
+
+extern FILE *ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr);
+
+extern void ldv_print_query_result (FILE *, const char *, ldv_list_ptr);
+
 extern void ldv_print_macro (ldv_i_macro_ptr);
 
 #endif /* _LDV_CPP_ADVICE_WEAVER_H_ */

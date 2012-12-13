@@ -3590,7 +3590,8 @@ insn-recog.o : insn-recog.c $(CONFIG_H) $(SYSTEM_H) coretypes.h		\
 
 ldv-advice-weaver.o : ldv-advice-weaver.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h $(TREE_H) c-lang.h $(C_TREE_H) \
-  $(srcdir)/../libcpp/include/ldv-aspect-types.h $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \
+  $(srcdir)/../libcpp/include/ldv-aspect-types.h $(srcdir)/../libcpp/include/ldv-cpp-advice-weaver.h \
+  $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \
   ldv-advice-weaver.h ldv-converter.h ldv-core.h ldv-io.h ldv-opts.h ldv-pointcut-matcher.h
 ldv-aspect-parser.o : ldv-aspect-parser.c $(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h \
