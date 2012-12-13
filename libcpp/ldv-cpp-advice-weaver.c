@@ -117,8 +117,8 @@ ldv_cpp_weave (void)
   ldv_list_ptr body_patterns = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
   ldv_aspect_pattern_ptr pattern = NULL;
-  ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL;
-  const char *file_name = NULL;
+  ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
+  ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
   const char *text = NULL;
   ldv_list_ptr arg_value_list = NULL;
   const char *arg_value = NULL;
@@ -139,49 +139,62 @@ ldv_cpp_weave (void)
           body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
           pattern = body_pattern->pattern;
 
-          /* TODO. Here is implemented very simple processing of aspect body
-           * patterns. But it would be great to merge it with the one from
-           * ldv-advice-weaver.c. */
           if (!strcmp (pattern->name, "fprintf"))
             {
-              /* Output information specified by the 2d parameter to the
-               * file specified by the 1st one. */
-              param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params);
-              param2 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (ldv_list_get_next (pattern->params));
+              /* First parameter specifies file where information request
+                 result to be printed. */
+              pattern_params = pattern->params;
+              param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+              /* Second parameter specifies format string like for standard
+                 printf function. */
+              pattern_params = ldv_list_get_next (pattern_params);
+              param2 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
 
-              if (param1->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-                file_name = param1->aspect_pattern->value;
-              else
+              /* Evaluate other parameters. */
+              pattern_params = ldv_list_get_next (pattern_params);
+              /* To keep evaluated values of parameters use parameters
+                 themselves since parameter evaluation may lead to either
+                 string or integer, and parameters themselves may be either
+                 strings or integers. */
+              for (pattern_params_cur = pattern_params
+                ; pattern_params_cur
+                ; pattern_params_cur = ldv_list_get_next (pattern_params_cur))
                 {
-                  LDV_CPP_FATAL_ERROR ("Can't get a file name where information to be printed");
-                }
+                  param_cur = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params_cur);
 
-              if (param2->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN && !strcmp (param2->aspect_pattern->name, "arg_val"))
-                {
-                  for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
-                    ; arg_value_list
-                    ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
+                  /* We are interested here in parameters to be evaluated. */
+                  if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
                     {
-                      arg_value = (char *) ldv_list_get_data (arg_value_list);
+                      if (!strcmp (param_cur->aspect_pattern->name, "arg_val"))
+                        {
+                          for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
+                            ; arg_value_list
+                            ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
+                            {
+                              arg_value = (char *) ldv_list_get_data (arg_value_list);
 
-                      if (i == param2->aspect_pattern->arg_numb)
-                      {
-                        text = arg_value;
-                        break;
-                      }
-                    }
+                              if (i == param_cur->aspect_pattern->arg_numb)
+                              {
+                                text = arg_value;
+                                break;
+                              }
+                            }
 
-                  if (!text)
-                    {
-                      LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param2->aspect_pattern->arg_numb, (i - 1));
+                          if (!text)
+                            {
+                              LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_cur->aspect_pattern->arg_numb, (i - 1));
+                            }
+
+                          param_cur->string = text;
+                        }
+                      else
+                        {
+                          LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
+                        }
                     }
                 }
-              else
-                {
-                  LDV_CPP_FATAL_ERROR ("Can't get information to be printed");
-                }
 
-              fprintf (ldv_open_file_stream (file_name, "a+"), "%s\n", text);
+              ldv_print_query_result (ldv_open_aspect_pattern_param_file_stream (param1), ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
             }
         }
     }
