@@ -1942,8 +1942,52 @@ ldv_parse_aspect_pattern_param_str (char **str)
 
           if (c == '"')
             break;
-
-          ldv_putc_string (c, str_read);
+          /* Parse escape sequences and keep their equivalents. */
+          else if (c == '\\')
+            {
+              c = ldv_getc (LDV_ASPECT_STREAM);
+              byte_count++;
+              switch (c)
+                {
+                case '\'':
+                  ldv_putc_string ('\'', str_read);
+                  break;
+                case '"':
+                  ldv_putc_string ('\"', str_read);
+                  break;
+                case '?':
+                  ldv_putc_string ('\?', str_read);
+                  break;
+                case '\\':
+                  ldv_putc_string ('\\', str_read);
+                  break;
+                case 'a':
+                  ldv_putc_string ('\a', str_read);
+                  break;
+                case 'b':
+                  ldv_putc_string ('\b', str_read);
+                  break;
+                case 'f':
+                  ldv_putc_string ('\f', str_read);
+                  break;
+                case 'n':
+                  ldv_putc_string ('\n', str_read);
+                  break;
+                case 'r':
+                  ldv_putc_string ('\r', str_read);
+                  break;
+                case 't':
+                  ldv_putc_string ('\t', str_read);
+                  break;
+                case 'v':
+                  ldv_putc_string ('\v', str_read);
+                  break;
+                default:
+                  LDV_FATAL_ERROR ("Can't process escape sequence '\\%c'", c);
+                }
+            }
+          else
+            ldv_putc_string (c, str_read);
         }
     }
 
