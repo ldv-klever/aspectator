@@ -78,7 +78,7 @@ static char *ldv_create_aspected_name (const char *);
 static ldv_decl_for_print_ptr ldv_create_decl_for_print (void);
 static void ldv_delete_aux_func_param_list (ldv_i_type_ptr);
 static void ldv_delete_id_declarator (ldv_list_ptr);
-static const char *ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr);
+static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
 static const char *ldv_get_arg_name (unsigned int);
 static const char *ldv_get_arg_sign (unsigned int);
 static const char *ldv_get_arg_type_name (unsigned int);
@@ -221,10 +221,12 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
   LDV_FATAL_ERROR ("can't remove identifier declarator from the end of declarator chain");
 }
 
-const char *
-ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern)
+int
+ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
 {
   const char *text = NULL;
+  unsigned int number;
+  bool is_number = false;
   const char *func_arg = NULL;
   int func_arg_size;
 
@@ -260,6 +262,11 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern)
       else
         text = func_arg;
     }
+  else if (!strcmp (pattern->name, "arg_numb"))
+    {
+      number = ldv_list_len (ldv_func_arg_info_list);
+      is_number = true;
+    }
   else if (!strcmp (pattern->name, "aspect_func_name"))
     {
       if (ldv_aspect_func_name)
@@ -292,7 +299,18 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern)
   else if (!strcmp (pattern->name, "arg_sign"))
     text = ldv_get_arg_sign (pattern->arg_numb);
 
-  return text;
+  if (text)
+    {
+      *string = text;
+      return 1;
+    }
+  else if (is_number)
+    {
+      *integer = number;
+      return 1;
+    }
+
+  return 0;
 }
 
 const char *
@@ -533,6 +551,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 {
   char *body_text = NULL;
   const char *text = NULL;
+  unsigned int number;
   const char *func_call = NULL;
   ldv_text_ptr body_with_patterns = NULL;
   const char *body_c = NULL;
@@ -588,8 +607,22 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
               /* Aspect patterns that can be evaluated on the basis of matching
                  information and environment variable values. */
-              if ((text = ldv_evaluate_aspect_pattern (pattern)))
-                ldv_puts_text (text, body_with_patterns);
+              if (ldv_evaluate_aspect_pattern (pattern, &text, &number))
+                {
+                  if (text)
+                    {
+                      ldv_puts_text (text, body_with_patterns);
+                      /* Forget about evaluated text since it is used in
+                         condition above. */
+                      text = NULL;
+                    }
+                  else
+                    {
+                      /* Here we are interested just in text representation of
+                         aspect body pattern pattern. */
+                      ldv_puts_text (ldv_itoa (number), body_with_patterns);
+                    }
+                }
               else if (!strcmp (pattern->name, "fprintf"))
                 {
                   /* Output information specified by the 2d parameter to the
@@ -603,7 +636,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                     file_name = param1->string;
 
                   if (param2->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-                    text = ldv_evaluate_aspect_pattern (param2->aspect_pattern);
+                    ldv_evaluate_aspect_pattern (param2->aspect_pattern, &text, &number);
                   else if (param2->kind == LDV_ASPECT_PATTERN_STRING)
                     text = param2->string;
 
