@@ -230,6 +230,16 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
   ldv_str_ptr conversion = NULL, text = NULL;
   ldv_aspect_pattern_param_ptr param = NULL;
 
+  if (!file_stream)
+    {
+      LDV_CPP_FATAL_ERROR ("file stream where query result to be printed isn't specified");
+    }
+
+  if (!format)
+    {
+      LDV_CPP_FATAL_ERROR ("format for query result should be specified as second parameter of each $fprintf aspect body pattern");
+    }
+
   /* Unfortunately there is not built-in feature to printf array of integers and
      strings. So we extract all conversions from a given format manually and
      then use built-in fprintf for a single string or integer. Here is
