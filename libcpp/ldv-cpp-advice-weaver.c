@@ -187,6 +187,8 @@ ldv_cpp_weave (void)
 
                           param_cur->string = text;
                         }
+                      else if (!strcmp (param_cur->aspect_pattern->name, "macro_name"))
+                        param_cur->string = ldv_i_match->i_macro->macro_name;
                       else
                         {
                           LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
