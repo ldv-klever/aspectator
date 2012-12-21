@@ -159,12 +159,11 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
             }
 
           /* Convert a parameter. Note that it may have a name or may be an
-             abstract declarator and an auxiliary name if so is present is
-             preferable. */
-          if (param->name_aux)
-            param_name = param->name_aux;
-          else
+             abstract declarator and an auxiliary name should be taken. */
+          if (param->name)
             param_name = param->name;
+          else
+            param_name = param->name_aux;
 
           func_arg_new->pps_func_arg = ldv_convert_internal_to_declaration (param->type, param_name);
 
