@@ -80,7 +80,9 @@ ldv_cpp_define (struct cpp_reader *pfile)
 
       cpp_define (pfile, define);
 
+      /* TODO print these messages just in case of debug
       fprintf (stderr, "Create cpp definition \"%s\".\n", define);
+      */
     }
   /* Create a macro definition. */
   else
@@ -92,7 +94,9 @@ ldv_cpp_define (struct cpp_reader *pfile)
 
       cpp_define (pfile, define);
 
+      /* TODO print these messages just in case of debug
       fprintf (stderr, "Create cpp definition \"%s\".\n", define);
+      */
     }
 }
 

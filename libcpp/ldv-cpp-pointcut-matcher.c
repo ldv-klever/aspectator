@@ -340,16 +340,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
 
       if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
         {
-          /* Do nothing if an advice was already applied. */
-          if (adef->use_counter)
-            {
-              fprintf (stderr, "Advice was already applied.\n");
-
-              ldv_i_match = NULL;
-              return;
-            }
-
-          /* To weave an advice of a given macro just one time. */
+          /* Count advice weavings. */
           ++(adef->use_counter);
 
           ldv_i_match = match;
