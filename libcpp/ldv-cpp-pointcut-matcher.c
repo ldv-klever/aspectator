@@ -192,6 +192,15 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 static bool
 ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second)
 {
+  /* Compare typedef names if so are specified. */
+  if (declspecs_first->istypedef_name)
+    {
+      if (!declspecs_second->istypedef_name)
+        return false;
+
+      return !strcmp (ldv_cpp_get_id_name (declspecs_first->type_name), ldv_cpp_get_id_name (declspecs_second->type_name));
+    }
+
   return ldv_match_bool (declspecs_first->isinline, declspecs_second->isinline)
     && ldv_match_bool (declspecs_first->isstatic, declspecs_second->isstatic)
     && ldv_match_bool (declspecs_first->isextern, declspecs_second->isextern)
