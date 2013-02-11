@@ -73,41 +73,6 @@ typedef struct YYLTYPE
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
 
-/* Relation between a keyword and a corresponding token. */
-struct ldv_keyword_token
-{
-  const char *keyword;
-  int token;
-};
-
-/* Map between keywords and tokens. */
-struct ldv_keyword_token ldv_keyword_token_map [] = {
-    {"typedef", LDV_TYPEDEF}
-  , {"extern", LDV_EXTERN}
-  , {"static", LDV_STATIC}
-  , {"auto", LDV_AUTO}
-  , {"register", LDV_REGISTER}
-  , {"void", LDV_VOID}
-  , {"char", LDV_CHAR}
-  , {"int", LDV_INT}
-  , {"float", LDV_FLOAT}
-  , {"double", LDV_DOUBLE}
-  , {"_Bool", LDV_BOOL}
-  , {"_Complex", LDV_COMPLEX}
-  , {"short", LDV_SHORT}
-  , {"long", LDV_LONG}
-  , {"signed", LDV_SIGNED}
-  , {"unsigned", LDV_UNSIGNED}
-  , {"struct", LDV_STRUCT}
-  , {"union", LDV_UNION}
-  , {"enum", LDV_ENUM}
-  , {"const", LDV_CONST}
-  , {"restrict", LDV_RESTRICT}
-  , {"volatile", LDV_VOLATILE}
-  , {"inline", LDV_INLINE}
-  , {NULL, 0}
-};
-
 /* The named pointcuts list. */
 static ldv_list_ptr ldv_n_pointcut_list = NULL;
 /* Flag says whether it's parsed macro signature or not. */
@@ -1682,6 +1647,41 @@ ldv_create_pp_signature (void)
 int
 ldv_get_id_kind (char *id)
 {
+  /* Relation between a keyword and a corresponding token. */
+  struct ldv_keyword_token
+  {
+    const char *keyword;
+    int token;
+  };
+
+  /* Map between keywords and tokens. */
+  struct ldv_keyword_token ldv_keyword_token_map [] = {
+			{"typedef", LDV_TYPEDEF}
+		, {"extern", LDV_EXTERN}
+		, {"static", LDV_STATIC}
+		, {"auto", LDV_AUTO}
+		, {"register", LDV_REGISTER}
+		, {"void", LDV_VOID}
+		, {"char", LDV_CHAR}
+		, {"int", LDV_INT}
+		, {"float", LDV_FLOAT}
+		, {"double", LDV_DOUBLE}
+		, {"_Bool", LDV_BOOL}
+		, {"_Complex", LDV_COMPLEX}
+		, {"short", LDV_SHORT}
+		, {"long", LDV_LONG}
+		, {"signed", LDV_SIGNED}
+		, {"unsigned", LDV_UNSIGNED}
+		, {"struct", LDV_STRUCT}
+		, {"union", LDV_UNION}
+		, {"enum", LDV_ENUM}
+		, {"const", LDV_CONST}
+		, {"restrict", LDV_RESTRICT}
+		, {"volatile", LDV_VOLATILE}
+		, {"inline", LDV_INLINE}
+		, {NULL, 0}
+	};
+
   int i;
 
   /* Do not bind an identifier with some C keyword when parse a macro
