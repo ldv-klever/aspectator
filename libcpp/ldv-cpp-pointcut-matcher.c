@@ -875,7 +875,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
              which they correspond. So walk through aspect and source arguments
              and the 'true' way lists. */
           for (matching_table_coord_list_cur = matching_table_coord_list, param_second_list = second->param, i = 0, j = 0
-            ; matching_table_coord_list_cur
+            ; matching_table_coord_list_cur && j < param_source_numb
             ; matching_table_coord_list_cur = ldv_list_get_next (matching_table_coord_list_cur), matching_table_coord_prev = matching_table_coord)
             {
               matching_table_coord = (ldv_coord_ptr) ldv_list_get_data (matching_table_coord_list_cur);
