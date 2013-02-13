@@ -253,6 +253,7 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
     {
       ldv_np_ptr n_pointcut_new = NULL;
       char *p_keyword = NULL;
+      char *p_name = NULL;
 
       /* Set pointcut keyword from lexer identifier. */
       p_keyword = ldv_get_id_name ($1);
@@ -269,8 +270,17 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
       n_pointcut_new = XCNEW (ldv_named_pointcut);
       ldv_print_info (LDV_INFO_MEM, "named pointcut memory was released");
 
-      /* Set a pointcut name from a lexer identifier. */
-      n_pointcut_new->p_name = ldv_get_id_name ($2);
+      /* Set a pointcut name from a lexer identifier. This name can't contain
+         any '$' wildcards. */
+      p_name = ldv_get_id_name ($2);
+
+      if ($2->isany_chars)
+        {
+          ldv_print_info_location (@1, LDV_ERROR_BISON, "'$' wildcard was used in pointcut name \"%s\"", p_name);
+          LDV_FATAL_ERROR ("pointcut name should be a correct identifier");
+        }
+
+      n_pointcut_new->p_name = p_name;
 
       /* Set a composite pointcut of a named pointcut from a corresponding rule. */
       n_pointcut_new->c_pointcut = $4;
@@ -351,8 +361,15 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       char *p_name = NULL;
       ldv_cp_ptr c_pointcut = NULL;
 
-      /* Set a pointcut name from a lexer identifier. */
+      /* Set a pointcut name from a lexer identifier. This name can't contain
+         any '$' wildcards. */
       p_name = ldv_get_id_name ($1);
+
+      if ($1->isany_chars)
+        {
+          ldv_print_info_location (@1, LDV_ERROR_BISON, "'$' wildcard was used in pointcut name \"%s\"", p_name);
+          LDV_FATAL_ERROR ("pointcut name should be a correct identifier");
+        }
 
       c_pointcut = NULL;
 
