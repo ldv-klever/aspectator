@@ -69,11 +69,12 @@ typedef struct ldv_int_internal
 } ldv_int;
 typedef ldv_int *ldv_int_ptr;
 
-/* Identifier = string.. */
+/* Identifier = string that may contains '$' wildcards. */
 enum { LDV_ID_LEN_ADD = 5, LDV_ID_LEN_START = 10 };
 typedef struct ldv_id_internal
 {
   ldv_str_ptr id_name;
+  bool isany_chars;
 } ldv_id;
 typedef ldv_id *ldv_id_ptr;
 

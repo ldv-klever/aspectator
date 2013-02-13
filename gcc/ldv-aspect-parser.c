@@ -147,7 +147,7 @@ static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
 static int ldv_parse_aspect_pattern_known_value (char const **str);
 static char *ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
-static unsigned int ldv_parse_id (char **id, bool accept_digits);
+static unsigned int ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern);
 static int ldv_parse_preprocessor_directives (void);
 static unsigned int ldv_parse_unsigned_integer (unsigned int *integer);
 static void ldv_parse_whitespaces (void);
@@ -3958,6 +3958,7 @@ ldv_parse_aspect_pattern (void)
   int c;
   ldv_aspect_pattern_ptr pattern = NULL;
   char *str = NULL;
+  bool isany_chars = false;
   unsigned int integer;
   ldv_list_ptr params = NULL;
 
@@ -3974,7 +3975,7 @@ ldv_parse_aspect_pattern (void)
       pattern = ldv_create_aspect_pattern ();
 
       /* Parse aspect pattern name. */
-      if (ldv_parse_id (&str, false))
+      if (ldv_parse_id (&str, &isany_chars, true))
         {
           pattern->name = str;
           ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern name \"%s\"", pattern->name);
@@ -4028,6 +4029,7 @@ ldv_parse_aspect_pattern_param (void)
   ldv_aspect_pattern_param_ptr param = NULL;
   ldv_aspect_pattern_ptr pattern = NULL;
   char *str = NULL;
+  bool isany_chars = false;
   unsigned int integer;
 
   param = ldv_create_aspect_pattern_param ();
@@ -4052,7 +4054,7 @@ ldv_parse_aspect_pattern_param (void)
       return param;
     }
 
-  if (ldv_parse_id (&str, true))
+  if (ldv_parse_id (&str, &isany_chars, true))
     {
       param->kind = LDV_ASPECT_PATTERN_STRING;
       param->string = str;
@@ -4411,17 +4413,20 @@ ldv_parse_file_name (char **file_name)
 
 /* Correct identifier or C keyword begins with any character (in a low or an
    upper case) or '_'.  Subsequent identifier symbols are characters, digits and
-   '_'. */
+   '_'. Aspectator identifier may contain any number of '$' wildcards each of
+   which is equvalent to any lenght of characters. Aspect pattern name and
+   parameter cannot containt either digits or '$' wildcards. */
 unsigned int
-ldv_parse_id (char **id, bool accept_digits)
+ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern)
 {
   int c;
   unsigned int byte_count = 0;
   ldv_str_ptr str = NULL;
+  bool isread_any_chars = false;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
-  if (ISIDST (c))
+  if (ISIDST (c) || (!isaspect_pattern && c == '$'))
     {
       str = ldv_create_string ();
 
@@ -4430,9 +4435,12 @@ ldv_parse_id (char **id, bool accept_digits)
         {
           byte_count++;
           ldv_putc_string (c, str);
+          if (c == '$')
+            isread_any_chars = true;
+
           c = ldv_getc (LDV_ASPECT_STREAM);
         }
-      while (accept_digits ? ISIDNUM (c) : ISIDST (c));
+      while (isaspect_pattern ? ISIDST (c) : ISIDNUM (c) || c == '$');
     }
 
   /* Push back a first nonidentifier character. */
@@ -4442,6 +4450,9 @@ ldv_parse_id (char **id, bool accept_digits)
     {
       /* Assign read identifier to identifier passed through parameter. */
       *id = ldv_get_str (str);
+
+      /* Specify whether '$' wildcard was read or not. */
+      *isany_chars = isread_any_chars;
 
       /* Move current position properly. */
       ldv_set_last_column (yylloc.last_column + byte_count);
@@ -4671,6 +4682,7 @@ yylex (void)
   ldv_ab_ptr body = NULL;
   ldv_file_ptr file = NULL;
   char *str = NULL;
+  bool isany_chars = false;
   ldv_id_ptr id = NULL;
   unsigned int i;
   ldv_int_ptr integer = NULL;
@@ -4735,11 +4747,12 @@ yylex (void)
     }
 
   /* Parse some identifier or a C keyword. */
-  if (ldv_parse_id (&str, true))
+  if (ldv_parse_id (&str, &isany_chars, false))
     {
       /* Initialize corresponding internal structure. */
       id = ldv_create_id ();
       ldv_puts_id (str, id);
+      id->isany_chars = isany_chars;
 
       /* Set a corresponding semantic value. */
       yylval.id = id;

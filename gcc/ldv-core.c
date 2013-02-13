@@ -116,6 +116,7 @@ ldv_create_id (void)
   ldv_print_info (LDV_INFO_MEM, "identifier memory was released");
 
   id->id_name = ldv_create_str (LDV_T_ID);
+  id->isany_chars = false;
 
   return id;
 }
