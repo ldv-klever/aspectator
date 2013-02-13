@@ -1815,7 +1815,7 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
 ldv_aspect_pattern_ptr
 ldv_parse_aspect_pattern (void)
 {
-  int c;
+  int c, c_next;
   ldv_aspect_pattern_ptr pattern = NULL;
   char *str = NULL;
   bool isany_chars = false;
@@ -1833,6 +1833,19 @@ ldv_parse_aspect_pattern (void)
       ldv_set_first_column (yylloc.last_column);
 
       pattern = ldv_create_aspect_pattern ();
+
+      /* Process special aspect pattern '$$' that means '$' wildcard for file
+         names actually. */
+      if ((c_next = ldv_getc (LDV_ASPECT_STREAM)) == '$')
+        {
+          ldv_set_last_column (yylloc.last_column + 1);
+          pattern->value = "$";
+
+          /* Skip following processing since pattern was already read. */
+          return pattern;
+        }
+      else
+        ldv_ungetc (c_next, LDV_ASPECT_STREAM);
 
       /* Parse aspect pattern name. */
       if (ldv_parse_id (&str, &isany_chars, true))
