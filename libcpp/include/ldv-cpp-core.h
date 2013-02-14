@@ -46,7 +46,6 @@ extern bool ldv_cpp;
 extern bool ldv_cpp_isinfo_matching_table;
 extern int ldv_cpp_stage;
 
-
 extern char *ldv_copy_str (const char *);
 
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);
@@ -58,6 +57,7 @@ extern ldv_i_type_ptr ldv_create_info_type (void);
 extern ldv_i_typedecl_ptr ldv_create_info_typedecl (void);
 extern ldv_i_var_ptr ldv_create_info_var (void);
 
+extern ldv_id_ptr ldv_create_id (void);
 extern ldv_str_ptr ldv_create_str (ldv_token_k);
 extern ldv_str_ptr ldv_create_string (void);
 
@@ -75,6 +75,7 @@ extern FILE *ldv_open_file_stream (const char *, const char *);
 
 extern void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
 extern void ldv_putc_string (unsigned char, ldv_str_ptr);
+extern void ldv_puts_id (const char *, ldv_id_ptr);
 extern void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
 extern void ldv_puts_string (const char *, ldv_str_ptr);
 

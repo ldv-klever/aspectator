@@ -38,7 +38,6 @@ extern ldv_ab_ptr ldv_create_body (void);
 extern ldv_ab_aspect_pattern_ptr ldv_create_body_aspect_pattern (void);
 extern ldv_pps_declarator_ptr ldv_create_declarator (void);
 extern ldv_file_ptr ldv_create_file (void);
-extern ldv_id_ptr ldv_create_id (void);
 extern ldv_int_ptr ldv_create_int (void);
 extern ldv_pps_array_size_ptr ldv_create_pps_array_size (void);
 extern ldv_pps_decl_ptr ldv_create_pps_decl (void);
@@ -74,7 +73,6 @@ extern void ldv_putc_id (unsigned char, ldv_id_ptr);
 extern void ldv_putc_text (unsigned char, ldv_text_ptr);
 extern void ldv_puts_body (const char *, ldv_ab_ptr);
 extern void ldv_puts_file (const char *, ldv_file_ptr);
-extern void ldv_puts_id (const char *, ldv_id_ptr);
 extern void ldv_puts_text (const char *, ldv_text_ptr);
 
 

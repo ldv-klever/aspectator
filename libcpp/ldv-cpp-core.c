@@ -192,6 +192,20 @@ ldv_create_info_var (void)
   return i_var;
 }
 
+ldv_id_ptr
+ldv_create_id (void)
+{
+  ldv_id_ptr id = NULL;
+
+  id = XCNEW (ldv_id);
+  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "identifier memory was released");*/
+
+  id->id_name = ldv_create_str (LDV_T_ID);
+  id->isany_chars = false;
+
+  return id;
+}
+
 ldv_str_ptr
 ldv_create_str (ldv_token_k token_kind)
 {
@@ -342,6 +356,17 @@ ldv_putc_string (unsigned char c, ldv_str_ptr string)
   else
     {
       LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+}
+
+void
+ldv_puts_id (const char *str, ldv_id_ptr id)
+{
+  if (id)
+    ldv_puts_str (str, id->id_name, LDV_T_ID);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("id pointer wasn't initialized");
     }
 }
 

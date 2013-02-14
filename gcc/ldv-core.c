@@ -107,20 +107,6 @@ ldv_create_file (void)
   return file;
 }
 
-ldv_id_ptr
-ldv_create_id (void)
-{
-  ldv_id_ptr id = NULL;
-
-  id = XCNEW (ldv_id);
-  ldv_print_info (LDV_INFO_MEM, "identifier memory was released");
-
-  id->id_name = ldv_create_str (LDV_T_ID);
-  id->isany_chars = false;
-
-  return id;
-}
-
 ldv_int_ptr
 ldv_create_int (void)
 {
@@ -532,17 +518,6 @@ ldv_puts_file (const char *str, ldv_file_ptr file)
   else
     {
       LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
-}
-
-void
-ldv_puts_id (const char *str, ldv_id_ptr id)
-{
-  if (id)
-    ldv_puts_str (str, id->id_name, LDV_T_ID);
-  else
-    {
-      LDV_FATAL_ERROR ("id pointer wasn't initialized");
     }
 }
 
