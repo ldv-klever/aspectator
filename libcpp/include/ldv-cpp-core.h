@@ -31,10 +31,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Print source code location and call CPP fatal_error. */
 #define LDV_CPP_FATAL_ERROR fprintf (stderr, "LDV: %s: %d: fatal error took place here\n", __FILE__, __LINE__); ldv_cpp_fatal_error
-/* A macrofunction compares ends of strings. The number of letters to be
-   compared is a lenght of a string that is smaller that an another one. This's
-   needed for a file pathes matching. */
-#define LDV_STR_END_EQ(str_small, str_large) (strlen (str_small) <= strlen (str_large) ? !strncmp (str_small, str_large + (strlen (str_large) - strlen (str_small)), strlen (str_small)) : 0)
 
 
 /* Terminal symbols that require some memory allocation. */
