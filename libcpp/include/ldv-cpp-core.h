@@ -46,6 +46,8 @@ extern bool ldv_cpp;
 extern bool ldv_cpp_isinfo_matching_table;
 extern int ldv_cpp_stage;
 
+extern int ldv_cmp_str (ldv_id_ptr, const char *);
+
 extern char *ldv_copy_str (const char *);
 
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);

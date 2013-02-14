@@ -35,6 +35,252 @@ bool ldv_cpp = false;
 bool ldv_cpp_isinfo_matching_table = false;
 int ldv_cpp_stage = -1;
 
+
+static int ldv_cmp_str_any_chars (const char *id, const char *str);
+static bool ldv_isany_chars(const char *);
+
+
+int
+ldv_cmp_str (ldv_id_ptr id, const char *str)
+{
+  char *id_name = ldv_cpp_get_id_name (id);
+
+  /* We have to compare convinient strings in case when id doesn't
+   * contain any $ wildcard. */
+  if (!id->isany_chars)
+    {
+      return strcmp (id_name, str);
+    }
+
+  /* Otherwise id and string must be compared like for .. wildcard (see
+   * libcpp/ldv-cpp-pointcut-matcher.c). */
+  return ldv_cmp_str_any_chars (id_name, str);
+}
+
+static int
+ldv_cmp_str_any_chars (const char *id, const char *str)
+{
+  char *c = NULL, *c_next = NULL;
+  unsigned int any_chars_symbol_numb, id_symbol_numb, str_symbol_numb;
+  bool **symbol_matching_table = NULL;
+  unsigned int i, j, j_first_matched;
+  bool ismatched;
+
+  /* First of all count the number of $ wildcards and join continuous $
+   * wildcards together if so. */
+  for (c = (char *)id, any_chars_symbol_numb = 0; *c; c++)
+    {
+      if (ldv_isany_chars (c))
+        {
+          any_chars_symbol_numb++;
+
+          /* Remove following $ wildcards if so. */
+          while (*(c + 1))
+            {
+              if (ldv_isany_chars (c + 1))
+                {
+                  for (c_next = c + 1; *c_next; c_next++)
+                    {
+                      *c_next = *(c_next + 1);
+                    }
+                }
+              else
+                {
+                  break;
+                }
+            }
+        }
+    }
+
+  /* Create special matching table and try to find greedy 'true' path in
+   * it to make correspondence between identifier and string. */
+
+  /* Obtain sizes of matching table. Note that string symbols are along
+   * x direction while identifier symbols are along y direction. */
+  str_symbol_numb = strlen (str);
+  id_symbol_numb = strlen (id);
+
+  /* Finish if the number of id symbols (that are not $ wildcards) is
+   * greater then the number of string symbols. */
+  if (id_symbol_numb > str_symbol_numb + any_chars_symbol_numb)
+    {
+      return 1;
+  }
+
+  /* Finish if there is no string symbols at all. */
+  if (str_symbol_numb == 0)
+    {
+      return 1;
+  }
+
+  /* Allocate and initialize matching table. */
+
+  /* At the beginning allocate rows memory (corresponding to identifier
+   * symbols) along y direction. */
+  symbol_matching_table = (bool **) xmalloc (id_symbol_numb * sizeof (bool *));
+
+  for (i = 0; i < id_symbol_numb; i++)
+    {
+      /* Fox each id symbol allocate memory corresponding to all string
+       * symbols along x direction. */
+      symbol_matching_table[i] = (bool *) xmalloc (str_symbol_numb * sizeof (bool));
+
+      /* Initialize the whole matching table with false values at the
+       * beginning. */
+      for (j = 0; j < str_symbol_numb; j++)
+        {
+          symbol_matching_table[i][j] = false;
+        }
+    }
+
+  /* Fill table by going through its rows (directly from the first to
+   * the last) and updating information for it in accordence with the
+   * previously obtained information. Note that the first row is
+   * considered especially since there isn't previous row for it. */
+  for (i = 0, j_first_matched = 0; i < id_symbol_numb; i++)
+    {
+      /* The first row is considered in the special way since there
+       * isn't previous information for it. */
+      if (i == 0)
+        {
+          /* Mark all first row elements as true if there is $ wildcard
+           * at the first place. */
+          if (ldv_isany_chars (id))
+            {
+              for (j = 0; j < str_symbol_numb; j++)
+                {
+                  symbol_matching_table[i][j] = true;
+                }
+            }
+          /* Otherwise the first row element must coinside with the
+           * first column element. */
+          else if (*id == *str)
+            {
+              symbol_matching_table[0][0] = true;
+              j_first_matched++;
+            }
+          /* Identifier and string don't coinside. */
+          else
+            {
+              return 1;
+            }
+        }
+      /* All next rows are processed in accordance with the previous
+       * ones. Note that we see just on a previous row for each
+       * row. */
+      else
+        {
+          /* Mark row elements as true if there is $ wildcard. Begin
+           * with an element that has marked previous (left-up)
+           * element. */
+          if (ldv_isany_chars (id + i))
+            {
+              for (j = j_first_matched; j < str_symbol_numb; j++)
+                {
+                  symbol_matching_table[i][j] = true;
+                }
+            }
+          /* Otherwise try to find all correspondence to column
+           * elements for the given row element. */
+          else
+            {
+              ismatched = false;
+
+              /* Also begin with an element that has marked previous
+               * (left-up) element. */
+              for (j = j_first_matched; j < str_symbol_numb; j++)
+                {
+                  /* Mark elements that correspond to each other and
+                   * that have previosly marked left-up or up
+                   * element. */
+                  if (j == 0
+                    || symbol_matching_table[i - 1][j - 1] == true
+                    || symbol_matching_table[i - 1][j] == true)
+                    {
+                      if (*(str + j) == *(id + i))
+                        {
+                          symbol_matching_table[i][j] = true;
+
+                          /* We may see following rows beginning with
+                           * number of column containing match. */
+                          if (!ismatched)
+                            {
+                              j_first_matched = j + 1;
+                            }
+
+                          ismatched = true;
+                        }
+                    }
+                }
+
+              /* Finish because of can't find correspondence at all. */
+              if (!ismatched)
+                {
+                  return 1;
+                }
+            }
+        }
+    }
+
+  /* Dump matching table if needed. */
+  if (ldv_cpp_isinfo_matching_table)
+    {
+      fprintf (stderr, "MATCHING TABLE (OX - STRING SYMBOLS, OY - IDENTIFIER SYMBOLS):\n");
+
+      fprintf (stderr, "    ");
+
+      /* Print Ox axis signatures. */
+      for (j = 0; j < str_symbol_numb; j++)
+        {
+          fprintf (stderr, "%2d  ", (j + 1));
+        }
+
+      fprintf (stderr, "\n");
+
+      /* Iterate over all matching table rows. */
+      for (i = 0; i < id_symbol_numb; i++)
+        {
+          /* Print Oy axis signatures. */
+          fprintf (stderr, "%2d: ", (i + 1));
+
+          /* Iterate over all matching table columns. */
+          for (j = 0; j < str_symbol_numb; j++)
+            {
+              fprintf (stderr, "%2d", (int)symbol_matching_table[i][j]);
+
+              /* Print sepator between elements. */
+              if (j != str_symbol_numb - 1)
+                {
+                  fprintf (stderr, ", ");
+                }
+            }
+
+          fprintf (stderr, "\n");
+        }
+
+      fprintf (stderr, "\n");
+    }
+
+  j = str_symbol_numb - 1;
+  i = id_symbol_numb - 1;
+
+  /* Skip $ wildcard that catches nothing and that is placed at the last
+   * row. */
+  if (ldv_isany_chars (id + i) && !symbol_matching_table[i][j])
+    {
+      i--;
+    }
+
+  /* There is no 'true' path in matching table. */
+  if (!symbol_matching_table[i][j])
+    {
+      return 1;
+    }
+
+  /* Identifier correspond to the given string. */
+  return 0;
+}
+
 char *
 ldv_copy_str (const char *str)
 {
@@ -255,6 +501,15 @@ ldv_str_ptr
 ldv_create_string (void)
 {
   return ldv_create_str (LDV_T_STRING);
+}
+
+static bool
+ldv_isany_chars (const char *c)
+{
+  if (*c && *c == '$')
+    return true;
+
+  return false;
 }
 
 bool
