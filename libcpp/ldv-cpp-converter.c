@@ -203,7 +203,7 @@ ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
   i_macro->macro_kind = pps_macro->pps_macro_kind;
 
   /* Convert a declarator name to a macro name. */
-  i_macro->macro_name = ldv_cpp_get_id_name (pps_macro->macro_name);
+  i_macro->macro_name = pps_macro->macro_name;
 
   /* Convert declarator parameters to macro parameters. */
   for (macro_param_list = pps_macro->macro_param_list

@@ -44,7 +44,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
   char *value = NULL;
   unsigned int printed_len;
 
-  name = ldv_i_match->i_macro_aspect->macro_name;
+  name = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
   value = ldv_convert_body_to_macro (ldv_i_match->a_definition->a_body);
 
   /* Create a macro function definition. */
@@ -105,7 +105,7 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 {
   const char *name = NULL;
 
-  name = ldv_i_match->i_macro_aspect->macro_name;
+  name = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
 
   /* Undef a matched macro definition. It may be either a simple macro
      definition or a macro function definition. */
@@ -192,7 +192,7 @@ ldv_cpp_weave (void)
                           param_cur->string = text;
                         }
                       else if (!strcmp (param_cur->aspect_pattern->name, "macro_name"))
-                        param_cur->string = ldv_i_match->i_macro->macro_name;
+                        param_cur->string = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
                       else
                         {
                           LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
@@ -324,7 +324,7 @@ ldv_print_macro (ldv_i_macro_ptr i_macro)
   char *i_macro_param = NULL;
   ldv_list_ptr i_macro_param_list = NULL;
 
-  fprintf (LDV_MATCHED_BY_NAME, "%s", i_macro->macro_name);
+  fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro->macro_name));
 
   for (i_macro_param_list = i_macro->macro_param
     ; i_macro_param_list

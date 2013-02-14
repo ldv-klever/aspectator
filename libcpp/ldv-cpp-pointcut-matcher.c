@@ -264,7 +264,8 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
     macro->macro_kind = LDV_PPS_MACRO_DEF;
 
   /* Remember a macro name and a name of file containing a given macro. */
-  macro->macro_name = (const char *) (NODE_NAME (node));
+  macro->macro_name = ldv_create_id ();
+  ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
   macro->file_path = map->to_file;
   macro->macro_param = NULL;
 
@@ -446,8 +447,13 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
     return false;
 
   /* Compare macro names. */
-  if (strcmp (macro_source->macro_name, macro_aspect->macro_name))
+  if (ldv_cmp_str (macro_aspect->macro_name, ldv_cpp_get_id_name (macro_source->macro_name)))
     return false;
+
+  /* Replace aspect macro name used just for a current matching with the source
+     one since they match each other but the aspect one can contain '$'
+     wildcards.*/
+  macro_aspect->macro_name = macro_source->macro_name;
 
   /* Specify that a macro was matched by a name. */
   i_match->ismatched_by_name = true;
