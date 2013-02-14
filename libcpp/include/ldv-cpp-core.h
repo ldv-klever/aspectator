@@ -75,6 +75,7 @@ extern bool ldv_isvoid (ldv_i_type_ptr );
 
 extern FILE *ldv_open_file_stream (const char *, const char *);
 
+extern void ldv_putc_id (unsigned char, ldv_id_ptr);
 extern void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
 extern void ldv_putc_string (unsigned char, ldv_str_ptr);
 extern void ldv_puts_id (const char *, ldv_id_ptr);

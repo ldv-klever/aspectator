@@ -69,7 +69,6 @@ extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps
 
 extern void ldv_putc_body (unsigned char, ldv_ab_ptr);
 extern void ldv_putc_file (unsigned char, ldv_file_ptr);
-extern void ldv_putc_id (unsigned char, ldv_id_ptr);
 extern void ldv_putc_text (unsigned char, ldv_text_ptr);
 extern void ldv_puts_body (const char *, ldv_ab_ptr);
 extern void ldv_puts_file (const char *, ldv_file_ptr);

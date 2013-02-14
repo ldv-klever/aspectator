@@ -540,6 +540,17 @@ ldv_open_file_stream (const char *file_name, const char *mode)
 }
 
 void
+ldv_putc_id (unsigned char c, ldv_id_ptr id)
+{
+  if (id)
+    ldv_putc_str (c, id->id_name, LDV_T_ID);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("id pointer wasn't initialized");
+    }
+}
+
+void
 ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 {
   char *str_text = NULL;

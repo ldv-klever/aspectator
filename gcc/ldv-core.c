@@ -478,17 +478,6 @@ ldv_putc_file (unsigned char c, ldv_file_ptr file)
 }
 
 void
-ldv_putc_id (unsigned char c, ldv_id_ptr id)
-{
-  if (id)
-    ldv_putc_str (c, id->id_name, LDV_T_ID);
-  else
-    {
-      LDV_FATAL_ERROR ("id pointer wasn't initialized");
-    }
-}
-
-void
 ldv_putc_text (unsigned char c, ldv_text_ptr text)
 {
   if (text)
