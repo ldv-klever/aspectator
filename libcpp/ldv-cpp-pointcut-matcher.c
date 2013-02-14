@@ -235,6 +235,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   int i, j;
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
+  ldv_id_ptr macro_param = NULL;
   const char *macro_param_ellipsis = "...";
   const cpp_token *arg_value = NULL;
   ldv_str_ptr macro_param_val = NULL;
@@ -295,7 +296,9 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
           macro_param_name = (char *) macro_param_name_original;
         }
 
-      ldv_list_push_back (&macro->macro_param, macro_param_name);
+      macro_param = ldv_create_id ();
+      ldv_puts_id (macro_param_name, macro_param);
+      ldv_list_push_back (&macro->macro_param, macro_param);
     }
 
   /* Store macro argument actual values if so. */
@@ -435,6 +438,8 @@ bool
 ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 {
   ldv_i_macro_ptr macro_source = NULL, macro_aspect = NULL;
+  ldv_list_ptr i_macro_param_first_list = NULL, i_macro_param_second_list = NULL;
+  ldv_id_ptr i_macro_param_first = NULL, i_macro_param_second = NULL;
 
   macro_source = i_match->i_macro;
   macro_aspect = ldv_convert_macro_signature_to_internal (pps_macro);
@@ -457,6 +462,29 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* Specify that a macro was matched by a name. */
   i_match->ismatched_by_name = true;
+
+  /* Macro parameters (if so) are matched just in case when '$' wildcard is used
+     in them because of in this case we need to replace aspect parameter names
+     with the source ones. Otherwise aspect parameter name is taken. */
+  for (i_macro_param_first_list = macro_source->macro_param, i_macro_param_second_list = macro_aspect->macro_param
+    ; i_macro_param_first_list && i_macro_param_second_list
+    ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
+    {
+      i_macro_param_first = (ldv_id_ptr) ldv_list_get_data (i_macro_param_first_list);
+      i_macro_param_second = (ldv_id_ptr) ldv_list_get_data (i_macro_param_second_list);
+
+      if (i_macro_param_second->isany_chars)
+        {
+          if (ldv_cmp_str (i_macro_param_second, ldv_cpp_get_id_name (i_macro_param_first)))
+            return false;
+
+          ldv_list_set_data (i_macro_param_second_list, i_macro_param_first);
+        }
+    }
+
+  /* I.e. the numbers of macro parameters aren't equal. */
+  if (i_macro_param_first_list || i_macro_param_second_list)
+    return false;
 
   /* Specify that a macro was matched by a whole signature not just by a
      name. */

@@ -212,7 +212,7 @@ ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
     {
       pps_macro_param = (ldv_id_ptr) ldv_list_get_data (macro_param_list);
 
-      ldv_list_push_back (&i_macro->macro_param, ldv_cpp_get_id_name (pps_macro_param));
+      ldv_list_push_back (&i_macro->macro_param, pps_macro_param);
     }
 
   return i_macro;

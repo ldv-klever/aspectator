@@ -38,6 +38,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
   char *define = NULL;
   const char *name = NULL;
   ldv_list_ptr i_macro_param_list = NULL;
+  ldv_id_ptr i_macro_param = NULL;
   unsigned int param_numb;
   unsigned int param_len;
   unsigned int comma_numb;
@@ -54,7 +55,10 @@ ldv_cpp_define (struct cpp_reader *pfile)
       for (i_macro_param_list = ldv_i_match->i_macro_aspect->macro_param, param_len = 0, param_numb = 0
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list), ++param_numb)
-        param_len += strlen ((const char *) ldv_list_get_data (i_macro_param_list));
+        {
+          i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+          param_len += strlen (ldv_cpp_get_id_name (i_macro_param));
+        }
 
       /* A Macro function definition for cpp_define function is
          'name(param1,param2,...)=value'. Take into account that there may be
@@ -70,7 +74,8 @@ ldv_cpp_define (struct cpp_reader *pfile)
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
         {
-          printed_len += sprintf (define + printed_len, "%s", (char *)ldv_list_get_data (i_macro_param_list));
+          i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+          printed_len += sprintf (define + printed_len, "%s", ldv_cpp_get_id_name (i_macro_param));
 
           if (ldv_list_get_next (i_macro_param_list))
             printed_len += sprintf (define + printed_len, ",");
@@ -321,8 +326,8 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
 void
 ldv_print_macro (ldv_i_macro_ptr i_macro)
 {
-  char *i_macro_param = NULL;
   ldv_list_ptr i_macro_param_list = NULL;
+  ldv_id_ptr i_macro_param = NULL;
 
   fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro->macro_name));
 
@@ -330,12 +335,12 @@ ldv_print_macro (ldv_i_macro_ptr i_macro)
     ; i_macro_param_list
     ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
     {
-      i_macro_param = (char *) ldv_list_get_data (i_macro_param_list);
+      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
 
       if (i_macro_param_list == i_macro->macro_param)
         fprintf (LDV_MATCHED_BY_NAME, "(");
 
-      fprintf (LDV_MATCHED_BY_NAME, "%s", i_macro_param);
+      fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro_param));
 
       if (ldv_list_get_next (i_macro_param_list))
         fprintf (LDV_MATCHED_BY_NAME, ", ");
