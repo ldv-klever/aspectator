@@ -415,8 +415,7 @@ typedef ldv_info_macro *ldv_i_macro_ptr;
 /* Parameter declaration information = parameter name (optional) + parameter type. */
 typedef struct ldv_info_param_internal
 {
-  const char *name;
-  const char *name_aux;
+  ldv_id_ptr name;
   ldv_i_type_ptr type;
   bool isany_params;
 } ldv_info_param;

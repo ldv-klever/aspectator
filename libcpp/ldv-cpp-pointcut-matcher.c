@@ -1099,6 +1099,30 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
             fprintf (stderr, "\n");
         }
 
+      /* Function parameter names (if so) are matched just in case when '$'
+         wildcard is used in them because of in this case we need to replace
+         aspect parameter names with the source ones. Otherwise aspect parameter
+         name is taken. */
+      for (param_first_list = first->param, param_second_list = second->param
+        ; param_first_list && param_second_list
+        ; param_first_list = ldv_list_get_next (param_first_list), param_second_list = ldv_list_get_next (param_second_list))
+        {
+          param_first = (ldv_i_param_ptr) ldv_list_get_data (param_first_list);
+          param_second = (ldv_i_param_ptr) ldv_list_get_data (param_second_list);
+
+          if (param_second->name && param_second->name->isany_chars)
+            {
+              /* If there isn't source parameter name (e.g. for function
+                 prototype) then simply ignore the aspect one with '$'
+                 wildcards since we can't match it. After all artificial
+                 name will be generated. */
+              if (param_first->name && ldv_cmp_str (param_second->name, ldv_cpp_get_id_name (param_first->name)))
+                return false;
+
+              ldv_list_set_data (param_second_list, param_first);
+            }
+        }
+
       break;
 
     case LDV_IT_PRIMITIVE:

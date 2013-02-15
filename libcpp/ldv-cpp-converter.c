@@ -247,7 +247,7 @@ ldv_convert_param_signature_to_internal (ldv_pps_decl_ptr pps_param)
   /* Convert a declarator name to a parameter name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_param->name = ldv_cpp_get_id_name (declarator->declarator_name);
+      i_param->name = declarator->declarator_name;
 
       /* A previous to last declarators contain a paramter type. */
       declarator_list = ldv_list_get_prev (pps_param->pps_declarator, declarator_list);

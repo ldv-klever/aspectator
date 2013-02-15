@@ -158,13 +158,7 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
               continue;
             }
 
-           /* Convert a parameter. Note that it may have a name or may be an
-              abstract declarator and an auxiliary name if so is present is
-              preferable. */
-          if (param->name_aux)
-            param_name = param->name_aux;
-          else
-            param_name = param->name;
+          param_name = ldv_get_id_name (param->name);
 
           func_arg_new->pps_func_arg = ldv_convert_internal_to_declaration (param->type, param_name);
 
@@ -291,7 +285,10 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
           param_new->type = arg_type_new;
 
           if (func_param_tree && DECL_NAME (func_param_tree))
-            param_new->name = IDENTIFIER_POINTER (DECL_NAME (func_param_tree));
+            {
+              param_new->name = ldv_create_id ();
+              ldv_puts_id (IDENTIFIER_POINTER (DECL_NAME (func_param_tree)), param_new->name);
+            }
 
           ldv_list_push_back (&type->param, param_new);
         }

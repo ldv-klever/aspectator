@@ -79,7 +79,6 @@ static char *ldv_create_aspected_name (const char *);
 static void ldv_create_aux_func_params (ldv_i_type_ptr, ldv_i_type_ptr);
 static const char *ldv_create_aux_func_param (unsigned int);
 static ldv_decl_for_print_ptr ldv_create_decl_for_print (void);
-static void ldv_delete_aux_func_params (ldv_i_type_ptr);
 static void ldv_delete_id_declarator (ldv_list_ptr);
 static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
 static const char *ldv_get_arg_name (unsigned int);
@@ -210,18 +209,18 @@ ldv_create_aux_func_params (ldv_i_type_ptr src_func_type, ldv_i_type_ptr aspect_
       /* Parameter names specified in pointcut is more preferable then source
          ones. */
       if (aspect_param->name)
-        param_name = aspect_param->name;
+        param_name = ldv_get_id_name (aspect_param->name);
       /* Use source parameter name if so otherwise. */
       else if (src_param->name)
-        param_name = src_param->name;
+        param_name = ldv_get_id_name (src_param->name);
       /* Otherwise generate unique artificial name for a given parameter. */
       else
         param_name = ldv_create_aux_func_param (param_numb);
 
-      /* Store the obtained parameter name as an auxiliary name of a pointcut
-         function parameter to print them in auxiliary prototypes and
-         function definitions. */
-      aspect_param->name_aux = param_name;
+      /* Store the obtained parameter name as aspect parameter naem to print
+         in in auxiliary prototypes and function definitions. */
+      aspect_param->name = ldv_create_id ();
+      ldv_puts_id (param_name, aspect_param->name);
 
       /* Add the obtained parameter name to a list of parameter names. */
       param_name_str = ldv_create_string ();
@@ -265,28 +264,6 @@ ldv_create_decl_for_print (void)
   decl_for_print->decl = ldv_create_text ();
 
   return decl_for_print;
-}
-
-void
-ldv_delete_aux_func_params (ldv_i_type_ptr func_type)
-{
-  ldv_i_param_ptr param = NULL;
-  ldv_list_ptr param_list = NULL;
-
-  /* Walk through function parameters. */
-  for (param_list = func_type->param
-    ; param_list
-    ; param_list = ldv_list_get_next (param_list))
-    {
-      param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
-
-      /* Void type doesn't require a name for a corresponding parameter. */
-      if (ldv_isvoid (param->type))
-        continue;
-
-      /* Mark an auxiliary name for a function parameter as absent. */
-      param->name_aux = NULL;
-    }
 }
 
 void
@@ -1451,7 +1428,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
           /* Remove auxiliary entities. */
-          ldv_delete_aux_func_params (func_aspect->type);
           ldv_aspect_func_name = NULL;
           ldv_func_name = NULL;
           ldv_func_ret_type_decl = NULL;
@@ -1569,7 +1545,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           param_new = ldv_create_info_param ();
 
-          param_new->name = LDV_VAR_ARG_NAME;
+          param_new->name = ldv_create_id ();
+          ldv_puts_id (LDV_VAR_ARG_NAME, param_new->name);
 
           param_new->type = var->type;
 
