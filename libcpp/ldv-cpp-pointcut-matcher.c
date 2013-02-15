@@ -428,8 +428,13 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   i_match->i_func_aspect = func_aspect;
 
   /* Compare functions names. */
-  if (strcmp (func_source->name, func_aspect->name))
+  if (ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
     return false;
+
+  /* Replace aspect function name used just for a current matching with the source
+     one since they match each other but the aspect one can contain '$'
+     wildcards.*/
+  func_aspect->name = func_source->name;
 
   /* Specify that a function was matched by name. */
   i_match->ismatched_by_name = true;

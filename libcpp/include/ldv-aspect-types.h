@@ -395,7 +395,7 @@ typedef ldv_func_arg_info *ldv_func_arg_info_ptr;
 /* Function declaration information = function name + function type. */
 typedef struct ldv_info_func_internal
 {
-  const char *name;
+  ldv_id_ptr name;
   ldv_i_type_ptr type;
   const char *file_path;
 } ldv_info_func;

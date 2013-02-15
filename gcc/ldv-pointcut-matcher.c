@@ -809,7 +809,8 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   match->i_func = func;
 
   /* Obtain information on a function signature. */
-  func->name = IDENTIFIER_POINTER (DECL_NAME (t));
+  func->name = ldv_create_id ();
+  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), func->name);
 
   /* Remember whether a function is inline/static to add this information to
      a function return type. */
@@ -843,7 +844,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
           /* Count advice weavings. */
           ++(adef->use_counter);
 
-          ldv_print_info (LDV_INFO_MATCH, "match function \"%s\"", func->name);
+          ldv_print_info (LDV_INFO_MATCH, "match function \"%s\"", ldv_get_id_name (func->name));
 
           ldv_i_match = match;
           match->a_definition = adef;
@@ -1028,7 +1029,8 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
       var->func_context->i_kind = LDV_I_FUNC;
       var->func_context->i_func = func_context;
 
-      func_context->name = IDENTIFIER_POINTER (DECL_NAME (DECL_CONTEXT (t)));
+      func_context->name = ldv_create_id ();
+      ldv_puts_id (IDENTIFIER_POINTER (DECL_NAME (DECL_CONTEXT (t))), func_context->name);
 
       if (DECL_DECLARED_INLINE_P (DECL_CONTEXT (t)))
         {

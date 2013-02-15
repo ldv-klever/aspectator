@@ -1007,7 +1007,7 @@ ldv_print_func_decl (ldv_i_func_ptr func)
 {
   ldv_pps_decl_ptr decl;
 
-  decl = ldv_convert_internal_to_declaration (func->type, func->name);
+  decl = ldv_convert_internal_to_declaration (func->type, ldv_get_id_name (func->name));
 
   ldv_text_printed = ldv_create_text ();
 
@@ -1326,7 +1326,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              a function definition, i.e. after a close brace. */
           if (!close_brace)
             {
-              LDV_FATAL_ERROR ("for function \"%s\" location of close brace isn't specified", func_source->name);
+              LDV_FATAL_ERROR ("for function \"%s\" location of close brace isn't specified", ldv_get_id_name (func_source->name));
             }
 
           func_decl_for_print_new->file = (*close_brace).file;
@@ -1340,7 +1340,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              function declaration and a pointcut function signature. */
           ldv_create_aux_func_params (func_source->type, func_aspect->type);
 
-          aspected_name = ldv_create_aspected_name (func_aspect->name);
+          aspected_name = ldv_create_aspected_name (ldv_get_id_name (func_aspect->name));
 
           /* Create a function declaration. */
           ldv_text_printed = ldv_create_text ();
@@ -1350,7 +1350,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           if (pp_kind == LDV_PP_EXECUTION)
             func_name = aspected_name;
           else if (pp_kind == LDV_PP_CALL)
-            func_name = func_aspect->name;
+            func_name = ldv_get_id_name (func_aspect->name);
 
           ldv_func_name = func_name;
 
@@ -1364,7 +1364,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_list_push_back (&ldv_decl_for_print_list, func_decl_for_print_new);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function declaration for \"%s\" function weaving", func_name, func_aspect->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
 
           /* Create an aspect function declaration. */
           ldv_text_printed = ldv_create_text ();
@@ -1372,7 +1372,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = func_aspect->name;
+            func_name = ldv_get_id_name (func_aspect->name);
           else if (pp_kind == LDV_PP_CALL)
             func_name = aspected_name;
 
@@ -1388,7 +1388,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, func_aspect->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
 
           /* Create a function call. */
           ldv_text_printed = ldv_create_text ();
@@ -1396,7 +1396,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           if (pp_kind == LDV_PP_EXECUTION)
             func_name = aspected_name;
           else if (pp_kind == LDV_PP_CALL)
-            func_name = func_aspect->name;
+            func_name = ldv_get_id_name (func_aspect->name);
 
           ldv_puts_text (func_name, ldv_text_printed);
 
@@ -1426,7 +1426,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = func_aspect->name;
+            func_name = ldv_get_id_name (func_aspect->name);
           else if (pp_kind == LDV_PP_CALL)
             func_name = aspected_name;
 
@@ -1434,7 +1434,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_print_decl (decl);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, func_aspect->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
 
           /* Store an information on a function return type and function
              arguments types that will be used in a body patterns weaving. */
@@ -1463,7 +1463,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
         {
           /* Change a source function name for an execution join point just one
              time. */
-          if (pp_kind == LDV_PP_EXECUTION && ldv_isweaved (func_aspect->name, false))
+          if (pp_kind == LDV_PP_EXECUTION && ldv_isweaved (ldv_get_id_name (func_aspect->name), false))
             return ;
 
           ldv_weave_func_source (func_aspect, pp_kind);
@@ -1556,9 +1556,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Create aspect function declaration. */
           func_aspect = ldv_create_info_func ();
 
-          func_aspect->name = ldv_create_aspected_name (var->name);
+          func_aspect->name = ldv_create_id ();
+          ldv_puts_id (ldv_create_aspected_name (var->name), func_aspect->name);
 
-          ldv_aspect_func_name = func_aspect->name;
+          ldv_aspect_func_name = ldv_get_id_name (func_aspect->name);
 
           func_aspect->type = ldv_create_info_type ();
 
@@ -1578,7 +1579,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_putc_text ('\n', ldv_text_printed);
 
-          decl = ldv_convert_internal_to_declaration (func_aspect->type, func_aspect->name);
+          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
 
           ldv_print_decl (decl);
 
@@ -1588,7 +1589,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", func_aspect->name, var->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), var->name);
 
           /* Create a function call. */
           ldv_text_printed = ldv_create_text ();
@@ -1602,11 +1603,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Create an aspect function definition. */
           ldv_text_printed = ldv_create_text ();
 
-          decl = ldv_convert_internal_to_declaration (func_aspect->type, func_aspect->name);
+          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
 
           ldv_print_decl (decl);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", func_aspect->name, var->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), var->name);
 
           /* Store a function argument name. */
           var_param_name = ldv_create_string ();
@@ -1650,7 +1651,7 @@ ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
   tree id = NULL_TREE;
 
   /* Obtain a corresponding aspected name for a function. */
-  aspected_name = ldv_create_aspected_name (func->name);
+  aspected_name = ldv_create_aspected_name (ldv_get_id_name (func->name));
 
   /* Obtain a function declaratation with a corresponding name. */
   if (pp_kind == LDV_PP_EXECUTION)
@@ -1663,11 +1664,11 @@ ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
       /* Release a binding between a name and an entity. */
     /*  ldv_release_binding (id); */
 
-      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function definition from \"%s\" to \"%s\" for execution join point", func->name, aspected_name);
+      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function definition from \"%s\" to \"%s\" for execution join point", ldv_get_id_name (func->name), aspected_name);
     }
   else if (pp_kind == LDV_PP_CALL)
     {
-      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function call from \"%s\" to \"%s\" for call join point", func->name, aspected_name);
+      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function call from \"%s\" to \"%s\" for call join point", ldv_get_id_name (func->name), aspected_name);
 
       /* Get an identifier corresponding to an aspected name - it's an
          identifier of an aspect function declaration. */
