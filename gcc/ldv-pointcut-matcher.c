@@ -1013,7 +1013,8 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   match->i_var = var;
 
   /* Obtain information on a variable signature. */
-  var->name = IDENTIFIER_POINTER (DECL_NAME (t));
+  var->name = ldv_create_id ();
+  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), var->name);
 
   var->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 
@@ -1055,7 +1056,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
           /* Count advice weavings. */
           ++(adef->use_counter);
 
-          ldv_print_info (LDV_INFO_MATCH, "match variable \"%s\"", var->name);
+          ldv_print_info (LDV_INFO_MATCH, "match variable \"%s\"", ldv_get_id_name (var->name));
 
           ldv_i_match = match;
           match->a_definition = adef;

@@ -435,7 +435,7 @@ struct ldv_info_match_internal;
 /* Variable declaration information = variable name + variable type. */
 typedef struct ldv_info_var_internal
 {
-  const char *name;
+  ldv_id_ptr name;
   ldv_i_type_ptr type;
   const char *file_path;
   struct ldv_info_match_internal *func_context;

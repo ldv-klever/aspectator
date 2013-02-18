@@ -310,7 +310,7 @@ ldv_convert_var_signature_to_internal (ldv_pps_decl_ptr pps_var)
   /* Convert a declarator name to a variable name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_var->name = ldv_cpp_get_id_name (declarator->declarator_name);
+      i_var->name = declarator->declarator_name;
 
       /* A previous to last declarators contain a variable type. */
       declarator_list = ldv_list_get_prev (pps_var->pps_declarator, declarator_list);

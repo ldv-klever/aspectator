@@ -1030,7 +1030,7 @@ ldv_print_var_decl (ldv_i_var_ptr var)
 {
   ldv_pps_decl_ptr decl;
 
-  decl = ldv_convert_internal_to_declaration (var->type, var->name);
+  decl = ldv_convert_internal_to_declaration (var->type, ldv_get_id_name (var->name));
 
   ldv_text_printed = ldv_create_text ();
 
@@ -1533,7 +1533,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           func_aspect = ldv_create_info_func ();
 
           func_aspect->name = ldv_create_id ();
-          ldv_puts_id (ldv_create_aspected_name (var->name), func_aspect->name);
+          ldv_puts_id (ldv_create_aspected_name (ldv_get_id_name (var->name)), func_aspect->name);
 
           ldv_aspect_func_name = ldv_get_id_name (func_aspect->name);
 
@@ -1566,7 +1566,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), var->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
 
           /* Create a function call. */
           ldv_text_printed = ldv_create_text ();
@@ -1584,7 +1584,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_print_decl (decl);
 
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), var->name);
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
 
           /* Store a function argument name. */
           var_param_name = ldv_create_string ();
@@ -1665,7 +1665,7 @@ ldv_weave_var_source (ldv_i_var_ptr var, ldv_ppk pp_kind)
   tree id = NULL_TREE;
 
   /* Obtain a corresponding aspected name for a function. */
-  aspected_name = ldv_create_aspected_name (var->name);
+  aspected_name = ldv_create_aspected_name (ldv_get_id_name (var->name));
 
   /* Obtain a function declaratation with a corresponding name. */
   if (pp_kind == LDV_PP_SET
@@ -1673,7 +1673,7 @@ ldv_weave_var_source (ldv_i_var_ptr var, ldv_ppk pp_kind)
     || pp_kind == LDV_PP_GET
     || pp_kind == LDV_PP_GET_LOCAL || pp_kind == LDV_PP_GET_GLOBAL)
     {
-      ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aspected_name, var->name);
+      ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aspected_name, ldv_get_id_name (var->name));
 
       /* Get an identifier corresponding to an aspect name - it's an identifier
          of an aspect function declaration. */

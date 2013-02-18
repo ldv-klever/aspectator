@@ -1191,9 +1191,14 @@ ldv_match_var_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_var)
   /* Set an aspect variable declaration. */
   i_match->i_var_aspect = var_aspect;
 
-  /* Compare variables names. */
-  if (strcmp (var_source->name, var_aspect->name))
+  /* Compare variable names. */
+  if (ldv_cmp_str (var_aspect->name, ldv_cpp_get_id_name (var_source->name)))
     return false;
+
+  /* Replace aspect variable name used just for a current matching with the
+     source one since they match each other but the aspect one can contain '$'
+     wildcards.*/
+  var_aspect->name = var_source->name;
 
   /* Specify that a variable declaration was matched by a name. */
   i_match->ismatched_by_name = true;
