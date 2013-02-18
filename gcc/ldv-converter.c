@@ -357,9 +357,6 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
             type_name = "";
         }
 
-      type->primitive_type->type_name = ldv_create_id ();
-      ldv_puts_id (type_name, type->primitive_type->type_name);
-
       if (code == ENUMERAL_TYPE)
         type->primitive_type->isenum = true;
       else if (code == UNION_TYPE)
@@ -455,8 +452,11 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
         type->primitive_type->isbool = true;
       /* In this case a typedef name is processed. */
       else
+        type->primitive_type->istypedef_name = true;
+
+      /* Remember corresponddint type name for enums, unions, structs and typedefs. */
+      if (code == ENUMERAL_TYPE || code == UNION_TYPE || code == RECORD_TYPE || type->primitive_type->istypedef_name)
         {
-          type->primitive_type->istypedef_name = true;
           type->primitive_type->type_name = ldv_create_id ();
           ldv_puts_id (type_name, type->primitive_type->type_name);
         }
