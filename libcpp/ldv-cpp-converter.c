@@ -276,7 +276,7 @@ ldv_convert_typedecl_signature_to_internal (ldv_pps_decl_ptr pps_typedecl)
   pps_declspecs = pps_typedecl->pps_declspecs;
 
   /* Obtain a type declaration name. */
-  i_typedecl->name = ldv_cpp_get_id_name (pps_declspecs->type_name);
+  i_typedecl->name = pps_declspecs->type_name;
 
   /* Obtain a type declaration type type. */
   if (pps_declspecs->isstruct)

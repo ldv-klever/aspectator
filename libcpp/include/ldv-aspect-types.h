@@ -425,7 +425,7 @@ typedef ldv_info_param *ldv_i_param_ptr;
 typedef enum { LDV_ITD_ENUM, LDV_ITD_NONE, LDV_ITD_STRUCT, LDV_ITD_UNION } ldv_itdk;
 typedef struct ldv_info_typedecl_internal
 {
-  const char *name;
+  ldv_id_ptr name;
   ldv_itdk itd_kind;
   const char *file_path;
 } ldv_info_typedecl;

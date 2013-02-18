@@ -923,7 +923,8 @@ ldv_match_typedecl (tree t, const char *file_path)
   match->i_typedecl = typedecl;
 
   /* Obtain information on a type declaration signature. */
-  typedecl->name = IDENTIFIER_POINTER (TYPE_NAME (t));
+  typedecl->name = ldv_create_id ();
+  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (TYPE_NAME (t))), typedecl->name);
 
   switch (TREE_CODE (t))
     {
@@ -955,7 +956,7 @@ ldv_match_typedecl (tree t, const char *file_path)
           /* Count advice weavings. */
           ++(adef->use_counter);
 
-          ldv_print_info (LDV_INFO_MATCH, "match type \"%s\"", typedecl->name);
+          ldv_print_info (LDV_INFO_MATCH, "match type \"%s\"", ldv_get_id_name (typedecl->name));
 
           ldv_i_match = match;
           match->a_definition = adef;

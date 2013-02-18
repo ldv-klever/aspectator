@@ -214,7 +214,7 @@ ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
     && ldv_match_bool (declspecs_first->isconst, declspecs_second->isconst)
     && ldv_match_bool (declspecs_first->isvolatile, declspecs_second->isvolatile)
     && ldv_match_bool (declspecs_first->isrestrict, declspecs_second->isrestrict)
-    && ((!declspecs_first->type_name && !declspecs_second->type_name) || !strcmp (ldv_cpp_get_id_name (declspecs_first->type_name), ldv_cpp_get_id_name (declspecs_second->type_name)));
+    && ((!declspecs_first->type_name && !declspecs_second->type_name) || !ldv_cmp_str (declspecs_second->type_name, ldv_cpp_get_id_name (declspecs_first->type_name)));
 }
 
 void
@@ -1156,8 +1156,13 @@ ldv_match_typedecl_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_type
   i_match->i_typedecl_aspect = typedecl_aspect;
 
   /* Compare type declaration names. */
-  if (strcmp (typedecl_source->name, typedecl_aspect->name))
+  if (ldv_cmp_str (typedecl_aspect->name, ldv_cpp_get_id_name (typedecl_source->name)))
     return false;
+
+  /* Replace aspect type declaration name used just for a current matching with
+     the source one since they match each other but the aspect one can contain
+     '$' wildcards.*/
+  typedecl_aspect->name = typedecl_source->name;
 
   /* Specify that a type declaration was matched by a name. */
   i_match->ismatched_by_name = true;

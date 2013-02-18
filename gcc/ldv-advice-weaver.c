@@ -1020,7 +1020,7 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
         LDV_FATAL_ERROR ("incorrect type declaration information kind \"%d\" is used", typedecl->itd_kind);
     }
 
-  ldv_print_str (typedecl->name);
+  ldv_print_str (ldv_get_id_name (typedecl->name));
 
   return ldv_get_text (ldv_text_printed);
 }
