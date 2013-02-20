@@ -76,10 +76,12 @@ typedef struct YYLTYPE
 /* The named pointcuts list. */
 static ldv_list_ptr ldv_n_pointcut_list = NULL;
 /* Flag says whether it's parsed macro signature or not. */
-static bool ldv_ismacro;
-/* Flag true if some type specifier was parsed and false otherwise.
+static bool ldv_ismacro = false;
+/* Flag says whether it's parsed declaration or not. */
+static bool ldv_isdecl = false;
+/* Flag is true if some type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
-static bool ldv_istype_spec = true;
+static bool ldv_istype_spec = false;
 
 
 static void ldv_check_pp_semantics (ldv_pp_ptr);
@@ -144,6 +146,9 @@ static int yylex (void);
 %token <id>         LDV_ID
 %token <integer>    LDV_INT_NUMB
 
+%token <id>         LDV_MACRO_POINTCUT
+%token <id>         LDV_FILE_POINTCUT
+
 %token <id>         LDV_TYPEDEF
 %token <id>         LDV_EXTERN
 %token <id>         LDV_STATIC
@@ -185,7 +190,6 @@ static int yylex (void);
 %type <a_declaration>   advice_declaration
 %type <c_pointcut>      composite_pointcut
 %type <p_pointcut>      primitive_pointcut
-%type <pp_signature>    primitive_pointcut_signature
 %type <pps_macro>       primitive_pointcut_signature_macro
 %type <list>            macro_param
 %type <list>            macro_param_opt
@@ -193,8 +197,8 @@ static int yylex (void);
 %type <pps_decl>        primitive_pointcut_signature_declaration
 %type <pps_decl>        c_declaration
 %type <pps_declspecs>   c_declaration_specifiers
-%type <pps_declspecs>   c_declaration_specifiers_opt
 %type <pps_declspecs>   c_declaration_specifiers_aux
+%type <pps_declspecs>   c_declaration_specifiers_opt
 %type <pps_declspecs>   c_storage_class_specifier
 %type <pps_declspecs>   c_type_specifier
 %type <pps_declspecs>   c_type_qualifier
@@ -471,10 +475,87 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
     };
 
 primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut. */
-  LDV_ID '(' primitive_pointcut_signature ')' /* A primitive pointcut is in the form: "primitive_pointcut_kind (primitive_pointcut_signature)". */
+  LDV_MACRO_POINTCUT '(' primitive_pointcut_signature_macro ')'
     {
       char *pp_kind = NULL;
       ldv_pp_ptr p_pointcut = NULL;
+      ldv_pps_ptr pp_signature = NULL;
+
+      /* Set a primitive pointcut kind from a lexer identifier. */
+      pp_kind = ldv_get_id_name ($1);
+
+      p_pointcut = XCNEW (ldv_primitive_pointcut);
+      ldv_print_info (LDV_INFO_MEM, "primitive pointcut memory was released");
+
+      /* Set a corresponding primitive pointcut kind. */
+      if (!strcmp ("define", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_DEFINE;
+      else if (!strcmp ("expand", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_EXPAND;
+
+      pp_signature = ldv_create_pp_signature ();
+
+      /* Specify that a macro signature is parsed. */
+      pp_signature->pps_kind = LDV_PPS_DEFINE;
+
+      /* Specify a macro signature. */
+      pp_signature->pps_macro = $3;
+
+      /* Set a primitive pointcut signature. */
+      p_pointcut->pp_signature = pp_signature;
+
+      ldv_check_pp_semantics (p_pointcut);
+
+      ldv_print_info (LDV_INFO_BISON, "bison parsed \"%s\" primitive pointcut", pp_kind);
+
+      /* Delete an unneeded identifier. */
+      ldv_delete_id ($1);
+
+      $$ = p_pointcut;
+    }
+  | LDV_FILE_POINTCUT '(' primitive_pointcut_signature_file ')'
+    {
+      char *pp_kind = NULL;
+      ldv_pp_ptr p_pointcut = NULL;
+      ldv_pps_ptr pp_signature = NULL;
+
+      /* Set a primitive pointcut kind from a lexer identifier. */
+      pp_kind = ldv_get_id_name ($1);
+
+      p_pointcut = XCNEW (ldv_primitive_pointcut);
+      ldv_print_info (LDV_INFO_MEM, "primitive pointcut memory was released");
+
+      /* Set a corresponding primitive pointcut kind. */
+      if (!strcmp ("file", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_FILE;
+      else if (!strcmp ("infile", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_INFILE;
+
+      pp_signature = ldv_create_pp_signature ();
+
+      /* Specify that a file signature is parsed. */
+      pp_signature->pps_kind = LDV_PPS_FILE;
+
+      /* Specify a file signature. */
+      pp_signature->pps_file = $3;
+
+      /* Set a primitive pointcut signature. */
+      p_pointcut->pp_signature = pp_signature;
+
+      ldv_check_pp_semantics (p_pointcut);
+
+      ldv_print_info (LDV_INFO_BISON, "bison parsed \"%s\" primitive pointcut", pp_kind);
+
+      /* Delete an unneeded identifier. */
+      ldv_delete_id ($1);
+
+      $$ = p_pointcut;
+    }
+  | LDV_ID '(' primitive_pointcut_signature_declaration ')'
+    {
+      char *pp_kind = NULL;
+      ldv_pp_ptr p_pointcut = NULL;
+      ldv_pps_ptr pp_signature = NULL;
 
       /* Set a primitive pointcut kind from a lexer identifier. */
       pp_kind = ldv_get_id_name ($1);
@@ -485,14 +566,8 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       /* Set a corresponding primitive pointcut kind. */
       if (!strcmp ("call", pp_kind))
         p_pointcut->pp_kind = LDV_PP_CALL;
-      else if (!strcmp ("define", pp_kind))
-        p_pointcut->pp_kind = LDV_PP_DEFINE;
       else if (!strcmp ("execution", pp_kind))
         p_pointcut->pp_kind = LDV_PP_EXECUTION;
-      else if (!strcmp ("expand", pp_kind))
-        p_pointcut->pp_kind = LDV_PP_EXPAND;
-      else if (!strcmp ("file", pp_kind))
-        p_pointcut->pp_kind = LDV_PP_FILE;
       else if (!strcmp ("get", pp_kind))
         p_pointcut->pp_kind = LDV_PP_GET;
       else if (!strcmp ("get_global", pp_kind))
@@ -501,8 +576,6 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
         p_pointcut->pp_kind = LDV_PP_GET_LOCAL;
       else if (!strcmp ("incall", pp_kind))
         p_pointcut->pp_kind = LDV_PP_INCALL;
-      else if (!strcmp ("infile", pp_kind))
-        p_pointcut->pp_kind = LDV_PP_INFILE;
       else if (!strcmp ("infunc", pp_kind))
         p_pointcut->pp_kind = LDV_PP_INFUNC;
       else if (!strcmp ("introduce", pp_kind))
@@ -519,8 +592,16 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
           LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"expand\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
         }
 
-      /* Set a primitive pointcut signature from a corresponding rule. */
-      p_pointcut->pp_signature = $3;
+      pp_signature = ldv_create_pp_signature ();
+
+      /* Specify that a declaration is parsed. */
+      pp_signature->pps_kind = LDV_PPS_DECL;
+
+      /* Specify a file signature. */
+      pp_signature->pps_declaration = $3;
+
+      /* Set a primitive pointcut signature. */
+      p_pointcut->pp_signature = pp_signature;
 
       ldv_check_pp_semantics (p_pointcut);
 
@@ -531,58 +612,6 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
 
       $$ = p_pointcut;
     };
-
-primitive_pointcut_signature: /* It's a primitive pointcut signature, the part of primitive pointcut. */
-  { ldv_ismacro = true; } primitive_pointcut_signature_macro { ldv_ismacro = false; } /* The macro primitive poincut signature form is described below. */
-    {
-      ldv_pps_ptr pp_signature = NULL;
-
-      pp_signature = ldv_create_pp_signature ();
-
-      /* Specify that a macro signature is parsed. */
-      pp_signature->pps_kind = LDV_PPS_DEFINE;
-
-      /* Specify a macro signature. */
-      pp_signature->pps_macro = $2;
-
-      $$ = pp_signature;
-    }
-  | primitive_pointcut_signature_file /* The file primitive poincut signature form is described below. */
-    {
-      ldv_pps_ptr pp_signature = NULL;
-
-      pp_signature = ldv_create_pp_signature ();
-
-      /* Specify that a file signature is parsed. */
-      pp_signature->pps_kind = LDV_PPS_FILE;
-
-      /* Specify a file signature. */
-      pp_signature->pps_file = $1;
-
-      $$ = pp_signature;
-    }
-  | typedef_marker_opt primitive_pointcut_signature_declaration
-    {
-      ldv_pps_ptr pp_signature = NULL;
-
-      pp_signature = ldv_create_pp_signature ();
-
-      /* Specify that a declaration signature is parsed. */
-      pp_signature->pps_kind = LDV_PPS_DECL;
-
-      /* Specify a declaration signature. */
-      pp_signature->pps_declaration = $2;
-
-      $$ = pp_signature;
-    };
-
-/* This rule is implemented just to fix a parsing bug because of typedef
-   name placed at the beginning of a declaration signature. In that case
-   caret simbol must prevent that typedef name. Otherwise nothing is
-   needed.*/
-typedef_marker_opt:
-
-  | '^'
 
 primitive_pointcut_signature_macro: /* It's a macro primitive pointcut signature, the one of primitive pointcut signatures. */
   LDV_ID /* A macro primitive pointcut signature is in the form: "macro_name". It's macro definition. */
@@ -714,7 +743,7 @@ primitive_pointcut_signature_declaration:
     };
 
 c_declaration:
-  c_declaration_specifiers_aux
+  c_declaration_specifiers
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -733,7 +762,7 @@ c_declaration:
 
       $$ = pps_decl;
     }
-  | c_declaration_specifiers_aux c_declarator
+  | c_declaration_specifiers c_declarator
     {
       ldv_pps_decl_ptr decl = NULL;
       ldv_pps_declarator_ptr declarator = NULL;
@@ -793,7 +822,12 @@ c_declaration:
         }
     };
 
-c_declaration_specifiers:
+c_declaration_specifiers: { ldv_isdecl = true; ldv_istype_spec = false; } c_declaration_specifiers_aux { ldv_isdecl = false; }
+  {
+    $$ = $2;
+  };
+
+c_declaration_specifiers_aux:
   c_storage_class_specifier c_declaration_specifiers_opt
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
@@ -833,6 +867,14 @@ c_declaration_specifiers:
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
       $$ = pps_declspecs;
+    }
+  | LDV_ANY_PARAMS
+    {
+      ldv_pps_declspecs_ptr pps_declspecs = ldv_create_declspecs ();
+
+      pps_declspecs->isany_params = true;
+
+      $$ = pps_declspecs;
     };
 
 c_declaration_specifiers_opt:
@@ -840,16 +882,10 @@ c_declaration_specifiers_opt:
     {
       $$ = NULL;
     }
-  | c_declaration_specifiers
+  | c_declaration_specifiers_aux
     {
       $$ = $1;
     };
-
-c_declaration_specifiers_aux: /* This auxiliary rule isn't a part of standard and it's just intended for a context depended analysis of typedef names. */
- { ldv_istype_spec = false; } c_declaration_specifiers { ldv_istype_spec = true; }
-    {
-      $$ = $2;
-    }
 
 c_storage_class_specifier:
   LDV_TYPEDEF
@@ -921,7 +957,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isvoid = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"void\" type specifier");
 
@@ -934,7 +969,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->ischar = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"char\" type specifier");
 
@@ -947,7 +981,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isint = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"int\" type specifier");
 
@@ -960,7 +993,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isfloat = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"float\" type specifier");
 
@@ -973,7 +1005,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isdouble = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"double\" type specifier");
 
@@ -986,7 +1017,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isbool = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"bool\" type specifier");
 
@@ -999,7 +1029,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->iscomplex = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"complex\" type specifier");
 
@@ -1012,7 +1041,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isshort = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       /* Assume that 'int' presents if 'short' is encountered. Don't do this if
          'double' type specifier was already parsed. */
@@ -1030,7 +1058,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->islong = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       /* Assume that 'int' presents if 'long' is encountered. Don't do this if
        * 'double' type specifier was already parsed. */
@@ -1048,7 +1075,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->issigned = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       /* Assume that 'int' presents if 'signed' is encountered. Don't do this if
        * 'double' or 'char' type specifier was already parsed. */
@@ -1066,7 +1092,6 @@ c_type_specifier:
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isunsigned = true;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       /* Assume that 'int' presents if 'unsigned' is encountered. Don't do this if
        * 'double' or 'char' type specifier was already parsed. */
@@ -1077,43 +1102,40 @@ c_type_specifier:
 
       $$ = pps_declspecs;
     }
-  | LDV_STRUCT { ldv_istype_spec = true; } LDV_ID
+  | LDV_STRUCT LDV_ID
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isstruct = true;
-      pps_declspecs->type_name = $3;
-      pps_declspecs->istype_spec = true;
+      pps_declspecs->type_name = $2;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"struct\" type specifier");
 
       $$ = pps_declspecs;
     }
-  | LDV_UNION { ldv_istype_spec = true; } LDV_ID
+  | LDV_UNION LDV_ID
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isunion = true;
-      pps_declspecs->type_name = $3;
-      pps_declspecs->istype_spec = true;
+      pps_declspecs->type_name = $2;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"union\" type specifier");
 
       $$ = pps_declspecs;
     }
-  | LDV_ENUM { ldv_istype_spec = true; } LDV_ID
+  | LDV_ENUM LDV_ID
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
       pps_declspecs = ldv_create_declspecs ();
 
       pps_declspecs->isenum = true;
-      pps_declspecs->type_name = $3;
-      pps_declspecs->istype_spec = true;
+      pps_declspecs->type_name = $2;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"enum\" type specifier");
 
@@ -1127,7 +1149,6 @@ c_type_specifier:
 
       pps_declspecs->istypedef_name = true;
       pps_declspecs->type_name = $1;
-      ldv_istype_spec = pps_declspecs->istype_spec = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed typedef name \"%s\" type specifier", ldv_get_id_name ($1));
 
@@ -1342,86 +1363,90 @@ c_type_qualifier_list:
     };
 
 c_parameter_type_list:
-  c_parameter_list { /* It's a hack!!! It's needed to alow a correct processing of typedefs names inside a parameter list. */ ldv_istype_spec = true; }
+  c_parameter_list
     {
-      ldv_pps_func_arg_ptr func_arg = NULL;
+      ldv_pps_func_arg_ptr pps_func_arg = NULL;
+      ldv_list_ptr pps_func_arg_list = NULL;
 
-      func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data ($1);
+      /* Check that '...' wasn't used anywhere except the end of parameter
+         list. '*/
+      for (pps_func_arg_list = $1
+        ; pps_func_arg_list
+        ; pps_func_arg_list = ldv_list_get_next (pps_func_arg_list))
+        {
+          pps_func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (pps_func_arg_list);
 
-      func_arg->isva = false;
+          if (pps_func_arg->isva && ldv_list_get_next (pps_func_arg_list))
+            {
+              LDV_FATAL_ERROR ("Used '...' not at the end of parameter list");
+            }
+        }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list");
 
       $$ = $1;
     }
-  | c_parameter_list ',' LDV_ELLIPSIS
-    {
-      ldv_pps_func_arg_ptr func_arg = NULL;
-      ldv_list_ptr func_arg_list = NULL;
-
-      func_arg_list = ldv_list_get_last ($1);
-
-      func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (func_arg_list);
-
-      func_arg->isva = true;
-
-      ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list of variable length");
-
-      $$ = $1;
-    };
 
 c_parameter_list:
-  c_parameter_declaration
+  { ldv_isdecl = true; } c_parameter_declaration {ldv_isdecl = false; }
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_list_ptr func_arg_list = NULL;
 
       pps_func_arg_new = ldv_create_pps_func_arg ();
 
-      pps_func_arg_new->pps_func_arg = $1;
+      pps_func_arg_new->pps_func_arg = $2;
 
+      /* First parameter can't be '...'. */
       pps_func_arg_new->isva = false;
-
-      /* It's a hack!!! It's needed to alow a correct processing of typedefs names inside a parameter list. */
-      ldv_istype_spec = false;
 
       ldv_list_push_back (&func_arg_list, pps_func_arg_new);
 
       $$ = func_arg_list;
     }
-  | c_parameter_list ',' c_parameter_declaration
+  | c_parameter_list ',' { ldv_isdecl = true; } c_parameter_declaration {ldv_isdecl = false; }
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
+      ldv_pps_func_arg_ptr pps_func_arg_last = NULL;
+      ldv_list_ptr pps_func_arg_list = NULL;
 
-      pps_func_arg_new = ldv_create_pps_func_arg ();
+      if ($4->pps_decl_kind == LDV_PPS_DECL_ELLIPSIS)
+        {
+          pps_func_arg_list = ldv_list_get_last ($1);
 
-      pps_func_arg_new->pps_func_arg = $3;
+          pps_func_arg_last = (ldv_pps_func_arg_ptr) ldv_list_get_data (pps_func_arg_list);
 
-      ldv_list_push_back (&$1, pps_func_arg_new);
+          pps_func_arg_last->isva = true;
+        }
+      else
+        {
+          pps_func_arg_new = ldv_create_pps_func_arg ();
 
-      pps_func_arg_new->isva = false;
+          pps_func_arg_new->pps_func_arg = $4;
 
-      /* It's a hack!!! It's needed to alow a correct processing of typedefs names inside a parameter list. */
-      ldv_istype_spec = false;
+          ldv_list_push_back (&$1, pps_func_arg_new);
+
+          pps_func_arg_new->isva = false;
+        }
 
       $$ = $1;
     };
 
 c_parameter_declaration:
-   LDV_ANY_PARAMS
+  LDV_ELLIPSIS
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
       pps_decl = ldv_create_pps_decl ();
 
-      /* Specify that any parameters may correspond to this 'declaration'. */
-      pps_decl->pps_decl_kind = LDV_PPS_DECL_ANY_PARAMS;
+      /* Specify a kind of a declaration. */
+      pps_decl->pps_decl_kind = LDV_PPS_DECL_ELLIPSIS;
 
-      ldv_print_info (LDV_INFO_BISON, "bison parsed any parameters wildcard");
+      ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list of variable length");
 
       $$ = pps_decl;
     }
-   | c_declaration_specifiers_aux c_declarator
+  | c_declaration_specifiers c_declarator
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -1440,22 +1465,32 @@ c_parameter_declaration:
 
       $$ = pps_decl;
     }
-  | c_declaration_specifiers_aux c_abstract_declarator_opt
+  | c_declaration_specifiers c_abstract_declarator_opt
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
       pps_decl = ldv_create_pps_decl ();
 
-      /* Specify a kind of a declaration. */
-      pps_decl->pps_decl_kind = LDV_PPS_DECL_PARAM;
-
       /* Specify declaration specifiers. */
       pps_decl->pps_declspecs = $1;
 
-      /* Specify an abstact declarator. */
-      pps_decl->pps_declarator = $2;
+      /* Specify that any parameters may correspond to this 'declaration'. */
+      if (pps_decl->pps_declspecs->isany_params)
+        {
+          pps_decl->pps_decl_kind = LDV_PPS_DECL_ANY_PARAMS;
 
-      ldv_print_info (LDV_INFO_BISON, "bison parsed parameter declaration");
+          ldv_print_info (LDV_INFO_BISON, "bison parsed any parameters wildcard");
+        }
+      else
+        {
+          /* Specify a kind of a declaration. */
+          pps_decl->pps_decl_kind = LDV_PPS_DECL_PARAM;
+
+          /* Specify an abstact declarator. */
+          pps_decl->pps_declarator = $2;
+
+          ldv_print_info (LDV_INFO_BISON, "bison parsed parameter declaration");
+        }
 
       $$ = pps_decl;
     };
@@ -1701,30 +1736,39 @@ ldv_get_id_kind (char *id)
 
   int i;
 
-  /* Do not bind an identifier with some C keyword when parse a macro
-     signature. */
-  if (!ldv_ismacro)
+  /* Bind an identifier with some C keyword when parse declaration specifiers. */
+  if (ldv_isdecl)
     {
       /* Check whether an identifier is a C declaration specifier keyword. */
       for (i = 0; ldv_keyword_token_map[i].keyword; i++)
         {
-          if (!strcmp(id, ldv_keyword_token_map[i].keyword))
+          if (!strcmp (id, ldv_keyword_token_map[i].keyword))
             {
               ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", id);
+
+              /* Mark that some type specifier for a given declaration
+                 specifiers list was parsed. */
+              if (i > 4 && i < 19)
+                ldv_istype_spec = true;
+
               return ldv_keyword_token_map[i].token;
             }
         }
+
+      /* A typedef name is encountered when declaration specifiers are parsed and a
+         nonkeyword identifier was met. */
+      if (!ldv_istype_spec)
+        {
+          ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", id);
+
+          ldv_istype_spec = true;
+
+          return LDV_TYPEDEF_NAME;
+        }
     }
 
-  /* A typedef name is encountered when type specifiers are parsed and a
-     nonkeyword identifier was met. */
-  if (!ldv_istype_spec)
-    {
-      ldv_istype_spec = true;
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", id);
-      return LDV_TYPEDEF_NAME;
-    }
+  if (!ldv_ismacro && !ldv_isdecl && (!strcmp (id, "expand") || !strcmp (id, "define")))
+    return LDV_MACRO_POINTCUT;
 
   ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
   return LDV_ID;
