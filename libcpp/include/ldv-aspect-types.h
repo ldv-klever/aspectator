@@ -129,7 +129,6 @@ typedef struct ldv_primitive_pointcut_signature_declspecs_internal
   bool isregister;
 
   /* Type specifiers. */
-  bool istype_spec;
   bool isvoid;
   bool ischar;
   bool isint;
@@ -154,6 +153,9 @@ typedef struct ldv_primitive_pointcut_signature_declspecs_internal
 
   /* Function specifiers. */
   bool isinline;
+
+  /* Special declaration specifier that means list of parameters of any length. */
+  bool isany_params;
 } ldv_primitive_pointcut_signature_declspecs;
 typedef ldv_primitive_pointcut_signature_declspecs *ldv_pps_declspecs_ptr;
 
@@ -202,7 +204,7 @@ typedef ldv_primitive_pointcut_signature_declarator *ldv_pps_declarator_ptr;
 
 /* Primitive pointcut signature declaration = declaration kind +
    declaration specifiers + declarator. */
-typedef enum { LDV_PPS_DECL_ANY_PARAMS, LDV_PPS_DECL_FUNC, LDV_PPS_DECL_NONE, LDV_PPS_DECL_PARAM, LDV_PPS_DECL_TYPE, LDV_PPS_DECL_VAR } ldv_pps_decl_k;
+typedef enum { LDV_PPS_DECL_ANY_PARAMS, LDV_PPS_DECL_FUNC, LDV_PPS_DECL_NONE, LDV_PPS_DECL_PARAM, LDV_PPS_DECL_TYPE, LDV_PPS_DECL_VAR, LDV_PPS_DECL_ELLIPSIS } ldv_pps_decl_k;
 typedef struct ldv_primitive_pointcut_signature_decl_internal
 {
   ldv_pps_decl_k pps_decl_kind;
