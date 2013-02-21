@@ -875,6 +875,14 @@ c_declaration_specifiers_aux:
       pps_declspecs->isany_params = true;
 
       $$ = pps_declspecs;
+    }
+  | LDV_ELLIPSIS
+    {
+      ldv_pps_declspecs_ptr pps_declspecs = ldv_create_declspecs ();
+
+      pps_declspecs->isvar_params = true;
+
+      $$ = pps_declspecs;
     };
 
 c_declaration_specifiers_opt:
@@ -1388,14 +1396,14 @@ c_parameter_type_list:
     }
 
 c_parameter_list:
-  { ldv_isdecl = true; } c_parameter_declaration {ldv_isdecl = false; }
+  c_parameter_declaration
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_list_ptr func_arg_list = NULL;
 
       pps_func_arg_new = ldv_create_pps_func_arg ();
 
-      pps_func_arg_new->pps_func_arg = $2;
+      pps_func_arg_new->pps_func_arg = $1;
 
       /* First parameter can't be '...'. */
       pps_func_arg_new->isva = false;
@@ -1404,13 +1412,13 @@ c_parameter_list:
 
       $$ = func_arg_list;
     }
-  | c_parameter_list ',' { ldv_isdecl = true; } c_parameter_declaration {ldv_isdecl = false; }
+  | c_parameter_list ',' c_parameter_declaration
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_pps_func_arg_ptr pps_func_arg_last = NULL;
       ldv_list_ptr pps_func_arg_list = NULL;
 
-      if ($4->pps_decl_kind == LDV_PPS_DECL_ELLIPSIS)
+      if ($3->pps_decl_kind == LDV_PPS_DECL_ELLIPSIS)
         {
           pps_func_arg_list = ldv_list_get_last ($1);
 
@@ -1422,7 +1430,7 @@ c_parameter_list:
         {
           pps_func_arg_new = ldv_create_pps_func_arg ();
 
-          pps_func_arg_new->pps_func_arg = $4;
+          pps_func_arg_new->pps_func_arg = $3;
 
           ldv_list_push_back (&$1, pps_func_arg_new);
 
@@ -1433,20 +1441,7 @@ c_parameter_list:
     };
 
 c_parameter_declaration:
-  LDV_ELLIPSIS
-    {
-      ldv_pps_decl_ptr pps_decl = NULL;
-
-      pps_decl = ldv_create_pps_decl ();
-
-      /* Specify a kind of a declaration. */
-      pps_decl->pps_decl_kind = LDV_PPS_DECL_ELLIPSIS;
-
-      ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list of variable length");
-
-      $$ = pps_decl;
-    }
-  | c_declaration_specifiers c_declarator
+  c_declaration_specifiers c_declarator
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -1480,6 +1475,14 @@ c_parameter_declaration:
           pps_decl->pps_decl_kind = LDV_PPS_DECL_ANY_PARAMS;
 
           ldv_print_info (LDV_INFO_BISON, "bison parsed any parameters wildcard");
+        }
+      /* Specify that variable parameters may correspond to this 'declaration'. */
+      else if (pps_decl->pps_declspecs->isvar_params)
+        {
+          /* Specify a kind of a declaration. */
+          pps_decl->pps_decl_kind = LDV_PPS_DECL_ELLIPSIS;
+
+          ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list of variable length");
         }
       else
         {

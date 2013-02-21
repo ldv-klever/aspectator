@@ -154,8 +154,11 @@ typedef struct ldv_primitive_pointcut_signature_declspecs_internal
   /* Function specifiers. */
   bool isinline;
 
-  /* Special declaration specifier that means list of parameters of any length. */
+  /* Special declaration specifier for '..' wildcard that matches list of
+     parameters of any length. */
   bool isany_params;
+  /* Special declaration specifier for '...'. */
+  bool isvar_params;
 } ldv_primitive_pointcut_signature_declspecs;
 typedef ldv_primitive_pointcut_signature_declspecs *ldv_pps_declspecs_ptr;
 
