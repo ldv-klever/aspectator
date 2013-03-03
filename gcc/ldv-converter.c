@@ -158,7 +158,8 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
               continue;
             }
 
-          param_name = ldv_get_id_name (param->name);
+          /* Parameter may have not a name (abstract declaration). */
+          param_name = param->name ? ldv_get_id_name (param->name) : NULL;
 
           func_arg_new->pps_func_arg = ldv_convert_internal_to_declaration (param->type, param_name);
 

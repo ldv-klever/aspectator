@@ -154,6 +154,8 @@ typedef struct ldv_primitive_pointcut_signature_declspecs_internal
   /* Function specifiers. */
   bool isinline;
 
+  /* Special declaration specifier for universal type specifier '$'. */
+  bool isuniversal_type_spec;
   /* Special declaration specifier for '..' wildcard that matches list of
      parameters of any length. */
   bool isany_params;

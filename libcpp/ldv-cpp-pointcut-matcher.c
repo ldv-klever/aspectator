@@ -45,12 +45,13 @@ static bool ldv_match_bool (bool, bool);
 static bool ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second);
 static bool ldv_match_param_type (ldv_i_type_ptr, ldv_i_type_ptr);
 static bool ldv_match_type (ldv_i_type_ptr, ldv_i_type_ptr);
+static bool ldv_match_universal_bool (bool, bool, bool);
 
 
 bool
 ldv_match_bool (bool first, bool second)
 {
-  return ((first && second) || (!first && !second));
+  return ldv_match_universal_bool (first, second, false);
 }
 
 bool
@@ -192,29 +193,33 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 static bool
 ldv_match_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second)
 {
-  return ldv_match_bool (declspecs_first->isinline, declspecs_second->isinline)
-    && ldv_match_bool (declspecs_first->istypedef, declspecs_second->istypedef)
-    && ldv_match_bool (declspecs_first->isstatic, declspecs_second->isstatic)
-    && ldv_match_bool (declspecs_first->isextern, declspecs_second->isextern)
-    && ldv_match_bool (declspecs_first->isvoid, declspecs_second->isvoid)
-    && ldv_match_bool (declspecs_first->ischar, declspecs_second->ischar)
-    && ldv_match_bool (declspecs_first->isint, declspecs_second->isint)
-    && ldv_match_bool (declspecs_first->isfloat, declspecs_second->isfloat)
-    && ldv_match_bool (declspecs_first->isdouble, declspecs_second->isdouble)
-    && ldv_match_bool (declspecs_first->isbool, declspecs_second->isbool)
-    && ldv_match_bool (declspecs_first->iscomplex, declspecs_second->iscomplex)
-    && ldv_match_bool (declspecs_first->isshort, declspecs_second->isshort)
-    && ldv_match_bool (declspecs_first->islong, declspecs_second->islong)
-    && ldv_match_bool (declspecs_first->islonglong, declspecs_second->islonglong)
-    && ldv_match_bool (declspecs_first->issigned, declspecs_second->issigned)
-    && ldv_match_bool (declspecs_first->isunsigned, declspecs_second->isunsigned)
-    && ldv_match_bool (declspecs_first->isstruct, declspecs_second->isstruct)
-    && ldv_match_bool (declspecs_first->isunion, declspecs_second->isunion)
-    && ldv_match_bool (declspecs_first->isenum, declspecs_second->isenum)
-    && ldv_match_bool (declspecs_first->isconst, declspecs_second->isconst)
-    && ldv_match_bool (declspecs_first->isvolatile, declspecs_second->isvolatile)
-    && ldv_match_bool (declspecs_first->isrestrict, declspecs_second->isrestrict)
-    && ((!declspecs_first->type_name && !declspecs_second->type_name) || !ldv_cmp_str (declspecs_second->type_name, ldv_cpp_get_id_name (declspecs_first->type_name)));
+  return ldv_match_universal_bool (declspecs_first->isinline, declspecs_second->isinline, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->istypedef, declspecs_second->istypedef, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isstatic, declspecs_second->isstatic, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isextern, declspecs_second->isextern, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isauto, declspecs_second->isauto, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isregister, declspecs_second->isregister, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isvoid, declspecs_second->isvoid, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->ischar, declspecs_second->ischar, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isint, declspecs_second->isint, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isfloat, declspecs_second->isfloat, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isdouble, declspecs_second->isdouble, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isbool, declspecs_second->isbool, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->iscomplex, declspecs_second->iscomplex, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isshort, declspecs_second->isshort, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->islong, declspecs_second->islong, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->islonglong, declspecs_second->islonglong, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->issigned, declspecs_second->issigned, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isunsigned, declspecs_second->isunsigned, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isconst, declspecs_second->isconst, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isvolatile, declspecs_second->isvolatile, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isrestrict, declspecs_second->isrestrict, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isstruct, declspecs_second->isstruct, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isunion, declspecs_second->isunion, declspecs_second->isuniversal_type_spec)
+    && ldv_match_universal_bool (declspecs_first->isenum, declspecs_second->isenum, declspecs_second->isuniversal_type_spec)
+    && ((!declspecs_first->type_name && !declspecs_second->type_name)
+      || (declspecs_second->type_name && !ldv_cmp_str (declspecs_second->type_name, ldv_cpp_get_id_name (declspecs_first->type_name)))
+      || (!declspecs_second->type_name && declspecs_second->isuniversal_type_spec));
 }
 
 void
@@ -556,6 +561,18 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   ldv_coord_ptr matching_table_coord = NULL, matching_table_coord_next = NULL, matching_table_coord_prev = NULL;
   ldv_list_ptr matching_table_coord_list = NULL;
   ldv_list_ptr matching_table_coord_list_cur = NULL;
+
+  /* Separately matches universal type specifier with nonprimitive source type.
+     At this point they are matched unconditionally. */
+  if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR) && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec)
+    {
+      /* Replace aspect type used just for a current matching with the source
+         one since they match each other but the aspect one can contain '$'
+         universal type specifier.*/
+      memcpy (second, first, sizeof (*second));
+
+      return true;
+    }
 
   /* Type kinds must be equal. */
   if (first->it_kind != second->it_kind)
@@ -1123,6 +1140,11 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       if (!ldv_match_declspecs (first->primitive_type, second->primitive_type))
         return false;
 
+      /* Merge aspect declaration specifiers used just for a current matching
+         with the source one since they match each other but the aspect one can
+         contain '$' universal type specifier.*/
+      second->primitive_type = ldv_merge_declspecs (first->primitive_type, second->primitive_type);
+
       break;
 
     case LDV_IT_PTR:
@@ -1176,6 +1198,16 @@ ldv_match_typedecl_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_type
   i_match->ismatched_by_name = false;
 
   return true;
+}
+
+bool
+ldv_match_universal_bool (bool first, bool second, bool universal)
+{
+  /* Matches first and second booleans (type specifiers). Also matches universal
+     boolean with the first one if the second one isn't specified. The latter
+     means that universal type specifier matches any non specified declaration
+     specifier. */
+  return ((first && second) || (!first && !second) || (first && !second && universal));
 }
 
 bool

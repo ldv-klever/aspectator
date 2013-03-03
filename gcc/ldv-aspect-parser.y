@@ -82,6 +82,9 @@ static bool ldv_isdecl = false;
 /* Flag is true if some type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_istype_spec = false;
+/* Flag is true if universal type specifier was parsed and false otherwise.
+ * It becomes false when declaration specifiers are parsed. */
+static bool ldv_isuniversal_type_spec = false;
 
 
 static void ldv_check_pp_semantics (ldv_pp_ptr);
@@ -171,6 +174,8 @@ static int yylex (void);
 %token <id>         LDV_ENUM
 
 %token <id>         LDV_TYPEDEF_NAME
+
+%token <id>         LDV_UNIVERSAL_TYPE_SPECIFIER
 
 %token <id>         LDV_CONST
 %token <id>         LDV_RESTRICT
@@ -822,7 +827,7 @@ c_declaration:
         }
     };
 
-c_declaration_specifiers: { ldv_isdecl = true; ldv_istype_spec = false; } c_declaration_specifiers_aux { ldv_isdecl = false; }
+c_declaration_specifiers: { ldv_isdecl = true; ldv_istype_spec = false; ldv_isuniversal_type_spec = false; } c_declaration_specifiers_aux { ldv_isdecl = false; }
   {
     $$ = $2;
   };
@@ -905,6 +910,7 @@ c_storage_class_specifier:
       pps_declspecs->istypedef = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"typedef\" storage class specifier");
+      LDV_FATAL_ERROR ("Typedefs aren't supported at the moment");
 
       $$ = pps_declspecs;
     }
@@ -1159,6 +1165,18 @@ c_type_specifier:
       pps_declspecs->type_name = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed typedef name \"%s\" type specifier", ldv_get_id_name ($1));
+
+      $$ = pps_declspecs;
+    }
+  | LDV_UNIVERSAL_TYPE_SPECIFIER
+    {
+      ldv_pps_declspecs_ptr pps_declspecs = NULL;
+
+      pps_declspecs = ldv_create_declspecs ();
+
+      pps_declspecs->isuniversal_type_spec = true;
+
+      ldv_print_info (LDV_INFO_BISON, "bison parsed universal type specifier");
 
       $$ = pps_declspecs;
     };
@@ -1758,15 +1776,28 @@ ldv_get_id_kind (char *id)
             }
         }
 
-      /* A typedef name is encountered when declaration specifiers are parsed and a
-         nonkeyword identifier was met. */
-      if (!ldv_istype_spec)
+      if (!ldv_istype_spec && !ldv_isuniversal_type_spec)
         {
-          ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", id);
+          /* A typedef name is encountered when declaration specifiers are
+             parsed and a nonkeyword identifier was met. We don't treat pure
+             '$' as typedef name to avoid ambiguity with universal type
+             specifier. */
+          if (!strcmp(id, "$"))
+            {
+              ldv_print_info (LDV_INFO_LEX, "lex parsed universal type specifier \"%s\"", id);
 
-          ldv_istype_spec = true;
+              ldv_isuniversal_type_spec = true;
 
-          return LDV_TYPEDEF_NAME;
+              return LDV_UNIVERSAL_TYPE_SPECIFIER;
+            }
+          else
+            {
+              ldv_print_info (LDV_INFO_LEX, "lex parsed typedef name \"%s\"", id);
+
+              ldv_istype_spec = true;
+
+              return LDV_TYPEDEF_NAME;
+            }
         }
     }
 
