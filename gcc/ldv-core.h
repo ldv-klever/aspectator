@@ -64,9 +64,6 @@ extern char *ldv_get_text (ldv_text_ptr);
 
 extern unsigned int ldv_get_unique_numb(void);
 
-
-extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr);
-
 extern void ldv_putc_body (unsigned char, ldv_ab_ptr);
 extern void ldv_putc_file (unsigned char, ldv_file_ptr);
 extern void ldv_putc_text (unsigned char, ldv_text_ptr);

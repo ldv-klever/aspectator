@@ -524,6 +524,70 @@ ldv_isvoid (ldv_i_type_ptr type)
   return true;
 }
 
+ldv_pps_declspecs_ptr
+ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second)
+{
+  ldv_pps_declspecs_ptr declspecs = NULL;
+
+  /* In that case when merge isn't needed. */
+  if (!declspecs_second)
+    return declspecs_first;
+
+  declspecs = ldv_create_declspecs ();
+
+  /* Merge all declaration specifiers from two structures. */
+  declspecs->type_name = declspecs_first->type_name ? declspecs_first->type_name : declspecs_second->type_name;
+  declspecs->istypedef = declspecs_first->istypedef || declspecs_second->istypedef;
+  declspecs->isextern = declspecs_first->isextern || declspecs_second->isextern;
+  declspecs->isstatic = declspecs_first->isstatic || declspecs_second->isstatic;
+  declspecs->isauto = declspecs_first->isauto || declspecs_second->isauto;
+  declspecs->isregister = declspecs_first->isregister || declspecs_second->isregister;
+  declspecs->isvoid = declspecs_first->isvoid || declspecs_second->isvoid;
+  declspecs->ischar = declspecs_first->ischar || declspecs_second->ischar;
+  declspecs->isint = declspecs_first->isint || declspecs_second->isint;
+  declspecs->isfloat = declspecs_first->isfloat || declspecs_second->isfloat;
+  declspecs->isdouble = declspecs_first->isdouble || declspecs_second->isdouble;
+
+  /* Remove 'int' type specifier if 'double' or 'char' is encountered. It's done
+     because of 'int' may be specified implicitly when something of 'short',
+     'long', 'signed', 'unsigned' are specified. */
+  if (declspecs->isdouble || declspecs->ischar)
+    declspecs->isint = false;
+
+  declspecs->isbool = declspecs_first->isbool || declspecs_second->isbool;
+  declspecs->iscomplex = declspecs_first->iscomplex || declspecs_second->iscomplex;
+  declspecs->isshort = declspecs_first->isshort || declspecs_second->isshort;
+
+  /* Process "long long" as special case. */
+  if (declspecs_first->islong && declspecs_second->islong)
+    {
+      declspecs->islong = false;
+      declspecs->islonglong = true;
+    }
+  else
+    {
+      declspecs->islong = declspecs_first->islong || declspecs_second->islong;
+      declspecs->islonglong = declspecs_first->islonglong || declspecs_second->islonglong;
+    }
+
+  declspecs->issigned = declspecs_first->issigned || declspecs_second->issigned;
+  declspecs->isunsigned = declspecs_first->isunsigned || declspecs_second->isunsigned;
+  declspecs->isstruct = declspecs_first->isstruct || declspecs_second->isstruct;
+  declspecs->isunion = declspecs_first->isunion || declspecs_second->isunion;
+  declspecs->isenum = declspecs_first->isenum || declspecs_second->isenum;
+  declspecs->istypedef_name = declspecs_first->istypedef_name || declspecs_second->istypedef_name;
+  declspecs->isconst = declspecs_first->isconst || declspecs_second->isconst;
+  declspecs->isrestrict = declspecs_first->isrestrict || declspecs_second->isrestrict;
+  declspecs->isvolatile = declspecs_first->isvolatile || declspecs_second->isvolatile;
+  declspecs->isinline = declspecs_first->isinline || declspecs_second->isinline;
+
+  declspecs->isuniversal_type_spec = declspecs_first->isuniversal_type_spec || declspecs_second->isuniversal_type_spec;
+  declspecs->isany_params = declspecs_first->isany_params || declspecs_second->isany_params;
+  declspecs->isvar_params = declspecs_first->isvar_params || declspecs_second->isvar_params;
+
+  return declspecs;
+}
+
 FILE *
 ldv_open_file_stream (const char *file_name, const char *mode)
 {
