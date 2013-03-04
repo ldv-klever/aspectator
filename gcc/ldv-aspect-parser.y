@@ -837,7 +837,7 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2);
+      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -847,7 +847,7 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2);
+      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -857,7 +857,7 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2);
+      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -867,7 +867,7 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2);
+      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -1381,7 +1381,7 @@ c_type_qualifier_list:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2);
+      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged type qualifiers");
 

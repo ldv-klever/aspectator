@@ -1143,7 +1143,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       /* Merge aspect declaration specifiers used just for a current matching
          with the source one since they match each other but the aspect one can
          contain '$' universal type specifier.*/
-      second->primitive_type = ldv_merge_declspecs (first->primitive_type, second->primitive_type);
+      second->primitive_type = ldv_merge_declspecs (first->primitive_type, second->primitive_type, true);
 
       break;
 

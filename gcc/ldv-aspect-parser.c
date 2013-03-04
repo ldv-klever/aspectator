@@ -2438,7 +2438,7 @@ yyreduce:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs));
+      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs), false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -2453,7 +2453,7 @@ yyreduce:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs));
+      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs), false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -2468,7 +2468,7 @@ yyreduce:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs));
+      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs), false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -2483,7 +2483,7 @@ yyreduce:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs));
+      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs), false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -3193,7 +3193,7 @@ yyreduce:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs));
+      pps_declspecs = ldv_merge_declspecs ((yyvsp[(1) - (2)].pps_declspecs), (yyvsp[(2) - (2)].pps_declspecs), false);
 
       ldv_print_info (LDV_INFO_BISON, "bison merged type qualifiers");
 

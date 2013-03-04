@@ -316,7 +316,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
          obtained earlier. */
       if (ldv_entity_declspecs)
         {
-          type->primitive_type = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs);
+          type->primitive_type = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs, false);
 
           /* Additional declaration specifiers may be applied just one time for
              some entity return type. */

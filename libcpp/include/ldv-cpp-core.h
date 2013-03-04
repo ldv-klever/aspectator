@@ -69,7 +69,7 @@ extern char *ldv_get_str (ldv_str_ptr);
 
 extern bool ldv_isvoid (ldv_i_type_ptr );
 
-extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr);
+extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr, bool);
 
 extern FILE *ldv_open_file_stream (const char *, const char *);
 
