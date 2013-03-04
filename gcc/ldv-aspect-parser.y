@@ -1801,8 +1801,13 @@ ldv_get_id_kind (char *id)
         }
     }
 
-  if (!ldv_ismacro && !ldv_isdecl && (!strcmp (id, "expand") || !strcmp (id, "define")))
-    return LDV_MACRO_POINTCUT;
+  if (!ldv_ismacro && !ldv_isdecl)
+    {
+      if (!strcmp (id, "expand") || !strcmp (id, "define"))
+        return LDV_MACRO_POINTCUT;
+      else if (!strcmp (id, "file") || !strcmp (id, "infile"))
+        return LDV_FILE_POINTCUT;
+    }
 
   ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
   return LDV_ID;
