@@ -68,6 +68,7 @@ static ldv_list_ptr ldv_func_param_list = NULL;
 static ldv_pps_decl_ptr ldv_func_ret_type_decl = NULL;
 static ldv_text_ptr ldv_func_va_init = NULL;
 static const char *ldv_var_name = NULL;
+static const char *ldv_var_type_name = NULL;
 static bool ldv_isstatic_specifier_needed = true;
 static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
@@ -370,6 +371,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       else
         {
           LDV_FATAL_ERROR ("no variable name was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "var_type_name"))
+    {
+      if (ldv_var_type_name)
+        text = ldv_var_type_name;
+      else
+        {
+          LDV_FATAL_ERROR ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
         }
     }
   else if (!strcmp (pattern->name, "env"))
@@ -1296,8 +1306,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     {
       ldv_text_printed = ldv_create_text ();
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
+      if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE)
+        ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
       ldv_var_name = NULL;
+      ldv_var_type_name = NULL;
       return;
     }
 
