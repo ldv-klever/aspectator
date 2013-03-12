@@ -583,6 +583,12 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
         p_pointcut->pp_kind = LDV_PP_INCALL;
       else if (!strcmp ("infunc", pp_kind))
         p_pointcut->pp_kind = LDV_PP_INFUNC;
+      else if (!strcmp ("init", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_INIT;
+      else if (!strcmp ("init_global", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_INIT_GLOBAL;
+      else if (!strcmp ("init_local", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_INIT_LOCAL;
       else if (!strcmp ("introduce", pp_kind))
         p_pointcut->pp_kind = LDV_PP_INTRODUCE;
       else if (!strcmp ("set", pp_kind))
@@ -594,7 +600,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect primitive pointcut kind \"%s\" was used", pp_kind);
-          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"expand\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
+          LDV_FATAL_ERROR ("use \"call\", \"define\", \"execution\", \"expand\", \"file\", \"get\", \"get_global\", \"get_local\", \"incall\", \"infile\", \"infunc\", \"init\", \"init_global\", \"init_local\", \"introduce\", \"set\", \"set_global\", \"set_local\" primitive pointcut kind");
         }
 
       pp_signature = ldv_create_pp_signature ();
@@ -1677,9 +1683,10 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
       if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_EXECUTION
         || pp_kind == LDV_PP_GET || pp_kind == LDV_PP_GET_GLOBAL
         || pp_kind == LDV_PP_GET_LOCAL || pp_kind == LDV_PP_INCALL
-        || pp_kind == LDV_PP_INFUNC || pp_kind == LDV_PP_INTRODUCE
-        || pp_kind == LDV_PP_SET || pp_kind == LDV_PP_SET_GLOBAL
-        || pp_kind == LDV_PP_SET_LOCAL)
+        || pp_kind == LDV_PP_INFUNC || pp_kind == LDV_PP_INIT
+        || pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL
+        || pp_kind == LDV_PP_INTRODUCE || pp_kind == LDV_PP_SET
+        || pp_kind == LDV_PP_SET_GLOBAL || pp_kind == LDV_PP_SET_LOCAL)
         return ;
 
       break;

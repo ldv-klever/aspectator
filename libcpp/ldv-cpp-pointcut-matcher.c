@@ -157,16 +157,17 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
           break;
 
-        case LDV_PP_GET:
         case LDV_PP_GET_GLOBAL:
         case LDV_PP_GET_LOCAL:
-        case LDV_PP_SET:
+        case LDV_PP_INIT_GLOBAL:
+        case LDV_PP_INIT_LOCAL:
         case LDV_PP_SET_GLOBAL:
         case LDV_PP_SET_LOCAL:
           if (i_kind == LDV_I_VAR
-            /* Pure 'set' and 'get' aren't specified in matching structure, but 'set = set_local | set_global', 'get = get_local | get_local'. */
+            /* * = *_local || *_local, where "*" is "get", "init" or "set". */
             && (i_match->pp_kind == pp_kind
             || ((i_match->pp_kind == LDV_PP_GET_GLOBAL || i_match->pp_kind == LDV_PP_GET_LOCAL) && pp_kind == LDV_PP_GET)
+            || ((i_match->pp_kind == LDV_PP_INIT_GLOBAL || i_match->pp_kind == LDV_PP_INIT_LOCAL) && pp_kind == LDV_PP_INIT)
             || ((i_match->pp_kind == LDV_PP_SET_GLOBAL || i_match->pp_kind == LDV_PP_SET_LOCAL) && pp_kind == LDV_PP_SET))
             && ldv_match_var_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
             {

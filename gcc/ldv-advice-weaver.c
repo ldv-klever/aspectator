@@ -1280,6 +1280,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
   pp_kind = ldv_i_match->p_pointcut->pp_kind;
 
+  /* In case of information request do not perform weaving just "print" advice
+     body that implicitly invokes evaluation of all $fprintf. */
+  if (a_kind == LDV_A_INFO)
+    {
+      ldv_text_printed = ldv_create_text ();
+      ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+      return;
+    }
+
   ldv_padding_cur = LDV_PADDING_NONE;
 
   /* Weave an advice in depend on a matched entity kind and a ldv stage. */

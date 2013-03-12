@@ -4487,6 +4487,28 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	  push_cleanup (decl, cleanup, false);
 	}
     }
+ 
+  /* LDV extension beginning. */
+
+  if (ldv ())
+    {
+      /* Variable declarations are considered just for information request
+         purposes since it's unclear how to instrument them. Information 
+         requests are executed at instrumentation stage. */ 
+      if (ldv_instrumentation () && TREE_CODE (decl) == VAR_DECL && DECL_INITIAL (decl))
+        {
+          /* Try to match a global variable declaration for a glojoin point. */
+          ldv_match_var (decl, LDV_PP_INIT_GLOBAL);
+
+          /* Instance a matched advice. */
+          ldv_weave_advice (NULL, NULL);
+
+          /* Finish match. */
+          ldv_i_match = NULL;
+        }
+    }
+    
+  /* LDV extension end. */
 
 /* LDV extension begin. */
 
