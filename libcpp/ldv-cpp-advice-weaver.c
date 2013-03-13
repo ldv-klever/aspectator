@@ -150,6 +150,12 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
           LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", pattern->arg_numb, (i - 1));
         }
     }
+  else if (!strcmp (pattern->name, "arg_numb"))
+    {
+      arg_value_list = ldv_i_match->i_macro->macro_param;
+      number = ldv_list_len (arg_value_list);
+      is_number = true;
+    }
 
   if (text)
     {
