@@ -137,9 +137,9 @@ ldv_cpp_weave (void)
   pp_kind = ldv_i_match->p_pointcut->pp_kind;
   body = ldv_i_match->a_definition->a_body;
 
-  /* Now here is supported just printing information on macro expansions.
+  /* Now here is supported just printing information on macro expansions or definitions.
    * Weaving macrodefinitions are implemented in ldv_cpp_define/undef. */
-  if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_EXPAND)
+  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_EXPAND || pp_kind == LDV_PP_DEFINE))
     {
       for (body_patterns = body->patterns
         ; body_patterns
