@@ -31,7 +31,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-grammar.h"
 
 
-#define LDV_CONVERT_EXPR_RECURSION_LIMIT 10
 #define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
 #define LDV_OP_FIRST(t) TREE_OPERAND (t, 0)
 #define LDV_OP_SECOND(t) TREE_OPERAND (t, 1)
@@ -57,7 +56,6 @@ static ldv_asm_operand_ptr ldv_convert_asm_operand (tree);
 static ldv_asm_operands_ptr ldv_convert_asm_operands (tree);
 static ldv_asm_statement_ptr ldv_convert_asm_statement (tree);
 static ldv_asm_str_literal_ptr ldv_convert_asm_str_literal (tree);
-static ldv_assignment_expr_ptr ldv_convert_assignment_expr (tree, unsigned int);
 static ldv_assignment_operator_ptr ldv_convert_assignment_operator (tree);
 static ldv_block_item_ptr ldv_convert_block_item (tree);
 static ldv_block_item_list_ptr ldv_convert_block_item_list (tree);
@@ -820,7 +818,7 @@ assignment-expression:
     conditional-expression
     unary-expression assignment-operator assignment-expression
 */
-static ldv_assignment_expr_ptr
+ldv_assignment_expr_ptr
 ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
 {
   ldv_assignment_expr_ptr assignment_expr;
