@@ -3557,13 +3557,19 @@ const char *
 ldv_convert_and_print_assignment_expr (tree t)
 {
   ldv_assignment_expr_ptr assignment_expr = NULL;
+  int current_lines_level;
 
   assignment_expr = ldv_convert_assignment_expr (t, LDV_CONVERT_EXPR_RECURSION_LIMIT);
 
+  /* Store current lines level and set it to LDV_C_BACKEND_LINES_LEVEL_NO to
+     avoid printing of lines directives. */
+  current_lines_level = ldv_c_backend_get_lines_level ();
+  ldv_c_backend_set_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO);
   ldv_c_backend_print_to_buffer ();
   ldv_print_assignment_expr (0, assignment_expr);
   ldv_c_backend_padding_cancel ();
   ldv_c_backend_print_to_file ();
+  ldv_c_backend_set_lines_level (current_lines_level);
 
   return xstrdup (ldv_c_backend_get_buffer ());
 }
