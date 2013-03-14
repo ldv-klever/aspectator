@@ -613,6 +613,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   ldv_aspect_pattern_ptr pattern = NULL;
   ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
+  FILE *file_stream = NULL;
 
   /* Print '{' that starts a body for all advice kinds. */
   ldv_print_c ('{');
@@ -719,7 +720,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                         }
                     }
 
-                  ldv_print_query_result (ldv_open_aspect_pattern_param_file_stream (param1), ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
+                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
+                  ldv_print_query_result (file_stream, ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
+                  ldv_close_file_stream (file_stream);
                 }
               else
                 {

@@ -604,6 +604,15 @@ ldv_open_file_stream (const char *file_name, const char *mode)
 }
 
 void
+ldv_close_file_stream (FILE *file_stream)
+{
+  if (fclose (file_stream))
+  {
+    LDV_CPP_FATAL_ERROR ("can't close file stream");
+  }
+}
+
+void
 ldv_putc_id (unsigned char c, ldv_id_ptr id)
 {
   if (id)
