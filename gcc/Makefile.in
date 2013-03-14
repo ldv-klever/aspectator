@@ -3600,7 +3600,8 @@ ldv-aspect-parser.o : ldv-aspect-parser.c $(srcdir)/../libcpp/include/ldv-cpp-po
 ldv-converter.o : ldv-converter.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h $(TREE_H) \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h \
-  ldv-converter.h ldv-core.h ldv-pointcut-matcher.h
+  ldv-advice-weaver.h ldv-converter.h ldv-core.h ldv-pointcut-matcher.h \
+  c-family/ldv-pretty-print.h
 ldv-core.o : ldv-core.c \
   $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(DIAGNOSTIC_CORE_H) toplev.h \
   $(srcdir)/../libcpp/include/ldv-aspect-types.h \

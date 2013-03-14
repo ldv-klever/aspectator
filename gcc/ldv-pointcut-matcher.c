@@ -1047,6 +1047,10 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   else
     var->func_context = NULL;
 
+  /* Convert variable declaration initializer to internal representation. */
+  if (DECL_INITIAL (t))
+    var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
+
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
