@@ -236,6 +236,64 @@ ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr param)
 }
 
 void
+ldv_print_struct_var_init_list (FILE *file_stream, unsigned int indent_level, ldv_list_ptr struct_var_inits)
+{
+  ldv_list_ptr struct_var_init = NULL;
+  ldv_i_initializer_ptr initializer = NULL;
+  const char *indent_spaces = "";
+  ldv_list_ptr params;
+  const char *param;
+
+  if (!file_stream)
+    {
+      LDV_CPP_FATAL_ERROR ("file stream where structure variable initializer list to be printed isn't specified");
+    }
+
+  /* Identation spaces to be printed before internal structure variables
+     initialization. */
+  if (indent_level)
+    indent_spaces = spaces (2 * indent_level);
+
+  fprintf (file_stream, "%sStructure variable initializer list:\n", indent_spaces);
+
+  for (struct_var_init = struct_var_inits
+  ; struct_var_init
+  ; struct_var_init = ldv_list_get_next (struct_var_init))
+  {
+    initializer = (ldv_i_initializer_ptr) ldv_list_get_data (struct_var_init);
+
+    fprintf (file_stream, "%sField name is '%s'\n", indent_spaces, initializer->field_name);
+    fprintf (file_stream, "%sField type is '%s'\n", indent_spaces, initializer->field_type);
+    fprintf (file_stream, "%sField declaration is '%s'\n", indent_spaces, initializer->field_decl);
+
+    if (!strcmp (initializer->field_type, "function pointer"))
+      {
+        fprintf (file_stream, "%sPointed function return type declaration is '%s'\n", indent_spaces, initializer->field_pointed_func_ret_type_decl);
+        fprintf (file_stream, "%sPointed function argument type declarations are ", indent_spaces);
+
+        for (params = initializer->field_pointed_func_arg_type_decls
+          ; params
+          ; params = ldv_list_get_next (params))
+          {
+            param = (const char *) ldv_list_get_data (params);
+
+            fprintf (file_stream, "'%s'", param);
+
+            if (ldv_list_get_next (params))
+              fprintf (file_stream, ", ");
+          }
+
+        fprintf (file_stream, "\n");
+      }
+
+    if (initializer->field_value)
+      fprintf (file_stream, "%sField value is '%s'\n", indent_spaces, initializer->field_value);
+    else
+      ldv_print_struct_var_init_list (file_stream, indent_level + 1, initializer->field_initializer);
+  }
+}
+
+void
 ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr pattern_params)
 {
   ldv_str_ptr conversion = NULL, text = NULL;

@@ -69,6 +69,7 @@ static ldv_pps_decl_ptr ldv_func_ret_type_decl = NULL;
 static ldv_text_ptr ldv_func_va_init = NULL;
 static const char *ldv_var_name = NULL;
 static const char *ldv_var_type_name = NULL;
+static ldv_list_ptr ldv_var_initializer_list = NULL;
 static bool ldv_isstatic_specifier_needed = true;
 static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
@@ -724,6 +725,17 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_query_result (file_stream, ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
                   ldv_close_file_stream (file_stream);
                 }
+              else if (!strcmp (pattern->name, "fprintf_struct_var_init_list"))
+                {
+                  /* First parameter specifies file where information request
+                     result to be printed. */
+                  pattern_params = pattern->params;
+                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+
+                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
+                  ldv_print_struct_var_init_list (file_stream, 0, ldv_var_initializer_list);
+                  ldv_close_file_stream (file_stream);
+                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
@@ -1311,9 +1323,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE)
         ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
+      ldv_var_initializer_list = ldv_i_match->i_var->initializer_list;
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
       ldv_var_name = NULL;
       ldv_var_type_name = NULL;
+      ldv_var_initializer_list = NULL;
       return;
     }
 
