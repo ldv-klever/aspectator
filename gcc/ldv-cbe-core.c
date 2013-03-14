@@ -84,6 +84,12 @@ ldv_c_backend_get_buffer (void)
   return ldv_c_backend_buffer;
 }
 
+int
+ldv_c_backend_get_lines_level (void)
+{
+  return ldv_c_backend_lines_level;
+}
+
 void
 ldv_c_backend_padding_cancel (void)
 {
@@ -147,7 +153,7 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
         vasprintf (&str, format, ap);
       else
         asprintf (&str, format);
-        
+
       ldv_c_backend_buffer = concat (ldv_c_backend_buffer ? ldv_c_backend_buffer : "", str, NULL);
     }
   else
@@ -171,6 +177,12 @@ void
 ldv_c_backend_print_to_file (void)
 {
   ldv_c_backend_buffer_enabled = false;
+}
+
+void
+ldv_c_backend_set_lines_level (int current_lines_level)
+{
+  ldv_c_backend_lines_level = current_lines_level;
 }
 
 void
