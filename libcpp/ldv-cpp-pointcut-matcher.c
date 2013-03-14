@@ -564,8 +564,19 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   ldv_list_ptr matching_table_coord_list_cur = NULL;
 
   /* Separately matches universal type specifier with nonprimitive source type.
-     At this point they are matched unconditionally. */
-  if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR) && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec)
+     At this point they are matched unconditionally. Note that universal type
+     specifier doesn't match pointer or array if standard type specifier is
+     specified togther with it. */
+  if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR)
+    && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec
+    && !second->primitive_type->isvoid && !second->primitive_type->ischar
+    && !second->primitive_type->isint && !second->primitive_type->isfloat
+    && !second->primitive_type->isdouble && !second->primitive_type->isbool
+    && !second->primitive_type->iscomplex && !second->primitive_type->isshort
+    && !second->primitive_type->islong && !second->primitive_type->islonglong
+    && !second->primitive_type->issigned && !second->primitive_type->isunsigned
+    && !second->primitive_type->isstruct && !second->primitive_type->isunion
+    && !second->primitive_type->isenum && !second->primitive_type->istypedef_name)
     {
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
