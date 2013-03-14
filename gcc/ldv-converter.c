@@ -256,7 +256,9 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
               LDV_FATAL_ERROR ("can't find constructor elements");
             }
 
-          initializer->field_name = (const char *) (IDENTIFIER_POINTER (DECL_NAME (index)));
+          initializer->field_name = DECL_NAME (index)
+            ? (const char *) (IDENTIFIER_POINTER (DECL_NAME (index)))
+            : "";
 
           artificial_field = ldv_create_info_var ();
           artificial_field->name = ldv_create_id ();
