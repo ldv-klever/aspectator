@@ -166,7 +166,7 @@ ldv_direct_declarator_location (ldv_direct_declarator_ptr direct_declarator)
 
 static bool ldv_isglobal_var_was_printed (tree t)
 {
-  struct ldv_global_var_name 
+  struct ldv_global_var_name
   {
     const char *name;
     struct ldv_global_var_name *next;
@@ -174,12 +174,12 @@ static bool ldv_isglobal_var_was_printed (tree t)
   static struct ldv_global_var_name *global_var_names = NULL;
   struct ldv_global_var_name *global_var_name_cur;
   ldv_identifier_ptr identifier;
-  
-  /* Do not consider anything else except variables. Moreover take into 
+
+  /* Do not consider anything else except variables. Moreover take into
      account just that variables that have initializers. */
   if (TREE_CODE (t) != VAR_DECL || !DECL_INITIAL (t))
     return false;
-    
+
   if ((identifier = ldv_convert_identifier (t)) && LDV_IDENTIFIER_STR (identifier))
     {
       /* If there isn't any global variable name then just push it to the
@@ -189,21 +189,21 @@ static bool ldv_isglobal_var_was_printed (tree t)
           global_var_names = XCNEW (struct ldv_global_var_name);
           global_var_names->name = LDV_IDENTIFIER_STR (identifier);
         }
-      /* Otherwise check whether a variable having the same name was processed. 
+      /* Otherwise check whether a variable having the same name was processed.
          Keep a current one to the list. */
       else
         {
           for (global_var_name_cur = global_var_names; ; global_var_name_cur = global_var_name_cur->next)
             {
               if (!strcmp (LDV_IDENTIFIER_STR (identifier), global_var_name_cur->name))
-                return true;  
+                return true;
 
               if (global_var_name_cur->next)
                 continue;
 
               break;
             }
-   
+
           global_var_name_cur->next = XCNEW (struct ldv_global_var_name);
           global_var_name_cur->next->name = LDV_IDENTIFIER_STR (identifier);
         }
@@ -3551,6 +3551,21 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
     }
 
 
+}
+
+const char *
+ldv_convert_and_print_assignment_expr (tree t)
+{
+  ldv_assignment_expr_ptr assignment_expr = NULL;
+
+  assignment_expr = ldv_convert_assignment_expr (t, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+  ldv_c_backend_print_to_buffer ();
+  ldv_print_assignment_expr (0, assignment_expr);
+  ldv_c_backend_padding_cancel ();
+  ldv_c_backend_print_to_file ();
+
+  return xstrdup (ldv_c_backend_get_buffer ());
 }
 
 /*
