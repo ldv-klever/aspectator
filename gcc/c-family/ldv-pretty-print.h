@@ -22,6 +22,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "tree.h"
 
 
+const char *ldv_convert_and_print_assignment_expr (tree);
 void ldv_print_translation_unit (tree, bool);
 
 #endif /* LDV_PRETTY_PRINT */
