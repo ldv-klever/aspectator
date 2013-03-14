@@ -48,6 +48,7 @@ extern char *ldv_copy_str (const char *);
 
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);
 extern ldv_i_func_ptr ldv_create_info_func (void);
+extern ldv_i_initializer_ptr ldv_create_info_initializer (void);
 extern ldv_i_macro_ptr ldv_create_info_macro (void);
 extern ldv_i_match_ptr ldv_create_info_match (void);
 extern ldv_i_param_ptr ldv_create_info_param (void);

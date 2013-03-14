@@ -441,6 +441,19 @@ typedef struct ldv_info_typedecl_internal
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
+/* Variable declaration information = variable name + variable type. */
+typedef struct ldv_info_initializer_internal
+{
+  const char *field_name;
+  const char *field_type;
+  const char *field_decl;
+  const char *field_pointed_func_ret_type_decl;
+  ldv_list_ptr field_pointed_func_arg_type_decls;
+  const char *field_value;
+  ldv_list_ptr field_initializer;
+} ldv_info_initializer;
+typedef ldv_info_initializer *ldv_i_initializer_ptr;
+
 struct ldv_info_match_internal;
 /* Variable declaration information = variable name + variable type. */
 typedef struct ldv_info_var_internal
@@ -449,6 +462,7 @@ typedef struct ldv_info_var_internal
   ldv_i_type_ptr type;
   const char *file_path;
   struct ldv_info_match_internal *func_context;
+  ldv_list_ptr initializer_list;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 

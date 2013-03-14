@@ -371,6 +371,16 @@ ldv_create_info_func (void)
   return i_func;
 }
 
+ldv_i_initializer_ptr
+ldv_create_info_initializer (void)
+{
+  ldv_i_initializer_ptr i_initializer = NULL;
+
+  i_initializer = XCNEW (ldv_info_initializer);
+
+  return i_initializer;
+}
+
 ldv_i_macro_ptr
 ldv_create_info_macro (void)
 {
