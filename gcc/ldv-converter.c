@@ -307,6 +307,13 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                     }
                 }
             }
+          else if (artificial_field->type->it_kind == LDV_IT_ARRAY)
+            initializer->field_type = "array";
+          else
+            {
+              initializer->field_type = "unknown";
+              LDV_FATAL_ERROR ("can't process field type");
+            }
 
           if (TREE_CODE (value) == CONSTRUCTOR)
             initializer->field_initializer = ldv_convert_initializer_to_internal (value);
