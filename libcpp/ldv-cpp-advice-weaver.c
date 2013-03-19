@@ -279,7 +279,7 @@ ldv_print_init_list (FILE *file_stream, unsigned int indent_level, ldv_list_ptr 
         fprintf (file_stream, "%sArray index is '%d'\n", indent_spaces, initializer->array_index);
       }
     else
-      fprintf (file_stream, "%sInitialization of neither structure field nor array element\n", indent_spaces);
+      fprintf (file_stream, "%sInitialization of primitive or pointer variable\n", indent_spaces);
 
     if (initializer->field_name || initializer->isarray_index)
       {

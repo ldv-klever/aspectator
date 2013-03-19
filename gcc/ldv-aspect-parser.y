@@ -1287,6 +1287,9 @@ c_direct_declarator:
       if ($3)
         {
           declarator_new->pps_array_size->pps_array_size = ldv_get_int ($3);
+          /* Any size is specified this case. */
+          if (declarator_new->pps_array_size->pps_array_size == -1)
+            declarator_new->pps_array_size->isany_size = true;
           declarator_new->pps_array_size->issize_specified = true;
         }
       else
@@ -1366,7 +1369,17 @@ int_opt:
   | LDV_INT_NUMB
     {
       $$ = $1;
-    }
+    };
+  /* An array with any size. */
+  | LDV_ID
+    {
+      ldv_int_ptr integer = NULL;
+
+      integer = ldv_create_int ();
+      integer->numb = -1;
+
+      $$ = integer;
+    };
 
 c_type_qualifier_list_opt:
   /* A pointer without qualifiers. */

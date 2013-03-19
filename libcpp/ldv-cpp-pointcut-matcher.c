@@ -593,8 +593,12 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   switch (first->it_kind)
     {
     case LDV_IT_ARRAY:
-      /* Compare arrays sizes. */
-      if (first->array_size != second->array_size)
+      /* Compare array sizes. */
+      if (second->isany_size)
+        second->array_size = first->array_size;
+      else if ((first->issize_specified && !second->issize_specified)
+        || (!first->issize_specified && second->issize_specified)
+        || first->array_size != second->array_size)
         return false;
 
       /* Compare arrays elements types. */

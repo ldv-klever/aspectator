@@ -181,6 +181,7 @@ typedef struct ldv_primitive_pointcut_signature_array_size_internal
 {
   int pps_array_size;
   bool issize_specified;
+  bool isany_size;
 } ldv_primitive_pointcut_signature_array_size;
 typedef ldv_primitive_pointcut_signature_array_size *ldv_pps_array_size_ptr;
 
@@ -365,6 +366,7 @@ typedef struct ldv_info_type_internal
   struct ldv_info_type_internal *array_type;
   int array_size;
   bool issize_specified;
+  bool isany_size;
 
   /* Pointed type. */
   struct ldv_info_type_internal *ptr_type;

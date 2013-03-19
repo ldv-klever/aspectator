@@ -66,6 +66,7 @@ typedef struct ldv_var_array_internal
 {
   unsigned int uid;
   unsigned int array_size;
+  bool isany_size;
   bool issize_specified;
 } ldv_var_array;
 typedef ldv_var_array *ldv_var_array_ptr;

@@ -128,6 +128,7 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
 
       /* Convert an array size. */
       declarator->pps_array_size->issize_specified = type->issize_specified;
+      declarator->pps_array_size->isany_size = type->isany_size;
 
       if (type->issize_specified)
         declarator->pps_array_size->pps_array_size = type->array_size;
