@@ -441,16 +441,18 @@ typedef struct ldv_info_typedecl_internal
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
-/* Variable declaration information = variable name + variable type. */
+/* Initializer information. */
 typedef struct ldv_info_initializer_internal
 {
   const char *field_name;
-  const char *field_type;
-  const char *field_decl;
-  const char *field_pointed_func_ret_type_decl;
-  ldv_list_ptr field_pointed_func_arg_type_decls;
-  const char *field_value;
-  ldv_list_ptr field_initializer;
+  bool isarray_index;
+  unsigned int array_index;
+  const char *type;
+  const char *decl;
+  const char *pointed_func_ret_type_decl;
+  ldv_list_ptr pointed_func_arg_type_decls;
+  const char *value;
+  ldv_list_ptr initializer;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;
 
