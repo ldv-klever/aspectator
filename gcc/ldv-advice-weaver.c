@@ -75,6 +75,7 @@ static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
 static ldv_padding ldv_padding_cur = LDV_PADDING_NONE;
 static ldv_text_ptr ldv_text_printed = NULL;
+static ldv_i_func_ptr ldv_func_signature = NULL;
 
 
 static void ldv_add_id_declarator (ldv_pps_decl_ptr, const char *);
@@ -354,6 +355,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       else
         {
           LDV_FATAL_ERROR ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "func_signature"))
+    {
+      if (ldv_func_signature)
+        text = ldv_print_func_decl(ldv_func_signature);
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
         }
     }
   else if (!strcmp (pattern->name, "proceed"))
@@ -1333,7 +1343,9 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   else if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_DECLARE_FUNC)
     {
        ldv_text_printed = ldv_create_text ();
+       ldv_func_signature = ldv_i_match->i_func;
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+       ldv_func_signature = NULL;
        return;
     }
 
