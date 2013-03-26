@@ -168,7 +168,12 @@ ldv_handle_options (void)
 
       if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)))
         {
-          if (!strcmp (arg_sign, "SIMPLE_ID"))
+          if (!strcmp (arg_sign, "VARIABLE_ID"))
+            {
+              ldv_arg_sign = LDV_ARG_SIGN_VARIABLE_ID;
+              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"variable identifiers\"");
+            }
+          else if (!strcmp (arg_sign, "SIMPLE_ID"))
             {
               ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
               ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"simple identifiers\"");

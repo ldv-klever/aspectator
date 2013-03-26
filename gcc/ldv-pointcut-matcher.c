@@ -191,7 +191,7 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
         }
       /* Otherwise calculate argument signature as "simple identifier", i.e. as
        * a variable, argument or field name. */
-      else
+      else if (ldv_arg_sign == LDV_ARG_SIGN_SIMPLE_ID)
         arg_sign = field_sign;
     }
 
