@@ -109,6 +109,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
         case LDV_PP_CALL:
         case LDV_PP_EXECUTION:
+        case LDV_PP_DECLARE_FUNC:
           if (i_kind == LDV_I_FUNC && i_match->pp_kind == pp_kind && ldv_match_func_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
             {
               i_match->p_pointcut = c_pointcut->p_pointcut;

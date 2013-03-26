@@ -4506,6 +4506,17 @@ finish_decl (tree decl, location_t init_loc, tree init,
           /* Finish match. */
           ldv_i_match = NULL;
         }
+      else if (ldv_instrumentation () && TREE_CODE (decl) == FUNCTION_DECL)
+        {
+          /* Try to match a function declaration. */
+          ldv_match_func (decl, LDV_PP_DECLARE_FUNC);
+
+          /* Instance a matched advice. */
+          ldv_weave_advice (NULL, NULL);
+
+          /* Finish match. */
+          ldv_i_match = NULL;
+        }
     }
     
   /* LDV extension end. */

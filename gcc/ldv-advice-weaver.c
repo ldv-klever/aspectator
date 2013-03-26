@@ -1317,7 +1317,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
   /* In case of information request do not perform weaving just "print" advice
      body that implicitly invokes evaluation of all $fprintf. */
-  if (a_kind == LDV_A_INFO)
+  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL))
     {
       ldv_text_printed = ldv_create_text ();
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
@@ -1329,6 +1329,12 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_type_name = NULL;
       ldv_var_init_list = NULL;
       return;
+    }
+  else if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_DECLARE_FUNC)
+    {
+       ldv_text_printed = ldv_create_text ();
+       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+       return;
     }
 
   ldv_padding_cur = LDV_PADDING_NONE;
