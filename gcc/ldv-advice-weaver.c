@@ -1340,7 +1340,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_init_list = NULL;
       return;
     }
-  else if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_DECLARE_FUNC)
+  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION))
     {
        ldv_text_printed = ldv_create_text ();
        ldv_func_signature = ldv_i_match->i_func;
