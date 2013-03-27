@@ -94,6 +94,8 @@ static void ldv_print_declarator (ldv_list_ptr);
 static void ldv_print_declspecs (ldv_pps_declspecs_ptr);
 static void ldv_print_direct_declarator (ldv_list_ptr);
 static void ldv_print_int (int);
+static void ldv_print_macro_name (ldv_id_ptr);
+static void ldv_print_macro_param (ldv_list_ptr);
 static ldv_list_ptr ldv_print_ptr (ldv_list_ptr);
 static void ldv_print_qual (bool, bool, bool);
 static void ldv_print_separator (unsigned int);
@@ -991,6 +993,67 @@ ldv_print_func_decl (ldv_i_func_ptr func)
   ldv_padding_cur = LDV_PADDING_NONE;
 
   ldv_print_decl (decl);
+
+  return ldv_get_text (ldv_text_printed);
+}
+
+const char *
+ldv_print_func_signature (ldv_pps_decl_ptr decl)
+{
+  ldv_text_printed = ldv_create_text ();
+
+  ldv_padding_cur = LDV_PADDING_NONE;
+
+  ldv_print_decl (decl);
+
+  return ldv_get_text (ldv_text_printed);
+}
+
+void
+ldv_print_macro_name (ldv_id_ptr m_name)
+{
+  ldv_print_str (ldv_get_id_name (m_name));
+}
+
+void
+ldv_print_macro_param (ldv_list_ptr mp_list)
+{
+  ldv_list_ptr macro_param_list = NULL;
+  char *macro_param;
+
+  for (macro_param_list = mp_list; macro_param_list; macro_param_list = ldv_list_get_next (macro_param_list))
+    {
+      macro_param = ldv_get_id_name((ldv_id_ptr)ldv_list_get_data (macro_param_list));
+
+      if (macro_param_list == mp_list)
+        {
+          ldv_print_c (' ');
+          ldv_print_c ('(');
+        }
+
+      ldv_print_str (macro_param);
+
+      if (ldv_list_get_next (macro_param_list))
+        {
+          ldv_print_c (',');
+          ldv_print_c (' ');
+        }
+      else
+        ldv_print_c (')');
+    }
+}
+
+const char *
+ldv_print_macro_signature (ldv_pps_macro_ptr m_decl)
+{
+  ldv_text_printed = ldv_create_text ();
+
+  ldv_padding_cur = LDV_PADDING_NONE;
+
+  ldv_print_macro_name (m_decl->macro_name);
+
+  if (m_decl->macro_param_list)
+    ldv_print_macro_param (m_decl->macro_param_list);
 
   return ldv_get_text (ldv_text_printed);
 }
