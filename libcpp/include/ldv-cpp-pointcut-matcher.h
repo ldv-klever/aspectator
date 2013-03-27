@@ -26,6 +26,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* A variable contains all information on advice definitions obtained from an
    aspect file. */
 extern ldv_list_ptr ldv_adef_list;
+extern ldv_list_ptr ldv_n_pointcut_list;
 extern ldv_i_match_ptr ldv_i_match;
 
 

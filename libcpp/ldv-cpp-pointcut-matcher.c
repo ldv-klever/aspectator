@@ -36,6 +36,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* An advice definitions list. */
 ldv_list_ptr ldv_adef_list = NULL;
+/* The named pointcuts list. */
+ldv_list_ptr ldv_n_pointcut_list = NULL;
 ldv_i_match_ptr ldv_i_match;
 
 static bool ldv_cpp_isprint_signature_of_matched_by_name = false;
