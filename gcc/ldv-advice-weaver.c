@@ -817,6 +817,10 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
         ldv_print_str ("inline");
     }
 
+  /* Print universal type specifier '$' */
+  if (declspecs->isuniversal_type_spec)
+    ldv_print_str ("$");
+
   /* Print type specifiers according to gcc names. There may be just one of the
      following type specifiers combinations. */
   if (declspecs->ischar && declspecs->isunsigned)
