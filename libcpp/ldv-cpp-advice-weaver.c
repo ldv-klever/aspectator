@@ -31,6 +31,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* Macro from ldv-io.h that's needed for printing of matched just by name macros. */
 #define LDV_MATCHED_BY_NAME (stderr)
 
+static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
+
 
 void
 ldv_cpp_define (struct cpp_reader *pfile)
@@ -117,6 +119,58 @@ ldv_cpp_undef (struct cpp_reader *pfile)
   cpp_undef (pfile, name);
 }
 
+int
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
+{
+  const char *text = NULL;
+  const char *arg_value = NULL;
+  bool is_number = false;
+  ldv_list_ptr arg_value_list = NULL;
+  unsigned int number;
+  unsigned int i;
+  
+  if (!strcmp (pattern->name, "macro_name"))
+    text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
+  else if (!strcmp (pattern->name, "arg_val"))
+    {
+      for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
+      ; arg_value_list
+      ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
+      {
+        arg_value = (char *) ldv_list_get_data (arg_value_list);
+        
+        if (i == pattern->arg_numb)
+        {
+          text = arg_value;
+          break;
+        }
+      }
+      if (!text)
+        {
+          LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", pattern->arg_numb, (i - 1));
+        }
+    }
+  else if (!strcmp (pattern->name, "arg_numb"))
+    {
+      arg_value_list = ldv_i_match->i_macro->macro_param;
+      number = ldv_list_len (arg_value_list);
+      is_number = true;
+    }
+
+  if (text)
+    {
+      *string = text;
+      return 1;
+    }
+  else if (is_number)
+    {
+      *integer = number;
+      return 1;
+    }
+
+  return 0;
+}
+
 void
 ldv_cpp_weave (void)
 {
@@ -129,17 +183,15 @@ ldv_cpp_weave (void)
   ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
   const char *text = NULL;
-  ldv_list_ptr arg_value_list = NULL;
-  const char *arg_value = NULL;
-  unsigned int i;
+  unsigned int number;
 
   a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
   pp_kind = ldv_i_match->p_pointcut->pp_kind;
   body = ldv_i_match->a_definition->a_body;
 
-  /* Now here is supported just printing information on macro expansions.
+  /* Now here is supported just printing information on macro expansions or definitions.
    * Weaving macrodefinitions are implemented in ldv_cpp_define/undef. */
-  if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_EXPAND)
+  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_EXPAND || pp_kind == LDV_PP_DEFINE))
     {
       for (body_patterns = body->patterns
         ; body_patterns
@@ -174,30 +226,20 @@ ldv_cpp_weave (void)
                   /* We are interested here in parameters to be evaluated. */
                   if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
                     {
-                      if (!strcmp (param_cur->aspect_pattern->name, "arg_val"))
+                     /* Aspect patterns that can be evaluated on the basis of matching
+                        information and environment variable values. */
+                      if (ldv_cpp_evaluate_aspect_pattern (param_cur->aspect_pattern, &text, &number))
                         {
-                          for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
-                            ; arg_value_list
-                            ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
+                          if (text)
                             {
-                              arg_value = (char *) ldv_list_get_data (arg_value_list);
-
-                              if (i == param_cur->aspect_pattern->arg_numb)
-                              {
-                                text = arg_value;
-                                break;
-                              }
+                              param_cur->string = text;
+                              /* Forget about evaluated text since it is
+                                 used in condition above. */
+                              text = NULL;
                             }
-
-                          if (!text)
-                            {
-                              LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_cur->aspect_pattern->arg_numb, (i - 1));
-                            }
-
-                          param_cur->string = text;
+                          else
+                            param_cur->integer = number;
                         }
-                      else if (!strcmp (param_cur->aspect_pattern->name, "macro_name"))
-                        param_cur->string = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
                       else
                         {
                           LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);

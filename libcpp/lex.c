@@ -1817,6 +1817,13 @@ const cpp_token *
 _cpp_lex_token (cpp_reader *pfile)
 {
   cpp_token *result;
+  
+  /* LDV extension beginning. */
+
+  ldv_ak a_kind;
+  ldv_ppk pp_kind;
+
+  /* LDV extension end. */
 
   for (;;)
     {
@@ -1859,9 +1866,18 @@ _cpp_lex_token (cpp_reader *pfile)
                       /* Make undef of macro and define of aspected macro if macro was matched. */
                       if (ldv_i_match)
                         {
+                          a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
+                          pp_kind = ldv_i_match->p_pointcut->pp_kind;
+
+                          /* Weave macro definition if macro was matched. */
+                          if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_DEFINE)
+                            {
+                              ldv_cpp_weave();
+                            }
+
                           ldv_cpp_undef (pfile);
                           ldv_cpp_define (pfile);
-          
+
                           /* Matching is finished. */
                           ldv_i_match = NULL;
                         }
