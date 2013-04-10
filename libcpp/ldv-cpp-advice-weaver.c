@@ -183,9 +183,6 @@ ldv_cpp_weave (void)
   ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
   const char *text = NULL;
-  ldv_list_ptr arg_value_list = NULL;
-  const char *arg_value = NULL;
-  unsigned int i;
   unsigned int number;
 
   a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
