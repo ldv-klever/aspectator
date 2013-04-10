@@ -73,8 +73,6 @@ typedef struct YYLTYPE
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
 
-/* The named pointcuts list. */
-static ldv_list_ptr ldv_n_pointcut_list = NULL;
 /* Flag says whether it's parsed macro signature or not. */
 static bool ldv_ismacro = false;
 /* Flag says whether it's parsed declaration or not. */
