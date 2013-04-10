@@ -1215,6 +1215,13 @@ static bool c_parser_objc_diagnose_bad_element_prefix
 static void
 c_parser_translation_unit (c_parser *parser)
 {
+  /* LDV extension beginning. */
+
+  /* Print pointcut signatures for the diagnosis of syntactic interoperability. */
+  ldv_diagnostics ();
+
+  /* LDV extension end. */
+
   if (c_parser_next_token_is (parser, CPP_EOF))
     {
       pedwarn (c_parser_peek_token (parser)->location, OPT_pedantic,

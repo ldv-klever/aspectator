@@ -33,6 +33,7 @@ extern bool ldv_isweaved (const char *, bool);
 extern const char *ldv_print_func_decl (ldv_i_func_ptr);
 extern const char *ldv_print_func_signature (ldv_pps_decl_ptr);
 extern const char *ldv_print_macro_signature (ldv_pps_macro_ptr);
+extern void ldv_diagnostics (void);
 extern const char *ldv_print_type_decl (ldv_i_typedecl_ptr);
 extern const char *ldv_print_var_decl (ldv_i_var_ptr);
 extern void ldv_weave_advice (expanded_location *, expanded_location *);
