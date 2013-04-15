@@ -920,6 +920,11 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
   if (declspecs->isuniversal_type_spec)
     ldv_print_str ("$");
 
+  /*Print special declaration specifier for '..' wildcard that matches list of
+     parameters of any length. */
+  if (declspecs->isany_params)
+    ldv_print_str ("..");
+
   /* Print type specifiers according to gcc names. There may be just one of the
      following type specifiers combinations. */
   if (declspecs->ischar && declspecs->isunsigned)
@@ -1368,7 +1373,7 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
       i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
       i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
       pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
-      
+
       for (declarator_list = pps_declaration->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
         {
           declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
