@@ -37,6 +37,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-converter.h"
 #include "ldv-core.h"
 #include "ldv-cpp-advice-weaver.h"
+#include "ldv-cpp-converter.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
 #include "ldv-opts.h"
@@ -1312,13 +1313,14 @@ ldv_diag_recursive_primitive_pointcut(ldv_cp_ptr c_pointcut)
 void
 ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
 {
-  ldv_primitive_pointcut_signature_declspecs original_declspecs;
+  ldv_primitive_pointcut_signature_decl original_declaration;
   ldv_pps_declarator_ptr declarator = NULL;
   ldv_list_ptr declarator_list = NULL;
   ldv_pps_func_arg_ptr func_arg = NULL;
   ldv_list_ptr func_arg_list = NULL;
   ldv_pps_decl_ptr pps_declaration = NULL;
   ldv_pps_ptr pp_signature = NULL;
+  ldv_i_func_ptr i_func_sign = NULL;
   const char* format = NULL;
   const char* ldv_diag_text = NULL;
 
@@ -1334,12 +1336,18 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
 
-      original_declspecs = *pps_declaration->pps_declspecs;
-      pps_declaration->pps_declspecs = ldv_create_declspecs ();
-      pps_declaration->pps_declspecs->isuniversal_type_spec = 1;
+      original_declaration = *pps_declaration;
+      i_func_sign = ldv_convert_func_signature_to_internal (pps_declaration);
+      i_func_sign->type->ret_type->it_kind = LDV_IT_PRIMITIVE;
+      i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
+      i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
+      pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
+
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
-      *pps_declaration->pps_declspecs = original_declspecs;
+
+      *pps_declaration = original_declaration;
+
 
       for (declarator_list = pps_declaration->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
         {
@@ -1355,8 +1363,23 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
 
-      pps_declaration->pps_declspecs = ldv_create_declspecs();
-      pps_declaration->pps_declspecs->isuniversal_type_spec = 1;
+      i_func_sign = ldv_convert_func_signature_to_internal (pps_declaration);
+      i_func_sign->type->ret_type->it_kind = LDV_IT_PRIMITIVE;
+      i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
+      i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
+      pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
+      
+      for (declarator_list = pps_declaration->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
+        {
+          declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+          for (func_arg_list = declarator->func_arg_list; func_arg_list; func_arg_list = ldv_list_get_next (func_arg_list))
+            {
+              func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (func_arg_list);
+              func_arg->isany_params = 1;
+            }
+        }
+
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
     }
