@@ -32,6 +32,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_MATCHED_BY_NAME (stderr)
 
 static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
+static const char *ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro);
 
 
 void
@@ -128,8 +129,10 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
   ldv_list_ptr arg_value_list = NULL;
   unsigned int number;
   unsigned int i;
-  
-  if (!strcmp (pattern->name, "macro_name"))
+
+  if (!strcmp (pattern->name, "macro_signature"))
+    text = ldv_cpp_print_macro_signature(ldv_i_match->i_macro);
+  else if (!strcmp (pattern->name, "macro_name"))
     text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
   else if (!strcmp (pattern->name, "arg_val"))
     {
@@ -169,6 +172,35 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
     }
 
   return 0;
+}
+
+const char *
+ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro)
+{
+  ldv_list_ptr i_macro_param_list = NULL;
+  ldv_id_ptr i_macro_param = NULL;
+  ldv_str_ptr text = ldv_create_string ();
+
+  ldv_puts_string (ldv_cpp_get_id_name (i_macro->macro_name), text);
+
+  for (i_macro_param_list = i_macro->macro_param
+    ; i_macro_param_list
+    ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
+    {
+      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+
+      if (i_macro_param_list == i_macro->macro_param)
+        ldv_puts_string (" (", text);
+
+      ldv_puts_string (ldv_cpp_get_id_name (i_macro_param), text);
+
+      if (ldv_list_get_next (i_macro_param_list))
+        ldv_puts_string (", ", text);
+      else
+        ldv_puts_string (")", text);
+    }
+    
+  return ldv_get_str (text);
 }
 
 void
