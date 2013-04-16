@@ -130,7 +130,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
   unsigned int number;
   unsigned int i;
 
-  if (!strcmp (pattern->name, "macro_signature"))
+  if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
     text = ldv_cpp_print_macro_signature(ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "macro_name"))
     text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);

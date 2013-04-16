@@ -366,7 +366,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
           LDV_FATAL_ERROR ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
         }
     }
-  else if (!strcmp (pattern->name, "func_signature"))
+  else if ((!strcmp (pattern->name, "func_signature")) || (!strcmp (pattern->name, "signature")))
     {
       if (ldv_func_signature)
         text = ldv_print_func_decl(ldv_func_signature);
