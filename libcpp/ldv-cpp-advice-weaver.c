@@ -184,6 +184,7 @@ ldv_cpp_weave (void)
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
   const char *text = NULL;
   unsigned int number;
+  FILE *file_stream = NULL;
 
   a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
   pp_kind = ldv_i_match->p_pointcut->pp_kind;
@@ -247,7 +248,9 @@ ldv_cpp_weave (void)
                     }
                 }
 
-              ldv_print_query_result (ldv_open_aspect_pattern_param_file_stream (param1), ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
+              file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
+              ldv_print_query_result (file_stream, ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
+              ldv_close_file_stream (file_stream);
             }
         }
     }
