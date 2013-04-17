@@ -91,6 +91,7 @@ static void ldv_diag_composite_pointcut (ldv_cp_ptr);
 static void ldv_diag_primitive_pointcut (ldv_pp_ptr);
 static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr);
 static void ldv_diag_recursive_primitive_pointcut (ldv_cp_ptr);
+static int ldv_diag_type (ldv_cp_ptr, int);
 static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
 static const char *ldv_get_arg_name (unsigned int);
 static const char *ldv_get_arg_sign (unsigned int);
@@ -664,6 +665,39 @@ ldv_diag_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
     }
 }
 
+int
+ldv_diag_type (ldv_cp_ptr c_pointcut, int type)
+{
+  int t = type;
+  ldv_i_func_ptr i_func = NULL;
+  ldv_i_macro_ptr i_macro = NULL;
+
+  if (c_pointcut != NULL)
+    {
+      t = ldv_diag_type (c_pointcut->c_pointcut_first, t);
+
+      if ((c_pointcut->cp_kind != LDV_CP_PRIMITIVE) && (c_pointcut->cp_kind != LDV_CP_OR))
+        t = 2;
+
+      if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_signature->pps_kind == LDV_PPS_DECL))
+        {
+          i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+          if (strchr(ldv_get_id_name(i_func->name), '$'))
+            t = 2;
+        }
+      if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_signature->pps_kind == LDV_PPS_DEFINE))
+      {
+        i_macro = ldv_convert_macro_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_macro);
+        if (strchr(ldv_get_id_name(i_macro->macro_name), '$'))
+            t = 2;
+      }
+
+      t = ldv_diag_type (c_pointcut->c_pointcut_second, t);
+    }
+
+  return t;
+}
+
 void
 ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 {
@@ -992,10 +1026,18 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
 void
 ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut)
 {
+  int type = 0;
+
   if (c_pointcut->cp_kind != LDV_CP_PRIMITIVE)
     {
       fprintf (ldv_diag_file, "COMPOSITE\n");
 
+      /* Print type of the composite pointcut. */
+      type = ldv_diag_type (c_pointcut, 1);
+      /* 'Type 1' means that this is a composite pointcut composed entirely of '||', 
+       * without pattern '$' in the names of primitive pointcuts.
+       * Any other composed pointcut - 'type 2'. */
+      fprintf (ldv_diag_file, "type %d\n", type);
       /* Recursive print components of the composite pointcut. */
       ldv_text_printed = ldv_create_text ();
       ldv_padding_cur = LDV_PADDING_NONE;
@@ -1006,7 +1048,11 @@ ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut)
     }
 
   if (c_pointcut->cp_kind == LDV_CP_PRIMITIVE)
-    ldv_diag_primitive_pointcut (c_pointcut->p_pointcut);
+    {
+      /* 'Type 0' means that this is a primitive pointcut (NOT part of the composite pointcut). */
+      fprintf (ldv_diag_file, "type %d\n", type);
+      ldv_diag_primitive_pointcut (c_pointcut->p_pointcut);
+    }
 }
 
 void
