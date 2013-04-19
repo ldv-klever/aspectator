@@ -185,8 +185,8 @@ ldv_handle_options (void)
         }
       else
         {
-          ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
-          ldv_print_info (LDV_INFO_IO, "calculate argument signature as simple identifier");
+          ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
+          ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"complex identifiers\"");
         }
 
       /* Use output file name specified by means of environment variable instead
