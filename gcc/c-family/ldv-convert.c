@@ -4354,7 +4354,11 @@ static ldv_selection_statement_ptr
 ldv_convert_selection_statement (tree t)
 {
   ldv_selection_statement_ptr selection_statement;
-  tree cond_expr, then_statement, else_statement;
+  ldv_statement_ptr then_statement = NULL, then_statement_aux;
+  ldv_compound_statement_ptr compound_statement;
+  ldv_block_item_list_ptr block_item_list;
+  ldv_block_item_ptr block_item;
+  tree cond_expr, then_statement_tree, else_statement;
   tree switch_statement;
 
   selection_statement = XCNEW (struct ldv_selection_statement);
@@ -4367,8 +4371,8 @@ ldv_convert_selection_statement (tree t)
       else
         LDV_WARN ("can't find conditional expression");
 
-      if ((then_statement = COND_EXPR_THEN (t)))
-        LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = ldv_convert_statement (then_statement);
+      if ((then_statement_tree = COND_EXPR_THEN (t)))
+        LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = then_statement = ldv_convert_statement (then_statement_tree);
       else
         LDV_WARN ("can't find then statement");
 
@@ -4376,6 +4380,32 @@ ldv_convert_selection_statement (tree t)
         {
           LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN_ELSE;
           LDV_SELECTION_STATEMENT_STATEMENT2 (selection_statement) = ldv_convert_statement (else_statement);
+
+          /* We need to pay attention to so called dangling else (#3707).
+             This becomes a problem when a first statement of a processed
+             selection statement isn't a compound statement (that is enclosed in
+             braces) and there is else and a second statement. This looks like
+             gcc optimisation that works well with internal representation but
+             leads to mistakes during source code printing. So use "artificial"
+             compound statement instead of the first statement for this case. */
+          if (then_statement && LDV_STATEMENT_KIND (then_statement) != LDV_COMPOUND_STATEMENT)
+            {
+              then_statement_aux = XCNEW (struct ldv_statement);
+              LDV_STATEMENT_KIND (then_statement_aux) = LDV_COMPOUND_STATEMENT;
+
+              compound_statement = XCNEW (struct ldv_compound_statement);
+              LDV_STATEMENT_COMPOUND_STATEMENT (then_statement_aux) = compound_statement;
+
+              block_item_list = XCNEW (struct ldv_block_item_list);
+              LDV_COMPOUND_STATEMENT_BLOCK_ITEM_LIST (compound_statement) = block_item_list;
+
+              block_item = XCNEW (struct ldv_block_item);
+              LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) = block_item;
+              LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_SECOND;
+              LDV_BLOCK_ITEM_STATEMENT (block_item) = then_statement;
+
+              LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = then_statement_aux;
+            }
         }
       else
         LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_IF_THEN;
