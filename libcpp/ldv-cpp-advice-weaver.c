@@ -183,23 +183,24 @@ ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro)
 
   ldv_puts_string (ldv_cpp_get_id_name (i_macro->macro_name), text);
 
+  if (i_macro->macro_kind == LDV_PPS_MACRO_FUNC)
+    ldv_puts_string (" (", text);
+
   for (i_macro_param_list = i_macro->macro_param
     ; i_macro_param_list
     ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
     {
       i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
 
-      if (i_macro_param_list == i_macro->macro_param)
-        ldv_puts_string (" (", text);
-
       ldv_puts_string (ldv_cpp_get_id_name (i_macro_param), text);
 
       if (ldv_list_get_next (i_macro_param_list))
         ldv_puts_string (", ", text);
-      else
-        ldv_puts_string (")", text);
     }
-    
+
+  if (i_macro->macro_kind == LDV_PPS_MACRO_FUNC)
+    ldv_puts_string (")", text);
+
   return ldv_get_str (text);
 }
 
