@@ -1036,7 +1036,7 @@ ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut)
       type = ldv_diag_type (c_pointcut, 1);
       /* 'Type 1' means that this is a composite pointcut composed entirely of '||', 
        * without pattern '$' in the names of primitive pointcuts.
-       * Any other composed pointcut - 'type 2'. */
+       * Any other composite pointcut - 'type 2'. */
       fprintf (ldv_diag_file, "type %d\n", type);
       /* Recursive print components of the composite pointcut. */
       ldv_text_printed = ldv_create_text ();
@@ -1228,6 +1228,8 @@ ldv_print_macro_signature (ldv_pps_macro_ptr m_decl)
 
   if (m_decl->macro_param_list)
     ldv_print_macro_param (m_decl->macro_param_list);
+  else if (m_decl->pps_macro_kind == LDV_PPS_MACRO_FUNC)
+    ldv_print_str_without_padding ("()");
 
   return ldv_get_text (ldv_text_printed);
 }
