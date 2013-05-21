@@ -318,6 +318,8 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                       ldv_list_push_back (&initializer->pointed_func_arg_type_decls, xstrdup (ldv_print_var_decl (artificial_param_decl)));
                     }
                 }
+              else
+                initializer->type = "pointer to pointer";
             }
           else if (artificial_decl->type->it_kind == LDV_IT_ARRAY)
             initializer->type = "array";
