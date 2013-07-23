@@ -66,6 +66,7 @@ typedef struct ldv_var_array_internal
 {
   unsigned int uid;
   unsigned int array_size;
+  bool isany_size;
   bool issize_specified;
 } ldv_var_array;
 typedef ldv_var_array *ldv_var_array_ptr;
@@ -1046,6 +1047,11 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
     }
   else
     var->func_context = NULL;
+
+  /* Convert variable declaration initializer to internal representation.
+     Do this just for structure variables. */
+  if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
+    var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

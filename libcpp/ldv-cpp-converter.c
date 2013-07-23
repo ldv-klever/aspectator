@@ -109,6 +109,7 @@ ldv_convert_declspecs_declarator_to_internal (ldv_pps_declspecs_ptr declspecs, l
       type->it_kind = LDV_IT_ARRAY;
 
       type->issize_specified = declarator_cur->pps_array_size->issize_specified;
+      type->isany_size =  declarator_cur->pps_array_size->isany_size;
 
       if (declarator_cur->pps_array_size->issize_specified)
         type->array_size = declarator_cur->pps_array_size->pps_array_size;

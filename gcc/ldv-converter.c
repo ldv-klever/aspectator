@@ -29,10 +29,13 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "diagnostic-core.h"
 #include "tree.h"
 
+#include "ldv-advice-weaver.h"
 #include "ldv-aspect-types.h"
 #include "ldv-converter.h"
 #include "ldv-core.h"
 #include "ldv-pointcut-matcher.h"
+
+#include "c-family/ldv-pretty-print.h"
 
 
 ldv_pps_decl_ptr
@@ -125,6 +128,7 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
 
       /* Convert an array size. */
       declarator->pps_array_size->issize_specified = type->issize_specified;
+      declarator->pps_array_size->isany_size = type->isany_size;
 
       if (type->issize_specified)
         declarator->pps_array_size->pps_array_size = type->array_size;
@@ -225,6 +229,121 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
     default:
       LDV_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
+}
+
+ldv_list_ptr
+ldv_convert_initializer_to_internal (tree initializer_tree)
+{
+  ldv_list_ptr initializer_list = NULL;
+  ldv_i_initializer_ptr initializer = NULL;
+  ldv_i_var_ptr artificial_decl = NULL, artificial_ret_type_decl = NULL, artificial_param_decl = NULL;
+  unsigned HOST_WIDE_INT ix;
+  tree index, value;
+  ldv_list_ptr params = NULL;
+  ldv_i_param_ptr param = NULL;
+
+  /* Do nothing if there is no tree node implementing initializer. */
+  if (!initializer_tree)
+    return NULL;
+
+  if (TREE_CODE (initializer_tree) == CONSTRUCTOR)
+    {
+      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (initializer_tree), ix, index, value)
+        {
+          initializer = ldv_create_info_initializer ();
+
+          if (TREE_CODE (index) == FIELD_DECL)
+            {
+              initializer->field_name = DECL_NAME (index)
+                ? (const char *) (IDENTIFIER_POINTER (DECL_NAME (index)))
+                : "";
+            }
+          else if (TREE_CODE (index) == INTEGER_CST)
+            {
+              initializer->isarray_index = true;
+              initializer->array_index = TREE_INT_CST_LOW (index);
+            }
+          else
+            {
+              LDV_FATAL_ERROR ("can't find neiter initialized structure field nor array element");
+            }
+
+          /* Create artificial declaration corresponding to structure field or
+             array element. */
+          artificial_decl = ldv_create_info_var ();
+          artificial_decl->name = ldv_create_id ();
+          ldv_puts_id ("%s", artificial_decl->name);
+          artificial_decl->type = TREE_CODE (index) == FIELD_DECL
+            ? ldv_convert_type_tree_to_internal (TREE_TYPE (index), NULL)
+            : ldv_convert_type_tree_to_internal (TREE_TYPE (TREE_TYPE (initializer_tree)), NULL);
+          initializer->decl = ldv_print_var_decl (artificial_decl);
+
+          if (artificial_decl->type->it_kind == LDV_IT_PRIMITIVE)
+            {
+              if (artificial_decl->type->primitive_type->isstruct)
+                initializer->type = "structure";
+              else
+                initializer->type = "primitive";
+            }
+          else if (artificial_decl->type->it_kind == LDV_IT_PTR)
+            {
+              if (artificial_decl->type->ptr_type->it_kind == LDV_IT_PRIMITIVE)
+                {
+                  if (artificial_decl->type->ptr_type->primitive_type->isstruct)
+                    initializer->type = "pointer to structure variable";
+                  else
+                    initializer->type = "primitive pointer";
+                }
+              else if (artificial_decl->type->ptr_type->it_kind == LDV_IT_FUNC)
+                {
+                  initializer->type = "function pointer";
+
+                  /* Store information on pointed function return type and argument types. */
+                  artificial_ret_type_decl = ldv_create_info_var ();
+                  artificial_ret_type_decl->name = ldv_create_id ();
+                  ldv_puts_id ("%s", artificial_ret_type_decl->name);
+                  artificial_ret_type_decl->type = artificial_decl->type->ptr_type->ret_type;
+                  initializer->pointed_func_ret_type_decl = ldv_print_var_decl (artificial_ret_type_decl);
+
+                  for (params = artificial_decl->type->ptr_type->param
+                    ; params
+                    ; params = ldv_list_get_next (params))
+                    {
+                      param = (ldv_i_param_ptr) ldv_list_get_data (params);
+
+                      artificial_param_decl = ldv_create_info_var ();
+                      artificial_param_decl->name = ldv_create_id ();
+                      ldv_puts_id ("%s", artificial_param_decl->name);
+                      artificial_param_decl->type = param->type;
+                      ldv_list_push_back (&initializer->pointed_func_arg_type_decls, xstrdup (ldv_print_var_decl (artificial_param_decl)));
+                    }
+                }
+              else
+                initializer->type = "pointer to pointer";
+            }
+          else if (artificial_decl->type->it_kind == LDV_IT_ARRAY)
+            initializer->type = "array";
+          else
+            {
+              LDV_FATAL_ERROR ("can't process type");
+            }
+
+          if (TREE_CODE (value) == CONSTRUCTOR)
+            initializer->initializer = ldv_convert_initializer_to_internal (value);
+          else
+            initializer->value = ldv_convert_and_print_assignment_expr (value);
+
+          ldv_list_push_back (&initializer_list, initializer);
+        }
+    }
+  else
+    {
+      initializer = ldv_create_info_initializer ();
+      initializer->value = ldv_convert_and_print_assignment_expr (initializer_tree);
+      ldv_list_push_back (&initializer_list, initializer);
+    }
+
+  return initializer_list;
 }
 
 ldv_i_type_ptr

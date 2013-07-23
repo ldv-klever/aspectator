@@ -48,6 +48,7 @@ extern char *ldv_copy_str (const char *);
 
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);
 extern ldv_i_func_ptr ldv_create_info_func (void);
+extern ldv_i_initializer_ptr ldv_create_info_initializer (void);
 extern ldv_i_macro_ptr ldv_create_info_macro (void);
 extern ldv_i_match_ptr ldv_create_info_match (void);
 extern ldv_i_param_ptr ldv_create_info_param (void);
@@ -72,6 +73,7 @@ extern bool ldv_isvoid (ldv_i_type_ptr );
 extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr, bool);
 
 extern FILE *ldv_open_file_stream (const char *, const char *);
+extern void ldv_close_file_stream (FILE *);
 
 extern void ldv_putc_id (unsigned char, ldv_id_ptr);
 extern void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);

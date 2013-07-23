@@ -157,16 +157,17 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
           break;
 
-        case LDV_PP_GET:
         case LDV_PP_GET_GLOBAL:
         case LDV_PP_GET_LOCAL:
-        case LDV_PP_SET:
+        case LDV_PP_INIT_GLOBAL:
+        case LDV_PP_INIT_LOCAL:
         case LDV_PP_SET_GLOBAL:
         case LDV_PP_SET_LOCAL:
           if (i_kind == LDV_I_VAR
-            /* Pure 'set' and 'get' aren't specified in matching structure, but 'set = set_local | set_global', 'get = get_local | get_local'. */
+            /* * = *_local || *_local, where "*" is "get", "init" or "set". */
             && (i_match->pp_kind == pp_kind
             || ((i_match->pp_kind == LDV_PP_GET_GLOBAL || i_match->pp_kind == LDV_PP_GET_LOCAL) && pp_kind == LDV_PP_GET)
+            || ((i_match->pp_kind == LDV_PP_INIT_GLOBAL || i_match->pp_kind == LDV_PP_INIT_LOCAL) && pp_kind == LDV_PP_INIT)
             || ((i_match->pp_kind == LDV_PP_SET_GLOBAL || i_match->pp_kind == LDV_PP_SET_LOCAL) && pp_kind == LDV_PP_SET))
             && ldv_match_var_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
             {
@@ -563,8 +564,19 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   ldv_list_ptr matching_table_coord_list_cur = NULL;
 
   /* Separately matches universal type specifier with nonprimitive source type.
-     At this point they are matched unconditionally. */
-  if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR) && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec)
+     At this point they are matched unconditionally. Note that universal type
+     specifier doesn't match pointer or array if standard type specifier is
+     specified togther with it. */
+  if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR)
+    && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec
+    && !second->primitive_type->isvoid && !second->primitive_type->ischar
+    && !second->primitive_type->isint && !second->primitive_type->isfloat
+    && !second->primitive_type->isdouble && !second->primitive_type->isbool
+    && !second->primitive_type->iscomplex && !second->primitive_type->isshort
+    && !second->primitive_type->islong && !second->primitive_type->islonglong
+    && !second->primitive_type->issigned && !second->primitive_type->isunsigned
+    && !second->primitive_type->isstruct && !second->primitive_type->isunion
+    && !second->primitive_type->isenum && !second->primitive_type->istypedef_name)
     {
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
@@ -581,8 +593,12 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   switch (first->it_kind)
     {
     case LDV_IT_ARRAY:
-      /* Compare arrays sizes. */
-      if (first->array_size != second->array_size)
+      /* Compare array sizes. */
+      if (second->isany_size)
+        second->array_size = first->array_size;
+      else if ((first->issize_specified && !second->issize_specified)
+        || (!first->issize_specified && second->issize_specified)
+        || first->array_size != second->array_size)
         return false;
 
       /* Compare arrays elements types. */

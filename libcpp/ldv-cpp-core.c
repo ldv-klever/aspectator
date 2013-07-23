@@ -371,6 +371,16 @@ ldv_create_info_func (void)
   return i_func;
 }
 
+ldv_i_initializer_ptr
+ldv_create_info_initializer (void)
+{
+  ldv_i_initializer_ptr i_initializer = NULL;
+
+  i_initializer = XCNEW (ldv_info_initializer);
+
+  return i_initializer;
+}
+
 ldv_i_macro_ptr
 ldv_create_info_macro (void)
 {
@@ -601,6 +611,15 @@ ldv_open_file_stream (const char *file_name, const char *mode)
   /* TODO #371 ldv_print_info (LDV_INFO_IO, "file \"%s\" was successfully opened in mode \"%s\"", file_name, mode); */
 
   return file_stream;
+}
+
+void
+ldv_close_file_stream (FILE *file_stream)
+{
+  if (fclose (file_stream))
+  {
+    LDV_CPP_FATAL_ERROR ("can't close file stream");
+  }
 }
 
 void

@@ -181,6 +181,7 @@ typedef struct ldv_primitive_pointcut_signature_array_size_internal
 {
   int pps_array_size;
   bool issize_specified;
+  bool isany_size;
 } ldv_primitive_pointcut_signature_array_size;
 typedef ldv_primitive_pointcut_signature_array_size *ldv_pps_array_size_ptr;
 
@@ -249,12 +250,15 @@ typedef ldv_primitive_pointcut_signature *ldv_pps_ptr;
    LDV_PPS_DECL - LDV_PP_GET_LOCAL
    LDV_PPS_DECL - LDV_PP_INCALL
    LDV_PPS_DECL - LDV_PP_INFUNC
+   LDV_PPS_DECL - LDV_PP_INIT
+   LDV_PPS_DECL - LDV_PP_INIT_GLOBAL
+   LDV_PPS_DECL - LDV_PP_INIT_LOCAL
    LDV_PPS_DECL - LDV_PP_INTRODUCE
    LDV_PPS_DECL - LDV_PP_SET
    LDV_PPS_DECL - LDV_PP_SET_GLOBAL
    LDV_PPS_DECL - LDV_PP_SET_LOCAL
    Matching depends on a primitive pointcut kind. */
-typedef enum { LDV_PP_CALL, LDV_PP_DEFINE, LDV_PP_EXECUTION, LDV_PP_EXPAND, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
+typedef enum { LDV_PP_CALL, LDV_PP_DEFINE, LDV_PP_EXECUTION, LDV_PP_EXPAND, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INIT, LDV_PP_INIT_GLOBAL, LDV_PP_INIT_LOCAL, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
 typedef struct ldv_primitive_pointcut_internal
 {
   ldv_ppk pp_kind;
@@ -362,6 +366,7 @@ typedef struct ldv_info_type_internal
   struct ldv_info_type_internal *array_type;
   int array_size;
   bool issize_specified;
+  bool isany_size;
 
   /* Pointed type. */
   struct ldv_info_type_internal *ptr_type;
@@ -438,6 +443,21 @@ typedef struct ldv_info_typedecl_internal
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
+/* Initializer information. */
+typedef struct ldv_info_initializer_internal
+{
+  const char *field_name;
+  bool isarray_index;
+  unsigned int array_index;
+  const char *type;
+  const char *decl;
+  const char *pointed_func_ret_type_decl;
+  ldv_list_ptr pointed_func_arg_type_decls;
+  const char *value;
+  ldv_list_ptr initializer;
+} ldv_info_initializer;
+typedef ldv_info_initializer *ldv_i_initializer_ptr;
+
 struct ldv_info_match_internal;
 /* Variable declaration information = variable name + variable type. */
 typedef struct ldv_info_var_internal
@@ -446,6 +466,7 @@ typedef struct ldv_info_var_internal
   ldv_i_type_ptr type;
   const char *file_path;
   struct ldv_info_match_internal *func_context;
+  ldv_list_ptr initializer_list;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 
