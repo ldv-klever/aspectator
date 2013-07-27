@@ -48,7 +48,10 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pointcut-matcher.h"
 
 
-#define LDV_ARRAY_SIZE(t) (TREE_CODE (TREE_TYPE (t)) == ARRAY_TYPE ? TYPE_DOMAIN (TREE_TYPE (t)) ? TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (t))) : NULL : NULL)
+/* This macrofunction checks whether a passed parameter is array that has a
+   fixed known size that is represented as an integer constant. In this case
+   it returns a tree node holding that size. In all other cases it returns 0. */
+#define LDV_ARRAY_SIZE(t) (TREE_CODE (TREE_TYPE (t)) == ARRAY_TYPE ? TYPE_DOMAIN (TREE_TYPE (t)) ? TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (t))) ? TREE_CODE (TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (t)))) == INTEGER_CST ? TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (t))) : NULL : NULL : NULL : NULL)
 
 #define LDV_OFFSET_NEXT(offset) (offset + 2)
 
