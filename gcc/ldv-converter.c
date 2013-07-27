@@ -452,7 +452,8 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
               if (TREE_CODE (TYPE_NAME (type_tree)) == IDENTIFIER_NODE)
                 type_name = IDENTIFIER_POINTER (TYPE_NAME (type_tree));
               /* In this case we deal with a typedef on some type. */
-              else if (TREE_CODE (TYPE_NAME (type_tree)) == TYPE_DECL)
+              else if (TREE_CODE (TYPE_NAME (type_tree)) == TYPE_DECL
+                && DECL_NAME (TYPE_NAME (type_tree)))
                 {
                   /* To specify that a typedef name is used. */
                   code = ERROR_MARK;
@@ -460,6 +461,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
                   /* Get a typedef name. */
                   type_name = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type_tree)));
                 }
+              /* In this case a type has not a name. */
               else
                 type_name = "";
             }
