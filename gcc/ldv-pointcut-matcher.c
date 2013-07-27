@@ -167,7 +167,13 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
   /* Argument signature equals to type name passed. */
   else if (t && (TREE_CODE (t) == RECORD_TYPE || TREE_CODE (t) == UNION_TYPE)
     && TYPE_NAME (t))
-    arg_sign = IDENTIFIER_POINTER (TYPE_NAME (t));
+    {
+      if (TREE_CODE (TYPE_NAME (t)) == IDENTIFIER_NODE)
+        arg_sign = IDENTIFIER_POINTER (TYPE_NAME (t));
+      /* There may be anonymous structures and unions. */
+      else
+        arg_sign = "";
+    }
   /* Argument signature equals to field name possibly complemented with a number
    * of names of structures containing it. */
   else if (t && TREE_CODE (t) == COMPONENT_REF)
