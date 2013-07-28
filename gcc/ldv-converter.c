@@ -600,7 +600,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
       break;
 
     default:
-      type = NULL;
+      LDV_FATAL_ERROR ("tree node type '%s' isn't supported", tree_code_name[(int) TREE_CODE (type_tree)]);
       break;
     }
 
