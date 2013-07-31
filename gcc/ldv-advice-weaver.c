@@ -75,10 +75,8 @@ static bool ldv_isstatic_specifier_needed = true;
 static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
 static ldv_padding ldv_padding_cur = LDV_PADDING_NONE;
-static const char* ldv_diag_env = NULL;
 static ldv_text_ptr ldv_text_printed = NULL;
 static ldv_i_func_ptr ldv_func_signature = NULL;
-static FILE *ldv_diag_file;
 
 
 static void ldv_add_id_declarator (ldv_pps_decl_ptr, const char *);
@@ -87,10 +85,11 @@ static void ldv_create_aux_func_params (ldv_i_type_ptr, ldv_i_type_ptr);
 static const char *ldv_create_aux_func_param (unsigned int);
 static ldv_decl_for_print_ptr ldv_create_decl_for_print (void);
 static void ldv_delete_id_declarator (ldv_list_ptr);
-static void ldv_diag_composite_pointcut (ldv_cp_ptr);
-static void ldv_diag_primitive_pointcut (ldv_pp_ptr);
-static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr);
-static void ldv_diag_recursive_primitive_pointcut (ldv_cp_ptr);
+static void ldv_diag_composite_pointcut (ldv_cp_ptr, FILE *);
+static void ldv_diag_primitive_pointcut (ldv_pp_ptr, FILE *);
+static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr, FILE *);
+static void ldv_diag_recursive_primitive_pointcut (ldv_cp_ptr, FILE *);
+static ldv_pps_decl_ptr ldv_diag_replace_return_type (ldv_pps_decl_ptr);
 static int ldv_diag_type (ldv_cp_ptr, int);
 static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
 static const char *ldv_get_arg_name (unsigned int);
@@ -619,14 +618,17 @@ ldv_print_c (unsigned int c)
 }
 
 void
-ldv_diag_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
+ldv_diag_recursive_composite_pointcut (ldv_cp_ptr c_pointcut, FILE *ldv_diag_file)
 {
   if (c_pointcut != NULL)
     {
       if (c_pointcut->cp_kind != LDV_CP_PRIMITIVE)
         ldv_print_str_without_padding ("(");
 
-      ldv_diag_recursive_composite_pointcut (c_pointcut->c_pointcut_first);
+      if (c_pointcut->cp_kind == LDV_CP_NOT)
+        ldv_print_str_without_padding ("!");
+
+      ldv_diag_recursive_composite_pointcut (c_pointcut->c_pointcut_first, ldv_diag_file);
 
       if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_signature->pps_kind == LDV_PPS_DECL))
         {
@@ -645,7 +647,7 @@ ldv_diag_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
               ldv_print_str_without_padding (")");
             }
         }
-      if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_signature->pps_kind == LDV_PPS_DEFINE))
+      else if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_signature->pps_kind == LDV_PPS_DEFINE))
         {
           ldv_print_str_without_padding ("define(");
 
@@ -655,10 +657,12 @@ ldv_diag_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
 
           ldv_print_str_without_padding (")");
         }
-      if (c_pointcut->cp_kind == LDV_CP_OR)
+      else if (c_pointcut->cp_kind == LDV_CP_OR)
         ldv_print_str_without_padding (" || ");
+      else if (c_pointcut->cp_kind == LDV_CP_AND)
+        ldv_print_str_without_padding (" && ");
 
-      ldv_diag_recursive_composite_pointcut (c_pointcut->c_pointcut_second);
+      ldv_diag_recursive_composite_pointcut (c_pointcut->c_pointcut_second, ldv_diag_file);
 
       if (c_pointcut->cp_kind != LDV_CP_PRIMITIVE)
         ldv_print_str_without_padding (")");
@@ -954,7 +958,7 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
   if (declspecs->isuniversal_type_spec)
     ldv_print_str ("$");
 
-  /*Print special declaration specifier for '..' wildcard that matches list of
+  /* Print special declaration specifier for '..' wildcard that matches list of
      parameters of any length. */
   if (declspecs->isany_params)
     ldv_print_str ("..");
@@ -1024,7 +1028,7 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
 }
 
 void
-ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut)
+ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut, FILE *ldv_diag_file)
 {
   int type = 0;
 
@@ -1041,17 +1045,17 @@ ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut)
       /* Recursive print components of the composite pointcut. */
       ldv_text_printed = ldv_create_text ();
       ldv_padding_cur = LDV_PADDING_NONE;
-      ldv_diag_recursive_composite_pointcut (c_pointcut);
+      ldv_diag_recursive_composite_pointcut (c_pointcut, ldv_diag_file);
       fprintf (ldv_diag_file, "%s\n", ldv_get_text (ldv_text_printed));
       /* Print signatures of each primitive pointcut. */
-      ldv_diag_recursive_primitive_pointcut (c_pointcut);
+      ldv_diag_recursive_primitive_pointcut (c_pointcut, ldv_diag_file);
     }
 
   if (c_pointcut->cp_kind == LDV_CP_PRIMITIVE)
     {
       /* 'Type 0' means that this is a primitive pointcut (NOT part of the composite pointcut). */
       fprintf (ldv_diag_file, "type %d\n", type);
-      ldv_diag_primitive_pointcut (c_pointcut->p_pointcut);
+      ldv_diag_primitive_pointcut (c_pointcut->p_pointcut, ldv_diag_file);
     }
 }
 
@@ -1350,21 +1354,21 @@ ldv_print_separator (unsigned int c)
 }
 
 void
-ldv_diag_recursive_primitive_pointcut(ldv_cp_ptr c_pointcut)
+ldv_diag_recursive_primitive_pointcut(ldv_cp_ptr c_pointcut, FILE *ldv_diag_file)
 {
   if (c_pointcut != NULL)
   {
-    ldv_diag_recursive_primitive_pointcut (c_pointcut->c_pointcut_first);
+    ldv_diag_recursive_primitive_pointcut (c_pointcut->c_pointcut_first, ldv_diag_file);
 
     if (c_pointcut->cp_kind == LDV_CP_PRIMITIVE)
-      ldv_diag_primitive_pointcut (c_pointcut->p_pointcut);
+      ldv_diag_primitive_pointcut (c_pointcut->p_pointcut, ldv_diag_file);
 
-    ldv_diag_recursive_primitive_pointcut (c_pointcut->c_pointcut_second);
+    ldv_diag_recursive_primitive_pointcut (c_pointcut->c_pointcut_second, ldv_diag_file);
   }
 }
 
 void
-ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
+ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut, FILE *ldv_diag_file)
 {
   ldv_primitive_pointcut_signature_decl original_declaration;
   ldv_pps_declarator_ptr declarator = NULL;
@@ -1390,15 +1394,10 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
 
       original_declaration = *pps_declaration;
-      i_func_sign = ldv_convert_func_signature_to_internal (pps_declaration);
-      i_func_sign->type->ret_type->it_kind = LDV_IT_PRIMITIVE;
-      i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
-      i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
-      pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
 
+      pps_declaration = ldv_diag_replace_return_type (pps_declaration);
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
-
       *pps_declaration = original_declaration;
 
 
@@ -1416,11 +1415,7 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
 
-      i_func_sign = ldv_convert_func_signature_to_internal (pps_declaration);
-      i_func_sign->type->ret_type->it_kind = LDV_IT_PRIMITIVE;
-      i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
-      i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
-      pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
+      pps_declaration = ldv_diag_replace_return_type (pps_declaration);
 
       for (declarator_list = pps_declaration->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
         {
@@ -1435,6 +1430,8 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
 
       ldv_diag_text = ldv_print_func_signature (pps_declaration);
       fprintf (ldv_diag_file, format, ldv_diag_text, ldv_diag_text);
+
+      *pps_declaration = original_declaration;
     }
   else if (pp_signature->pps_kind == LDV_PPS_DEFINE)
     {
@@ -1443,30 +1440,42 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut)
     }
 }
 
+ldv_pps_decl_ptr
+ldv_diag_replace_return_type (ldv_pps_decl_ptr pps_declaration)
+{
+  ldv_i_func_ptr i_func_sign = ldv_convert_func_signature_to_internal (pps_declaration);
+  i_func_sign->type->ret_type->it_kind = LDV_IT_PRIMITIVE;
+  i_func_sign->type->ret_type->primitive_type = ldv_create_declspecs ();
+  i_func_sign->type->ret_type->primitive_type->isuniversal_type_spec = 1;
+  pps_declaration = ldv_convert_internal_to_declaration (i_func_sign->type, ldv_get_id_name(i_func_sign->name));
+  return pps_declaration;
+}
+
 void
 ldv_diagnostics (void)
 {
   ldv_list_ptr n_pointcut_list = NULL;
   ldv_np_ptr n_pointcut = NULL;
 
-  ldv_diag_env = getenv ("LDV_DIAGNOSTICS");
+  const char* ldv_diag_env = getenv ("LDV_DIAGNOSTICS");
+  FILE *ldv_diag_file;
 
   if (ldv_diag_env)
   {
+    if((ldv_diag_file = fopen (ldv_diag_env, "a")) == NULL)
+      {
+        LDV_FATAL_ERROR ("Failed to open file %s", ldv_diag_env);
+      }
+
     for (n_pointcut_list = ldv_n_pointcut_list; n_pointcut_list ; n_pointcut_list = ldv_list_get_next (n_pointcut_list))
     {
       n_pointcut = (ldv_np_ptr) ldv_list_get_data (n_pointcut_list);
 
-      if((ldv_diag_file = fopen (ldv_diag_env, "a")) == NULL)
-        {
-          LDV_FATAL_ERROR ("Failed to open file %s", ldv_diag_env);
-        }
-
       fprintf (ldv_diag_file, "pointcut %s\n", n_pointcut->p_name);
-      ldv_diag_composite_pointcut (n_pointcut->c_pointcut);
-
-      fclose (ldv_diag_file);
+      ldv_diag_composite_pointcut (n_pointcut->c_pointcut, ldv_diag_file);
     }
+
+    fclose (ldv_diag_file);
   }
 }
 
