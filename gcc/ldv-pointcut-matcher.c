@@ -888,6 +888,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 {
   tree body = NULL_TREE;
 
+  /* Save current function context. */
   func_context = i_func;
 
   /* Obtain a function body. */
