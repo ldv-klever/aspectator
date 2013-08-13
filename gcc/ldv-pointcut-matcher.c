@@ -83,6 +83,7 @@ static ldv_list_ptr ldv_var_array_list;
 static tree cur_var;
 static bool isfunc_vars;
 
+static ldv_i_func_ptr func_context;
 
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
@@ -785,7 +786,7 @@ ldv_match_expr (tree t)
     }
 }
 
-void
+ldv_i_func_ptr
 ldv_match_func (tree t, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
@@ -798,7 +799,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   if (ldv_adef_list == NULL)
     {
       ldv_i_match = NULL;
-      return;
+      return func;
     }
 
   match = ldv_create_info_match ();
@@ -835,6 +836,9 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
 
   func->file_path = DECL_SOURCE_FILE (t);
 
+  if (pp_kind == LDV_PP_CALL)
+    func->func_context = func_context;
+
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
@@ -852,7 +856,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
 
           ldv_func_decl_matched = t;
 
-          return;
+          return func;
         }
       /* Print signatures of matched by name but not by other signature
          functions if it's needed. */
@@ -876,13 +880,15 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   /* Nothing was matched. */
   ldv_i_match = NULL;
 
-  return;
+  return func;
 }
 
 void
-ldv_match_func_body (tree fndecl)
+ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 {
   tree body = NULL_TREE;
+
+  func_context = i_func;
 
   /* Obtain a function body. */
   body = DECL_SAVED_TREE (fndecl);
@@ -898,6 +904,8 @@ ldv_match_func_body (tree fndecl)
 
   /* Visualize a body after matching and weaving. */
   ldv_visualize_body (fndecl);
+  
+  func_context = NULL;
 }
 
 void

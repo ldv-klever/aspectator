@@ -30,6 +30,7 @@ extern expanded_location ldv_decl_beginning_location;
 
 
 extern bool ldv_isweaved (const char *, bool);
+extern const char *ldv_print_func_context (ldv_i_func_ptr);
 extern const char *ldv_print_func_decl (ldv_i_func_ptr);
 extern const char *ldv_print_func_path (ldv_i_func_ptr);
 extern const char *ldv_print_func_signature (ldv_pps_decl_ptr);
