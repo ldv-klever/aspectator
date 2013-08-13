@@ -236,6 +236,7 @@ ldv_match_expr (tree t)
   tree array_size_tree = NULL_TREE;
   call_expr_arg_iterator iter;
   tree arg = NULL_TREE;
+  bool global_var_init = false;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -264,13 +265,16 @@ ldv_match_expr (tree t)
               cur_var = t;
 
             /* Consider initialization just in global scope and through function
-               variables. */
-            if (DECL_FILE_SCOPE_P (cur_var) || isfunc_vars)
+               variables. Prevent considering global variables initialization in
+               function context (#4397). Indeed their initialization isn't
+               treated at all from now. */
+            global_var_init = DECL_FILE_SCOPE_P (cur_var) && !func_context;
+            if (global_var_init || isfunc_vars)
               {
-                if (!DECL_FILE_SCOPE_P (cur_var))
+                if (!global_var_init)
                   isfunc_vars = false;
                 ldv_match_expr (DECL_INITIAL (t));
-                if (!DECL_FILE_SCOPE_P (cur_var))
+                if (!global_var_init)
                   isfunc_vars = true;
               }
 
@@ -913,7 +917,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 
   /* Visualize a body after matching and weaving. */
   ldv_visualize_body (fndecl);
-  
+
   func_context = NULL;
 }
 
