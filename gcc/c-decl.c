@@ -8304,6 +8304,8 @@ finish_function (void)
   
   /* LDV extension begin. */
 
+  ldv_i_func_ptr i_func = NULL;
+
   /* Variable to store a location of a function body close brace. */
   expanded_location ldv_func_close_brace_location;  
   
@@ -8412,7 +8414,7 @@ finish_function (void)
       if (ldv_instrumentation () || ldv_compilation ())
         {
           /* Try to match a function declaration for an execution join point. */
-          ldv_match_func (fndecl, LDV_PP_EXECUTION);
+          i_func = ldv_match_func (fndecl, LDV_PP_EXECUTION);
 
           ldv_func_close_brace_location = expand_location (DECL_STRUCT_FUNCTION (fndecl)->function_end_locus);
         
@@ -8423,7 +8425,7 @@ finish_function (void)
           ldv_i_match = NULL;
       
           /* Begin matching inside a function body. */
-          ldv_match_func_body (fndecl);
+          ldv_match_func_body (fndecl, i_func);
         }
     }
     
