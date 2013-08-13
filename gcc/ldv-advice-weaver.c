@@ -375,6 +375,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
         }
     }
+  else if (!strcmp (pattern->name, "path"))
+    {
+      if (ldv_func_signature)
+        text = ldv_print_func_path(ldv_func_signature);
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
   else if (!strcmp (pattern->name, "proceed"))
     {
       if (ldv_func_call)
@@ -1171,6 +1180,25 @@ ldv_print_func_decl (ldv_i_func_ptr func)
   ldv_padding_cur = LDV_PADDING_NONE;
 
   ldv_print_decl (decl);
+
+  return ldv_get_text (ldv_text_printed);
+}
+
+const char *
+ldv_print_func_path (ldv_i_func_ptr decl)
+{
+  char* path = NULL;
+  char* occurrence = NULL;
+
+  ldv_text_printed = ldv_create_text ();
+
+  ldv_padding_cur = LDV_PADDING_NONE;
+
+  path = decl->file_path;
+  occurrence = strstr(path, ".prepared");
+  if (occurrence)
+    *occurrence = NULL;
+  ldv_print_str (path);
 
   return ldv_get_text (ldv_text_printed);
 }
