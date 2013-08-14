@@ -1771,6 +1771,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
        ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
        ldv_func_signature = NULL;
+       ldv_func_name = NULL;
        return;
     }
 
