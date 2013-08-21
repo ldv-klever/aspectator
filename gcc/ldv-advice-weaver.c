@@ -1820,11 +1820,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = aspected_name;
+            {
+              func_name = aspected_name;
+              ldv_aspect_func_name = func_name;
+            }
           else if (pp_kind == LDV_PP_CALL)
-            func_name = ldv_get_id_name (func_aspect->name);
-
-          ldv_func_name = func_name;
+            {
+              func_name = ldv_get_id_name (func_aspect->name);
+              ldv_func_name = func_name;
+            }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
@@ -1844,11 +1848,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = ldv_get_id_name (func_aspect->name);
+            {
+              func_name = ldv_get_id_name (func_aspect->name);
+              ldv_func_name = func_name;
+            }
           else if (pp_kind == LDV_PP_CALL)
-            func_name = aspected_name;
-
-          ldv_aspect_func_name = func_name;
+            {
+              func_name = aspected_name;
+              ldv_aspect_func_name = func_name;
+            }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
