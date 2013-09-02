@@ -105,8 +105,14 @@ static void ldv_print_declarator (ldv_list_ptr);
 static void ldv_print_declspecs (ldv_pps_declspecs_ptr);
 static void ldv_print_direct_declarator (ldv_list_ptr);
 static void ldv_print_int (int);
+static const char *ldv_print_func_context (ldv_i_func_ptr);
+static const char *ldv_print_func_context_name (ldv_i_func_ptr);
+static const char *ldv_print_func_context_path (ldv_i_func_ptr);
+static const char *ldv_print_func_path (ldv_i_func_ptr);
+static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
 static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
+static const char *ldv_print_macro_signature (ldv_pps_macro_ptr);
 static ldv_list_ptr ldv_print_ptr (ldv_list_ptr);
 static void ldv_print_qual (bool, bool, bool);
 static void ldv_print_separator (unsigned int);
@@ -372,6 +378,38 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
         {
           if (ldv_func_signature->func_context)
             text = ldv_print_func_context(ldv_func_signature);
+          else
+            {
+              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
+            }
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "func_context_name"))
+    {
+      if (ldv_func_signature)
+        {
+          if (ldv_func_signature->func_context)
+            text = ldv_print_func_context_name(ldv_func_signature);
+          else
+            {
+              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
+            }
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "func_context_path"))
+    {
+      if (ldv_func_signature)
+        {
+          if (ldv_func_signature->func_context)
+            text = ldv_print_func_context_path(ldv_func_signature);
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -1191,6 +1229,18 @@ ldv_print_func_context (ldv_i_func_ptr decl)
 }
 
 const char *
+ldv_print_func_context_name (ldv_i_func_ptr decl)
+{
+  return ldv_get_id_name (decl->func_context->name);
+}
+
+const char *
+ldv_print_func_context_path (ldv_i_func_ptr decl)
+{
+  return ldv_print_func_path (decl->func_context);
+}
+
+const char *
 ldv_print_func_decl (ldv_i_func_ptr func)
 {
   ldv_pps_decl_ptr decl;
@@ -1718,8 +1768,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     {
        ldv_text_printed = ldv_create_text ();
        ldv_func_signature = ldv_i_match->i_func;
+       ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
        ldv_func_signature = NULL;
+       ldv_func_name = NULL;
        return;
     }
 
@@ -1768,11 +1820,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = aspected_name;
+            {
+              func_name = aspected_name;
+              ldv_aspect_func_name = func_name;
+            }
           else if (pp_kind == LDV_PP_CALL)
-            func_name = ldv_get_id_name (func_aspect->name);
-
-          ldv_func_name = func_name;
+            {
+              func_name = ldv_get_id_name (func_aspect->name);
+              ldv_func_name = func_name;
+            }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
@@ -1792,11 +1848,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = ldv_get_id_name (func_aspect->name);
+            {
+              func_name = ldv_get_id_name (func_aspect->name);
+              ldv_func_name = func_name;
+            }
           else if (pp_kind == LDV_PP_CALL)
-            func_name = aspected_name;
-
-          ldv_aspect_func_name = func_name;
+            {
+              func_name = aspected_name;
+              ldv_aspect_func_name = func_name;
+            }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 

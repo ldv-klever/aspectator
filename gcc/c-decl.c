@@ -8304,6 +8304,7 @@ finish_function (void)
   
   /* LDV extension begin. */
 
+  /* Variable to store an internal representation of the function signature. */
   ldv_i_func_ptr i_func = NULL;
 
   /* Variable to store a location of a function body close brace. */
