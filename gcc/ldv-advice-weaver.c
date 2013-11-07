@@ -997,6 +997,9 @@ ldv_print_declarator (ldv_list_ptr declarator_list)
 void
 ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
 {
+  /* Environment variable for printing universal type specifier '$' */
+  const char* ldv_univ_print = getenv ("LDV_UNIVERSAL_PRINT");
+
   /* Print storage-class specifiers. Note that there may be just one
      specifier of such kind. */
   if (ldv_isstorage_class_and_function_specifiers_needed)
@@ -1018,7 +1021,7 @@ ldv_print_declspecs (ldv_pps_declspecs_ptr declspecs)
     }
 
   /* Print universal type specifier '$' */
-  if (declspecs->isuniversal_type_spec)
+  if ((declspecs->isuniversal_type_spec) && (ldv_univ_print))
     ldv_print_str ("$");
 
   /* Print special declaration specifier for '..' wildcard that matches list of
