@@ -438,6 +438,12 @@ ldv_create_info_type (void)
   return type;
 }
 
+void
+ldv_free_info_type (ldv_i_type_ptr type)
+{
+  free (type);
+}
+
 ldv_i_typedecl_ptr
 ldv_create_info_typedecl (void)
 {
