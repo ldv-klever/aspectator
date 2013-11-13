@@ -404,6 +404,12 @@ ldv_create_info_match (void)
   return match;
 }
 
+void
+ldv_free_info_match (ldv_i_match_ptr match)
+{
+  free (match);
+}
+
 ldv_i_param_ptr
 ldv_create_info_param (void)
 {

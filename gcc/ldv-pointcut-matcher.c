@@ -889,6 +889,8 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
           match->ismatched_by_name = false;
         }
     }
+  
+  ldv_free_info_match(match);
 
   /* Nothing was matched. */
   ldv_i_match = NULL;
