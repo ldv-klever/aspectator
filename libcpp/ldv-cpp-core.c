@@ -441,6 +441,7 @@ ldv_create_info_type (void)
 void
 ldv_free_info_type (ldv_i_type_ptr type)
 {
+  ldv_list_delete_all (type->param);
   free (type);
 }
 
