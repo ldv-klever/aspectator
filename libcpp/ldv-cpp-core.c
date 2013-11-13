@@ -371,6 +371,12 @@ ldv_create_info_func (void)
   return i_func;
 }
 
+void
+ldv_free_info_func (ldv_i_func_ptr func)
+{
+  free (func);
+}
+
 ldv_i_initializer_ptr
 ldv_create_info_initializer (void)
 {
