@@ -237,6 +237,7 @@ ldv_gets (FILE *stream)
 {
   int c;
   ldv_text_ptr line = NULL;
+  char *str = NULL;
 
   if ((c = ldv_getc (stream)) == EOF)
     return NULL;
@@ -253,7 +254,12 @@ ldv_gets (FILE *stream)
       ldv_putc_text (c, line);
     }
 
-  return ldv_get_text (line);
+  str = ldv_get_text (line);
+  
+  free (line->text);
+  free (line); 
+  
+  return str;
 }
 
 char
@@ -567,6 +573,8 @@ ldv_print_to_awfile (void)
         ldv_puts (line + symbol_printed_numb, LDV_INSTRUMENTED_FILE_STREAM);
       else
         ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
+
+      free ((void *)line);
 
       /* Put the end of a line to the end. */
       ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
