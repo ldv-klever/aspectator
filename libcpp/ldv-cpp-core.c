@@ -655,7 +655,6 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 void
 ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 {
-  char *str_text = NULL;
   unsigned int len_add;
 
   if (!string)
@@ -700,15 +699,10 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
   /* Otherwise a new memory is allocated for a large string text. */
   else
     {
-      /* Remember a current string text. */
-      str_text = XCNEWVEC (char, (string->len + 1));
-      memcpy (str_text, string->text, string->len + 1);
-
       /* Allocate a new memory for a large string text. */
       string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
 
-      /* Back a string text and increase its maximum length. */
-      memcpy (string->text, str_text, string->len + 1);
+      /* Enlarge buffer length respectively. */
       string->max_len += len_add;
 
       /* Put a new character to a large string text. */
