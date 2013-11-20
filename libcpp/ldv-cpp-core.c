@@ -481,6 +481,12 @@ ldv_create_id (void)
   return id;
 }
 
+void
+ldv_free_id (ldv_id_ptr id)
+{
+  free (id);
+}
+
 ldv_str_ptr
 ldv_create_str (ldv_token_k token_kind)
 {

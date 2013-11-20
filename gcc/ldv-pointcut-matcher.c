@@ -891,6 +891,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
     }
   
   ldv_free_info_type (func->type);
+  ldv_free_id (func->name);
   ldv_free_info_func (func);
   ldv_free_info_match (match);
 
