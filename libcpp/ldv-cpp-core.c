@@ -361,6 +361,12 @@ ldv_create_declspecs (void)
   return declspecs;
 }
 
+void
+ldv_free_declspecs (ldv_pps_declspecs_ptr declspecs)
+{
+  free (declspecs);
+}
+
 ldv_i_func_ptr
 ldv_create_info_func (void)
 {

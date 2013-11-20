@@ -439,6 +439,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
 
           /* Additional declaration specifiers may be applied just one time for
              some entity return type. */
+          ldv_free_declspecs (ldv_entity_declspecs);
           ldv_entity_declspecs = NULL;
         }
 
