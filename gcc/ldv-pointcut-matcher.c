@@ -889,7 +889,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
           match->ismatched_by_name = false;
         }
     }
-  
+
   ldv_free_info_type (func->type);
   ldv_free_id (func->name);
   ldv_free_info_func (func);
@@ -1011,7 +1011,7 @@ ldv_match_typedecl (tree t, const char *file_path)
     }
 
   ldv_free_info_match (match);
-  
+
   /* Nothing was matched. */
   ldv_i_match = NULL;
 
@@ -1118,11 +1118,19 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
         }
     }
 
+  if (var->func_context)
+  {
+    ldv_free_info_type (func_context->type);
+    ldv_free_id (func_context->name);
+    ldv_free_info_func (func_context);
+    ldv_free_info_match (var->func_context);
+  }
+
   ldv_free_info_type (var->type);
   ldv_free_id (var->name);
   ldv_free_info_var (var);
   ldv_free_info_match (match);
-  
+
   /* Nothing was matched. */
   ldv_i_match = NULL;
 
