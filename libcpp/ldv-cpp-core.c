@@ -473,6 +473,12 @@ ldv_create_info_var (void)
   return i_var;
 }
 
+void
+ldv_free_info_var (ldv_i_var_ptr var)
+{
+  free (var);
+}
+
 ldv_id_ptr
 ldv_create_id (void)
 {
