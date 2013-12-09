@@ -447,6 +447,11 @@ ldv_create_info_type (void)
 void
 ldv_free_info_type (ldv_i_type_ptr type)
 {
+  if (type->it_kind == LDV_IT_PRIMITIVE)
+  {
+    ldv_free_declspecs (type->primitive_type);
+  }
+
   ldv_list_delete_all (type->param);
   free (type);
 }
