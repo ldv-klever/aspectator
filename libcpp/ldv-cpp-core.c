@@ -447,10 +447,19 @@ ldv_create_info_type (void)
 void
 ldv_free_info_type (ldv_i_type_ptr type)
 {
-  if (type->it_kind == LDV_IT_PRIMITIVE)
-  {
-    ldv_free_declspecs (type->primitive_type);
-  }
+  switch (type->it_kind)
+    {
+    case LDV_IT_FUNC:
+      ldv_free_info_type (type->ret_type);
+      break;
+
+    case LDV_IT_PRIMITIVE:
+      ldv_free_declspecs (type->primitive_type);
+      break;
+
+    default:
+      LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
+    }
 
   ldv_list_delete_all (type->param);
   free (type);
