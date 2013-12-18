@@ -425,11 +425,11 @@ ldv_free_info_match (ldv_i_match_ptr match)
 ldv_i_param_ptr
 ldv_create_info_param (void)
 {
-  ldv_i_param_ptr i_param = NULL;
+  ldv_i_param_ptr param = NULL;
 
-  i_param = XCNEW (ldv_info_param);
+  param = XCNEW (ldv_info_param);
 
-  return i_param;
+  return param;
 }
 
 ldv_i_type_ptr
