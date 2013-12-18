@@ -432,6 +432,12 @@ ldv_create_info_param (void)
   return param;
 }
 
+void
+ldv_free_info_param (ldv_i_param_ptr param)
+{
+  free (param);
+}
+
 ldv_i_type_ptr
 ldv_create_info_type (void)
 {
@@ -447,14 +453,33 @@ ldv_create_info_type (void)
 void
 ldv_free_info_type (ldv_i_type_ptr type)
 {
+  ldv_list_ptr param_list = NULL;
+  ldv_i_param_ptr param = NULL;
+
   switch (type->it_kind)
     {
     case LDV_IT_FUNC:
       ldv_free_info_type (type->ret_type);
+
+      for (param_list = type->param
+        ; param_list
+        ; param_list = ldv_list_get_next (param_list))
+      {
+        param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
+        if (param->name)
+        {
+          ldv_free_id (param->name);
+        }
+        ldv_free_info_type (param->type);
+        ldv_free_info_param (param);
+      }
       break;
 
     case LDV_IT_PRIMITIVE:
       ldv_free_declspecs (type->primitive_type);
+      break;
+
+    case LDV_IT_NONE:
       break;
 
     default:
