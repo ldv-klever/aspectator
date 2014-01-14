@@ -120,7 +120,7 @@ static bool ldv_print_space (void);
 static bool ldv_print_space_after_pointer_star (void);
 static void ldv_print_str (const char *);
 static void ldv_print_str_without_padding (const char *);
-static void ldv_print_types_typedefs (void);
+static void ldv_print_types_typedefs (ldv_ab_ptr);
 static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
 static void ldv_weave_func_source (ldv_i_func_ptr, ldv_ppk);
 static void ldv_weave_var_source (ldv_i_var_ptr, ldv_ppk);
@@ -790,7 +790,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
   /* This is done before a body patterns weaving since function argument types
      names that may be used in patterns are generated here. */
-  ldv_print_types_typedefs ();
+  ldv_print_types_typedefs (body);
 
   /* Don't generate a return when a function returns void. */
   if (ldv_func_ret_type_decl && ldv_func_ret_type_decl->pps_declspecs->isvoid)
@@ -1631,7 +1631,7 @@ ldv_print_str_without_padding (const char *str)
 }
 
 void
-ldv_print_types_typedefs (void)
+ldv_print_types_typedefs (ldv_ab_ptr body)
 {
   ldv_pps_decl_ptr func_arg_type_decl = NULL;
   ldv_list_ptr func_arg_type_decl_list = NULL;
@@ -1640,6 +1640,9 @@ ldv_print_types_typedefs (void)
   const char *arg_type_name_numb_aux = NULL;
   unsigned int arg_type_numb;
   ldv_str_ptr str = NULL;
+  ldv_list_ptr body_patterns = NULL;
+  ldv_ab_aspect_pattern_ptr body_pattern = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
 
   ldv_func_arg_type_name_list = NULL;
 
@@ -1647,21 +1650,29 @@ ldv_print_types_typedefs (void)
      on a function return type and arguments types. */
   ldv_isstorage_class_and_function_specifiers_needed = false;
 
-  /* Print a function return type typedef. */
-  if (ldv_func_ret_type_decl)
-    {
-      ldv_print_str ("  typedef");
+  for (body_patterns = body->patterns
+      ; body_patterns
+      ; body_patterns = ldv_list_get_next (body_patterns))
+      {
+        body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+        pattern = body_pattern->pattern;
 
-      ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
+        /* Print a function return type typedef. */
+        if ((ldv_func_ret_type_decl) && (!strcmp (pattern->name, "ret_type")))
+          {
+            ldv_print_str ("  typedef");
 
-      ldv_print_decl (ldv_func_ret_type_decl);
+            ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
 
-      ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
+            ldv_print_decl (ldv_func_ret_type_decl);
 
-      ldv_print_c (';');
+            ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
 
-      ldv_print_c ('\n');
-    }
+            ldv_print_c (';');
+
+            ldv_print_c ('\n');
+          }
+        }
 
   /* Print function arguments typedefs and store them to a list. */
   /* Walk through all function argument types declarations. */
@@ -1670,8 +1681,6 @@ ldv_print_types_typedefs (void)
     ; func_arg_type_decl_list = ldv_list_get_next (func_arg_type_decl_list), arg_type_numb++)
     {
       func_arg_type_decl = (ldv_pps_decl_ptr) ldv_list_get_data (func_arg_type_decl_list);
-
-      ldv_print_str ("  typedef");
 
       /* Create a function argument type typedef name. */
       arg_type_name_aux = ldv_create_id ();
@@ -1686,13 +1695,25 @@ ldv_print_types_typedefs (void)
 
       ldv_add_id_declarator (func_arg_type_decl, arg_type_name);
 
-      ldv_print_decl (func_arg_type_decl);
+      for (body_patterns = body->patterns
+      ; body_patterns
+      ; body_patterns = ldv_list_get_next (body_patterns))
+      {
+        body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+        pattern = body_pattern->pattern;
+          
+        if ((!strcmp (pattern->name, "arg_type")) && (pattern->arg_numb == arg_type_numb))
+          {
+            ldv_print_str ("  typedef");
+            ldv_print_decl (func_arg_type_decl);
+            ldv_print_c (';');
+            ldv_print_c ('\n');
+
+            break;
+          }
+      }
 
       ldv_delete_id_declarator (func_arg_type_decl->pps_declarator);
-
-      ldv_print_c (';');
-
-      ldv_print_c ('\n');
 
       str = ldv_create_string ();
 
