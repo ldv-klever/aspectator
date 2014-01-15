@@ -548,6 +548,7 @@ ldv_match_param_type (ldv_i_type_ptr arg_type_first, ldv_i_type_ptr arg_type_sec
 bool
 ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
 {
+  ldv_i_type_ptr first_base;
   ldv_i_param_ptr param_first = NULL, param_second = NULL, param_second_next = NULL;
   ldv_list_ptr param_first_list = NULL, param_second_list = NULL, param_second_list_next = NULL;
   bool isany_params = false;
@@ -569,7 +570,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   /* Separately matches universal type specifier with nonprimitive source type.
      At this point they are matched unconditionally. Note that universal type
      specifier doesn't match pointer or array if standard type specifier is
-     specified togther with it. */
+     specified together with it. */
   if ((first->it_kind == LDV_IT_ARRAY || first->it_kind == LDV_IT_PTR)
     && second->it_kind == LDV_IT_PRIMITIVE && second->primitive_type->isuniversal_type_spec
     && !second->primitive_type->isvoid && !second->primitive_type->ischar
@@ -581,6 +582,33 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
     && !second->primitive_type->isstruct && !second->primitive_type->isunion
     && !second->primitive_type->isenum && !second->primitive_type->istypedef_name)
     {
+      /* We match too much at this point, e.g. "T *" is matched with
+         "static inline $". So, obtain "T" and compare it with aspect
+         primitive type. */
+      first_base = first;
+      while (first_base->it_kind != LDV_IT_PRIMITIVE)
+      {
+        switch (first_base->it_kind)
+          {
+          case LDV_IT_ARRAY:
+            first_base = first_base->array_type;
+            break;
+
+          case LDV_IT_FUNC:
+            first_base = first_base->ret_type;
+            break;
+
+          case LDV_IT_PTR:
+            first_base = first_base->ptr_type;
+            break;
+
+          default:
+            LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", first_base->it_kind);
+          }
+      }
+      if (!ldv_match_type (first_base, second))
+        return false;
+
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
          universal type specifier.*/
