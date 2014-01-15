@@ -1104,7 +1104,7 @@ ldv_diag_composite_pointcut (ldv_cp_ptr c_pointcut, FILE *ldv_diag_file)
 
       /* Print type of the composite pointcut. */
       type = ldv_diag_type (c_pointcut, 1);
-      /* 'Type 1' means that this is a composite pointcut composed entirely of '||', 
+      /* 'Type 1' means that this is a composite pointcut composed entirely of '||',
        * without pattern '$' in the names of primitive pointcuts.
        * Any other composite pointcut - 'type 2'. */
       fprintf (ldv_diag_file, "type %d\n", type);
@@ -1650,33 +1650,30 @@ ldv_print_types_typedefs (ldv_ab_ptr body)
      on a function return type and arguments types. */
   ldv_isstorage_class_and_function_specifiers_needed = false;
 
+  /* Print a function return type typedef if there is $ret_type pattern
+     in the advice body. */
   for (body_patterns = body->patterns
       ; body_patterns
       ; body_patterns = ldv_list_get_next (body_patterns))
-      {
-        body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
-        pattern = body_pattern->pattern;
+    {
+      body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+      pattern = body_pattern->pattern;
 
-        /* Print a function return type typedef. */
-        if ((ldv_func_ret_type_decl) && (!strcmp (pattern->name, "ret_type")))
-          {
-            ldv_print_str ("  typedef");
+      if ((ldv_func_ret_type_decl) && (!strcmp (pattern->name, "ret_type")))
+        {
+          ldv_print_str ("  typedef");
+          ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
+          ldv_print_decl (ldv_func_ret_type_decl);
+          ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
+          ldv_print_c (';');
+          ldv_print_c ('\n');
 
-            ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
+          break;
+        }
+    }
 
-            ldv_print_decl (ldv_func_ret_type_decl);
-
-            ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
-
-            ldv_print_c (';');
-
-            ldv_print_c ('\n');
-
-            break;
-          }
-      }
-
-  /* Print function arguments typedefs and store them to a list. */
+  /* Print function argument typedefs (if there are appropriate
+     $arg_typeN patterns) and store them to a list. */
   /* Walk through all function argument types declarations. */
   for (func_arg_type_decl_list = ldv_func_arg_type_decl_list, arg_type_numb = 1
     ; func_arg_type_decl_list
@@ -1695,27 +1692,25 @@ ldv_print_types_typedefs (ldv_ab_ptr body)
 
       arg_type_name = ldv_get_id_name (arg_type_name_aux);
 
-      ldv_add_id_declarator (func_arg_type_decl, arg_type_name);
-
       for (body_patterns = body->patterns
       ; body_patterns
       ; body_patterns = ldv_list_get_next (body_patterns))
-      {
-        body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
-        pattern = body_pattern->pattern;
-          
-        if ((!strcmp (pattern->name, "arg_type")) && (pattern->arg_numb == arg_type_numb))
-          {
-            ldv_print_str ("  typedef");
-            ldv_print_decl (func_arg_type_decl);
-            ldv_print_c (';');
-            ldv_print_c ('\n');
+        {
+          body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+          pattern = body_pattern->pattern;
 
-            break;
-          }
-      }
+          if ((!strcmp (pattern->name, "arg_type")) && (pattern->arg_numb == arg_type_numb))
+            {
+              ldv_print_str ("  typedef");
+              ldv_add_id_declarator (func_arg_type_decl, arg_type_name);
+              ldv_print_decl (func_arg_type_decl);
+              ldv_delete_id_declarator (func_arg_type_decl->pps_declarator);
+              ldv_print_c (';');
+              ldv_print_c ('\n');
 
-      ldv_delete_id_declarator (func_arg_type_decl->pps_declarator);
+              break;
+            }
+        }
 
       str = ldv_create_string ();
 
