@@ -1671,8 +1671,10 @@ ldv_print_types_typedefs (ldv_ab_ptr body)
             ldv_print_c (';');
 
             ldv_print_c ('\n');
+
+            break;
           }
-        }
+      }
 
   /* Print function arguments typedefs and store them to a list. */
   /* Walk through all function argument types declarations. */
