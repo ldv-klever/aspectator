@@ -56,9 +56,18 @@ extern ldv_i_type_ptr ldv_create_info_type (void);
 extern ldv_i_typedecl_ptr ldv_create_info_typedecl (void);
 extern ldv_i_var_ptr ldv_create_info_var (void);
 
+extern void ldv_free_declspecs (ldv_pps_declspecs_ptr);
+extern void ldv_free_info_func (ldv_i_func_ptr);
+extern void ldv_free_info_match (ldv_i_match_ptr);
+extern void ldv_free_info_param (ldv_i_param_ptr);
+extern void ldv_free_info_type (ldv_i_type_ptr);
+extern void ldv_free_info_var (ldv_i_var_ptr);
+
 extern ldv_id_ptr ldv_create_id (void);
 extern ldv_str_ptr ldv_create_str (ldv_token_k);
 extern ldv_str_ptr ldv_create_string (void);
+
+extern void ldv_free_id (ldv_id_ptr);
 
 extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
 
