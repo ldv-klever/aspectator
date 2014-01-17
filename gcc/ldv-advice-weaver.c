@@ -120,7 +120,7 @@ static bool ldv_print_space (void);
 static bool ldv_print_space_after_pointer_star (void);
 static void ldv_print_str (const char *);
 static void ldv_print_str_without_padding (const char *);
-static void ldv_print_types_typedefs (ldv_ab_ptr);
+static void ldv_print_types_typedefs (ldv_ab_ptr, bool);
 static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
 static void ldv_weave_func_source (ldv_i_func_ptr, ldv_ppk);
 static void ldv_weave_var_source (ldv_i_var_ptr, ldv_ppk);
@@ -788,13 +788,13 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
   ldv_print_c ('\n');
 
-  /* This is done before a body patterns weaving since function argument types
-     names that may be used in patterns are generated here. */
-  ldv_print_types_typedefs (body);
-
   /* Don't generate a return when a function returns void. */
   if (ldv_func_ret_type_decl && ldv_func_ret_type_decl->pps_declspecs->isvoid)
     isres_needed = false;
+
+  /* This is done before a body patterns weaving since function argument types
+     names that may be used in patterns are generated here. */
+  ldv_print_types_typedefs (body, a_kind == LDV_A_AFTER && isres_needed);
 
   /* Print variable argument list initializations if needed. */
   if (ldv_func_va_init)
@@ -1631,7 +1631,7 @@ ldv_print_str_without_padding (const char *str)
 }
 
 void
-ldv_print_types_typedefs (ldv_ab_ptr body)
+ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
 {
   ldv_pps_decl_ptr func_arg_type_decl = NULL;
   ldv_list_ptr func_arg_type_decl_list = NULL;
@@ -1659,7 +1659,7 @@ ldv_print_types_typedefs (ldv_ab_ptr body)
       body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
       pattern = body_pattern->pattern;
 
-      if ((ldv_func_ret_type_decl) && (!strcmp (pattern->name, "ret_type")))
+      if ((ldv_func_ret_type_decl) && (isret_type_needed || !strcmp (pattern->name, "ret_type")))
         {
           ldv_print_str ("  typedef");
           ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
