@@ -1122,8 +1122,6 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
     ldv_free_info_match (var->func_context);
   }
 
-  ldv_free_info_type (var->type);
-  ldv_free_id (var->name);
   ldv_free_info_var (var);
   ldv_free_info_match (match);
 

@@ -520,6 +520,11 @@ ldv_create_info_var (void)
 void
 ldv_free_info_var (ldv_i_var_ptr var)
 {
+  if (var->name)
+    ldv_free_id (var->name);
+
+  ldv_free_info_type (var->type);
+
   free (var);
 }
 
