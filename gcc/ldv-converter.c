@@ -355,6 +355,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
   tree func_arg_tree = NULL_TREE, func_param_tree = NULL_TREE;
   ldv_i_type_ptr arg_type_new = NULL;
   ldv_i_param_ptr param_new = NULL;
+  bool isvoid_arg_type_new = false;
 
   /* Do nothing if there is no tree node implementing type. */
   if (!type_tree)
@@ -390,14 +391,15 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
         ; func_arg_tree = TREE_CHAIN (func_arg_tree), func_param_tree = func_param_tree ? TREE_CHAIN (func_param_tree) : NULL)
         {
           arg_type_new = ldv_convert_type_tree_to_internal (TREE_VALUE (func_arg_tree), NULL);
+          isvoid_arg_type_new = ldv_isvoid (arg_type_new);
 
           /* Finish the cycle when a gcc artificial void type from the end of a
              function parameters list is found. Note that it's needed in case
              when it isn't the only i.e. if a function has other parameters. */
-          if (type->param)
+          if (type->param && isvoid_arg_type_new)
             {
-              if (ldv_isvoid (arg_type_new))
-                break;
+              ldv_free_info_type (arg_type_new);
+              break;
             }
 
           param_new = ldv_create_info_param ();
@@ -415,7 +417,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
 
       /* Check whether function arguments have a variable length. In that case
          gcc doesn't put a void type at the end of a  list of argument types. */
-      if (arg_type_new && !ldv_isvoid (arg_type_new))
+      if (arg_type_new && !isvoid_arg_type_new)
         arg_type_new->isva = true;
 
       break;
