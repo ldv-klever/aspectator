@@ -435,6 +435,11 @@ ldv_create_info_param (void)
 void
 ldv_free_info_param (ldv_i_param_ptr param)
 {
+  if (param->name)
+    ldv_free_id (param->name);
+
+  ldv_free_info_type (param->type);
+
   free (param);
 }
 
@@ -466,11 +471,6 @@ ldv_free_info_type (ldv_i_type_ptr type)
         ; param_list = ldv_list_get_next (param_list))
       {
         param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
-        if (param->name)
-        {
-          ldv_free_id (param->name);
-        }
-        ldv_free_info_type (param->type);
         ldv_free_info_param (param);
       }
       break;
