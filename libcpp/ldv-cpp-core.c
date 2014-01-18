@@ -502,6 +502,14 @@ ldv_free_info_type (ldv_i_type_ptr type)
     case LDV_IT_NONE:
       break;
 
+    case LDV_IT_PTR:
+      ldv_free_info_type (type->ptr_type);
+      break;
+
+    case LDV_IT_ARRAY:
+      ldv_free_info_type (type->array_type);
+      break;
+
     default:
       LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
