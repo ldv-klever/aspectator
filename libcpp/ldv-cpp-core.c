@@ -377,6 +377,9 @@ ldv_copy_declspecs (ldv_pps_declspecs_ptr declspecs)
 void
 ldv_free_declspecs (ldv_pps_declspecs_ptr declspecs)
 {
+  if (declspecs->type_name)
+    ldv_free_id (declspecs->type_name);
+
   free (declspecs);
 }
 
