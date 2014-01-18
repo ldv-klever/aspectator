@@ -545,6 +545,7 @@ ldv_create_id (void)
 void
 ldv_free_id (ldv_id_ptr id)
 {
+  ldv_free_str (id->id_name);
   free (id);
 }
 
@@ -591,6 +592,13 @@ ldv_create_str (ldv_token_k token_kind)
   string->max_len = len_start;
 
   return string;
+}
+
+void
+ldv_free_str (ldv_str_ptr string)
+{
+  free (string->text);
+  free (string);
 }
 
 ldv_str_ptr
