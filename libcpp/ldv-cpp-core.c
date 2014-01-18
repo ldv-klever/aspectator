@@ -361,6 +361,19 @@ ldv_create_declspecs (void)
   return declspecs;
 }
 
+ldv_pps_declspecs_ptr
+ldv_copy_declspecs (ldv_pps_declspecs_ptr declspecs)
+{
+  ldv_pps_declspecs_ptr declspecs_aux = NULL, declspecs_new = NULL;
+
+  /* Following is equivalent to coping declaration specifiers. */
+  declspecs_aux = ldv_create_declspecs ();
+  declspecs_new = ldv_merge_declspecs (declspecs_aux, declspecs, false);
+  ldv_free_declspecs (declspecs_aux);
+
+  return declspecs_new;
+}
+
 void
 ldv_free_declspecs (ldv_pps_declspecs_ptr declspecs)
 {

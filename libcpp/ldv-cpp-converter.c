@@ -89,7 +89,9 @@ ldv_convert_declspecs_declarator_to_internal (ldv_pps_declspecs_ptr declspecs, l
   if (declarator_cur_list == declarator_first_list)
     {
       type_first->it_kind = LDV_IT_PRIMITIVE;
-      type_first->primitive_type = declspecs;
+      /* Copy declaration specifiers rather then keep reference to them
+         since they will be freed. */
+      type_first->primitive_type = ldv_copy_declspecs (declspecs);
 
       /* That is an id or an abstract declarator that has just declarations
          specifiers without intermediate declarators. A function declarator base
