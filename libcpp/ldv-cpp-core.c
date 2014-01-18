@@ -491,6 +491,8 @@ ldv_free_info_type (ldv_i_type_ptr type)
         param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
         ldv_free_info_param (param);
       }
+
+      ldv_list_delete_all (type->param);
       break;
 
     case LDV_IT_PRIMITIVE:
@@ -504,7 +506,6 @@ ldv_free_info_type (ldv_i_type_ptr type)
       LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
 
-  ldv_list_delete_all (type->param);
   free (type);
 }
 
