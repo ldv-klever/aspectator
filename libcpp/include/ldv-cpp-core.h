@@ -67,6 +67,9 @@ extern ldv_id_ptr ldv_create_id (void);
 extern ldv_str_ptr ldv_create_str (ldv_token_k);
 extern ldv_str_ptr ldv_create_string (void);
 
+extern ldv_id_ptr ldv_copy_id (ldv_id_ptr);
+extern ldv_str_ptr ldv_copy_string (ldv_str_ptr);
+
 extern void ldv_free_id (ldv_id_ptr);
 extern void ldv_free_str (ldv_str_ptr);
 

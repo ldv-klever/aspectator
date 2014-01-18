@@ -542,6 +542,19 @@ ldv_create_id (void)
   return id;
 }
 
+ldv_id_ptr
+ldv_copy_id (ldv_id_ptr id)
+{
+  ldv_id_ptr id_new = NULL;
+
+  id_new = XCNEW (ldv_id);
+
+  id_new->id_name = ldv_copy_string (id->id_name);
+  id_new->isany_chars = id->isany_chars;
+
+  return id_new;
+}
+
 void
 ldv_free_id (ldv_id_ptr id)
 {
@@ -549,6 +562,7 @@ ldv_free_id (ldv_id_ptr id)
   free (id);
 }
 
+/* TODO: develop single internal representation for dynamic strings. */
 ldv_str_ptr
 ldv_create_str (ldv_token_k token_kind)
 {
@@ -592,6 +606,20 @@ ldv_create_str (ldv_token_k token_kind)
   string->max_len = len_start;
 
   return string;
+}
+
+ldv_str_ptr
+ldv_copy_string (ldv_str_ptr string)
+{
+  ldv_str_ptr string_new = NULL;
+
+  string_new = XCNEW (ldv_string);
+
+  string_new->text = ldv_copy_str (string->text);
+  string_new->len = string->len;
+  string_new->max_len = string->max_len;
+
+  return string_new;
 }
 
 void

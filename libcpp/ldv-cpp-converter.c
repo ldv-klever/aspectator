@@ -176,7 +176,9 @@ ldv_convert_func_signature_to_internal (ldv_pps_decl_ptr pps_func)
   /* Convert a declarator name to a function name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_func->name = declarator->declarator_name;
+      /* Copy function name rather then keep reference to it since it
+         will be freed. */
+      i_func->name = ldv_copy_id (declarator->declarator_name);
 
       /* A previous to last declarators contains a function type. */
       declarator_list = ldv_list_get_prev (pps_func->pps_declarator, declarator_list);
