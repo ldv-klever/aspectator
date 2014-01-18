@@ -432,7 +432,6 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   /* Compare functions names. */
   if (ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
   {
-    ldv_free_info_type (func_aspect->type);
     ldv_free_info_func (func_aspect);
     return false;
   }
@@ -448,7 +447,6 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   /* Compare functions types. */
   if (!ldv_match_type (func_source->type, func_aspect->type))
   {
-    ldv_free_info_type (func_aspect->type);
     ldv_free_info_func (func_aspect);
     return false;
   }

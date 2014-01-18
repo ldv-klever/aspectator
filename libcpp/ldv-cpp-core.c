@@ -380,6 +380,11 @@ ldv_create_info_func (void)
 void
 ldv_free_info_func (ldv_i_func_ptr func)
 {
+  if (func->name)
+    ldv_free_id (func->name);
+
+  ldv_free_info_type (func->type);
+
   free (func);
 }
 

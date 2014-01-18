@@ -890,8 +890,6 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
         }
     }
 
-  ldv_free_info_type (func->type);
-  ldv_free_id (func->name);
   ldv_free_info_func (func);
   ldv_free_info_match (match);
 
@@ -1120,8 +1118,6 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
 
   if (var->func_context)
   {
-    ldv_free_info_type (func_context->type);
-    ldv_free_id (func_context->name);
     ldv_free_info_func (func_context);
     ldv_free_info_match (var->func_context);
   }
