@@ -1651,7 +1651,8 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
   ldv_isstorage_class_and_function_specifiers_needed = false;
 
   /* Print a function return type typedef if there is $ret_type pattern
-     in the advice body. */
+     in the advice body. Otherwise it will be printed just for nonvoid
+     function return types for after advices. */
   for (body_patterns = body->patterns
       ; body_patterns
       ; body_patterns = ldv_list_get_next (body_patterns))
@@ -1659,17 +1660,22 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
       body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
       pattern = body_pattern->pattern;
 
-      if ((ldv_func_ret_type_decl) && (isret_type_needed || !strcmp (pattern->name, "ret_type")))
+      if (!strcmp (pattern->name, "ret_type"))
         {
-          ldv_print_str ("  typedef");
-          ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
-          ldv_print_decl (ldv_func_ret_type_decl);
-          ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
-          ldv_print_c (';');
-          ldv_print_c ('\n');
-
+          isret_type_needed = true;
           break;
         }
+    }
+
+  /* Print a function return type typedef just if it is required. */
+  if (ldv_func_ret_type_decl && isret_type_needed)
+    {
+      ldv_print_str ("  typedef");
+      ldv_add_id_declarator (ldv_func_ret_type_decl, LDV_FUNC_RET_TYPE);
+      ldv_print_decl (ldv_func_ret_type_decl);
+      ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
+      ldv_print_c (';');
+      ldv_print_c ('\n');
     }
 
   /* Print function argument typedefs (if there are appropriate
