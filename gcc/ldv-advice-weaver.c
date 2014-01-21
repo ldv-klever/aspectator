@@ -1974,6 +1974,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_weave_func_source (func_aspect, pp_kind);
         }
 
+      ldv_free_info_func (func_source);
+
       break;
 
     case LDV_I_TYPE:
