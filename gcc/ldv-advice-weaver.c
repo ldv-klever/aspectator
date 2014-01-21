@@ -2148,6 +2148,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     default:
       LDV_FATAL_ERROR ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
     }
+
+  ldv_free_info_match (ldv_i_match);
 }
 
 void
