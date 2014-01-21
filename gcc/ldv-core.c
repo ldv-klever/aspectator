@@ -182,7 +182,7 @@ ldv_delete_body (ldv_ab_ptr body)
 {
   if (body)
     {
-      ldv_delete_str (body->ab_text);
+      ldv_free_str (body->ab_text);
 
       free (body);
       ldv_print_info (LDV_INFO_MEM, "body memory was free");
@@ -194,27 +194,11 @@ ldv_delete_body (ldv_ab_ptr body)
 }
 
 void
-ldv_delete_file (ldv_file_ptr file)
-{
-  if (file)
-    {
-      ldv_delete_str (file->file_name);
-
-      free (file);
-      ldv_print_info (LDV_INFO_MEM, "file memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
-}
-
-void
 ldv_delete_id (ldv_id_ptr id)
 {
   if (id)
     {
-      ldv_delete_str (id->id_name);
+      ldv_free_str (id->id_name);
 
       free (id);
       ldv_print_info (LDV_INFO_MEM, "identifier memory was free");
@@ -244,7 +228,7 @@ ldv_delete_text (ldv_text_ptr text)
 {
   if (text)
     {
-      ldv_delete_str (text->text);
+      ldv_free_str (text->text);
 
       free (text);
       ldv_print_info (LDV_INFO_MEM, "text memory was free");
