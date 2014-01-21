@@ -1262,7 +1262,7 @@ ldv_print_func_decl (ldv_i_func_ptr func)
 const char *
 ldv_print_func_path (ldv_i_func_ptr decl)
 {
-  char* path = NULL;
+  const char* path = NULL;
   char* occurrence = NULL;
 
   ldv_text_printed = ldv_create_text ();
@@ -1272,7 +1272,7 @@ ldv_print_func_path (ldv_i_func_ptr decl)
   path = decl->file_path;
   occurrence = strstr(path, ".prepared");
   if (occurrence)
-    *occurrence = NULL;
+    occurrence = NULL;
   ldv_print_str (path);
 
   return ldv_get_text (ldv_text_printed);
@@ -1480,7 +1480,6 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut, FILE *ldv_diag_file)
   ldv_list_ptr func_arg_list = NULL;
   ldv_pps_decl_ptr pps_declaration = NULL;
   ldv_pps_ptr pp_signature = NULL;
-  ldv_i_func_ptr i_func_sign = NULL;
   const char* format = NULL;
   const char* ldv_diag_text = NULL;
 
