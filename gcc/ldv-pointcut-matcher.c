@@ -223,7 +223,7 @@ ldv_match_expr (tree t)
   struct function *cfunc = NULL;
   expanded_location func_close_brace_location;
   unsigned HOST_WIDE_INT ix;
-  tree index = NULL, value = NULL;
+  tree value = NULL_TREE;
   bool isvar_global;
   tree list = NULL_TREE;
   expanded_location var_func_location;
@@ -628,7 +628,7 @@ ldv_match_expr (tree t)
           break;
 
         case CONSTRUCTOR:
-          FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
+          FOR_EACH_CONSTRUCTOR_VALUE (CONSTRUCTOR_ELTS (t), ix, value)
             ldv_match_expr (value);
 
           break;
