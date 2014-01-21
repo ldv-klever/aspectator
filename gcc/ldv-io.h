@@ -89,7 +89,7 @@ extern FILE *ldv_get_aspect_stream (void);
 extern FILE *ldv_get_main_stream (void);
 extern FILE *ldv_get_file_prepared_stream (void);
 extern int ldv_getc (FILE *);
-extern const char *ldv_gets (FILE *);
+extern char *ldv_gets (FILE *);
 extern void ldv_make_includes (void);
 extern void ldv_open_file_streams (void);
 extern void ldv_print_info (const char *, const char *, ...) ATTRIBUTE_PRINTF_2;

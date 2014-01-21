@@ -232,7 +232,7 @@ ldv_getc (FILE *stream)
   return c;
 }
 
-const char *
+char *
 ldv_gets (FILE *stream)
 {
   int c;
@@ -484,7 +484,7 @@ ldv_print_info (const char *info_kind, const char *format, ...)
 void
 ldv_print_to_awfile (void)
 {
-  const char *line = NULL, *quote_left = NULL, *quote_right = NULL, *c = NULL;
+  char *line = NULL, *quote_left = NULL, *quote_right = NULL, *c = NULL;
   int line_numb = 0;
   ldv_file_ptr file = NULL;
   ldv_decl_for_print_ptr decl_for_print = NULL;
@@ -578,7 +578,7 @@ ldv_print_to_awfile (void)
       else
         ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
 
-      free ((void *)line);
+      free (line);
 
       /* Put the end of a line to the end. */
       ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
