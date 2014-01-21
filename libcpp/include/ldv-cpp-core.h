@@ -60,6 +60,7 @@ extern ldv_pps_declspecs_ptr ldv_copy_declspecs (ldv_pps_declspecs_ptr);
 
 extern void ldv_free_declspecs (ldv_pps_declspecs_ptr);
 extern void ldv_free_info_func (ldv_i_func_ptr);
+extern void ldv_free_info_initializer (ldv_i_initializer_ptr);
 extern void ldv_free_info_match (ldv_i_match_ptr);
 extern void ldv_free_info_param (ldv_i_param_ptr);
 extern void ldv_free_info_type (ldv_i_type_ptr);

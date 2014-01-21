@@ -414,6 +414,12 @@ ldv_create_info_initializer (void)
   return i_initializer;
 }
 
+void
+ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
+{
+  free (initializer);
+}
+
 ldv_i_macro_ptr
 ldv_create_info_macro (void)
 {
@@ -545,13 +551,26 @@ ldv_create_info_var (void)
 void
 ldv_free_info_var (ldv_i_var_ptr var)
 {
+  ldv_list_ptr var_init = NULL;
+  ldv_i_initializer_ptr initializer = NULL;
+
   if (var->name)
     ldv_free_id (var->name);
 
   ldv_free_info_type (var->type);
 
   if (var->initializer_list)
-    ldv_list_delete_all (var->initializer_list);
+    {
+      for (var_init = var->initializer_list
+        ; var_init
+        ; var_init = ldv_list_get_next (var_init))
+        {
+          initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
+          ldv_free_info_initializer (initializer);
+        }
+
+      ldv_list_delete_all (var->initializer_list);
+    }
 
   free (var);
 }
