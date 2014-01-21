@@ -255,10 +255,10 @@ ldv_gets (FILE *stream)
     }
 
   str = ldv_get_text (line);
-  
+
   free (line->text);
-  free (line); 
-  
+  free (line);
+
   return str;
 }
 
@@ -515,6 +515,10 @@ ldv_print_to_awfile (void)
           /* If the format of a file name in quotes is correct. */
           if ((quote_left = strchr (line, '"')) && (quote_right = strrchr (line, '"')))
             {
+              /* Free previously stored file. */
+              if (file)
+                ldv_free_file (file);
+
               file = ldv_create_file ();
 
               for (c = quote_left + 1; c != quote_right; c++)

@@ -107,6 +107,22 @@ ldv_create_file (void)
   return file;
 }
 
+void
+ldv_free_file (ldv_file_ptr file)
+{
+  if (file)
+    {
+      ldv_free_str (file->file_name);
+
+      free (file);
+      ldv_print_info (LDV_INFO_MEM, "file memory was free");
+    }
+  else
+    {
+      LDV_FATAL_ERROR ("file pointer wasn't initialized");
+    }
+}
+
 ldv_int_ptr
 ldv_create_int (void)
 {
