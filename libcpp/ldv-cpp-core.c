@@ -653,8 +653,18 @@ ldv_copy_string (ldv_str_ptr string)
 void
 ldv_free_str (ldv_str_ptr string)
 {
-  free (string->text);
-  free (string);
+  if (string)
+    {
+      free (string->text);
+      /*ldv_print_info (LDV_INFO_MEM, "string text memory was free");*/
+
+      free (string);
+      /*ldv_print_info (LDV_INFO_MEM, "string memory was free");*/
+    }
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
 }
 
 ldv_str_ptr

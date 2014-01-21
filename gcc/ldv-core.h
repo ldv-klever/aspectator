@@ -49,7 +49,6 @@ extern void ldv_delete_body (ldv_ab_ptr);
 extern void ldv_delete_file (ldv_file_ptr);
 extern void ldv_delete_id (ldv_id_ptr);
 extern void ldv_delete_int (ldv_int_ptr);
-extern void ldv_delete_str (ldv_str_ptr);
 extern void ldv_delete_text (ldv_text_ptr);
 
 extern const char *ldv_itoa (unsigned int);

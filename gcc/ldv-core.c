@@ -240,23 +240,6 @@ ldv_delete_int (ldv_int_ptr integer)
 }
 
 void
-ldv_delete_str (ldv_str_ptr str)
-{
-  if (str)
-    {
-      free (str->text);
-      ldv_print_info (LDV_INFO_MEM, "string text memory was free");
-
-      free (str);
-      ldv_print_info (LDV_INFO_MEM, "string memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
-    }
-}
-
-void
 ldv_delete_text (ldv_text_ptr text)
 {
   if (text)
