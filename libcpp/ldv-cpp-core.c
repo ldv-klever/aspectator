@@ -550,6 +550,9 @@ ldv_free_info_var (ldv_i_var_ptr var)
 
   ldv_free_info_type (var->type);
 
+  if (var->initializer_list)
+    ldv_list_delete_all (var->initializer_list);
+
   free (var);
 }
 
