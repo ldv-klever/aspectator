@@ -328,6 +328,8 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
               LDV_FATAL_ERROR ("can't process type");
             }
 
+          ldv_free_info_var (artificial_decl);
+
           if (TREE_CODE (value) == CONSTRUCTOR)
             initializer->initializer = ldv_convert_initializer_to_internal (value);
           else
