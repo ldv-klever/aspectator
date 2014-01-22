@@ -158,6 +158,13 @@ ldv_create_pps_decl (void)
   return pps_decl;
 }
 
+void
+ldv_free_pps_decl (ldv_pps_decl_ptr pps_decl)
+{
+  free (pps_decl);
+  ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was freed");
+}
+
 ldv_pps_func_arg_ptr
 ldv_create_pps_func_arg (void)
 {

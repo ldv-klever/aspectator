@@ -1384,6 +1384,8 @@ ldv_print_var_decl (ldv_i_var_ptr var)
 
   ldv_print_decl (decl);
 
+  ldv_free_pps_decl (decl);
+
   return ldv_get_text (ldv_text_printed);
 }
 
