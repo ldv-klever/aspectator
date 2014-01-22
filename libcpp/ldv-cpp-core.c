@@ -541,6 +541,9 @@ ldv_create_info_typedecl (void)
 void
 ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
 {
+  if (typedecl->name)
+    ldv_free_id (typedecl->name);
+
   free (typedecl);
 }
 
