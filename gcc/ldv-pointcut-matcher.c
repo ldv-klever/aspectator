@@ -1008,6 +1008,7 @@ ldv_match_typedecl (tree t, const char *file_path)
         }
     }
 
+  ldv_free_info_typedecl (typedecl);
   ldv_free_info_match (match);
 
   /* Nothing was matched. */

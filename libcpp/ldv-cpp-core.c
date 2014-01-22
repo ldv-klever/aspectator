@@ -538,6 +538,12 @@ ldv_create_info_typedecl (void)
   return i_typedecl;
 }
 
+void
+ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
+{
+  free (typedecl);
+}
+
 ldv_i_var_ptr
 ldv_create_info_var (void)
 {

@@ -64,6 +64,7 @@ extern void ldv_free_info_initializer (ldv_i_initializer_ptr);
 extern void ldv_free_info_match (ldv_i_match_ptr);
 extern void ldv_free_info_param (ldv_i_param_ptr);
 extern void ldv_free_info_type (ldv_i_type_ptr);
+extern void ldv_free_info_typedecl (ldv_i_typedecl_ptr);
 extern void ldv_free_info_var (ldv_i_var_ptr);
 
 extern ldv_id_ptr ldv_create_id (void);
