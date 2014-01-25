@@ -1862,6 +1862,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_print_decl (decl);
 
+          ldv_free_pps_decl (decl);
+
           ldv_puts_text (";\n", ldv_text_printed);
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), func_decl_for_print_new->decl);
@@ -1891,6 +1893,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
           ldv_print_decl (decl);
+
+          ldv_free_pps_decl (decl);
 
           ldv_puts_text (";\n", ldv_text_printed);
 
@@ -1947,6 +1951,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
           ldv_print_decl (decl);
+
+          ldv_free_pps_decl (decl);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
 
@@ -2101,6 +2107,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_print_decl (decl);
 
+          ldv_free_pps_decl (decl);
+
           ldv_puts_text (";\n", ldv_text_printed);
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
@@ -2124,6 +2132,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
 
           ldv_print_decl (decl);
+
+          ldv_free_pps_decl (decl);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
 
