@@ -358,6 +358,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
   ldv_i_type_ptr arg_type_new = NULL;
   ldv_i_param_ptr param_new = NULL;
   bool isvoid_arg_type_new = false;
+  ldv_pps_declspecs_ptr declspecs_aux = NULL;
 
   /* Do nothing if there is no tree node implementing type. */
   if (!type_tree)
@@ -439,7 +440,12 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
          obtained earlier. */
       if (ldv_entity_declspecs)
         {
-          type->primitive_type = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs, false);
+          declspecs_aux = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs, false);
+
+          /* In merging declaration specifiers new declaration
+             specifiers are created. So old ones should be freed. */
+          ldv_free_declspecs (type->primitive_type);
+          type->primitive_type = declspecs_aux;
 
           /* Additional declaration specifiers may be applied just one time for
              some entity return type. */
