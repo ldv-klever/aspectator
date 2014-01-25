@@ -1866,6 +1866,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), func_decl_for_print_new->decl);
 
+          ldv_free_text (ldv_text_printed);
+
           ldv_list_push_back (&ldv_decl_for_print_list, func_decl_for_print_new);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
@@ -1893,6 +1895,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text (";\n", ldv_text_printed);
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
+
+          ldv_free_text (ldv_text_printed);
 
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
@@ -1926,6 +1930,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
 
+          ldv_free_text (ldv_text_printed);
+
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function call for weaving", func_name);
 
           /* Create an aspect function definition. */
@@ -1957,6 +1963,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
+
+          ldv_free_text (ldv_text_printed);
 
           /* Remove auxiliary entities. */
           ldv_aspect_func_name = NULL;

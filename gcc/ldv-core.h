@@ -47,11 +47,11 @@ extern ldv_text_ptr ldv_create_text (void);
 
 extern void ldv_free_file (ldv_file_ptr);
 extern void ldv_free_pps_decl (ldv_pps_decl_ptr);
+extern void ldv_free_text (ldv_text_ptr);
 
 extern void ldv_delete_body (ldv_ab_ptr);
 extern void ldv_delete_id (ldv_id_ptr);
 extern void ldv_delete_int (ldv_int_ptr);
-extern void ldv_delete_text (ldv_text_ptr);
 
 extern const char *ldv_itoa (unsigned int);
 

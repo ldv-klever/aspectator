@@ -201,6 +201,22 @@ ldv_create_text (void)
 }
 
 void
+ldv_free_text (ldv_text_ptr text)
+{
+  if (text)
+    {
+      ldv_free_str (text->text);
+
+      free (text);
+      ldv_print_info (LDV_INFO_MEM, "text memory was free");
+    }
+  else
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
+}
+
+void
 ldv_delete_body (ldv_ab_ptr body)
 {
   if (body)
@@ -243,22 +259,6 @@ ldv_delete_int (ldv_int_ptr integer)
   else
     {
       LDV_FATAL_ERROR ("integer pointer wasn't initialized");
-    }
-}
-
-void
-ldv_delete_text (ldv_text_ptr text)
-{
-  if (text)
-    {
-      ldv_free_str (text->text);
-
-      free (text);
-      ldv_print_info (LDV_INFO_MEM, "text memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
     }
 }
 
