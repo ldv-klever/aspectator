@@ -203,8 +203,6 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
 ldv_pps_declspecs_ptr
 ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
 {
-  ldv_pps_declspecs_ptr pps_declspecs = NULL;
-
   switch (type->it_kind)
     {
     case LDV_IT_ARRAY:
@@ -217,10 +215,7 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
 
     case LDV_IT_PRIMITIVE:
       /* A primitive type corresponds to declaration specifiers. */
-      pps_declspecs = ldv_create_declspecs ();
-      pps_declspecs = type->primitive_type;
-
-      return pps_declspecs;
+      return ldv_copy_declspecs (type->primitive_type);
 
     case LDV_IT_PTR:
       /* Get declaration specifiers from a pointed type. */
