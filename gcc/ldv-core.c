@@ -94,6 +94,12 @@ ldv_create_declarator (void)
   return declarator;
 }
 
+void
+ldv_free_declarator (ldv_pps_declarator_ptr declarator)
+{
+  free (declarator);
+}
+
 ldv_file_ptr
 ldv_create_file (void)
 {
@@ -161,7 +167,18 @@ ldv_create_pps_decl (void)
 void
 ldv_free_pps_decl (ldv_pps_decl_ptr pps_decl)
 {
+  ldv_pps_declarator_ptr declarator = NULL;
+  ldv_list_ptr declarator_list = NULL;
+
   ldv_free_declspecs (pps_decl->pps_declspecs);
+
+  for (declarator_list = pps_decl->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
+    {
+      declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+      ldv_free_declarator (declarator);
+    }
+
   ldv_list_delete_all (pps_decl->pps_declarator);
   free (pps_decl);
   ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was freed");
