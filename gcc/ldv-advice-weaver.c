@@ -1375,6 +1375,7 @@ const char *
 ldv_print_var_decl (ldv_i_var_ptr var)
 {
   ldv_pps_decl_ptr decl;
+  const char *str;
 
   decl = ldv_convert_internal_to_declaration (var->type, ldv_get_id_name (var->name));
 
@@ -1386,7 +1387,11 @@ ldv_print_var_decl (ldv_i_var_ptr var)
 
   ldv_free_pps_decl (decl);
 
-  return ldv_get_text (ldv_text_printed);
+  str = ldv_copy_str (ldv_get_text (ldv_text_printed));
+
+  ldv_free_text (ldv_text_printed);
+
+  return str;
 }
 
 void
