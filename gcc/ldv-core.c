@@ -162,6 +162,7 @@ void
 ldv_free_pps_decl (ldv_pps_decl_ptr pps_decl)
 {
   ldv_free_declspecs (pps_decl->pps_declspecs);
+  ldv_list_delete_all (pps_decl->pps_declarator);
   free (pps_decl);
   ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was freed");
 }
