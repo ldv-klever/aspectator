@@ -734,7 +734,10 @@ ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
   declspecs = ldv_create_declspecs ();
 
   /* Merge all declaration specifiers from two structures. */
-  declspecs->type_name = declspecs_first->type_name ? declspecs_first->type_name : declspecs_second->type_name;
+  if (declspecs_first->type_name)
+    declspecs->type_name = ldv_copy_id (declspecs_first->type_name);
+  else if (declspecs_second->type_name)
+    declspecs->type_name = ldv_copy_id (declspecs_second->type_name);
   declspecs->istypedef = declspecs_first->istypedef || declspecs_second->istypedef;
   declspecs->isextern = declspecs_first->isextern || declspecs_second->isextern;
   declspecs->isstatic = declspecs_first->isstatic || declspecs_second->isstatic;
