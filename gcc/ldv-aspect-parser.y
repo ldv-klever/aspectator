@@ -414,6 +414,18 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a primitive pointcut from a corresponding rule. */
       c_pointcut->p_pointcut = $1;
 
+      /* Store information about pointcut type. */
+      if (c_pointcut->p_pointcut->pp_kind == LDV_PP_CALL) 
+        c_pointcut->cp_type = LDV_CP_TYPE_CALL;
+      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_DEFINE)
+        c_pointcut->cp_type = LDV_CP_TYPE_DEFINE;
+      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_EXECUTION)
+        c_pointcut->cp_type = LDV_CP_TYPE_EXECUTION;
+      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_INFILE)
+        c_pointcut->cp_type = LDV_CP_TYPE_INFILE;
+      else
+        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"primitive\" composite pointcut");
 
       $$ = c_pointcut;
@@ -429,6 +441,9 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
 
       /* Set a composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_first = $2;
+
+      /* Store information about pointcut type. */
+      c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"not\" composite pointcut");
 
@@ -448,6 +463,12 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
 
+      /* Store information about pointcut type. */
+      if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else
+        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"or\" composite pointcut");
 
       $$ = c_pointcut;
@@ -465,6 +486,16 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       c_pointcut->c_pointcut_first = $1;
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
+
+      /* Store information about pointcut type. */
+      if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else if (c_pointcut->c_pointcut_first->cp_type == LDV_CP_TYPE_INFILE)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_second->cp_type;
+      else if (c_pointcut->c_pointcut_second->cp_type == LDV_CP_TYPE_INFILE)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else
+        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"and\" composite pointcut");
 
@@ -1722,6 +1753,8 @@ ldv_create_c_pointcut (void)
   ldv_print_info (LDV_INFO_MEM, "composite pointcut memory was released");
 
   c_pointcut->cp_kind = LDV_CP_NONE;
+
+  c_pointcut->cp_type = LDV_CP_TYPE_NONE;
 
   return c_pointcut;
 }

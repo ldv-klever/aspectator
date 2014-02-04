@@ -272,12 +272,14 @@ typedef ldv_primitive_pointcut *ldv_pp_ptr;
    or composite pointcut 1 || composite pointcut 2
    or composite pointcut 1 && composite pointcut 2. */
 typedef enum { LDV_CP_AND, LDV_CP_NONE, LDV_CP_NOT, LDV_CP_OR, LDV_CP_PRIMITIVE } ldv_cpk;
+typedef enum { LDV_CP_TYPE_NONE, LDV_CP_TYPE_ANY, LDV_CP_TYPE_CALL, LDV_CP_TYPE_EXECUTION, LDV_CP_TYPE_DEFINE, LDV_CP_TYPE_INFILE } ldv_cpt;
 typedef struct ldv_composite_pointcut_internal
 {
   ldv_cpk cp_kind;
   struct ldv_composite_pointcut_internal *c_pointcut_first;
   struct ldv_composite_pointcut_internal *c_pointcut_second;
   ldv_pp_ptr p_pointcut;
+  ldv_cpt cp_type;
 } ldv_composite_pointcut;
 typedef ldv_composite_pointcut *ldv_cp_ptr;
 
