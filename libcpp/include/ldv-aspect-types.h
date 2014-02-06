@@ -21,6 +21,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 
 #include "ldv-list.h"
+#include "hashtab.h"
 
 /* Some abbreviatioun that are used in aspect types:
    str = string
@@ -298,6 +299,7 @@ typedef struct ldv_advice_declaration_internal
 {
   ldv_ak a_kind;
   ldv_cp_ptr c_pointcut;
+  htab_t a_hashtab;
 } ldv_advice_declaration;
 typedef ldv_advice_declaration *ldv_adecl_ptr;
 

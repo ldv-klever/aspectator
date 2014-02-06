@@ -38,6 +38,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* For function structure. */
 #include "function.h"
 
+#include "hashtab.h"
+
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-parser.h"
 #include "ldv-converter.h"
@@ -808,6 +810,8 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   ldv_i_match_ptr match = NULL;
   ldv_i_func_ptr func = NULL;
   const char *func_decl_printed;
+  htab_t ldv_names_tab = NULL;
+  void *hash_element;
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
@@ -864,6 +868,19 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
         continue;
       else if ((pp_kind == LDV_PP_EXECUTION) && (c_pointcut->cp_type != LDV_CP_TYPE_EXECUTION) && (c_pointcut->cp_type != LDV_CP_TYPE_ANY))
         continue;
+
+      /* Fast func->name search in an advice hash table. */
+      ldv_names_tab = adef->a_declaration->a_hashtab;
+      if (ldv_names_tab != NULL)
+        {
+          hash_element = htab_find_with_hash (ldv_names_tab, "$", (*htab_hash_string) ("$"));
+          if (hash_element == NULL)
+            {
+              hash_element = htab_find_with_hash (ldv_names_tab, ldv_get_id_name (func->name), (*htab_hash_string) (ldv_get_id_name (func->name)));
+              if (hash_element == NULL)
+                continue;
+            }
+        }
 
       if (ldv_match_cp (c_pointcut, match))
         {

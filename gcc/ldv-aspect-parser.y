@@ -32,6 +32,7 @@ $ bison ldv-aspect-parser.y
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
+#include "hashtab.h"
 
 /* For error functions. */
 #include "diagnostic-core.h"
@@ -40,6 +41,7 @@ $ bison ldv-aspect-parser.y
 #include "ldv-aspect-parser.h"
 #include "ldv-aspect-types.h"
 #include "ldv-core.h"
+#include "ldv-cpp-converter.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
 
@@ -83,12 +85,17 @@ static bool ldv_istype_spec = false;
 /* Flag is true if universal type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_isuniversal_type_spec = false;
+static htab_t ldv_names_tab;
 
 
 static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
+static void ldv_hash_add_name (const char *name);
+static void ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut);
+static int ldv_hash_string_eq (const void *s1_p, const void *s2_p);
+static hashval_t ldv_hash_string_hash (const void *s_p);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
 static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
@@ -350,6 +357,18 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
 
       /* Set a composite pointcut from a corresponding rule. */
       a_declaration->c_pointcut = $3;
+
+      a_declaration->a_hashtab = NULL;
+
+      if (a_declaration->c_pointcut->cp_type == LDV_CP_TYPE_CALL)
+        {
+          /* Create a hash table with function names. */
+          ldv_names_tab = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, NULL);
+          /* Store infromation about function names in the hash table. */
+          ldv_hash_recursive_composite_pointcut (a_declaration->c_pointcut);
+
+          a_declaration->a_hashtab = ldv_names_tab;
+        }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"%s\" advice declaration", a_kind);
 
@@ -1866,6 +1885,61 @@ ldv_get_id_kind (char *id)
 
   ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
   return LDV_ID;
+}
+
+void
+ldv_hash_add_name (const char *name)
+{
+  void **hash_element;
+
+  hash_element = htab_find_slot_with_hash (ldv_names_tab, name, (*htab_hash_string) (name), INSERT);
+
+  if (hash_element == NULL)
+    {
+      LDV_FATAL_ERROR ("Can't allocate memory");
+    }
+
+  /* Assign xstrdup (name). */
+  if (*hash_element == NULL)
+    *hash_element = (void *) xstrdup (name);
+}
+
+void
+ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
+{
+  ldv_i_func_ptr i_func = NULL;
+
+  if (c_pointcut != NULL)
+    {
+      ldv_hash_recursive_composite_pointcut (c_pointcut->c_pointcut_first);
+
+      if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_kind == LDV_PP_CALL))
+        {
+          i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+
+          if (strchr (ldv_get_id_name (i_func->name), '$'))
+            ldv_hash_add_name ("$");
+          else
+            ldv_hash_add_name (ldv_get_id_name (i_func->name));
+        }
+
+      ldv_hash_recursive_composite_pointcut (c_pointcut->c_pointcut_second);
+    }
+}
+
+static int
+ldv_hash_string_eq (const void *s1_p, const void *s2_p)
+{
+  const char *s1 = (const char *) s1_p;
+  const char *s2 = (const char *) s2_p;
+  return strcmp (s1, s2) == 0;
+}
+
+static hashval_t
+ldv_hash_string_hash (const void *s_p)
+{
+  const char *s = (const char *) s_p;
+  return (*htab_hash_string) (s);
 }
 
 /* We aren't interested in advice body content, except for correct determinition
