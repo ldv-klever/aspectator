@@ -32,6 +32,13 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_PRETTY_PRINT_WARN(indent_level, msg) do { LDV_WARN (msg); ldv_c_backend_print (indent_level, true, "/* LDV: %s: %d: %s */", __FILE__, __LINE__, msg); } while (0)
 
 
+/* This ugly global variable is to implement a workaround for #3692.
+   Please, replace it with a parameter of a structure type to be passed for all
+   converting/printing functions if you will need something similar in more
+   cases. */
+static bool ldv_disable_cast_printing = false;
+
+
 static ldv_location_ptr ldv_declarator_location (ldv_declarator_ptr);
 static ldv_location_ptr ldv_direct_declarator_location (ldv_direct_declarator_ptr);
 
@@ -939,14 +946,18 @@ ldv_print_cast_expr (unsigned int indent_level, ldv_cast_expr_ptr cast_expr)
       if ((location = LDV_CAST_EXPR_LOCATION (cast_expr)))
         ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
-      ldv_c_backend_print (indent_level, true, "(");
+      // See comment for this variable.
+      if (!ldv_disable_cast_printing)
+        {
+          ldv_c_backend_print (indent_level, true, "(");
 
-      if ((type_name = LDV_CAST_EXPR_TYPE_NAME (cast_expr)))
-        ldv_print_type_name (indent_level, type_name);
-      else
-        LDV_PRETTY_PRINT_WARN (indent_level, "type name of cast expression was not printed");
+          if ((type_name = LDV_CAST_EXPR_TYPE_NAME (cast_expr)))
+            ldv_print_type_name (indent_level, type_name);
+          else
+            LDV_PRETTY_PRINT_WARN (indent_level, "type name of cast expression was not printed");
 
-      ldv_c_backend_print (indent_level, true, ")");
+          ldv_c_backend_print (indent_level, true, ")");
+        }
 
       if ((cast_expr_next = LDV_CAST_EXPR_CAST_EXPR (cast_expr)))
         ldv_print_cast_expr (indent_level, cast_expr_next);
@@ -3566,7 +3577,12 @@ ldv_convert_and_print_assignment_expr (tree t)
   current_lines_level = ldv_c_backend_get_lines_level ();
   ldv_c_backend_set_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO);
   ldv_c_backend_print_to_buffer ();
+  /* See comment for this variable.
+     Since the only caller is Aspectator, we can implement the workaround in
+     such the way. */
+  ldv_disable_cast_printing = true;
   ldv_print_assignment_expr (0, assignment_expr);
+  ldv_disable_cast_printing = false;
   ldv_c_backend_padding_cancel ();
   ldv_c_backend_print_to_file ();
   ldv_c_backend_set_lines_level (current_lines_level);
