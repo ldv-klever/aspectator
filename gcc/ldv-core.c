@@ -97,6 +97,9 @@ ldv_create_declarator (void)
 void
 ldv_free_declarator (ldv_pps_declarator_ptr declarator)
 {
+  if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_FUNC)
+    ldv_list_delete_all (declarator->func_arg_list);
+
   free (declarator);
 }
 
