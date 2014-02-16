@@ -148,7 +148,7 @@ static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
 static unsigned int ldv_parse_aspect_pattern_param_str (char **str);
 static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
 static int ldv_parse_aspect_pattern_known_value (char const **str);
-static char *ldv_parse_comments (void);
+static ldv_text_ptr ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern);
 static int ldv_parse_preprocessor_directives (void);
@@ -3966,7 +3966,7 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
   int brace_count = 1;
   ldv_aspect_pattern_ptr pattern = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
-  char *comment = NULL;
+  ldv_text_ptr comment = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -3993,7 +3993,8 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
              be model comments through them. */
           if ((comment = ldv_parse_comments ()))
             {
-              ldv_puts_body (comment, *body);
+              ldv_puts_body (ldv_get_text (comment), *body);
+              ldv_free_text (comment);
               continue;
             }
 
@@ -4345,7 +4346,7 @@ ldv_parse_aspect_pattern_known_value (char const **str)
   return 0;
 }
 
-char *
+ldv_text_ptr
 ldv_parse_comments (void)
 {
   int c, c_next;
@@ -4384,7 +4385,7 @@ ldv_parse_comments (void)
                 }
 
               /* So, we'll skip following whitespaces and comments if so. */
-              return ldv_get_text (comment);
+              return comment;
             }
           /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
              current file position, since '*_/' can be placed at another line
@@ -4407,7 +4408,7 @@ ldv_parse_comments (void)
                           ldv_puts_text ("*/", comment);
                           ldv_set_last_column (yylloc.last_column + 2);
                           /* So, we'll skip following whitespaces and comments if so. */
-                          return ldv_get_text (comment);
+                          return comment;
                         }
                       else
                         {
@@ -4786,14 +4787,18 @@ yylex (void)
   ldv_id_ptr id = NULL;
   unsigned int i;
   ldv_int_ptr integer = NULL;
+  ldv_text_ptr comment = NULL;
 
   /* Skip nonsignificant whitespaces from the beginning of a current line. */
   ldv_parse_whitespaces ();
 
   /* Examine whether a C or C++ comment is encountered. Skip a corresponding
      comment if so and continue parsing. */
-  if (ldv_parse_comments ())
-    return yylex ();
+  if ((comment = ldv_parse_comments ()))
+    {
+      ldv_free_text (comment);
+      return yylex ();
+    }
 
   /* Examine whether a special preprocessor line is encountered. */
   if (ldv_parse_preprocessor_directives ())
