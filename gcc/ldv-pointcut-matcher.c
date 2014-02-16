@@ -90,6 +90,7 @@ static ldv_i_func_ptr func_context;
 
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
+static void ldv_free_func_arg_info (ldv_func_arg_info_ptr);
 static ldv_var_array_ptr ldv_create_var_array (void);
 static const char *ldv_get_arg_sign (tree, enum ldv_arg_signs);
 static void ldv_match_expr (tree);
@@ -134,6 +135,12 @@ ldv_create_func_arg_info (void)
   func_arg_info->func_arg_info_kind = LDV_FUNC_ARG_INFO_NONE;
 
   return func_arg_info;
+}
+
+void
+ldv_free_func_arg_info (ldv_func_arg_info_ptr func_arg_info)
+{
+  free (func_arg_info);
 }
 
 ldv_var_array_ptr
@@ -237,6 +244,8 @@ ldv_match_expr (tree t)
   call_expr_arg_iterator iter;
   tree arg = NULL_TREE;
   bool global_var_init = false;
+  ldv_list_ptr func_arg_info_list = NULL;
+  ldv_func_arg_info_ptr func_arg_info = NULL;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -779,6 +788,15 @@ ldv_match_expr (tree t)
                       TREE_OPERAND (func_called_addr, 0) = ldv_func_called_matched;
                       ldv_func_called_matched = NULL;
                     }
+                }
+
+              /* Walk through function arguments to free memory. */
+              for (func_arg_info_list = ldv_func_arg_info_list
+                ; func_arg_info_list
+                ; func_arg_info_list = ldv_list_get_next (func_arg_info_list))
+                {
+                  func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
+                  ldv_free_func_arg_info (func_arg_info);
                 }
 
               ldv_list_delete_all (ldv_func_arg_info_list);
