@@ -701,6 +701,12 @@ ldv_create_string (void)
   return ldv_create_str (LDV_T_STRING);
 }
 
+void
+ldv_free_string (ldv_str_ptr str)
+{
+  ldv_free_str (str);
+}
+
 static bool
 ldv_isany_chars (const char *c)
 {

@@ -2428,7 +2428,8 @@ ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern)
   if (str)
     {
       /* Assign read identifier to identifier passed through parameter. */
-      *id = ldv_get_str (str);
+      *id = ldv_copy_str (ldv_get_str (str));
+      ldv_free_string (str);
 
       /* Specify whether '$' wildcard was read or not. */
       *isany_chars = isread_any_chars;

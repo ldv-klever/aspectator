@@ -76,6 +76,7 @@ extern ldv_str_ptr ldv_copy_string (ldv_str_ptr);
 
 extern void ldv_free_id (ldv_id_ptr);
 extern void ldv_free_str (ldv_str_ptr);
+extern void ldv_free_string (ldv_str_ptr);
 
 extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
 
