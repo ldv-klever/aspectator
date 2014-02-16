@@ -781,6 +781,7 @@ ldv_match_expr (tree t)
                     }
                 }
 
+              ldv_list_delete_all (ldv_func_arg_info_list);
               ldv_func_arg_info_list = NULL;
             }
           /* A function can be called not only by means of its name but also
