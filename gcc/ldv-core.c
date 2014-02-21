@@ -100,9 +100,10 @@ ldv_free_declarator (ldv_pps_declarator_ptr declarator)
   ldv_list_ptr func_arg_list = NULL;
   ldv_pps_func_arg_ptr func_arg = NULL;
 
-  if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_FUNC)
+  switch (declarator->pps_declarator_kind)
     {
-       for (func_arg_list = declarator->func_arg_list
+    case LDV_PPS_DECLARATOR_FUNC:
+      for (func_arg_list = declarator->func_arg_list
         ; func_arg_list
         ; func_arg_list = ldv_list_get_next (func_arg_list))
         {
@@ -111,6 +112,15 @@ ldv_free_declarator (ldv_pps_declarator_ptr declarator)
         }
 
       ldv_list_delete_all (declarator->func_arg_list);
+      break;
+
+    case LDV_PPS_DECLARATOR_ID:
+      ldv_free_id (declarator->declarator_name);
+      break;
+
+    default:
+      /* TODO: insert fatal error here. */
+      ;
     }
 
   free (declarator);
