@@ -92,7 +92,7 @@ static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
 static void ldv_free_func_arg_info (ldv_func_arg_info_ptr);
 static ldv_var_array_ptr ldv_create_var_array (void);
-static const char *ldv_get_arg_sign (tree, enum ldv_arg_signs);
+static char *ldv_get_arg_sign (tree, enum ldv_arg_signs);
 static void ldv_match_expr (tree);
 static void ldv_visualize_expr (tree, int);
 static void ldv_visualize_body (tree);
@@ -140,6 +140,9 @@ ldv_create_func_arg_info (void)
 void
 ldv_free_func_arg_info (ldv_func_arg_info_ptr func_arg_info)
 {
+  if (func_arg_info->sign)
+    free (func_arg_info->sign);
+
   free (func_arg_info);
 }
 
@@ -154,11 +157,11 @@ ldv_create_var_array (void)
   return var_array;
 }
 
-const char *
+char *
 ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 {
   tree record_type = NULL_TREE, op1 = NULL_TREE, op2 = NULL_TREE;
-  const char *arg_sign = NULL, *field_sign = NULL, *struct_sign = NULL;
+  char *arg_sign = NULL, *field_sign = NULL, *struct_sign = NULL;
   char *arg_sign_p = NULL;
 
   /* Skip any '*' and '&' used before identifiers. */
@@ -171,16 +174,16 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
   /* Argument signature equals to declaration name passed. */
   if (t && DECL_P (t) && DECL_NAME (t)
     && (TREE_CODE (DECL_NAME (t)) == IDENTIFIER_NODE))
-    arg_sign = IDENTIFIER_POINTER (DECL_NAME (t));
+    arg_sign = ldv_copy_str (IDENTIFIER_POINTER (DECL_NAME (t)));
   /* Argument signature equals to type name passed. */
   else if (t && (TREE_CODE (t) == RECORD_TYPE || TREE_CODE (t) == UNION_TYPE)
     && TYPE_NAME (t))
     {
       if (TREE_CODE (TYPE_NAME (t)) == IDENTIFIER_NODE)
-        arg_sign = IDENTIFIER_POINTER (TYPE_NAME (t));
+        arg_sign = ldv_copy_str (IDENTIFIER_POINTER (TYPE_NAME (t)));
       /* There may be anonymous structures and unions. */
       else
-        arg_sign = "";
+        arg_sign = ldv_copy_str ("");
     }
   /* Argument signature equals to field name possibly complemented with a number
    * of names of structures containing it. */
@@ -191,7 +194,7 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 
       if (DECL_P (op2) && DECL_NAME (op2)
         && (TREE_CODE (DECL_NAME (op2)) == IDENTIFIER_NODE))
-        field_sign = IDENTIFIER_POINTER (DECL_NAME (op2));
+        field_sign = ldv_copy_str (IDENTIFIER_POINTER (DECL_NAME (op2)));
 
       /* "Complex identifier" means "simple identifier" together with a name of
        * structure containing this field. */
@@ -215,7 +218,7 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 
   /* Argument signature can't be exctracted, so use stub instead. */
   if (!arg_sign)
-    return "NOT_ARG_SIGN";
+    return ldv_copy_str ("NOT_ARG_SIGN");
 
   return arg_sign;
 }
