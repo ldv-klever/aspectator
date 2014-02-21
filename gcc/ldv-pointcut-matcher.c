@@ -162,7 +162,6 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 {
   tree record_type = NULL_TREE, op1 = NULL_TREE, op2 = NULL_TREE;
   char *arg_sign = NULL, *field_sign = NULL, *struct_sign = NULL;
-  char *arg_sign_p = NULL;
 
   /* Skip any '*' and '&' used before identifiers. */
   if (t && (TREE_CODE (t) == ADDR_EXPR || TREE_CODE (t) == INDIRECT_REF))
@@ -205,10 +204,11 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 
           struct_sign = ldv_get_arg_sign (record_type, LDV_ARG_SIGN_SIMPLE_ID);
 
-          arg_sign_p = XCNEWVEC (char, (strlen (field_sign) + 4 + strlen (struct_sign) + 1));
+          arg_sign = XCNEWVEC (char, (strlen (field_sign) + 4 + strlen (struct_sign) + 1));
 
-          sprintf(arg_sign_p, "%s_of_%s", field_sign, struct_sign);
-          arg_sign = arg_sign_p;
+          sprintf(arg_sign, "%s_of_%s", field_sign, struct_sign);
+          free (field_sign);
+          free (struct_sign);
         }
       /* Otherwise calculate argument signature as "simple identifier", i.e. as
        * a variable, argument or field name. */
