@@ -1976,6 +1976,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
           ldv_free_pps_decl (ldv_func_ret_type_decl);
+          ldv_list_delete_all (ldv_func_arg_type_name_list);
           ldv_free_text (ldv_text_printed);
 
           /* Remove auxiliary entities. */
