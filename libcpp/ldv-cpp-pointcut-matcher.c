@@ -1144,6 +1144,8 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 }
             }
 
+          ldv_list_delete_all (matching_table_coord_list);
+
           /* Remove a trailing '..' wildcard that catches nothing. */
           if (param_second_list)
             {
