@@ -733,10 +733,6 @@ ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
 {
   ldv_pps_declspecs_ptr declspecs = NULL;
 
-  /* In that case when merge isn't needed. */
-  if (!declspecs_second)
-    return declspecs_first;
-
   declspecs = ldv_create_declspecs ();
 
   /* Merge all declaration specifiers from two structures. */
