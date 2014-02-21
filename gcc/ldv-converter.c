@@ -176,6 +176,8 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
     case LDV_IT_PRIMITIVE:
       /* A primitive type corresponds to declaration specifiers. And it's
          processed separately. */
+      ldv_free_declarator (declarator);
+      ldv_list_delete_all (declarator_list);
       return NULL;
 
     case LDV_IT_PTR:
