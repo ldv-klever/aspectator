@@ -97,8 +97,21 @@ ldv_create_declarator (void)
 void
 ldv_free_declarator (ldv_pps_declarator_ptr declarator)
 {
+  ldv_list_ptr func_arg_list = NULL;
+  ldv_pps_func_arg_ptr func_arg = NULL;
+
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_FUNC)
-    ldv_list_delete_all (declarator->func_arg_list);
+    {
+       for (func_arg_list = declarator->func_arg_list
+        ; func_arg_list
+        ; func_arg_list = ldv_list_get_next (func_arg_list))
+        {
+          func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (func_arg_list);
+          ldv_free_pps_func_arg (func_arg);
+        }
+
+      ldv_list_delete_all (declarator->func_arg_list);
+    }
 
   free (declarator);
 }
@@ -196,6 +209,12 @@ ldv_create_pps_func_arg (void)
   ldv_print_info (LDV_INFO_MEM, "function argument memory was released");
 
   return pps_func_arg;
+}
+
+void
+ldv_free_pps_func_arg (ldv_pps_func_arg_ptr pps_func_arg)
+{
+  free (pps_func_arg);
 }
 
 ldv_pps_ptr_quals_ptr
