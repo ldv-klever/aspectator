@@ -122,9 +122,15 @@ ldv_free_declarator (ldv_pps_declarator_ptr declarator)
       ldv_free_ptr_quals (declarator->pps_ptr_quals);
       break;
 
+    case LDV_PPS_DECLARATOR_ARRAY:
+      ldv_free_pps_array_size (declarator->pps_array_size);
+      break;
+
+    case LDV_PPS_DECLARATOR_NONE:
+      break;
+
     default:
-      /* TODO: insert fatal error here. */
-      ;
+      LDV_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
     }
 
   free (declarator);
@@ -179,6 +185,12 @@ ldv_create_pps_array_size (void)
   ldv_print_info (LDV_INFO_MEM, "array size memory was released");
 
   return pps_array_size;
+}
+
+void
+ldv_free_pps_array_size (ldv_pps_array_size_ptr pps_array_size)
+{
+  free (pps_array_size);
 }
 
 ldv_pps_decl_ptr
