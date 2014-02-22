@@ -1542,6 +1542,8 @@ c_parameter_declaration:
           pps_decl->pps_decl_kind = LDV_PPS_DECL_ANY_PARAMS;
 
           ldv_print_info (LDV_INFO_BISON, "bison parsed any parameters wildcard");
+
+          ldv_list_delete_all ($2);
         }
       /* Specify that variable parameters may correspond to this 'declaration'. */
       else if (pps_decl->pps_declspecs->isvar_params)
