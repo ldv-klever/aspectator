@@ -4840,6 +4840,7 @@ yylex (void)
   unsigned int i;
   ldv_int_ptr integer = NULL;
   ldv_text_ptr comment = NULL;
+  int id_kind;
 
   /* Skip nonsignificant whitespaces from the beginning of a current line. */
   ldv_parse_whitespaces ();
@@ -4914,7 +4915,10 @@ yylex (void)
       /* Set a corresponding semantic value. */
       yylval.id = id;
 
-      return ldv_get_id_kind (str);
+      id_kind = ldv_get_id_kind (str);
+      free (str);
+
+      return id_kind;
     }
 
   /* Parse some integer number. It consists of digits. */
