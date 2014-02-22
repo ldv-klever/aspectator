@@ -1530,6 +1530,8 @@ c_parameter_declaration:
   | c_declaration_specifiers c_abstract_declarator_opt
     {
       ldv_pps_decl_ptr pps_decl = NULL;
+      ldv_pps_declarator_ptr declarator = NULL;
+      ldv_list_ptr declarator_list = NULL;
 
       pps_decl = ldv_create_pps_decl ();
 
@@ -1542,8 +1544,6 @@ c_parameter_declaration:
           pps_decl->pps_decl_kind = LDV_PPS_DECL_ANY_PARAMS;
 
           ldv_print_info (LDV_INFO_BISON, "bison parsed any parameters wildcard");
-
-          ldv_list_delete_all ($2);
         }
       /* Specify that variable parameters may correspond to this 'declaration'. */
       else if (pps_decl->pps_declspecs->isvar_params)
@@ -1562,6 +1562,19 @@ c_parameter_declaration:
           pps_decl->pps_declarator = $2;
 
           ldv_print_info (LDV_INFO_BISON, "bison parsed parameter declaration");
+        }
+
+      if (pps_decl->pps_declspecs->isany_params
+        || pps_decl->pps_declspecs->isvar_params)
+        {
+          for (declarator_list = $2; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
+            {
+              declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+              ldv_free_declarator (declarator);
+            }
+
+          ldv_list_delete_all ($2);
         }
 
       $$ = pps_decl;
