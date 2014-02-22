@@ -1728,6 +1728,8 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
 
       ldv_puts_string (arg_type_name, str);
 
+      ldv_free_id (arg_type_name_aux);
+
       ldv_list_push_back (&ldv_func_arg_type_name_list, str);
     }
 
