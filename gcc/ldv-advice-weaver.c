@@ -976,6 +976,9 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
   /* Print '}' that finishes a body for all advice kinds. */
   ldv_print_c ('}');
+
+  if (ldv_func_call)
+    ldv_free_text (ldv_func_call);
 }
 
 void
