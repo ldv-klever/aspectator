@@ -916,6 +916,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
     }
 
   body_text = ldv_copy_str (ldv_get_text (body_with_patterns));
+  ldv_free_text (body_with_patterns);
 
   /* Truncate unneeded braces from a body. */
   body_text = ldv_truncate_braces (body_text);
