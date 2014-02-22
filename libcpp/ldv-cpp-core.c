@@ -434,6 +434,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
       ldv_list_delete_all (initializer->initializer);
     }
 
+  if (initializer->decl)
+    free (initializer->decl);
+
   free (initializer);
 }
 

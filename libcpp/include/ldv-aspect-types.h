@@ -452,8 +452,8 @@ typedef struct ldv_info_initializer_internal
   bool isarray_index;
   unsigned int array_index;
   const char *type;
-  const char *decl;
-  const char *pointed_func_ret_type_decl;
+  char *decl;
+  char *pointed_func_ret_type_decl;
   ldv_list_ptr pointed_func_arg_type_decls;
   const char *value;
   ldv_list_ptr initializer;

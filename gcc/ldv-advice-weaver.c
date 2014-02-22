@@ -1377,11 +1377,11 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
   return ldv_get_text (ldv_text_printed);
 }
 
-const char *
+char *
 ldv_print_var_decl (ldv_i_var_ptr var)
 {
   ldv_pps_decl_ptr decl;
-  const char *str;
+  char *str;
 
   decl = ldv_convert_internal_to_declaration (var->type, ldv_get_id_name (var->name));
 
