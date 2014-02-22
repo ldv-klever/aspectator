@@ -57,7 +57,7 @@ extern void ldv_delete_body (ldv_ab_ptr);
 extern void ldv_delete_id (ldv_id_ptr);
 extern void ldv_delete_int (ldv_int_ptr);
 
-extern const char *ldv_itoa (unsigned int);
+extern char *ldv_itoa (unsigned int);
 
 extern char *ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr);
 

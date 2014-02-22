@@ -1649,7 +1649,7 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
   ldv_list_ptr func_arg_type_decl_list = NULL;
   const char *arg_type_name = NULL;
   ldv_id_ptr arg_type_name_aux;
-  const char *arg_type_name_numb_aux = NULL;
+  char *arg_type_name_numb_aux = NULL;
   unsigned int arg_type_numb;
   ldv_str_ptr str = NULL;
   ldv_list_ptr body_patterns = NULL;
@@ -1707,6 +1707,8 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
       arg_type_name_numb_aux = ldv_itoa (arg_type_numb);
 
       ldv_puts_id (arg_type_name_numb_aux, arg_type_name_aux);
+
+      free (arg_type_name_numb_aux);
 
       arg_type_name = ldv_get_id_name (arg_type_name_aux);
 

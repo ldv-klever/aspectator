@@ -337,7 +337,7 @@ ldv_delete_int (ldv_int_ptr integer)
     }
 }
 
-const char *
+char *
 ldv_itoa (unsigned int n)
 {
   int int_digits, order;
