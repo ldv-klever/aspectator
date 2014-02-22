@@ -49,6 +49,7 @@ extern void ldv_free_declarator (ldv_pps_declarator_ptr);
 extern void ldv_free_file (ldv_file_ptr);
 extern void ldv_free_pps_decl (ldv_pps_decl_ptr);
 extern void ldv_free_pps_func_arg (ldv_pps_func_arg_ptr);
+extern void ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr);
 extern void ldv_free_text (ldv_text_ptr);
 
 extern void ldv_delete_body (ldv_ab_ptr);

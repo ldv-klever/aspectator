@@ -118,6 +118,10 @@ ldv_free_declarator (ldv_pps_declarator_ptr declarator)
       ldv_free_id (declarator->declarator_name);
       break;
 
+    case LDV_PPS_DECLARATOR_PTR:
+      ldv_free_ptr_quals (declarator->pps_ptr_quals);
+      break;
+
     default:
       /* TODO: insert fatal error here. */
       ;
@@ -238,6 +242,12 @@ ldv_create_ptr_quals (void)
   ldv_print_info (LDV_INFO_MEM, "declarator pointer qualifiers memory was released");
 
   return ptr_quals;
+}
+
+void
+ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr ptr_quals)
+{
+  free (ptr_quals);
 }
 
 ldv_text_ptr
