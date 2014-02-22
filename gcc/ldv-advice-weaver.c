@@ -917,8 +917,8 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 
   body_text = ldv_copy_str (ldv_get_text (body_with_patterns));
 
-  /* Trunkate unneeded braces from a body. */
-  body_text = ldv_trunkate_braces (body_text);
+  /* Truncate unneeded braces from a body. */
+  body_text = ldv_truncate_braces (body_text);
 
   if (a_kind == LDV_A_AFTER)
     {
@@ -946,6 +946,8 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
     }
 
   ldv_print_str_without_padding (body_text);
+  /* In truncating braces this pointer was moved ahead exactly by 1. */
+  free (body_text - 1);
 
   if (a_kind == LDV_A_BEFORE)
     {
@@ -2037,7 +2039,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
         body_text = ldv_copy_str (ldv_get_body_text (ldv_i_match->a_definition->a_body));
 
-        body_text = ldv_trunkate_braces (body_text);
+        body_text = ldv_truncate_braces (body_text);
 
         ldv_puts_text (body_text, typedecl_for_print_new->decl);
 

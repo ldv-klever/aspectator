@@ -37,7 +37,7 @@ ldv_convert_body_to_macro (ldv_ab_ptr body)
   char *value = NULL, *value_new = NULL, *value_new_begin = NULL;
 
   value = ldv_copy_str (ldv_cpp_get_body_text (body));
-  value = ldv_trunkate_braces (value);
+  value = ldv_truncate_braces (value);
   value_new_begin = value_new = ldv_copy_str (value);
 
   /* Go to a first non whitespace symbol. */

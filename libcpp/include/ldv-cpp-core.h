@@ -104,6 +104,6 @@ extern void ldv_set_ldv (bool);
 extern void ldv_set_ldv_opts (bool);
 extern void ldv_set_ldv_stage (int);
 
-extern char *ldv_trunkate_braces (char *);
+extern char *ldv_truncate_braces (char *);
 
 #endif /* _LDV_CPP_CORE_H_ */

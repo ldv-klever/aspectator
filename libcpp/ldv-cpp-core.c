@@ -958,7 +958,7 @@ ldv_set_ldv_stage (int ldv_gcc_stage)
 }
 
 char *
-ldv_trunkate_braces (char *str)
+ldv_truncate_braces (char *str)
 {
   if (str[0] == '{')
     {
@@ -971,7 +971,7 @@ ldv_trunkate_braces (char *str)
         }
     }
 
-  LDV_CPP_FATAL_ERROR ("can't trunkate braces from \"%s\" string", str);
+  LDV_CPP_FATAL_ERROR ("can't truncate braces from \"%s\" string", str);
 
   return NULL;
 }

@@ -104,7 +104,7 @@ ldv_create_files (void)
 
           fname = ldv_get_str (adef->a_declaration->c_pointcut->p_pointcut->pp_signature->pps_file->file_name->file_name);
           fcontent = ldv_copy_str (ldv_get_body_text (adef->a_body));
-          fcontent = ldv_trunkate_braces (fcontent);
+          fcontent = ldv_truncate_braces (fcontent);
 
           /* Instance different body patterns if it's needed. */
           body_with_patterns = ldv_create_text ();
@@ -322,7 +322,7 @@ ldv_make_includes (void)
           ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
           include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-          include = ldv_trunkate_braces (include);
+          include = ldv_truncate_braces (include);
 
           ldv_puts (include, LDV_FILE_PREPARED_STREAM);
           ldv_print_info (LDV_INFO_WEAVE, "include was weaved for around advice");
@@ -345,7 +345,7 @@ ldv_make_includes (void)
               ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-              include = ldv_trunkate_braces (include);
+              include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for before advice");
@@ -368,7 +368,7 @@ ldv_make_includes (void)
               ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-              include = ldv_trunkate_braces (include);
+              include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for after advice");
