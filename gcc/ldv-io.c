@@ -589,6 +589,9 @@ ldv_print_to_awfile (void)
         line_numb++;
     }
 
+  if (file)
+    ldv_free_file (file);
+
   /* Add auxiliary function definitions to the end of an advice weaved file if
      it's needed. */
   if (ldv_func_defs_for_print)
