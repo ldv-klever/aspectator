@@ -1824,6 +1824,9 @@ ldv_get_id_kind (char *id)
               if (i > 4 && i < 19)
                 ldv_istype_spec = true;
 
+              /* Corresponding identifier won't be used any more. */
+              ldv_free_id (yylval.id);
+
               return ldv_keyword_token_map[i].token;
             }
         }
@@ -1839,6 +1842,9 @@ ldv_get_id_kind (char *id)
               ldv_print_info (LDV_INFO_LEX, "lex parsed universal type specifier \"%s\"", id);
 
               ldv_isuniversal_type_spec = true;
+
+              /* Corresponding identifier won't be used any more. */
+              ldv_free_id (yylval.id);
 
               return LDV_UNIVERSAL_TYPE_SPECIFIER;
             }
