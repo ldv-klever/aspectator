@@ -417,7 +417,23 @@ ldv_create_info_initializer (void)
 void
 ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
 {
-  ldv_list_delete_all (initializer->initializer);
+  ldv_list_ptr initializer_list = NULL;
+  /* TODO: looks like name of parameter is bad, since we need "nested" suffix. */
+  ldv_i_initializer_ptr initializer_nested = NULL;
+
+  if (initializer->initializer)
+    {
+      for (initializer_list = initializer->initializer
+        ; initializer_list
+        ; initializer_list = ldv_list_get_next (initializer_list))
+        {
+          initializer_nested = (ldv_i_initializer_ptr) ldv_list_get_data (initializer_list);
+          ldv_free_info_initializer (initializer_nested);
+        }
+
+      ldv_list_delete_all (initializer->initializer);
+    }
+
   free (initializer);
 }
 
