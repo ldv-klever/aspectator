@@ -1770,7 +1770,7 @@ void
 ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 {
   ldv_ak a_kind;
-  const char *aspected_name = NULL;
+  char *aspected_name = NULL;
   ldv_decl_for_print_ptr aspect_func_decl_for_print_new = NULL
     , func_decl_for_print_new = NULL
     , typedecl_for_print_new = NULL;
@@ -1985,6 +1985,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
+          free (aspected_name);
           ldv_free_pps_decl (ldv_func_ret_type_decl);
           ldv_list_delete_all (ldv_func_arg_type_decl_list);
 
