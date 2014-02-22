@@ -417,6 +417,7 @@ ldv_create_info_initializer (void)
 void
 ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
 {
+  ldv_list_delete_all (initializer->initializer);
   free (initializer);
 }
 
