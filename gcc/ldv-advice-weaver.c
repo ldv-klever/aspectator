@@ -1729,6 +1729,8 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
             }
         }
 
+      ldv_free_pps_decl (func_arg_type_decl);
+
       str = ldv_create_string ();
 
       ldv_puts_string (arg_type_name, str);
