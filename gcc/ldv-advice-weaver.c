@@ -1939,7 +1939,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
 
-
           for (str_list = ldv_func_param_list
             ; str_list
             ; str_list = ldv_list_get_next (str_list))
@@ -1951,7 +1950,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
               if (ldv_list_get_next (str_list))
                 ldv_puts_text (", ", ldv_text_printed);
             }
-        ldv_free_text (ldv_text_printed);
+          ldv_free_text (ldv_text_printed);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function call for weaving", func_name);
 
