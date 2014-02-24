@@ -2000,6 +2000,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           ldv_list_delete_all (ldv_func_arg_type_name_list);
+          ldv_list_delete_all (ldv_func_param_list);
           ldv_free_text (ldv_text_printed);
 
           /* Remove auxiliary entities. */
