@@ -57,6 +57,8 @@ extern ldv_i_typedecl_ptr ldv_create_info_typedecl (void);
 extern ldv_i_var_ptr ldv_create_info_var (void);
 
 extern ldv_pps_declspecs_ptr ldv_copy_declspecs (ldv_pps_declspecs_ptr);
+extern ldv_i_param_ptr ldv_copy_iparam (ldv_i_param_ptr);
+extern ldv_i_type_ptr ldv_copy_itype (ldv_i_type_ptr);
 
 extern void ldv_free_declspecs (ldv_pps_declspecs_ptr);
 extern void ldv_free_info_func (ldv_i_func_ptr);

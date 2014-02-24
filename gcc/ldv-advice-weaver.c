@@ -2021,7 +2021,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
         }
 
       ldv_free_info_func (func_source);
-      /* TODO: deal with number of memory problems: ldv_free_info_func (func_aspect); */
+      ldv_free_info_func (func_aspect);
 
       break;
 

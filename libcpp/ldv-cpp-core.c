@@ -479,6 +479,26 @@ ldv_create_info_param (void)
   return param;
 }
 
+ldv_i_param_ptr
+ldv_copy_iparam (ldv_i_param_ptr iparam)
+{
+  ldv_i_param_ptr iparam_new = NULL;
+
+  iparam_new = ldv_create_info_param ();
+
+  /* Copy parameter name. */
+  iparam_new->name = ldv_create_id ();
+  ldv_puts_id (ldv_cpp_get_id_name (iparam->name), iparam_new->name);
+
+  /* Copy parameter type. */
+  iparam_new->type = ldv_copy_itype (iparam->type);
+
+  /* Copy the rest of parameter information. */
+  iparam_new->isany_params = iparam->isany_params;
+
+  return iparam_new;
+}
+
 void
 ldv_free_info_param (ldv_i_param_ptr param)
 {
@@ -500,6 +520,52 @@ ldv_create_info_type (void)
   type->it_kind = LDV_IT_NONE;
 
   return type;
+}
+
+ldv_i_type_ptr
+ldv_copy_itype (ldv_i_type_ptr itype)
+{
+  ldv_i_type_ptr itype_new = NULL;
+  ldv_list_ptr param_list = NULL;
+  ldv_i_param_ptr iparam = NULL;
+
+  itype_new = ldv_create_info_type ();
+
+  itype_new->it_kind = itype->it_kind;
+
+  if (itype->primitive_type)
+    itype_new->primitive_type = ldv_copy_declspecs (itype->primitive_type);
+
+  /* Copy array element types and the number of elements. */
+  if (itype->array_type)
+    itype_new->array_type = ldv_copy_itype (itype->array_type);
+  itype_new->array_size = itype->array_size;
+  itype_new->issize_specified = itype->issize_specified;
+  itype_new->isany_size = itype->isany_size;
+
+  /* Copy pointed type. */
+  if (itype->ptr_type)
+    itype_new->ptr_type = ldv_copy_itype (itype->ptr_type);
+  itype_new->isconst = itype->isconst;
+  itype_new->isvolatile = itype->isvolatile;
+  itype_new->isrestrict = itype->isrestrict;
+
+  /* Copy function return type and argument types. */
+  if (itype->ret_type)
+    itype_new->ret_type = ldv_copy_itype (itype->ret_type);
+  if (itype->param)
+    {
+      for (param_list = itype->param
+        ; param_list
+        ; param_list = ldv_list_get_next (param_list))
+        {
+          iparam = (ldv_i_param_ptr) ldv_list_get_data (param_list);
+          ldv_list_push_back (&itype_new->param, ldv_copy_iparam (iparam));
+        }
+    }
+  itype_new->isva = itype->isva;
+
+  return itype_new;
 }
 
 void

@@ -439,7 +439,9 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   /* Replace aspect function name used just for a current matching with the source
      one since they match each other but the aspect one can contain '$'
      wildcards.*/
-  func_aspect->name = func_source->name;
+  ldv_free_id (func_aspect->name);
+  func_aspect->name = ldv_create_id ();
+  ldv_puts_id (ldv_cpp_get_id_name (func_source->name), func_aspect->name);
 
   /* Specify that a function was matched by name. */
   i_match->ismatched_by_name = true;
@@ -1041,7 +1043,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                         && matching_table_coord->x != matching_table_coord_next->x)
                         || (!matching_table_coord_next && matching_table_coord_prev))
                         {
-                          param_second_list = ldv_list_insert_data (param_second_list, params_first[j]);
+                          param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
                           j++;
                         }
 
@@ -1062,7 +1064,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                      arguments list. */
                   else if (matching_table_coord->y == matching_table_coord_prev->y)
                     {
-                      param_second_list = ldv_list_insert_data (param_second_list, params_first[j]);
+                      param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
                       j++;
 
                       /* Shift an aspect function argument when a next true
@@ -1105,7 +1107,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                              wildcard. */
                           if (matching_table_coord->x != matching_table_coord_next->x)
                             {
-                              param_second_list = second->param = ldv_list_push_front (second->param, params_first[j]);
+                              param_second_list = second->param = ldv_list_push_front (second->param, ldv_copy_iparam (params_first[j]));
                               j++;
 
                               /* Finalize a '..' wildcard. */
@@ -1127,7 +1129,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                          source function argument. */
                       else
                         {
-                          ldv_list_push_back (&second->param, params_first[j]);
+                          ldv_list_push_back (&second->param, ldv_copy_iparam (params_first[j]));
                           param_second_list = second->param;
                           param_second_list = ldv_list_get_next (param_second_list);
                           i++;
