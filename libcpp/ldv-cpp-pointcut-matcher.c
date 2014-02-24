@@ -620,6 +620,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
          universal type specifier.*/
+      /* TODO: use one of functions for copy internal representation. */
       memcpy (second, first, sizeof (*second));
 
       return true;
@@ -1147,6 +1148,16 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
             }
 
           free (params_first);
+
+          for (matching_table_coord_list_cur = matching_table_coord_list
+            ; matching_table_coord_list_cur
+            ; matching_table_coord_list_cur = ldv_list_get_next (matching_table_coord_list_cur))
+            {
+              /* TODO: guess that all these casts are redundant. */
+              matching_table_coord = (ldv_coord_ptr) ldv_list_get_data (matching_table_coord_list_cur);
+              free (matching_table_coord);
+            }
+
           ldv_list_delete_all (matching_table_coord_list);
 
           /* Remove a trailing '..' wildcard that catches nothing. */
