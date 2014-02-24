@@ -1935,6 +1935,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_putc_text ('(', ldv_text_printed);
 
+          ldv_putc_text (')', ldv_text_printed);
+
+          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
+
+
           for (str_list = ldv_func_param_list
             ; str_list
             ; str_list = ldv_list_get_next (str_list))
@@ -1946,12 +1951,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
               if (ldv_list_get_next (str_list))
                 ldv_puts_text (", ", ldv_text_printed);
             }
-
-          ldv_putc_text (')', ldv_text_printed);
-
-          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
-
-          ldv_free_text (ldv_text_printed);
+        ldv_free_text (ldv_text_printed);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function call for weaving", func_name);
 
@@ -2000,6 +2000,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           ldv_list_delete_all (ldv_func_arg_type_name_list);
+
+          for (str_list = ldv_func_param_list
+            ; str_list
+            ; str_list = ldv_list_get_next (str_list))
+            {
+              str = (ldv_str_ptr) ldv_list_get_data (str_list);
+              ldv_free_str (str);
+            }
+
           ldv_list_delete_all (ldv_func_param_list);
           ldv_free_text (ldv_text_printed);
 
