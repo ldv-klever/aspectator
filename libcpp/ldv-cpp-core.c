@@ -420,6 +420,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
   ldv_list_ptr initializer_list = NULL;
   /* TODO: looks like name of parameter is bad, since we need "nested" suffix. */
   ldv_i_initializer_ptr initializer_nested = NULL;
+  /* TODO: not widely used names. */
+  ldv_list_ptr params;
+  char *param;
 
   if (initializer->initializer)
     {
@@ -436,6 +439,14 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
 
   if (initializer->decl)
     free (initializer->decl);
+
+  for (params = initializer->pointed_func_arg_type_decls
+    ; params
+    ; params = ldv_list_get_next (params))
+    {
+      param = (char *) ldv_list_get_data (params);
+      free (param);
+    }
 
   ldv_list_delete_all (initializer->pointed_func_arg_type_decls);
 
