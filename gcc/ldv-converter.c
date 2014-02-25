@@ -312,7 +312,7 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                       artificial_param_decl->name = ldv_create_id ();
                       ldv_puts_id ("%s", artificial_param_decl->name);
                       artificial_param_decl->type = param->type;
-                      ldv_list_push_back (&initializer->pointed_func_arg_type_decls, xstrdup (ldv_print_var_decl (artificial_param_decl)));
+                      ldv_list_push_back (&initializer->pointed_func_arg_type_decls, ldv_print_var_decl (artificial_param_decl));
 
                       /* Explicitly free memory for artificial variable
                          and its name, since its type references main
