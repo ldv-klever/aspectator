@@ -4377,7 +4377,9 @@ ldv_parse_aspect_pattern_known_value (char const **str)
     {
       if (pattern->value)
         {
-          *str = pattern->value;
+          *str = ldv_copy_str (pattern->value);
+
+          ldv_free_aspect_pattern (pattern);
 
           return 1;
         }

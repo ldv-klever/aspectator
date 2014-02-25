@@ -45,6 +45,7 @@ extern ldv_pps_func_arg_ptr ldv_create_pps_func_arg (void);
 extern ldv_pps_ptr_quals_ptr ldv_create_ptr_quals (void);
 extern ldv_text_ptr ldv_create_text (void);
 
+extern void ldv_free_aspect_pattern (ldv_aspect_pattern_ptr);
 extern void ldv_free_declarator (ldv_pps_declarator_ptr);
 extern void ldv_free_file (ldv_file_ptr);
 extern void ldv_free_pps_array_size (ldv_pps_array_size_ptr);
