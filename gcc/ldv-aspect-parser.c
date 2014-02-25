@@ -4548,7 +4548,8 @@ ldv_parse_file_name (char **file_name)
         }
 
       /* Assign read file name to file name passed through parameter. */
-      *file_name = ldv_get_str (str);
+      *file_name = ldv_copy_str (ldv_get_str (str));
+      ldv_free_str (str);
 
       /* Move current position properly. */
       ldv_set_last_column (yylloc.last_column + byte_count);
