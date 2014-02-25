@@ -1403,11 +1403,13 @@ ldv_print_var_decl (ldv_i_var_ptr var)
 void
 ldv_print_int (int n)
 {
-  const char *str = NULL;
+  char *str = NULL;
 
   str = ldv_itoa (n);
 
   ldv_print_str (str);
+
+  free (str);
 }
 
 ldv_list_ptr
