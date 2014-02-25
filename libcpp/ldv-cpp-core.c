@@ -437,6 +437,8 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
   if (initializer->decl)
     free (initializer->decl);
 
+  ldv_list_delete_all (initializer->pointed_func_arg_type_decls);
+
   free (initializer);
 }
 
