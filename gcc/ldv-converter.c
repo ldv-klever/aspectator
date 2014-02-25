@@ -302,6 +302,11 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                   artificial_ret_type_decl->type = artificial_decl->type->ptr_type->ret_type;
                   initializer->pointed_func_ret_type_decl = ldv_print_var_decl (artificial_ret_type_decl);
 
+                  /* Explicitly free memory for artificial variable and
+                     its name, since its type references main variable
+                     type. */
+                  ldv_free_id (artificial_ret_type_decl->name);
+                  free (artificial_ret_type_decl);
                   for (params = artificial_decl->type->ptr_type->param
                     ; params
                     ; params = ldv_list_get_next (params))
