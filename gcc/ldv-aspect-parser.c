@@ -4657,7 +4657,9 @@ ldv_parse_preprocessor_directives (void)
                      ldv_putc_string (c_next, file_name);
                    }
 
-                  ldv_set_file_name (ldv_get_str(file_name));
+                  ldv_set_file_name (ldv_copy_str (ldv_get_str (file_name)));
+
+                  ldv_free_str (file_name);
                 }
 
               /* Update the current line with respect to a special line. */
