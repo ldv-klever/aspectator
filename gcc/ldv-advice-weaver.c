@@ -169,7 +169,7 @@ char *
 ldv_create_aspected_name (const char *name)
 {
   char *aspected_name = NULL;
-  const char *aspected_name_numb;
+  char *aspected_name_numb;
 
   aspected_name_numb = ldv_itoa (ldv_get_unique_numb ());
 
@@ -178,6 +178,8 @@ ldv_create_aspected_name (const char *name)
   ldv_print_info (LDV_INFO_MEM, "aspected name memory was released");
 
   sprintf (aspected_name, "%s_%s_%s", LDV_ASPECTED_NAME_PREFIX, name, aspected_name_numb);
+
+  free (aspected_name_numb);
 
   return aspected_name;
 }
