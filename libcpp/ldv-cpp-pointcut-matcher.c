@@ -972,6 +972,8 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 break;
             }
 
+          free (param_matching_table);
+
           /* Dump the 'true' path if needed. */
           if (ldv_cpp_isinfo_matching_table)
             {
