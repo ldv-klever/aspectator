@@ -972,6 +972,9 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 break;
             }
 
+          for (i = 0; i < param_aspect_numb; i++)
+            free (param_matching_table[i]);
+
           free (param_matching_table);
 
           /* Dump the 'true' path if needed. */
