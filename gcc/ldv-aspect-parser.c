@@ -121,7 +121,7 @@ typedef struct YYLTYPE
   int first_column;
   int last_line;
   int last_column;
-  const char *file_name;
+  char *file_name;
 } YYLTYPE;
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
@@ -1520,7 +1520,7 @@ yyparse ()
   yylloc.first_column = yylloc.last_column = 1;
   ldv_set_first_column (yylloc.first_column);
   ldv_set_last_column (yylloc.last_column);
-  yylloc.file_name = ldv_aspect_fname;
+  yylloc.file_name = ldv_copy_str (ldv_aspect_fname);
   ldv_set_file_name (yylloc.file_name);
 }
 
@@ -4659,6 +4659,8 @@ ldv_parse_preprocessor_directives (void)
 
                      ldv_putc_string (c_next, file_name);
                    }
+
+                  free (yylloc.file_name);
 
                   ldv_set_file_name (ldv_copy_str (ldv_get_str (file_name)));
 
