@@ -440,6 +440,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
   if (initializer->decl)
     free (initializer->decl);
 
+  if (initializer->pointed_func_ret_type_decl)
+    free (initializer->pointed_func_ret_type_decl);
+
   for (params = initializer->pointed_func_arg_type_decls
     ; params
     ; params = ldv_list_get_next (params))
