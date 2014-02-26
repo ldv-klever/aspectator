@@ -847,6 +847,7 @@ c_declaration_specifiers_aux:
         {
           pps_declspecs = ldv_merge_declspecs ($1, $2, false);
           ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
         }
       else
         pps_declspecs = $1;
@@ -863,6 +864,7 @@ c_declaration_specifiers_aux:
         {
           pps_declspecs = ldv_merge_declspecs ($1, $2, false);
           ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
         }
       else
         pps_declspecs = $1;
@@ -879,6 +881,7 @@ c_declaration_specifiers_aux:
         {
           pps_declspecs = ldv_merge_declspecs ($1, $2, false);
           ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
         }
       else
         pps_declspecs = $1;
@@ -895,6 +898,7 @@ c_declaration_specifiers_aux:
         {
           pps_declspecs = ldv_merge_declspecs ($1, $2, false);
           ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
         }
       else
         pps_declspecs = $1;
@@ -1428,6 +1432,7 @@ c_type_qualifier_list:
         {
           pps_declspecs = ldv_merge_declspecs ($1, $2, false);
           ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
         }
       else
         pps_declspecs = $1;
