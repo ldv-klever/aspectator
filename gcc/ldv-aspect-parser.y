@@ -2784,6 +2784,8 @@ yylex (void)
       else
         file->isthis = false;
 
+      free (str);
+
       /* Set a corresponding semantic value. */
       yylval.file = file;
 

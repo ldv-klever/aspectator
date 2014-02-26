@@ -4660,6 +4660,7 @@ ldv_parse_preprocessor_directives (void)
                      ldv_putc_string (c_next, file_name);
                    }
 
+                  /* Free previously used file name. */
                   free (yylloc.file_name);
 
                   ldv_set_file_name (ldv_copy_str (ldv_get_str (file_name)));
@@ -4904,6 +4905,8 @@ yylex (void)
         file->isthis = true;
       else
         file->isthis = false;
+
+      free (str);
 
       /* Set a corresponding semantic value. */
       yylval.file = file;
