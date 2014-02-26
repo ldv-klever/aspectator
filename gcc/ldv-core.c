@@ -49,7 +49,19 @@ ldv_create_aspect_pattern (void)
 void
 ldv_free_aspect_pattern (ldv_aspect_pattern_ptr aspect_pattern)
 {
+  ldv_list_ptr params;
+  ldv_aspect_pattern_param_ptr param;
+
   free (aspect_pattern->name);
+
+  for (params = aspect_pattern->params
+    ; params
+    ; params = ldv_list_get_next (params))
+    {
+      param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (params);
+      free (param);
+    }
+
   ldv_list_delete_all (aspect_pattern->params);
   free (aspect_pattern);
 }
