@@ -94,7 +94,7 @@ static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
 static unsigned int ldv_parse_aspect_pattern_param_str (char **str);
 static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
-static int ldv_parse_aspect_pattern_known_value (char const **str);
+static int ldv_parse_aspect_pattern_known_value (char **str);
 static ldv_text_ptr ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern);
@@ -2246,7 +2246,7 @@ ldv_parse_aspect_pattern_params (void)
 }
 
 int
-ldv_parse_aspect_pattern_known_value (char const **str)
+ldv_parse_aspect_pattern_known_value (char **str)
 {
   ldv_aspect_pattern_ptr pattern = NULL;
 
@@ -2390,7 +2390,7 @@ ldv_parse_file_name (char **file_name)
   int c;
   unsigned int byte_count = 0;
   ldv_str_ptr str = NULL;
-  char const *aspect_pattern_value = NULL;
+  char *aspect_pattern_value = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -2407,6 +2407,7 @@ ldv_parse_file_name (char **file_name)
           if (ldv_parse_aspect_pattern_known_value (&aspect_pattern_value))
             {
               ldv_puts_string (aspect_pattern_value, str);
+              free (aspect_pattern_value);
               continue;
             }
 
