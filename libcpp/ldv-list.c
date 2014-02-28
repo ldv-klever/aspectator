@@ -66,6 +66,8 @@ ldv_list_delete (ldv_list_ptr_ptr list_first, ldv_list_ptr list)
     {
       *list_first = ldv_list_get_next (list);
 
+      free (list);
+
       return NULL;
     }
   /* Otherwise change a next element for a previous one to a next for a given
@@ -75,6 +77,8 @@ ldv_list_delete (ldv_list_ptr_ptr list_first, ldv_list_ptr list)
       list_prev = ldv_list_get_prev (*list_first, list);
 
       list_prev->next = list->next;
+
+      free (list);
 
       return list_prev;
     }
