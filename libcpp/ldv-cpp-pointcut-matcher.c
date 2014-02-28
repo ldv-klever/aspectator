@@ -673,7 +673,10 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                   param_second_next = (ldv_i_param_ptr) ldv_list_get_data (param_second_list_next);
 
                   if (param_second_next->isany_params)
-                    ldv_list_delete (&param_second_list, param_second_list_next);
+                    {
+                      ldv_free_info_param (param_second_next);
+                      ldv_list_delete (&param_second_list, param_second_list_next);
+                    }
                   else
                       break;
                 }
@@ -1041,6 +1044,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                          be on the first place of aspect function agruments
                          (this case is considered below), so the list_delete
                          function always must return a non 0 element. */
+                      ldv_free_info_param (param_second);
                       param_second_list = ldv_list_delete (&second->param, param_second_list);
 
                       /* Replace a '..' wildcard with some data just in case
@@ -1102,6 +1106,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                   if (param_second->isany_params)
                     {
                       /* Delete a '..' wildcard list element. */
+                      ldv_free_info_param (param_second);
                       ldv_list_delete (&second->param, param_second_list);
 
                       /* Replace a '..' wildcard with some data just in case
@@ -1171,8 +1176,11 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
               param_second = (ldv_i_param_ptr) ldv_list_get_data (param_second_list);
 
               if (param_second->isany_params)
-                /* Delete a '..' wildcard list element. */
-                ldv_list_delete (&second->param, param_second_list);
+                {
+                  /* Delete a '..' wildcard list element. */
+                  ldv_free_info_param (param_second);
+                  ldv_list_delete (&second->param, param_second_list);
+                }
               else
                 {
                   LDV_CPP_FATAL_ERROR ("Meet something that isn't '..' wildcard that catches nothing at the end of arguments lists");
