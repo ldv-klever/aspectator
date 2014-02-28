@@ -91,7 +91,7 @@ static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr, FILE *);
 static void ldv_diag_recursive_primitive_pointcut (ldv_cp_ptr, FILE *);
 static ldv_pps_decl_ptr ldv_diag_replace_return_type (ldv_pps_decl_ptr);
 static int ldv_diag_type (ldv_cp_ptr, int);
-static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
+static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
 static const char *ldv_get_arg_name (unsigned int);
 static const char *ldv_get_arg_sign (unsigned int);
 static const char *ldv_get_arg_type_name (unsigned int);
@@ -314,20 +314,20 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
 }
 
 int
-ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
+ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
 {
-  const char *text = NULL;
+  char *text = NULL;
   unsigned int number;
   bool is_number = false;
-  const char *func_arg = NULL;
+  char *func_arg = NULL;
   int func_arg_size;
 
   if (!strcmp (pattern->name, "arg"))
-    text = ldv_get_param_name (pattern->arg_numb);
+    text = ldv_copy_str (ldv_get_param_name (pattern->arg_numb));
   else if (!strcmp (pattern->name, "arg_type"))
-    text = ldv_get_arg_type_name (pattern->arg_numb);
+    text = ldv_copy_str (ldv_get_arg_type_name (pattern->arg_numb));
   else if (!strcmp (pattern->name, "arg_name"))
-    text = ldv_get_arg_name (pattern->arg_numb);
+    text = ldv_copy_str (ldv_get_arg_name (pattern->arg_numb));
   else if (!strcmp (pattern->name, "arg_size"))
     {
       func_arg_size = ldv_get_arg_size (pattern->arg_numb);
@@ -335,7 +335,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       /* Print stub '-1' when an argument size isn't specified. */
       if (func_arg_size == -1)
         {
-          text = "-1";
+          text = ldv_copy_str ("-1");
           ldv_print_info (LDV_INFO_WEAVE, "generate stub \"-1\" for aspect pattern \"%s\"", pattern->name);
         }
       else
@@ -343,12 +343,12 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
     }
   else if (!strcmp (pattern->name, "arg_value"))
     {
-      func_arg = ldv_get_arg_value (pattern->arg_numb);
+      func_arg = ldv_copy_str (ldv_get_arg_value (pattern->arg_numb));
 
       /* Print stub 'NULL' when an argument size isn't specified. */
       if (func_arg == NULL)
         {
-          text = "0";
+          text = ldv_copy_str ("0");
           ldv_print_info (LDV_INFO_WEAVE, "generate stub \"0\" for aspect pattern \"%s\"", pattern->name);
         }
       else
@@ -362,7 +362,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
   else if (!strcmp (pattern->name, "aspect_func_name"))
     {
       if (ldv_aspect_func_name)
-        text = ldv_aspect_func_name;
+        text = ldv_copy_str (ldv_aspect_func_name);
       else
         {
           LDV_FATAL_ERROR ("no function name was found for aspect pattern \"%s\"", pattern->name);
@@ -371,7 +371,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
   else if (!strcmp (pattern->name, "func_name"))
     {
       if (ldv_func_name)
-        text = ldv_func_name;
+        text = ldv_copy_str (ldv_func_name);
       else
         {
           LDV_FATAL_ERROR ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
@@ -382,7 +382,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_print_func_context(ldv_func_signature);
+            text = ldv_copy_str (ldv_print_func_context (ldv_func_signature));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -398,7 +398,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_print_func_context_name(ldv_func_signature);
+            text = ldv_copy_str (ldv_print_func_context_name (ldv_func_signature));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -414,7 +414,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_print_func_context_path(ldv_func_signature);
+            text = ldv_copy_str (ldv_print_func_context_path (ldv_func_signature));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -428,7 +428,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
   else if ((!strcmp (pattern->name, "func_signature")) || (!strcmp (pattern->name, "signature")))
     {
       if (ldv_func_signature)
-        text = ldv_print_func_decl(ldv_func_signature);
+        text = ldv_copy_str (ldv_print_func_decl (ldv_func_signature));
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -437,7 +437,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
   else if (!strcmp (pattern->name, "path"))
     {
       if (ldv_func_signature)
-        text = ldv_print_func_path(ldv_func_signature);
+        text = ldv_copy_str (ldv_print_func_path (ldv_func_signature));
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -449,13 +449,13 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
         text = ldv_get_text (ldv_func_call);
     }
   else if (!strcmp (pattern->name, "res"))
-    text = LDV_FUNC_RES;
+    text = ldv_copy_str (LDV_FUNC_RES);
   else if (!strcmp (pattern->name, "ret_type"))
-    text = LDV_FUNC_RET_TYPE;
+    text = ldv_copy_str (LDV_FUNC_RET_TYPE);
   else if (!strcmp (pattern->name, "var_name"))
     {
       if (ldv_var_name)
-        text = ldv_var_name;
+        text = ldv_copy_str (ldv_var_name);
       else
         {
           LDV_FATAL_ERROR ("no variable name was found for aspect pattern \"%s\"", pattern->name);
@@ -464,16 +464,16 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
   else if (!strcmp (pattern->name, "var_type_name"))
     {
       if (ldv_var_type_name)
-        text = ldv_var_type_name;
+        text = ldv_copy_str (ldv_var_type_name);
       else
         {
           LDV_FATAL_ERROR ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
         }
     }
   else if (!strcmp (pattern->name, "env"))
-    text = pattern->value;
+    text = ldv_copy_str (pattern->value);
   else if (!strcmp (pattern->name, "arg_sign"))
-    text = ldv_get_arg_sign (pattern->arg_numb);
+    text = ldv_copy_str (ldv_get_arg_sign (pattern->arg_numb));
 
   if (text)
     {
@@ -774,7 +774,7 @@ void
 ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 {
   char *body_text = NULL;
-  const char *text = NULL;
+  char *text = NULL;
   unsigned int number;
   const char *func_call = NULL;
   ldv_text_ptr body_with_patterns = NULL;

@@ -59,6 +59,7 @@ ldv_free_aspect_pattern (ldv_aspect_pattern_ptr aspect_pattern)
     ; params = ldv_list_get_next (params))
     {
       param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (params);
+      free (param->string);
       free (param);
     }
 
