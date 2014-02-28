@@ -366,7 +366,8 @@ ldv_itoa (unsigned int n)
 
   /* Obtain the number of digits that are contained in an unsigned integer
      number. */
-  for (int_digits = 1, order = 10.0; n / order > 1.0; int_digits++, order *= 10) ;
+  /* TODO: fix CBE as well. */
+  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
 
   str = XCNEWVEC (char, (int_digits + 1));
   ldv_print_info (LDV_INFO_MEM, "string memory was released");
