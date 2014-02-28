@@ -238,10 +238,13 @@ ldv_create_aux_func_params (ldv_i_type_ptr src_func_type, ldv_i_type_ptr aspect_
       else
         param_name = ldv_create_aux_func_param (param_numb);
 
-      /* Store the obtained parameter name as aspect parameter naem to print
+      /* Store the obtained parameter name as aspect parameter name to print
          in in auxiliary prototypes and function definitions. */
-      aspect_param->name = ldv_create_id ();
-      ldv_puts_id (param_name, aspect_param->name);
+      if (!aspect_param->name)
+        {
+          aspect_param->name = ldv_create_id ();
+          ldv_puts_id (param_name, aspect_param->name);
+        }
 
       /* Add the obtained parameter name to a list of parameter names. */
       param_name_str = ldv_create_string ();
