@@ -845,7 +845,8 @@ c_declaration_specifiers_aux:
 
       if ($2)
         {
-          pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+          /* TODO: implement ldv_merge_declspecs_free(). */
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
           ldv_free_declspecs ($1);
           ldv_free_declspecs ($2);
         }
@@ -862,7 +863,7 @@ c_declaration_specifiers_aux:
 
       if ($2)
         {
-          pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
           ldv_free_declspecs ($1);
           ldv_free_declspecs ($2);
         }
@@ -879,7 +880,7 @@ c_declaration_specifiers_aux:
 
       if ($2)
         {
-          pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
           ldv_free_declspecs ($1);
           ldv_free_declspecs ($2);
         }
@@ -896,7 +897,7 @@ c_declaration_specifiers_aux:
 
       if ($2)
         {
-          pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
           ldv_free_declspecs ($1);
           ldv_free_declspecs ($2);
         }
@@ -1430,7 +1431,7 @@ c_type_qualifier_list:
 
       if ($2)
         {
-          pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
           ldv_free_declspecs ($1);
           ldv_free_declspecs ($2);
         }

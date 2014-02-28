@@ -1222,10 +1222,11 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       if (!ldv_match_declspecs (first->primitive_type, second->primitive_type))
         return false;
 
-      /* Merge aspect declaration specifiers used just for a current matching
-         with the source one since they match each other but the aspect one can
-         contain '$' universal type specifier.*/
-      second->primitive_type = ldv_merge_declspecs (first->primitive_type, second->primitive_type, true);
+      /* Replace aspect declaration specifiers with the source ones
+         since they match each other but aspect ones can contain '$'
+         universal type specifier.*/
+      ldv_free_declspecs (second->primitive_type);
+      second->primitive_type = ldv_copy_declspecs (first->primitive_type);
 
       break;
 

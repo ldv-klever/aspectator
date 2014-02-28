@@ -368,7 +368,7 @@ ldv_copy_declspecs (ldv_pps_declspecs_ptr declspecs)
 
   /* Following is equivalent to coping declaration specifiers. */
   declspecs_aux = ldv_create_declspecs ();
-  declspecs_new = ldv_merge_declspecs (declspecs_aux, declspecs, false);
+  declspecs_new = ldv_merge_declspecs (declspecs_aux, declspecs);
   ldv_free_declspecs (declspecs_aux);
 
   return declspecs_new;
@@ -831,7 +831,7 @@ ldv_isvoid (ldv_i_type_ptr type)
 }
 
 ldv_pps_declspecs_ptr
-ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second, bool universal)
+ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second)
 {
   ldv_pps_declspecs_ptr declspecs = NULL;
 
@@ -864,7 +864,7 @@ ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
   declspecs->isshort = declspecs_first->isshort || declspecs_second->isshort;
 
   /* Process "long long" as special case. */
-  if (declspecs_first->islong && declspecs_second->islong && !universal)
+  if (declspecs_first->islong && declspecs_second->islong)
     {
       declspecs->islong = false;
       declspecs->islonglong = true;

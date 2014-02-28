@@ -448,7 +448,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
          obtained earlier. */
       if (ldv_entity_declspecs)
         {
-          declspecs_aux = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs, false);
+          declspecs_aux = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs);
 
           /* In merging declaration specifiers new declaration
              specifiers are created. So old ones should be freed. */
