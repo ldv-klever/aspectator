@@ -279,7 +279,9 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
 
       /* Set a pointcut name from a lexer identifier. This name can't contain
          any '$' wildcards. */
-      p_name = ldv_get_id_name ($2);
+      p_name = ldv_copy_str (ldv_get_id_name ($2));
+
+      ldv_free_id ($2);
 
       if ($2->isany_chars)
         {
