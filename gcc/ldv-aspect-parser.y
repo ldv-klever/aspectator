@@ -403,6 +403,8 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
         {
           LDV_FATAL_ERROR ("undefined pointcut with name \"%s\" was used", p_name);
         }
+
+      ldv_free_id ($1);
     }
   | primitive_pointcut /* The primitive poincut form is described below. */
     {
