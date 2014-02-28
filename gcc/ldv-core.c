@@ -364,9 +364,8 @@ ldv_itoa (unsigned int n)
   int int_digits, order;
   char *str = NULL;
 
-  /* Obtain the number of digits that are contained in an unsigned integer
+  /* Obtain the number of digits that are contained in unsigned integer
      number. */
-  /* TODO: fix CBE as well. */
   for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
 
   str = XCNEWVEC (char, (int_digits + 1));
