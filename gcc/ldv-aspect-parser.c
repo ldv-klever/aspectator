@@ -1757,13 +1757,13 @@ yyreduce:
          any '$' wildcards. */
       p_name = ldv_copy_str (ldv_get_id_name ((yyvsp[(2) - (4)].id)));
 
-      ldv_free_id ((yyvsp[(2) - (4)].id));
-
       if ((yyvsp[(2) - (4)].id)->isany_chars)
         {
           ldv_print_info_location ((yylsp[(1) - (4)]), LDV_ERROR_BISON, "'$' wildcard was used in pointcut name \"%s\"", p_name);
           LDV_FATAL_ERROR ("pointcut name should be a correct identifier");
         }
+
+      ldv_free_id ((yyvsp[(2) - (4)].id));
 
       n_pointcut_new->p_name = p_name;
 

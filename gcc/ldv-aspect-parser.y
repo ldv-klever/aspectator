@@ -281,13 +281,13 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
          any '$' wildcards. */
       p_name = ldv_copy_str (ldv_get_id_name ($2));
 
-      ldv_free_id ($2);
-
       if ($2->isany_chars)
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "'$' wildcard was used in pointcut name \"%s\"", p_name);
           LDV_FATAL_ERROR ("pointcut name should be a correct identifier");
         }
+
+      ldv_free_id ($2);
 
       n_pointcut_new->p_name = p_name;
 
