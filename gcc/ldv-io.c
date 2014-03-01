@@ -390,6 +390,7 @@ ldv_make_includes (void)
 
   fclose (LDV_FILE_PREPARED_STREAM);
 
+  free (file);
   ldv_free_info_match (match);
 
   ldv_print_info (LDV_INFO_IO, "finish make includes");
