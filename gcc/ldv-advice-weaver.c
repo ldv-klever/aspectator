@@ -2255,6 +2255,8 @@ ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
       ldv_func_called_matched = lookup_name (id);
     }
 
+  free (aspected_name);
+
   return ;
 }
 
