@@ -381,6 +381,8 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
     }
 
   ldv_free_info_macro (macro);
+  ldv_free_info_match (match);
+
   /* Nothing was matched. */
   ldv_i_match = NULL;
 
