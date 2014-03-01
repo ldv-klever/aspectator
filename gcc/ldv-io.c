@@ -152,6 +152,8 @@ ldv_create_files (void)
               LDV_FATAL_ERROR ("can%'t write to file \"%s\": %m", fname);
             }
 
+          ldv_free_text (body_with_patterns);
+
           fclose (fstream);
 
           ldv_print_info (LDV_INFO_IO, "file \"%s\" was written successfully", fname);
