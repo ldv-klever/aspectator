@@ -431,10 +431,10 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
 
   /* Compare functions names. */
   if (ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
-  {
-    ldv_free_info_func (func_aspect);
-    return false;
-  }
+    {
+      ldv_free_info_func (func_aspect);
+      return false;
+    }
 
   /* Replace aspect function name used just for a current matching with the source
      one since they match each other but the aspect one can contain '$'
@@ -448,10 +448,10 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
 
   /* Compare functions types. */
   if (!ldv_match_type (func_source->type, func_aspect->type))
-  {
-    ldv_free_info_func (func_aspect);
-    return false;
-  }
+    {
+      ldv_free_info_func (func_aspect);
+      return false;
+    }
 
   /* Specify that a function was matched by a whole signature not just by a
      name. */
@@ -476,11 +476,17 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* Compare macro kinds. */
   if (i_match->i_macro->macro_kind != i_match->i_macro_aspect->macro_kind)
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
   /* Compare macro names. */
   if (ldv_cmp_str (macro_aspect->macro_name, ldv_cpp_get_id_name (macro_source->macro_name)))
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
   /* Replace aspect macro name used just for a current matching with the source
      one since they match each other but the aspect one can contain '$'
@@ -503,7 +509,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
       if (i_macro_param_second->isany_chars)
         {
           if (ldv_cmp_str (i_macro_param_second, ldv_cpp_get_id_name (i_macro_param_first)))
-            return false;
+            {
+              ldv_free_info_macro (macro_aspect);
+              return false;
+            }
 
           ldv_list_set_data (i_macro_param_second_list, i_macro_param_first);
         }
@@ -511,7 +520,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* I.e. the numbers of macro parameters aren't equal. */
   if (i_macro_param_first_list || i_macro_param_second_list)
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
   /* Specify that a macro was matched by a whole signature not just by a
      name. */

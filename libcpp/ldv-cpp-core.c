@@ -466,6 +466,12 @@ ldv_create_info_macro (void)
   return i_macro;
 }
 
+void
+ldv_free_info_macro (ldv_i_macro_ptr i_macro)
+{
+  free (i_macro);
+}
+
 ldv_i_match_ptr
 ldv_create_info_match (void)
 {
