@@ -140,6 +140,10 @@ ldv_create_files (void)
                 }
             }
 
+          /* In truncating braces this pointer was moved ahead exactly
+             by 1. */
+          free (fcontent - 1);
+
           if ((fstream = fopen (fname, "w")) == NULL)
             {
               LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", fname);
