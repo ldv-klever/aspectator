@@ -350,10 +350,16 @@ ldv_make_includes (void)
 
               ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
+              /* TODO: let's keep body without braces? */
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
               include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
+
+              /* In truncating braces this pointer was moved ahead
+                 exactly by 1. */
+              free (include - 1);
+
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for before advice");
             }
         }
