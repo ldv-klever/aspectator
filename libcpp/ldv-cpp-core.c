@@ -469,6 +469,7 @@ ldv_create_info_macro (void)
 void
 ldv_free_info_macro (ldv_i_macro_ptr i_macro)
 {
+  ldv_free_id (i_macro->macro_name);
   ldv_list_delete_all (i_macro->macro_param);
   free (i_macro);
 }
