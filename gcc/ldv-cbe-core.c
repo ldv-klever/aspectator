@@ -146,6 +146,7 @@ void
 ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
 {
   char *str;
+  char *ldv_c_backend_buffer_prev;
 
   if (ldv_c_backend_buffer_enabled)
     {
@@ -154,7 +155,20 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
       else
         asprintf (&str, format);
 
-      ldv_c_backend_buffer = concat (ldv_c_backend_buffer ? ldv_c_backend_buffer : "", str, NULL);
+      if (ldv_c_backend_buffer)
+        {
+          /* Keep reference to free corresponding memory later. */
+          ldv_c_backend_buffer_prev = ldv_c_backend_buffer;
+
+          if (!(ldv_c_backend_buffer = concat (ldv_c_backend_buffer, str, NULL)))
+            fatal_error ("can't concatenate stings '%s' and '%s'", ldv_c_backend_buffer, str);
+
+          /* Free previously allocated buffer, since in concatenating
+             completely new memory is allocated. */
+          free (ldv_c_backend_buffer_prev);
+        }
+      else
+        ldv_c_backend_buffer = str;
     }
   else
     {
