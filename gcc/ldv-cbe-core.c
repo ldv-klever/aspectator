@@ -168,7 +168,10 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
           free (ldv_c_backend_buffer_prev);
         }
       else
-        ldv_c_backend_buffer = str;
+        /* Just copy string (enough memory is allocated by concat()). */
+        ldv_c_backend_buffer = concat (str, NULL);
+
+      free (str);
     }
   else
     {
