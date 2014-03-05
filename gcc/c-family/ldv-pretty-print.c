@@ -28,15 +28,21 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pretty-print.h"
 
 
-// The macro is portable like in the kernel 'do { ... } while (0)'. Note that this requires semicolon!
+/* The macro is portable like in the kernel 'do { ... } while (0)'.
+   Note that this requires semicolon! */
 #define LDV_PRETTY_PRINT_WARN(indent_level, msg) do { LDV_WARN (msg); ldv_c_backend_print (indent_level, true, "/* LDV: %s: %d: %s */", __FILE__, __LINE__, msg); } while (0)
-
+/* Free memory of second argument is first argument is true. */
+#define LDV_XDELETE_COND(cond, ptr) (!cond ? true : XDELETE (ptr))
 
 /* This ugly global variable is to implement a workaround for #3692.
    Please, replace it with a parameter of a structure type to be passed for all
    converting/printing functions if you will need something similar in more
    cases. */
 static bool ldv_disable_cast_printing = false;
+/* This global variable is for #372. If it is true, then memory for
+   printed entities will be immediately freed after printing is
+   completed. */
+static bool ldv_free_on_printing = false;
 
 
 static ldv_location_ptr ldv_declarator_location (ldv_declarator_ptr);
@@ -768,6 +774,8 @@ ldv_print_assignment_expr (unsigned int indent_level, ldv_assignment_expr_ptr as
     default:
       LDV_PRETTY_PRINT_WARN (indent_level, "assignment expression was not printed");
     }
+
+  LDV_XDELETE_COND (ldv_free_on_printing, assignment_expr);
 }
 
 /*
@@ -3581,7 +3589,12 @@ ldv_convert_and_print_assignment_expr (tree t)
      Since the only caller is Aspectator, we can implement the workaround in
      such the way. */
   ldv_disable_cast_printing = true;
+  /* We do not need corresponding entities after printing is completed. */
+  ldv_free_on_printing = true;
+
   ldv_print_assignment_expr (0, assignment_expr);
+
+  ldv_free_on_printing = false;
   ldv_disable_cast_printing = false;
   ldv_c_backend_padding_cancel ();
   ldv_c_backend_print_to_file ();
