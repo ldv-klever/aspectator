@@ -2453,13 +2453,13 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
 
   /* Don't print line directives if they are unneeded. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO))
-    return;
+    goto free_location;
 
   /* Print just required entities if this is specified. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_USEFUL))
     {
       if ((line = LDV_LOCATION_LINE (location)) && ldv_c_backend_is_current_line (line))
-        return;
+        goto free_location;
     }
   else if (!ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_ALL))
     {
@@ -2469,7 +2469,7 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
           case LDV_C_BACKEND_LINES_LEVEL_STATEMENT:
           case LDV_C_BACKEND_LINES_LEVEL_EXPR:
             if (!ldv_c_backend_is_lines_level (lines_level))
-              return;
+              goto free_location;
 
             break;
 
@@ -2498,6 +2498,10 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
   /* Update current line if a line directive was printed. This also allows to
      ignore lines printed for line directive itself. */
   ldv_c_backend_current_line_set (line);
+
+  /* The same locations can be printed just once. So freeing them here
+     is safe. */
+  free_location: LDV_XDELETE_ON_PRINTING (location);
 }
 
 /*
