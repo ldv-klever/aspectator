@@ -3728,7 +3728,7 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
   LDV_XDELETE_ON_PRINTING (struct_or_union_spec);
 }
 
-const char *
+char *
 ldv_convert_and_print_assignment_expr (tree t)
 {
   ldv_assignment_expr_ptr assignment_expr = NULL;
@@ -3756,7 +3756,7 @@ ldv_convert_and_print_assignment_expr (tree t)
   ldv_c_backend_print_to_file ();
   ldv_c_backend_set_lines_level (current_lines_level);
 
-  return xstrdup (ldv_c_backend_get_buffer ());
+  return ldv_c_backend_get_buffer ();
 }
 
 /*

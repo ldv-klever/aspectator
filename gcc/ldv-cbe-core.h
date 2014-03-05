@@ -38,7 +38,7 @@ enum
 extern void ldv_c_backend_current_line_set (unsigned int);
 extern bool ldv_c_backend_is_current_line (unsigned int);
 extern bool ldv_c_backend_is_lines_level (int);
-extern const char *ldv_c_backend_get_buffer (void);
+extern char *ldv_c_backend_get_buffer (void);
 extern int ldv_c_backend_get_lines_level (void);
 extern void ldv_c_backend_padding_cancel (void);
 extern void ldv_c_backend_padding_force (void);

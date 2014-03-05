@@ -78,7 +78,7 @@ ldv_c_backend_is_lines_level (int lines_level)
   return (lines_level == ldv_c_backend_lines_level);
 }
 
-const char *
+char *
 ldv_c_backend_get_buffer (void)
 {
   return ldv_c_backend_buffer;
