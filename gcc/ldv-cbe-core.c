@@ -28,6 +28,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_SPACES_PER_INDENT_LEVEL 2
 
 
+/* This flag says whether the LDV c backed should print at all. */
+bool ldv_c_backend_printing_disabled;
+
 /* A file where the LDV c backend will place its output. */
 static const char *ldv_c_backend_out_fname;
 /* A stream where the LDV c backend will place its output. */
@@ -78,7 +81,7 @@ ldv_c_backend_is_lines_level (int lines_level)
   return (lines_level == ldv_c_backend_lines_level);
 }
 
-const char *
+char *
 ldv_c_backend_get_buffer (void)
 {
   return ldv_c_backend_buffer;
@@ -146,6 +149,10 @@ void
 ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
 {
   char *str;
+  char *ldv_c_backend_buffer_prev;
+
+  if (ldv_c_backend_printing_disabled)
+    return;
 
   if (ldv_c_backend_buffer_enabled)
     {
@@ -154,7 +161,23 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
       else
         asprintf (&str, format);
 
-      ldv_c_backend_buffer = concat (ldv_c_backend_buffer ? ldv_c_backend_buffer : "", str, NULL);
+      if (ldv_c_backend_buffer)
+        {
+          /* Keep reference to free corresponding memory later. */
+          ldv_c_backend_buffer_prev = ldv_c_backend_buffer;
+
+          if (!(ldv_c_backend_buffer = concat (ldv_c_backend_buffer, str, NULL)))
+            fatal_error ("can't concatenate strings '%s' and '%s'", ldv_c_backend_buffer, str);
+
+          /* Free previously allocated buffer, since in concatenating
+             completely new memory is allocated. */
+          free (ldv_c_backend_buffer_prev);
+        }
+      else
+        /* Just copy string (enough memory is allocated by concat()). */
+        ldv_c_backend_buffer = concat (str, NULL);
+
+      free (str);
     }
   else
     {
@@ -218,16 +241,18 @@ ldv_is_dump_ops (void)
   return (ldv_dump_ops == true);
 }
 
-const char *
+/* TODO: merge it with ldv_itoa() from ldv-core.c. */
+char *
 ldv_cbe_itoa (unsigned int n)
 {
   int int_digits, order;
   char *str = NULL;
 
-  /* Obtain the number of digits that are contained in unsigned integer number. */
-  for (int_digits = 1, order = 10.0; n / order > 1.0; int_digits++, order *= 10) ;
+  /* Obtain the number of digits that are contained in unsigned integer
+     number. */
+  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
 
-  str = (char *) xmalloc (int_digits + 1);
+  str = XCNEWVEC (char, (int_digits + 1));
 
   sprintf (str, "%d", n);
 
