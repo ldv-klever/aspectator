@@ -455,7 +455,7 @@ typedef struct ldv_info_initializer_internal
   char *decl;
   char *pointed_func_ret_type_decl;
   ldv_list_ptr pointed_func_arg_type_decls;
-  const char *value;
+  char *value;
   ldv_list_ptr initializer;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;

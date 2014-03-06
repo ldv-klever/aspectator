@@ -424,6 +424,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
   ldv_list_ptr params;
   char *param;
 
+  if (initializer->value)
+    free (initializer->value);
+
   if (initializer->initializer)
     {
       for (initializer_list = initializer->initializer
