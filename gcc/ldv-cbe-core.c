@@ -28,6 +28,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_SPACES_PER_INDENT_LEVEL 2
 
 
+/* This flag says whether the LDV c backed should print at all. */
+bool ldv_c_backend_printing_disabled;
+
 /* A file where the LDV c backend will place its output. */
 static const char *ldv_c_backend_out_fname;
 /* A stream where the LDV c backend will place its output. */
@@ -148,6 +151,9 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
   char *str;
   char *ldv_c_backend_buffer_prev;
 
+  if (ldv_c_backend_printing_disabled)
+    return;
+
   if (ldv_c_backend_buffer_enabled)
     {
       if (ap)
@@ -161,7 +167,7 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
           ldv_c_backend_buffer_prev = ldv_c_backend_buffer;
 
           if (!(ldv_c_backend_buffer = concat (ldv_c_backend_buffer, str, NULL)))
-            fatal_error ("can't concatenate stings '%s' and '%s'", ldv_c_backend_buffer, str);
+            fatal_error ("can't concatenate strings '%s' and '%s'", ldv_c_backend_buffer, str);
 
           /* Free previously allocated buffer, since in concatenating
              completely new memory is allocated. */

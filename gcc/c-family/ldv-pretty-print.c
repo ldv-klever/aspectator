@@ -969,6 +969,7 @@ ldv_print_cast_expr (unsigned int indent_level, ldv_cast_expr_ptr cast_expr)
   ldv_type_name_ptr type_name;
   ldv_cast_expr_ptr cast_expr_next;
   ldv_location_ptr location;
+  bool is_print_disabled = false;
 
   switch (LDV_CAST_EXPR_KIND (cast_expr))
     {
@@ -985,17 +986,25 @@ ldv_print_cast_expr (unsigned int indent_level, ldv_cast_expr_ptr cast_expr)
         ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       /* See comment for this variable. */
-      if (!ldv_disable_cast_printing)
+      if (ldv_disable_cast_printing && !ldv_c_backend_printing_disabled)
         {
-          ldv_c_backend_print (indent_level, true, "(");
-
-          if ((type_name = LDV_CAST_EXPR_TYPE_NAME (cast_expr)))
-            ldv_print_type_name (indent_level, type_name);
-          else
-            LDV_PRETTY_PRINT_WARN (indent_level, "type name of cast expression was not printed");
-
-          ldv_c_backend_print (indent_level, true, ")");
+          ldv_c_backend_printing_disabled = true;
+          is_print_disabled = true;
         }
+
+      ldv_c_backend_print (indent_level, true, "(");
+
+      if ((type_name = LDV_CAST_EXPR_TYPE_NAME (cast_expr)))
+        ldv_print_type_name (indent_level, type_name);
+      else
+        LDV_PRETTY_PRINT_WARN (indent_level, "type name of cast expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      /* To avoid enabling of printing in nested casts enable it just
+         there where it was disabled for the first time. */
+      if (is_print_disabled)
+        ldv_c_backend_printing_disabled = false;
 
       if ((cast_expr_next = LDV_CAST_EXPR_CAST_EXPR (cast_expr)))
         ldv_print_cast_expr (indent_level, cast_expr_next);

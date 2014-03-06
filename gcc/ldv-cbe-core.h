@@ -35,6 +35,9 @@ enum
 };
 
 
+extern bool ldv_c_backend_printing_disabled;
+
+
 extern void ldv_c_backend_current_line_set (unsigned int);
 extern bool ldv_c_backend_is_current_line (unsigned int);
 extern bool ldv_c_backend_is_lines_level (int);
