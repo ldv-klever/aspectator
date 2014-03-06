@@ -1461,6 +1461,8 @@ ldv_convert_compound_statement (tree t)
                 {
                   if (LDV_IDENTIFIER_STR (identifier) && !strcmp (LDV_IDENTIFIER_STR (identifier), "__func__"))
                     block_decl_type = NULL;
+
+                  XDELETE (identifier);
                 }
               else
                 LDV_WARN ("can't find variable name");
