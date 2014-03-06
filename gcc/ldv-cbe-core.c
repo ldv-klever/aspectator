@@ -242,7 +242,7 @@ ldv_is_dump_ops (void)
 }
 
 /* TODO: merge it with ldv_itoa() from ldv-core.c. */
-const char *
+char *
 ldv_cbe_itoa (unsigned int n)
 {
   int int_digits, order;

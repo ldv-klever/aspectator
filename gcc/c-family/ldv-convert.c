@@ -2835,13 +2835,13 @@ ldv_convert_identifier (tree t)
   const char *decl_name_str;
   char *decl_uid_name_str;
   unsigned int decl_uid;
-  const char *decl_uid_str;
+  char *decl_uid_str;
   const char *id, *str;
   tree enum_name;
   const char *enum_name_str;
   char *enum_uid_name_str;
   unsigned int enum_uid;
-  const char *enum_uid_str;
+  char *enum_uid_str;
 
   identifier = XCNEW (struct ldv_identifier);
 
@@ -2862,9 +2862,11 @@ ldv_convert_identifier (tree t)
         }
       else if ((decl_uid = DECL_UID (t)))
         {
+          /* TODO: implement a special function for this (below there are two similar sequences of actions). */
           decl_uid_str = ldv_cbe_itoa (decl_uid);
           decl_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (decl_uid_str) + 1);
           sprintf (decl_uid_name_str, "ldv_%d", decl_uid);
+          XDELETE (decl_uid_str);
           LDV_IDENTIFIER_STR (identifier) = decl_uid_name_str;
         }
       else
@@ -2903,6 +2905,7 @@ ldv_convert_identifier (tree t)
           enum_uid_str = ldv_cbe_itoa (enum_uid);
           enum_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (enum_uid_str) + 1);
           sprintf (enum_uid_name_str, "ldv_%d", enum_uid);
+          XDELETE (enum_uid_str);
           LDV_IDENTIFIER_STR (identifier) = enum_uid_name_str;
         }
       else
@@ -5822,7 +5825,7 @@ ldv_label_decl_name (tree t)
   tree label_decl_name;
   char *label_decl_name_str;
   unsigned int label_decl_uid;
-  const char *label_decl_uid_str;
+  char *label_decl_uid_str;
 
   switch (TREE_CODE (t))
     {
@@ -5834,6 +5837,7 @@ ldv_label_decl_name (tree t)
             label_decl_uid_str = ldv_cbe_itoa (label_decl_uid);
             label_decl_name_str = XCNEWVEC (char, 3 + 1 + strlen (label_decl_uid_str) + 1);
             sprintf (label_decl_name_str, "ldv_%d", label_decl_uid);
+            XDELETE (label_decl_uid_str);
             return label_decl_name_str;
           }
         else
