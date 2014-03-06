@@ -5528,6 +5528,8 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
                       LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
                       LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
                     }
+
+                  XDELETE (identifier);
                 }
               else
                 LDV_WARN ("can't find variable name");
