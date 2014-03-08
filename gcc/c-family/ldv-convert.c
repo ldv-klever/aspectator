@@ -4523,7 +4523,7 @@ static ldv_spec_qual_list_ptr
 ldv_convert_spec_qual_list (tree t)
 {
   ldv_spec_qual_list_ptr spec_qual_list, spec_qual_list_cur;
-  ldv_decl_spec_ptr decl_type_spec, decl_type_qual, decl_type_spec_qual, decl_cur;
+  ldv_decl_spec_ptr decl_type_spec, decl_type_qual, decl_type_spec_qual, decl_cur, decl_prev;
   ldv_type_spec_ptr type_spec;
   ldv_type_qual_ptr type_qual;
 
@@ -4548,8 +4548,11 @@ ldv_convert_spec_qual_list (tree t)
     }
 
   /* Assign type specifiers and qualifiers to the specifier qualifier list itself. */
-  for (decl_cur = decl_type_spec_qual; decl_cur; decl_cur = LDV_DECL_DECL_SPEC (decl_cur))
+  for (decl_cur = decl_type_spec_qual, decl_prev = NULL; decl_cur; decl_cur = LDV_DECL_DECL_SPEC (decl_cur))
     {
+      if (decl_prev)
+        XDELETE (decl_prev);
+
       if (spec_qual_list_cur)
         {
           LDV_SPEC_QUAL_LIST_SPEC_QUAL_LIST (spec_qual_list_cur) = XCNEW (struct ldv_spec_qual_list);
@@ -4564,7 +4567,14 @@ ldv_convert_spec_qual_list (tree t)
         LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list_cur) = type_qual;
       else
         LDV_WARN ("incorrect declaration specifier");
+
+      /* Remember current declaration specifier to free it on the next iteration. */
+      decl_prev = decl_cur;
     }
+
+  /* Free last declaration specifier in list. */
+  if (decl_prev)
+    XDELETE (decl_prev);
 
   if (LDV_SPEC_QUAL_LIST_TYPE_SPEC (spec_qual_list) || LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list))
     return spec_qual_list;
