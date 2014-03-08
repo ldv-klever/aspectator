@@ -5161,33 +5161,29 @@ type-qualifier-list:
 static ldv_type_qual_list_ptr
 ldv_convert_type_qual_list (tree t)
 {
-  ldv_decl_spec_ptr decl_spec, decl_spec_cur;
+  ldv_decl_spec_ptr decl_spec_cur;
   ldv_type_qual_list_ptr type_qual_list, type_qual_list_cur;
   ldv_type_qual_ptr type_qual;
   bool is_type_qual;
 
-  decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   type_qual_list_cur = type_qual_list = XCNEW (struct ldv_type_qual_list);
   is_type_qual = false;
 
-  if ((decl_spec = ldv_convert_type_qual_internal (t)))
+  for (decl_spec_cur = ldv_convert_type_qual_internal (t); decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
     {
-      for (decl_spec_cur = decl_spec; decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
+      if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)))
         {
-          if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)))
+          if (is_type_qual)
             {
-              if (is_type_qual)
-                {
-                  LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur) = XCNEW (struct ldv_type_qual_list);
-                  type_qual_list_cur = LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur);
-                }
-
-              LDV_TYPE_QUAL_LIST_TYPE_QUAL (type_qual_list_cur) = type_qual;
-              is_type_qual = true;
+              LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur) = XCNEW (struct ldv_type_qual_list);
+              type_qual_list_cur = LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur);
             }
-          else
-            LDV_WARN ("incorrect declaration specifier");
+
+          LDV_TYPE_QUAL_LIST_TYPE_QUAL (type_qual_list_cur) = type_qual;
+          is_type_qual = true;
         }
+      else
+        LDV_WARN ("incorrect declaration specifier");
     }
 
   if (is_type_qual)
@@ -5196,7 +5192,6 @@ ldv_convert_type_qual_list (tree t)
   /* There is may be no type qualifiers at all so don't consider such the case
      as an error. */
 
-  XDELETE (decl_spec);
   XDELETE (type_qual_list);
 
   return NULL;
