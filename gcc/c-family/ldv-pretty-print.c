@@ -1966,10 +1966,13 @@ identifier:
 static void
 ldv_print_identifier (unsigned int indent_level, ldv_identifier_ptr identifier)
 {
-  const char *str;
+  char *str;
 
   if ((str = LDV_IDENTIFIER_STR (identifier)))
-    ldv_c_backend_print (indent_level, true, "%s", str);
+    {
+      ldv_c_backend_print (indent_level, true, "%s", str);
+      LDV_XDELETE_ON_PRINTING (str);
+    }
   else
     LDV_PRETTY_PRINT_WARN (indent_level, "identifier was not printed");
 
@@ -3809,7 +3812,12 @@ ldv_print_translation_unit (tree t, bool isdecl)
     {
       LDV_TRANSLATION_UNIT_EXT_DECL (translation_unit) = ext_decl;
 
+      /* We do not need corresponding entities after printing is completed. */
+      ldv_free_on_printing = true;
+
       ldv_print_ext_decl (0, LDV_TRANSLATION_UNIT_EXT_DECL (translation_unit));
+
+      ldv_free_on_printing = false;
     }
   else
     LDV_PRETTY_PRINT_WARN (0, "external declaration was not printed");
