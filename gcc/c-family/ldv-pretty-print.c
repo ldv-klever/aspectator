@@ -1966,10 +1966,13 @@ identifier:
 static void
 ldv_print_identifier (unsigned int indent_level, ldv_identifier_ptr identifier)
 {
-  const char *str;
+  char *str;
 
   if ((str = LDV_IDENTIFIER_STR (identifier)))
-    ldv_c_backend_print (indent_level, true, "%s", str);
+    {
+      ldv_c_backend_print (indent_level, true, "%s", str);
+      LDV_XDELETE_ON_PRINTING (str);
+    }
   else
     LDV_PRETTY_PRINT_WARN (indent_level, "identifier was not printed");
 

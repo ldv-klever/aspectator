@@ -51,7 +51,7 @@ identifier:
 */
 struct ldv_identifier
 {
-  const char *str;
+  char *str;
 };
 typedef struct ldv_identifier *ldv_identifier_ptr;
 #define LDV_IDENTIFIER_STR(identifier) (identifier->str)

@@ -2858,7 +2858,7 @@ ldv_convert_identifier (tree t)
       if ((decl_name = DECL_NAME (t)))
         {
           if ((decl_name_str = IDENTIFIER_POINTER (decl_name)))
-            LDV_IDENTIFIER_STR (identifier) = decl_name_str;
+            LDV_IDENTIFIER_STR (identifier) = xstrdup (decl_name_str);
           else
             LDV_CONVERT_WARN (t);
         }
@@ -2878,7 +2878,7 @@ ldv_convert_identifier (tree t)
 
     case IDENTIFIER_NODE:
       if ((id = IDENTIFIER_POINTER (t)))
-        LDV_IDENTIFIER_STR (identifier) = id;
+        LDV_IDENTIFIER_STR (identifier) = xstrdup (id);
       else
         LDV_CONVERT_WARN (t);
 
@@ -2886,7 +2886,7 @@ ldv_convert_identifier (tree t)
 
     case STRING_CST:
       if ((str = TREE_STRING_POINTER (t)))
-        LDV_IDENTIFIER_STR (identifier) = str;
+        LDV_IDENTIFIER_STR (identifier) = xstrdup (str);
       else
         LDV_CONVERT_WARN (t);
 
@@ -2896,7 +2896,7 @@ ldv_convert_identifier (tree t)
       if ((enum_name = TYPE_NAME (t)))
         {
           if ((enum_name_str = IDENTIFIER_POINTER (enum_name)))
-            LDV_IDENTIFIER_STR (identifier) = enum_name_str;
+            LDV_IDENTIFIER_STR (identifier) = xstrdup (enum_name_str);
           else
             LDV_CONVERT_WARN (t);
         }
