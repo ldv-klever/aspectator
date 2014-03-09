@@ -3812,7 +3812,12 @@ ldv_print_translation_unit (tree t, bool isdecl)
     {
       LDV_TRANSLATION_UNIT_EXT_DECL (translation_unit) = ext_decl;
 
+      /* We do not need corresponding entities after printing is completed. */
+      ldv_free_on_printing = true;
+
       ldv_print_ext_decl (0, LDV_TRANSLATION_UNIT_EXT_DECL (translation_unit));
+
+      ldv_free_on_printing = false;
     }
   else
     LDV_PRETTY_PRINT_WARN (0, "external declaration was not printed");
