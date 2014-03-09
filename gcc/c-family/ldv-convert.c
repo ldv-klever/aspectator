@@ -5189,6 +5189,8 @@ ldv_convert_type_qual_list (tree t)
         }
       else
         LDV_WARN ("incorrect declaration specifier");
+
+      XDELETE (decl_spec_cur);
     }
 
   if (is_type_qual)
