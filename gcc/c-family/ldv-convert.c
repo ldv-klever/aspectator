@@ -1455,6 +1455,7 @@ ldv_convert_compound_statement (tree t)
 
               break;
 
+            /* TODO: make a special function for that (search __func__). */
             /* Skip artificial __func__ variable. */
             case VAR_DECL:
               if ((identifier = ldv_convert_identifier (block_decl)))
@@ -1462,6 +1463,7 @@ ldv_convert_compound_statement (tree t)
                   if (LDV_IDENTIFIER_STR (identifier) && !strcmp (LDV_IDENTIFIER_STR (identifier), "__func__"))
                     block_decl_type = NULL;
 
+                  XDELETE (LDV_IDENTIFIER_STR (identifier));
                   XDELETE (identifier);
                 }
               else
@@ -5480,7 +5482,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
   ldv_unary_expr_ptr unary_expr;
   tree op1;
   ldv_identifier_ptr identifier;
-  const char *str;
+  char *str;
 
   /* There is no sizeof expressions in gcc, they are converted to the other
      ones. */
@@ -5536,6 +5538,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
                       LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
                     }
 
+                  XDELETE (str);
                   XDELETE (identifier);
                 }
               else
