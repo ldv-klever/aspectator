@@ -848,9 +848,7 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
     case MODIFY_EXPR:
       LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_SECOND;
 
-      if ((op1 = LDV_OP_FIRST (t)))
-        LDV_ASSIGNMENT_EXPR_UNARY_EXPR (assignment_expr) = ldv_convert_unary_expr (op1, recursion_limit);
-      else
+      if (!(op1 = LDV_OP_FIRST (t)))
         LDV_WARN ("can't find the first operand of assignment expression");
 
       if (!(op2 = LDV_OP_SECOND (t)))
@@ -867,6 +865,8 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
             LDV_ASSIGNMENT_EXPR_COND_EXPR (assignment_expr) = ldv_convert_cond_expr (op2, recursion_limit);
           break;
         }
+
+      LDV_ASSIGNMENT_EXPR_UNARY_EXPR (assignment_expr) = ldv_convert_unary_expr (op1, recursion_limit);
 
       LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr) = ldv_convert_assignment_operator (t);
 
