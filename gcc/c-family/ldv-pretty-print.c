@@ -395,7 +395,7 @@ ldv_print_arg_expr_list (unsigned int indent_level, ldv_arg_expr_list_ptr arg_ex
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-argument:
     asm-string-literal
@@ -455,7 +455,7 @@ ldv_print_asm_arg (unsigned int indent_level, ldv_asm_arg_ptr asm_arg)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-clobbers:
     asm-string-literal
@@ -496,7 +496,7 @@ ldv_print_asm_clobbers (unsigned int indent_level, ldv_asm_clobbers_ptr asm_clob
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
@@ -537,7 +537,7 @@ ldv_print_asm_goto_arg (unsigned int indent_level, ldv_asm_goto_arg_ptr asm_goto
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-operands:
     identifier
@@ -578,7 +578,7 @@ ldv_print_asm_goto_operands (unsigned int indent_level, ldv_asm_goto_operands_pt
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operand:
     asm-string-literal ( expression )
@@ -631,7 +631,7 @@ ldv_print_asm_operand (unsigned int indent_level, ldv_asm_operand_ptr asm_operan
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operands:
     asm-operand
@@ -672,7 +672,7 @@ ldv_print_asm_operands (unsigned int indent_level, ldv_asm_operands_ptr asm_oper
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
@@ -732,7 +732,7 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-string-literal:
     string-literal
@@ -3002,7 +3002,7 @@ primary-expression:
     string-literal
     ( expression )
 
-GNU extension
+GNU extensions:
 
 primary-expression:
     ( compound-statement )
@@ -3247,7 +3247,7 @@ shift-expression:
     shift-expression << additive-expression
     shift-expression >> additive-expression
 
-LDV extension
+LDV extensions:
 
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
@@ -3346,7 +3346,7 @@ statement:
     iteration-statement
     jump-statement
 
-GNU extension
+GNU extensions:
 
 statement:
     asm-statement
@@ -3689,7 +3689,7 @@ struct-or-union-specifier:
     struct-or-union identifieropt { struct-declaration-list }
     struct-or-union identifier
 
-GNU extension
+GNU extensions:
 
 struct-or-union-specifier:
     struct-or-union identifieropt { }
@@ -4030,7 +4030,7 @@ unary-expression:
     sizeof unary-expression
     sizeof ( type-name )
 
-GNU extension
+GNU extensions:
 
     && identifier
 */

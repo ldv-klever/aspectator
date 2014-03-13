@@ -432,7 +432,7 @@ ldv_convert_arg_expr_list (tree t, unsigned int recursion_limit)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-argument:
     asm-string-literal
@@ -486,7 +486,7 @@ ldv_convert_asm_arg (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-clobbers:
     asm-string-literal
@@ -535,7 +535,7 @@ ldv_convert_asm_clobbers (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
@@ -577,7 +577,7 @@ ldv_convert_asm_goto_arg (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-operands:
     identifier
@@ -630,7 +630,7 @@ ldv_convert_asm_goto_operands (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operand:
     asm-string-literal ( expression )
@@ -687,7 +687,7 @@ ldv_convert_asm_operand (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operands:
     asm-operand
@@ -737,7 +737,7 @@ ldv_convert_asm_operands (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
@@ -787,7 +787,7 @@ ldv_convert_asm_statement (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-string-literal:
     string-literal
@@ -4166,7 +4166,7 @@ primary-expression:
     string-literal
     ( expression )
 
-GNU extension
+GNU extensions:
 
 primary-expression:
     ( compound-statement )
@@ -4461,7 +4461,7 @@ shift-expression:
     shift-expression << additive-expression
     shift-expression >> additive-expression
 
-LDV extension
+LDV extensions:
 
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
@@ -4600,7 +4600,7 @@ statement:
     iteration-statement
     jump-statement
 
-GNU extension
+GNU extensions:
 
 statement:
     asm-statement
@@ -4965,7 +4965,7 @@ struct-or-union-specifier:
     struct-or-union identifieropt { struct-declaration-list }
     struct-or-union identifier
 
-GNU extension
+GNU extensions:
 
 struct-or-union-specifier:
     struct-or-union identifieropt { }
@@ -5477,7 +5477,7 @@ unary-expression:
     sizeof unary-expression
     sizeof ( type-name )
 
-GNU extension
+GNU extensions:
 
     && identifier
 */

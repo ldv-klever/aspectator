@@ -223,7 +223,7 @@ primary-expression:
     string-literal
     ( expression )
 
-GNU extension
+GNU extensions:
 
 primary-expression:
     ( compound-statement )
@@ -444,7 +444,7 @@ unary-expression:
     sizeof unary-expression
     sizeof ( type-name )
 
-GNU extension
+GNU extensions:
 
     && identifier
 */
@@ -558,7 +558,7 @@ shift-expression:
     shift-expression << additive-expression
     shift-expression >> additive-expression
 
-LDV extension
+LDV extensions:
 
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
@@ -759,7 +759,7 @@ conditional-expression:
     logical-OR-expression
     logical-OR-expression ? expression : conditional-expression
 
-LDV extension
+LDV extensions:
 
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
@@ -863,7 +863,7 @@ typedef struct ldv_expr *ldv_expr_ptr;
 #define LDV_EXPR_EXPR(expr_arg)        (expr_arg->expr)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-operands:
     identifier
@@ -886,7 +886,7 @@ typedef struct ldv_asm_goto_operands *ldv_asm_goto_operands_ptr;
 #define LDV_ASM_GOTO_OPERANDS_ASM_GOTO_OPERANDS(asm_goto_operands_arg) (asm_goto_operands_arg->asm_goto_operands)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-string-literal:
     string-literal
@@ -899,7 +899,7 @@ typedef struct ldv_asm_str_literal *ldv_asm_str_literal_ptr;
 #define LDV_ASM_STR_LITERAL_STR_LITERAL(asm_str_literal) (asm_str_literal->str_literal)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-clobbers:
     asm-string-literal
@@ -922,7 +922,7 @@ typedef struct ldv_asm_clobbers *ldv_asm_clobbers_ptr;
 #define LDV_ASM_CLOBBERS_ASM_CLOBBERS(asm_clobbers_arg) (asm_clobbers_arg->asm_clobbers)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operand:
     asm-string-literal ( expression )
@@ -947,7 +947,7 @@ typedef struct ldv_asm_operand *ldv_asm_operand_ptr;
 #define LDV_ASM_OPERAND_IDENTIFIER(asm_operand)      (asm_operand->identifier)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operands:
     asm-operand
@@ -970,7 +970,7 @@ typedef struct ldv_asm_operands *ldv_asm_operands_ptr;
 #define LDV_ASM_OPERANDS_ASM_OPERANDS(asm_operands_arg) (asm_operands_arg->asm_operands)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
@@ -989,7 +989,7 @@ typedef struct ldv_asm_goto_arg *ldv_asm_goto_arg_ptr;
 #define LDV_ASM_GOTO_ARG_ASM_GOTO_OPERANDS(asm_goto_arg) (asm_goto_arg->asm_goto_operands)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-argument:
     asm-string-literal
@@ -1019,7 +1019,7 @@ typedef struct ldv_asm_arg *ldv_asm_arg_ptr;
 #define LDV_ASM_ARG_ASM_CLOBBERS(asm_arg)    (asm_arg->asm_clobbers)
 
 /*
-GNU extension
+GNU extensions:
 
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
@@ -1145,7 +1145,7 @@ statement:
     iteration-statement
     jump-statement
 
-GNU extension
+GNU extensions:
 
 statement:
     asm-statement
@@ -1679,7 +1679,7 @@ struct-or-union-specifier:
     struct-or-union identifieropt { struct-declaration-list }
     struct-or-union identifier
 
-GNU extension
+GNU extensions:
 
 struct-or-union-specifier:
     struct-or-union identifieropt { }
