@@ -1112,7 +1112,12 @@ conditional-expression:
     logical-OR-expression
     logical-OR-expression ? expression : conditional-expression
 
-LDV extension
+GNU extensions:
+
+conditional-expression:
+    logical-OR-expression ? : conditional-expression
+
+LDV extensions:
 
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
@@ -1138,7 +1143,15 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
         LDV_WARN ("can't find the first operand of conditional expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
-        LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op2, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+        {
+          /* GCC allows empty second statement in ternary conditional
+             expression (#3711). SAVE_EXPR means exactly it since it
+             doesn't require evaluation. */
+          if (TREE_CODE (op2) == SAVE_EXPR)
+            LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_THIRD;
+          else
+            LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op2, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+        }
       else
         LDV_WARN ("can't find the second operand of conditional expression");
 
@@ -1154,9 +1167,9 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
     case MIN_EXPR:
     case MAX_EXPR:
       if (TREE_CODE (t) == MIN_EXPR)
-        LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_THIRD;
-      else
         LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FOURTH;
+      else
+        LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
 
       if (!(op1 = LDV_OP_FIRST (t)))
         LDV_WARN ("can't find the first operand of conditional expression");
@@ -1175,7 +1188,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
       break;
 
     case ABS_EXPR:
-      LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
+      LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_SIXTH;
 
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op1, recursion_limit);
@@ -2510,6 +2523,7 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
 
   switch (TREE_CODE (t))
     {
+    /* TODO: Try to throw exception for this sort of expressions. We are unlikely need to convert them! */
     case SAVE_EXPR:
       if ((op1 = LDV_OP_FIRST (t)))
         {

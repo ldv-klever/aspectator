@@ -759,6 +759,11 @@ conditional-expression:
     logical-OR-expression
     logical-OR-expression ? expression : conditional-expression
 
+GNU extensions:
+
+conditional-expression:
+    logical-OR-expression ? : conditional-expression
+
 LDV extensions:
 
 conditional-expression:
@@ -772,7 +777,8 @@ enum ldv_cond_expr_kind
   LDV_COND_EXPR_SECOND,
   LDV_COND_EXPR_THIRD,
   LDV_COND_EXPR_FOURTH,
-  LDV_COND_EXPR_FIFTH
+  LDV_COND_EXPR_FIFTH,
+  LDV_COND_EXPR_SIXTH
 };
 struct ldv_cond_expr
 {
