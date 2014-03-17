@@ -1272,7 +1272,7 @@ ldv_print_func_path (ldv_i_func_ptr decl)
   path = decl->file_path;
   occurrence = strstr(path, ".prepared");
   if (occurrence)
-    occurrence = NULL;
+    *occurrence = '\0';
   ldv_print_str (path);
 
   return ldv_get_text (ldv_text_printed);
