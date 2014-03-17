@@ -2062,6 +2062,7 @@ ldv_parse_aspect_pattern_param_str (char **str)
   int c;
   unsigned int byte_count = 0;
   ldv_str_ptr str_read = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -2074,6 +2075,12 @@ ldv_parse_aspect_pattern_param_str (char **str)
       /* Get the rest of string. */
       while (1)
         {
+          if (pattern = ldv_parse_aspect_pattern ())
+            {
+              ldv_puts_string (pattern->value, str_read);
+              pattern=NULL;
+            }
+
           c = ldv_getc (LDV_ASPECT_STREAM);
           byte_count++;
 
@@ -2118,6 +2125,9 @@ ldv_parse_aspect_pattern_param_str (char **str)
                   break;
                 case 'v':
                   ldv_putc_string ('\v', str_read);
+                  break;
+                case '$':
+                  ldv_putc_string ('\$', str_read);
                   break;
                 default:
                   LDV_FATAL_ERROR ("Can't process escape sequence '\\%c'", c);
