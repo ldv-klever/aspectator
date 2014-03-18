@@ -32,7 +32,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_MATCHED_BY_NAME (stderr)
 
 static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
-static const char *ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro);
+static const char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
+static const char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr);
 
 
 void
@@ -159,6 +160,10 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
       number = ldv_list_len (arg_value_list);
       is_number = true;
     }
+  else if (!strcmp (pattern->name, "path"))
+    {
+      text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
+    }
 
   if (text)
     {
@@ -172,6 +177,20 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
     }
 
   return 0;
+}
+
+const char *
+ldv_cpp_print_macro_path(ldv_i_macro_ptr i_macro)
+{
+  char* path = NULL;
+  char* occurrence = NULL;
+
+  path = i_macro->file_path;
+  occurrence = strstr(path, ".prepared");
+  if (occurrence)
+    *occurrence = '\0';
+
+  return path;
 }
 
 const char *
