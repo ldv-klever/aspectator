@@ -22,7 +22,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 enum ldv_arg_signs
 {
-  LDV_ARG_SIGN_SIMPLE_ID = 1,
+  LDV_ARG_SIGN_VARIABLE_ID = 1,
+  LDV_ARG_SIGN_SIMPLE_ID,
   LDV_ARG_SIGN_COMPLEX_ID
 };
 
