@@ -433,17 +433,28 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a primitive pointcut from a corresponding rule. */
       c_pointcut->p_pointcut = $1;
 
-      /* Store information about pointcut type. */
-      if (c_pointcut->p_pointcut->pp_kind == LDV_PP_CALL) 
-        c_pointcut->cp_type = LDV_CP_TYPE_CALL;
-      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_DEFINE)
-        c_pointcut->cp_type = LDV_CP_TYPE_DEFINE;
-      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_EXECUTION)
-        c_pointcut->cp_type = LDV_CP_TYPE_EXECUTION;
-      else if (c_pointcut->p_pointcut->pp_kind == LDV_PP_INFILE)
-        c_pointcut->cp_type = LDV_CP_TYPE_INFILE;
-      else
-        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+      /* Inherit primitive pointcut type. */
+      switch (c_pointcut->p_pointcut->pp_kind)
+        {
+        case LDV_PP_CALL:
+          c_pointcut->cp_type = LDV_CP_TYPE_CALL;
+          break;
+
+        case LDV_PP_DEFINE:
+          c_pointcut->cp_type = LDV_CP_TYPE_DEFINE;
+          break;
+
+        case LDV_PP_EXECUTION:
+          c_pointcut->cp_type = LDV_CP_TYPE_EXECUTION;
+          break;
+
+        case LDV_PP_INFILE:
+          c_pointcut->cp_type = LDV_CP_TYPE_INFILE;
+          break;
+
+        default:
+          c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+        }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"primitive\" composite pointcut");
 
@@ -461,7 +472,8 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_first = $2;
 
-      /* Store information about pointcut type. */
+      /* Propagating pointcut type for negations of pointcuts is disambiguous
+         like negations themselves. */
       c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"not\" composite pointcut");
@@ -482,7 +494,8 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
 
-      /* Store information about pointcut type. */
+      /* In general case just when both composite pointcuts have the same type
+         their "or" has the same type. */
       if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
         c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
       else
@@ -506,7 +519,8 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
 
-      /* Store information about pointcut type. */
+      /* "And" of two composite pointcuts has type of non "infile" composite
+         poincut when their types are the same or one of types is "infile". */
       if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
         c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
       else if (c_pointcut->c_pointcut_first->cp_type == LDV_CP_TYPE_INFILE)
