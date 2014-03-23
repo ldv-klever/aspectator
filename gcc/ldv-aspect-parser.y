@@ -1930,7 +1930,6 @@ ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
         {
           i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
 
-          /* TODO: use ldv_cmp_str() instead of this ugly filter. */
           /* Store special "$" function name in hash table if "$" wildcard was
              used elsewhere through function names. Later this special function
              name will be used to denote that we needn't to try find function
