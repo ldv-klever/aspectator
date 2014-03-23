@@ -35,10 +35,13 @@ enum
 };
 
 
+extern bool ldv_c_backend_printing_disabled;
+
+
 extern void ldv_c_backend_current_line_set (unsigned int);
 extern bool ldv_c_backend_is_current_line (unsigned int);
 extern bool ldv_c_backend_is_lines_level (int);
-extern const char *ldv_c_backend_get_buffer (void);
+extern char *ldv_c_backend_get_buffer (void);
 extern int ldv_c_backend_get_lines_level (void);
 extern void ldv_c_backend_padding_cancel (void);
 extern void ldv_c_backend_padding_force (void);
@@ -49,7 +52,7 @@ extern void ldv_c_backend_set_lines_level (int);
 extern void ldv_cbe_handle_options (void);
 extern bool ldv_is_c_backend_enabled (void);
 extern bool ldv_is_dump_ops (void);
-extern const char *ldv_cbe_itoa (unsigned int);
+extern char *ldv_cbe_itoa (unsigned int);
 
 
 #endif /* _LDV_CBE_CORE_H_ */

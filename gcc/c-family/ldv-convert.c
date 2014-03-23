@@ -432,7 +432,7 @@ ldv_convert_arg_expr_list (tree t, unsigned int recursion_limit)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-argument:
     asm-string-literal
@@ -486,7 +486,7 @@ ldv_convert_asm_arg (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-clobbers:
     asm-string-literal
@@ -535,7 +535,7 @@ ldv_convert_asm_clobbers (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-argument:
     asm-string-literal : : asm-operandsopt : asm-clobbersopt : asm-goto-operands
@@ -577,7 +577,7 @@ ldv_convert_asm_goto_arg (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-goto-operands:
     identifier
@@ -630,7 +630,7 @@ ldv_convert_asm_goto_operands (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operand:
     asm-string-literal ( expression )
@@ -687,7 +687,7 @@ ldv_convert_asm_operand (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-operands:
     asm-operand
@@ -737,7 +737,7 @@ ldv_convert_asm_operands (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-statement:
     asm type-qualifieropt ( asm-argument ) ;
@@ -787,7 +787,7 @@ ldv_convert_asm_statement (tree t)
 }
 
 /*
-GNU extension
+GNU extensions:
 
 asm-string-literal:
     string-literal
@@ -848,9 +848,7 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
     case MODIFY_EXPR:
       LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_SECOND;
 
-      if ((op1 = LDV_OP_FIRST (t)))
-        LDV_ASSIGNMENT_EXPR_UNARY_EXPR (assignment_expr) = ldv_convert_unary_expr (op1, recursion_limit);
-      else
+      if (!(op1 = LDV_OP_FIRST (t)))
         LDV_WARN ("can't find the first operand of assignment expression");
 
       if (!(op2 = LDV_OP_SECOND (t)))
@@ -867,6 +865,8 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
             LDV_ASSIGNMENT_EXPR_COND_EXPR (assignment_expr) = ldv_convert_cond_expr (op2, recursion_limit);
           break;
         }
+
+      LDV_ASSIGNMENT_EXPR_UNARY_EXPR (assignment_expr) = ldv_convert_unary_expr (op1, recursion_limit);
 
       LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr) = ldv_convert_assignment_operator (t);
 
@@ -1112,7 +1112,12 @@ conditional-expression:
     logical-OR-expression
     logical-OR-expression ? expression : conditional-expression
 
-LDV extension
+GNU extensions:
+
+conditional-expression:
+    logical-OR-expression ? : conditional-expression
+
+LDV extensions:
 
 conditional-expression:
     LDV_MIN (expression, conditional-expression)
@@ -1138,7 +1143,15 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
         LDV_WARN ("can't find the first operand of conditional expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
-        LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op2, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+        {
+          /* GCC allows empty second statement in ternary conditional
+             expression (#3711). SAVE_EXPR means exactly it since it
+             doesn't require evaluation. */
+          if (TREE_CODE (op2) == SAVE_EXPR)
+            LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_THIRD;
+          else
+            LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op2, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+        }
       else
         LDV_WARN ("can't find the second operand of conditional expression");
 
@@ -1154,9 +1167,9 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
     case MIN_EXPR:
     case MAX_EXPR:
       if (TREE_CODE (t) == MIN_EXPR)
-        LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_THIRD;
-      else
         LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FOURTH;
+      else
+        LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
 
       if (!(op1 = LDV_OP_FIRST (t)))
         LDV_WARN ("can't find the first operand of conditional expression");
@@ -1175,7 +1188,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
       break;
 
     case ABS_EXPR:
-      LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
+      LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_SIXTH;
 
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op1, recursion_limit);
@@ -1455,12 +1468,16 @@ ldv_convert_compound_statement (tree t)
 
               break;
 
+            /* TODO: make a special function for that (search __func__). */
             /* Skip artificial __func__ variable. */
             case VAR_DECL:
               if ((identifier = ldv_convert_identifier (block_decl)))
                 {
                   if (LDV_IDENTIFIER_STR (identifier) && !strcmp (LDV_IDENTIFIER_STR (identifier), "__func__"))
                     block_decl_type = NULL;
+
+                  XDELETE (LDV_IDENTIFIER_STR (identifier));
+                  XDELETE (identifier);
                 }
               else
                 LDV_WARN ("can't find variable name");
@@ -1603,7 +1620,10 @@ ldv_convert_decl_spec (tree t, bool is_decl_decl_spec)
     ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, NULL, NULL, decl_func_spec);
 
   if ((decl_type_spec = ldv_convert_type_spec (t, is_decl_decl_spec)))
-    ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, decl_type_spec, NULL, NULL);
+    {
+      ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, decl_type_spec, NULL, NULL);
+      XDELETE (decl_type_spec);
+    }
 
   if ((decl_type_qual = ldv_convert_type_qual (t)))
     ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, NULL, decl_type_qual, NULL);
@@ -2503,6 +2523,7 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
 
   switch (TREE_CODE (t))
     {
+    /* TODO: Try to throw exception for this sort of expressions. We are unlikely need to convert them! */
     case SAVE_EXPR:
       if ((op1 = LDV_OP_FIRST (t)))
         {
@@ -2835,13 +2856,13 @@ ldv_convert_identifier (tree t)
   const char *decl_name_str;
   char *decl_uid_name_str;
   unsigned int decl_uid;
-  const char *decl_uid_str;
+  char *decl_uid_str;
   const char *id, *str;
   tree enum_name;
   const char *enum_name_str;
   char *enum_uid_name_str;
   unsigned int enum_uid;
-  const char *enum_uid_str;
+  char *enum_uid_str;
 
   identifier = XCNEW (struct ldv_identifier);
 
@@ -2856,15 +2877,17 @@ ldv_convert_identifier (tree t)
       if ((decl_name = DECL_NAME (t)))
         {
           if ((decl_name_str = IDENTIFIER_POINTER (decl_name)))
-            LDV_IDENTIFIER_STR (identifier) = decl_name_str;
+            LDV_IDENTIFIER_STR (identifier) = xstrdup (decl_name_str);
           else
             LDV_CONVERT_WARN (t);
         }
       else if ((decl_uid = DECL_UID (t)))
         {
+          /* TODO: implement a special function for this (below there are two similar sequences of actions). */
           decl_uid_str = ldv_cbe_itoa (decl_uid);
           decl_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (decl_uid_str) + 1);
           sprintf (decl_uid_name_str, "ldv_%d", decl_uid);
+          XDELETE (decl_uid_str);
           LDV_IDENTIFIER_STR (identifier) = decl_uid_name_str;
         }
       else
@@ -2874,7 +2897,7 @@ ldv_convert_identifier (tree t)
 
     case IDENTIFIER_NODE:
       if ((id = IDENTIFIER_POINTER (t)))
-        LDV_IDENTIFIER_STR (identifier) = id;
+        LDV_IDENTIFIER_STR (identifier) = xstrdup (id);
       else
         LDV_CONVERT_WARN (t);
 
@@ -2882,7 +2905,7 @@ ldv_convert_identifier (tree t)
 
     case STRING_CST:
       if ((str = TREE_STRING_POINTER (t)))
-        LDV_IDENTIFIER_STR (identifier) = str;
+        LDV_IDENTIFIER_STR (identifier) = xstrdup (str);
       else
         LDV_CONVERT_WARN (t);
 
@@ -2892,7 +2915,7 @@ ldv_convert_identifier (tree t)
       if ((enum_name = TYPE_NAME (t)))
         {
           if ((enum_name_str = IDENTIFIER_POINTER (enum_name)))
-            LDV_IDENTIFIER_STR (identifier) = enum_name_str;
+            LDV_IDENTIFIER_STR (identifier) = xstrdup (enum_name_str);
           else
             LDV_CONVERT_WARN (t);
         }
@@ -2903,6 +2926,7 @@ ldv_convert_identifier (tree t)
           enum_uid_str = ldv_cbe_itoa (enum_uid);
           enum_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (enum_uid_str) + 1);
           sprintf (enum_uid_name_str, "ldv_%d", enum_uid);
+          XDELETE (enum_uid_str);
           LDV_IDENTIFIER_STR (identifier) = enum_uid_name_str;
         }
       else
@@ -4156,7 +4180,7 @@ primary-expression:
     string-literal
     ( expression )
 
-GNU extension
+GNU extensions:
 
 primary-expression:
     ( compound-statement )
@@ -4451,7 +4475,7 @@ shift-expression:
     shift-expression << additive-expression
     shift-expression >> additive-expression
 
-LDV extension
+LDV extensions:
 
 shift-expression:
     LDV_LROTATE (shift-expression, additive-expression)
@@ -4518,7 +4542,7 @@ static ldv_spec_qual_list_ptr
 ldv_convert_spec_qual_list (tree t)
 {
   ldv_spec_qual_list_ptr spec_qual_list, spec_qual_list_cur;
-  ldv_decl_spec_ptr decl_type_spec, decl_type_qual, decl_type_spec_qual, decl_cur;
+  ldv_decl_spec_ptr decl_type_spec, decl_type_qual, decl_type_spec_qual, decl_cur, decl_prev;
   ldv_type_spec_ptr type_spec;
   ldv_type_qual_ptr type_qual;
 
@@ -4543,8 +4567,11 @@ ldv_convert_spec_qual_list (tree t)
     }
 
   /* Assign type specifiers and qualifiers to the specifier qualifier list itself. */
-  for (decl_cur = decl_type_spec_qual; decl_cur; decl_cur = LDV_DECL_DECL_SPEC (decl_cur))
+  for (decl_cur = decl_type_spec_qual, decl_prev = NULL; decl_cur; decl_cur = LDV_DECL_DECL_SPEC (decl_cur))
     {
+      if (decl_prev)
+        XDELETE (decl_prev);
+
       if (spec_qual_list_cur)
         {
           LDV_SPEC_QUAL_LIST_SPEC_QUAL_LIST (spec_qual_list_cur) = XCNEW (struct ldv_spec_qual_list);
@@ -4559,7 +4586,14 @@ ldv_convert_spec_qual_list (tree t)
         LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list_cur) = type_qual;
       else
         LDV_WARN ("incorrect declaration specifier");
+
+      /* Remember current declaration specifier to free it on the next iteration. */
+      decl_prev = decl_cur;
     }
+
+  /* Free last declaration specifier in list. */
+  if (decl_prev)
+    XDELETE (decl_prev);
 
   if (LDV_SPEC_QUAL_LIST_TYPE_SPEC (spec_qual_list) || LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list))
     return spec_qual_list;
@@ -4580,7 +4614,7 @@ statement:
     iteration-statement
     jump-statement
 
-GNU extension
+GNU extensions:
 
 statement:
     asm-statement
@@ -4945,7 +4979,7 @@ struct-or-union-specifier:
     struct-or-union identifieropt { struct-declaration-list }
     struct-or-union identifier
 
-GNU extension
+GNU extensions:
 
 struct-or-union-specifier:
     struct-or-union identifieropt { }
@@ -5146,33 +5180,31 @@ type-qualifier-list:
 static ldv_type_qual_list_ptr
 ldv_convert_type_qual_list (tree t)
 {
-  ldv_decl_spec_ptr decl_spec, decl_spec_cur;
+  ldv_decl_spec_ptr decl_spec_cur;
   ldv_type_qual_list_ptr type_qual_list, type_qual_list_cur;
   ldv_type_qual_ptr type_qual;
   bool is_type_qual;
 
-  decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   type_qual_list_cur = type_qual_list = XCNEW (struct ldv_type_qual_list);
   is_type_qual = false;
 
-  if ((decl_spec = ldv_convert_type_qual_internal (t)))
+  for (decl_spec_cur = ldv_convert_type_qual_internal (t); decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
     {
-      for (decl_spec_cur = decl_spec; decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
+      if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)))
         {
-          if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)))
+          if (is_type_qual)
             {
-              if (is_type_qual)
-                {
-                  LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur) = XCNEW (struct ldv_type_qual_list);
-                  type_qual_list_cur = LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur);
-                }
-
-              LDV_TYPE_QUAL_LIST_TYPE_QUAL (type_qual_list_cur) = type_qual;
-              is_type_qual = true;
+              LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur) = XCNEW (struct ldv_type_qual_list);
+              type_qual_list_cur = LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list_cur);
             }
-          else
-            LDV_WARN ("incorrect declaration specifier");
+
+          LDV_TYPE_QUAL_LIST_TYPE_QUAL (type_qual_list_cur) = type_qual;
+          is_type_qual = true;
         }
+      else
+        LDV_WARN ("incorrect declaration specifier");
+
+      XDELETE (decl_spec_cur);
     }
 
   if (is_type_qual)
@@ -5181,7 +5213,6 @@ ldv_convert_type_qual_list (tree t)
   /* There is may be no type qualifiers at all so don't consider such the case
      as an error. */
 
-  XDELETE (decl_spec);
   XDELETE (type_qual_list);
 
   return NULL;
@@ -5460,7 +5491,7 @@ unary-expression:
     sizeof unary-expression
     sizeof ( type-name )
 
-GNU extension
+GNU extensions:
 
     && identifier
 */
@@ -5470,7 +5501,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
   ldv_unary_expr_ptr unary_expr;
   tree op1;
   ldv_identifier_ptr identifier;
-  const char *str;
+  char *str;
 
   /* There is no sizeof expressions in gcc, they are converted to the other
      ones. */
@@ -5525,6 +5556,9 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
                       LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
                       LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
                     }
+
+                  XDELETE (str);
+                  XDELETE (identifier);
                 }
               else
                 LDV_WARN ("can't find variable name");
@@ -5822,7 +5856,7 @@ ldv_label_decl_name (tree t)
   tree label_decl_name;
   char *label_decl_name_str;
   unsigned int label_decl_uid;
-  const char *label_decl_uid_str;
+  char *label_decl_uid_str;
 
   switch (TREE_CODE (t))
     {
@@ -5834,6 +5868,7 @@ ldv_label_decl_name (tree t)
             label_decl_uid_str = ldv_cbe_itoa (label_decl_uid);
             label_decl_name_str = XCNEWVEC (char, 3 + 1 + strlen (label_decl_uid_str) + 1);
             sprintf (label_decl_name_str, "ldv_%d", label_decl_uid);
+            XDELETE (label_decl_uid_str);
             return label_decl_name_str;
           }
         else
