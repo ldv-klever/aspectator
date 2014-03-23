@@ -32,6 +32,7 @@ $ bison ldv-aspect-parser.y
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
+#include "hashtab.h"
 
 /* For error functions. */
 #include "diagnostic-core.h"
@@ -40,6 +41,7 @@ $ bison ldv-aspect-parser.y
 #include "ldv-aspect-parser.h"
 #include "ldv-aspect-types.h"
 #include "ldv-core.h"
+#include "ldv-cpp-converter.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
 
@@ -83,12 +85,18 @@ static bool ldv_istype_spec = false;
 /* Flag is true if universal type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_isuniversal_type_spec = false;
+static htab_t ldv_called_func_names;
 
 
+/* TODO: remove parameter names from prototypes. */
 static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
+static void ldv_hash_add_name (const char *name);
+static void ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut);
+static int ldv_hash_string_eq (const void *s1_p, const void *s2_p);
+static hashval_t ldv_hash_string_hash (const void *s_p);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
 static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
@@ -353,6 +361,16 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       /* Set a composite pointcut from a corresponding rule. */
       a_declaration->c_pointcut = $3;
 
+      if (a_declaration->c_pointcut->cp_type == LDV_CP_TYPE_CALL)
+        {
+          /* Create hash table with called function names. */
+          ldv_called_func_names = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, NULL);
+          /* Store information about called function names in hash table. */
+          ldv_hash_recursive_composite_pointcut (a_declaration->c_pointcut);
+
+          a_declaration->called_func_names = ldv_called_func_names;
+        }
+
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"%s\" advice declaration", a_kind);
 
       /* Delete an unneeded identifier. */
@@ -418,6 +436,29 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a primitive pointcut from a corresponding rule. */
       c_pointcut->p_pointcut = $1;
 
+      /* Inherit primitive pointcut type. */
+      switch (c_pointcut->p_pointcut->pp_kind)
+        {
+        case LDV_PP_CALL:
+          c_pointcut->cp_type = LDV_CP_TYPE_CALL;
+          break;
+
+        case LDV_PP_DEFINE:
+          c_pointcut->cp_type = LDV_CP_TYPE_DEFINE;
+          break;
+
+        case LDV_PP_EXECUTION:
+          c_pointcut->cp_type = LDV_CP_TYPE_EXECUTION;
+          break;
+
+        case LDV_PP_INFILE:
+          c_pointcut->cp_type = LDV_CP_TYPE_INFILE;
+          break;
+
+        default:
+          c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+        }
+
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"primitive\" composite pointcut");
 
       $$ = c_pointcut;
@@ -433,6 +474,10 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
 
       /* Set a composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_first = $2;
+
+      /* Propagating pointcut type for negations of pointcuts is disambiguous
+         like negations themselves. */
+      c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"not\" composite pointcut");
 
@@ -452,6 +497,13 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
 
+      /* In general case just when both composite pointcuts have the same type
+         their "or" has the same type. */
+      if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else
+        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
+
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"or\" composite pointcut");
 
       $$ = c_pointcut;
@@ -469,6 +521,17 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
       c_pointcut->c_pointcut_first = $1;
       /* Set a second composite pointcut from a corresponding rule. */
       c_pointcut->c_pointcut_second = $3;
+
+      /* "And" of two composite pointcuts has type of non "infile" composite
+         poincut when their types are the same or one of types is "infile". */
+      if (c_pointcut->c_pointcut_first->cp_type == c_pointcut->c_pointcut_second->cp_type)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else if (c_pointcut->c_pointcut_first->cp_type == LDV_CP_TYPE_INFILE)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_second->cp_type;
+      else if (c_pointcut->c_pointcut_second->cp_type == LDV_CP_TYPE_INFILE)
+        c_pointcut->cp_type = c_pointcut->c_pointcut_first->cp_type;
+      else
+        c_pointcut->cp_type = LDV_CP_TYPE_ANY;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"and\" composite pointcut");
 
@@ -1778,6 +1841,8 @@ ldv_create_c_pointcut (void)
 
   c_pointcut->cp_kind = LDV_CP_NONE;
 
+  c_pointcut->cp_type = LDV_CP_TYPE_NONE;
+
   return c_pointcut;
 }
 
@@ -1894,6 +1959,66 @@ ldv_get_id_kind (char *id)
 
   ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
   return LDV_ID;
+}
+
+void
+ldv_hash_add_name (const char *name)
+{
+  void **hash_element;
+
+  hash_element = htab_find_slot_with_hash (ldv_called_func_names, name, (*htab_hash_string) (name), INSERT);
+
+  if (hash_element == NULL)
+    {
+      LDV_FATAL_ERROR ("Can't allocate memory");
+    }
+
+  /* Assign a given called function name to a hash element. */
+  if (*hash_element == NULL)
+    *hash_element = (void *) xstrdup (name);
+}
+
+void
+ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
+{
+  ldv_i_func_ptr i_func = NULL;
+
+  if (c_pointcut != NULL)
+    {
+      ldv_hash_recursive_composite_pointcut (c_pointcut->c_pointcut_first);
+
+      if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_kind == LDV_PP_CALL))
+        {
+          i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+
+          /* Store special "$" function name in hash table if "$" wildcard was
+             used elsewhere through function names. Later this special function
+             name will be used to denote that we needn't to try find function
+             name in hash table since it can be matched by some name with "$"
+             wildcard. */
+          if (i_func->name->isany_chars)
+            ldv_hash_add_name ("$");
+          else
+            ldv_hash_add_name (ldv_get_id_name (i_func->name));
+        }
+
+      ldv_hash_recursive_composite_pointcut (c_pointcut->c_pointcut_second);
+    }
+}
+
+static int
+ldv_hash_string_eq (const void *s1_p, const void *s2_p)
+{
+  const char *s1 = (const char *) s1_p;
+  const char *s2 = (const char *) s2_p;
+  return strcmp (s1, s2) == 0;
+}
+
+static hashval_t
+ldv_hash_string_hash (const void *s_p)
+{
+  const char *s = (const char *) s_p;
+  return (*htab_hash_string) (s);
 }
 
 /* We aren't interested in advice body content, except for correct determinition

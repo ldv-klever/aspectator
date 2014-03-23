@@ -38,6 +38,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* For function structure. */
 #include "function.h"
 
+#include "hashtab.h"
+
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-parser.h"
 #include "ldv-converter.h"
@@ -826,9 +828,11 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
+  ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_func_ptr func = NULL;
   const char *func_decl_printed;
+  htab_t called_func_names = NULL;
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
@@ -878,8 +882,23 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+      c_pointcut = adef->a_declaration->c_pointcut;
 
-      if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
+      /* Skip obviously unnecessary advices. */
+      if ((pp_kind == LDV_PP_CALL) && (c_pointcut->cp_type != LDV_CP_TYPE_CALL) && (c_pointcut->cp_type != LDV_CP_TYPE_ANY))
+        continue;
+      else if ((pp_kind == LDV_PP_EXECUTION) && (c_pointcut->cp_type != LDV_CP_TYPE_EXECUTION) && (c_pointcut->cp_type != LDV_CP_TYPE_ANY))
+        continue;
+
+      /* If a given function name can't be found in hash table (if so), then
+         there is no need to use heavy-weight comparison further. */
+      called_func_names = adef->a_declaration->called_func_names;
+      if (called_func_names != NULL
+        && !htab_find_with_hash (called_func_names, "$", (*htab_hash_string) ("$"))
+        && !htab_find_with_hash (called_func_names, ldv_get_id_name (func->name), (*htab_hash_string) (ldv_get_id_name (func->name))))
+        continue;
+
+      if (ldv_match_cp (c_pointcut, match))
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
@@ -952,6 +971,7 @@ ldv_match_typedecl (tree t, const char *file_path)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
+  ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_typedecl_ptr typedecl = NULL;
   const char *typedecl_printed;
@@ -998,8 +1018,13 @@ ldv_match_typedecl (tree t, const char *file_path)
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+      c_pointcut = adef->a_declaration->c_pointcut;
 
-      if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
+      /* Skip obviously unnecessary advices. */
+      if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
+        continue;
+
+      if (ldv_match_cp (c_pointcut, match))
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
@@ -1044,6 +1069,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
+  ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_var_ptr var = NULL;
   ldv_i_func_ptr func_context = NULL;
@@ -1107,8 +1133,13 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+      c_pointcut = adef->a_declaration->c_pointcut;
 
-      if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
+      /* Skip obviously unnecessary advices. */
+      if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
+        continue;
+
+      if (ldv_match_cp (c_pointcut, match))
         {
           /* Count advice weavings. */
           ++(adef->use_counter);

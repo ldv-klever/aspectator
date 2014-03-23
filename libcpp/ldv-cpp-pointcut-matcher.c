@@ -231,6 +231,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
+  ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_macro_ptr macro = NULL;
   const struct line_map *map = NULL;
@@ -352,8 +353,13 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+      c_pointcut = adef->a_declaration->c_pointcut;
 
-      if (ldv_match_cp (adef->a_declaration->c_pointcut, match))
+      /* Skip obviously unnecessary advices. */
+      if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
+        continue;
+
+      if (ldv_match_cp (c_pointcut, match))
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
