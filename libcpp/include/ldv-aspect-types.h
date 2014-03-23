@@ -299,7 +299,7 @@ typedef struct ldv_advice_declaration_internal
 {
   ldv_ak a_kind;
   ldv_cp_ptr c_pointcut;
-  htab_t a_hashtab;
+  htab_t called_func_names;
 } ldv_advice_declaration;
 typedef ldv_advice_declaration *ldv_adecl_ptr;
 

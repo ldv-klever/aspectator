@@ -85,9 +85,10 @@ static bool ldv_istype_spec = false;
 /* Flag is true if universal type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_isuniversal_type_spec = false;
-static htab_t ldv_names_tab;
+static htab_t ldv_called_func_names;
 
 
+/* TODO: remove parameter names from prototypes. */
 static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
@@ -358,16 +359,14 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       /* Set a composite pointcut from a corresponding rule. */
       a_declaration->c_pointcut = $3;
 
-      a_declaration->a_hashtab = NULL;
-
       if (a_declaration->c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         {
-          /* Create a hash table with function names. */
-          ldv_names_tab = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, NULL);
-          /* Store infromation about function names in the hash table. */
+          /* Create hash table with called function names. */
+          ldv_called_func_names = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, NULL);
+          /* Store information about called function names in hash table. */
           ldv_hash_recursive_composite_pointcut (a_declaration->c_pointcut);
 
-          a_declaration->a_hashtab = ldv_names_tab;
+          a_declaration->called_func_names = ldv_called_func_names;
         }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"%s\" advice declaration", a_kind);
@@ -1906,14 +1905,14 @@ ldv_hash_add_name (const char *name)
 {
   void **hash_element;
 
-  hash_element = htab_find_slot_with_hash (ldv_names_tab, name, (*htab_hash_string) (name), INSERT);
+  hash_element = htab_find_slot_with_hash (ldv_called_func_names, name, (*htab_hash_string) (name), INSERT);
 
   if (hash_element == NULL)
     {
       LDV_FATAL_ERROR ("Can't allocate memory");
     }
 
-  /* Assign xstrdup (name). */
+  /* Assign a given called function name to a hash element. */
   if (*hash_element == NULL)
     *hash_element = (void *) xstrdup (name);
 }
@@ -1931,7 +1930,13 @@ ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
         {
           i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
 
-          if (strchr (ldv_get_id_name (i_func->name), '$'))
+          /* TODO: use ldv_cmp_str() instead of this ugly filter. */
+          /* Store special "$" function name in hash table if "$" wildcard was
+             used elsewhere through function names. Later this special function
+             name will be used to denote that we needn't to try find function
+             name in hash table since it can be matched by some name with "$"
+             wildcard. */
+          if (i_func->name->isany_chars)
             ldv_hash_add_name ("$");
           else
             ldv_hash_add_name (ldv_get_id_name (i_func->name));
