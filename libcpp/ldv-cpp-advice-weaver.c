@@ -32,7 +32,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_MATCHED_BY_NAME (stderr)
 
 static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
-static char *ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro);
+static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
+static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
 
 
 void
@@ -131,7 +132,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
   unsigned int i;
 
   if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
-    text = ldv_cpp_print_macro_signature(ldv_i_match->i_macro);
+    text = ldv_cpp_print_macro_signature (ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "macro_name"))
     text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
   else if (!strcmp (pattern->name, "arg_val"))
@@ -159,6 +160,10 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
       number = ldv_list_len (arg_value_list);
       is_number = true;
     }
+  else if (!strcmp (pattern->name, "path"))
+    {
+      text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
+    }
 
   if (text)
     {
@@ -175,7 +180,26 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
 }
 
 char *
-ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro)
+ldv_cpp_print_macro_path (ldv_i_macro_ptr i_macro)
+{
+  char *path = NULL;
+  char *occurrence = NULL;
+
+  /* TODO: fix ldv_print_func_path() like here. */
+  path = xstrdup (i_macro->file_path);
+
+  /* TODO: remove processing of ".prepared" after all intermediate code will
+     reference the original one (there is the same trick in
+     gcc/ldv-advice-weaver.c). */
+  occurrence = strstr (path, ".prepared");
+  if (occurrence)
+    *occurrence = '\0';
+
+  return path;
+}
+
+char *
+ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
   ldv_id_ptr i_macro_param = NULL;
@@ -427,7 +451,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
           /* Print previously collected text. */
           if (text)
             {
-              fprintf(file_stream, ldv_get_str (text));
+              fprintf (file_stream, ldv_get_str (text));
               text = NULL;
             }
 
@@ -458,7 +482,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
                 }
               else if (*format == '%')
                 {
-                  fprintf(file_stream, "%s", ldv_get_str (conversion));
+                  fprintf (file_stream, "%s", ldv_get_str (conversion));
                   break;
                 }
 
@@ -481,7 +505,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
 
   /* Print the rest of collected text. */
   if (text)
-    fprintf(file_stream, ldv_get_str (text));
+    fprintf (file_stream, ldv_get_str (text));
 }
 
 void
