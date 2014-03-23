@@ -361,6 +361,28 @@ ldv_create_declspecs (void)
   return declspecs;
 }
 
+ldv_pps_declspecs_ptr
+ldv_copy_declspecs (ldv_pps_declspecs_ptr declspecs)
+{
+  ldv_pps_declspecs_ptr declspecs_aux = NULL, declspecs_new = NULL;
+
+  /* Following is equivalent to coping declaration specifiers. */
+  declspecs_aux = ldv_create_declspecs ();
+  declspecs_new = ldv_merge_declspecs (declspecs_aux, declspecs);
+  ldv_free_declspecs (declspecs_aux);
+
+  return declspecs_new;
+}
+
+void
+ldv_free_declspecs (ldv_pps_declspecs_ptr declspecs)
+{
+  if (declspecs->type_name)
+    ldv_free_id (declspecs->type_name);
+
+  free (declspecs);
+}
+
 ldv_i_func_ptr
 ldv_create_info_func (void)
 {
@@ -369,6 +391,17 @@ ldv_create_info_func (void)
   i_func = XCNEW (ldv_info_func);
 
   return i_func;
+}
+
+void
+ldv_free_info_func (ldv_i_func_ptr func)
+{
+  if (func->name)
+    ldv_free_id (func->name);
+
+  ldv_free_info_type (func->type);
+
+  free (func);
 }
 
 ldv_i_initializer_ptr
@@ -381,6 +414,51 @@ ldv_create_info_initializer (void)
   return i_initializer;
 }
 
+void
+ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
+{
+  ldv_list_ptr initializer_list = NULL;
+  /* TODO: looks like name of parameter is bad, since we need "nested" suffix. */
+  ldv_i_initializer_ptr initializer_nested = NULL;
+  /* TODO: not widely used names. */
+  ldv_list_ptr params;
+  char *param;
+
+  if (initializer->value)
+    free (initializer->value);
+
+  if (initializer->initializer)
+    {
+      for (initializer_list = initializer->initializer
+        ; initializer_list
+        ; initializer_list = ldv_list_get_next (initializer_list))
+        {
+          initializer_nested = (ldv_i_initializer_ptr) ldv_list_get_data (initializer_list);
+          ldv_free_info_initializer (initializer_nested);
+        }
+
+      ldv_list_delete_all (initializer->initializer);
+    }
+
+  if (initializer->decl)
+    free (initializer->decl);
+
+  if (initializer->pointed_func_ret_type_decl)
+    free (initializer->pointed_func_ret_type_decl);
+
+  for (params = initializer->pointed_func_arg_type_decls
+    ; params
+    ; params = ldv_list_get_next (params))
+    {
+      param = (char *) ldv_list_get_data (params);
+      free (param);
+    }
+
+  ldv_list_delete_all (initializer->pointed_func_arg_type_decls);
+
+  free (initializer);
+}
+
 ldv_i_macro_ptr
 ldv_create_info_macro (void)
 {
@@ -389,6 +467,27 @@ ldv_create_info_macro (void)
   i_macro = XCNEW (ldv_info_macro);
 
   return i_macro;
+}
+
+void
+ldv_free_info_macro (ldv_i_macro_ptr i_macro)
+{
+  ldv_list_ptr i_macro_param_list = NULL;
+  ldv_id_ptr i_macro_param = NULL;
+
+  ldv_free_id (i_macro->macro_name);
+
+  for (i_macro_param_list = i_macro->macro_param
+    ; i_macro_param_list
+    ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
+    {
+      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+
+      ldv_free_id (i_macro_param);
+    }
+
+  ldv_list_delete_all (i_macro->macro_param);
+  free (i_macro);
 }
 
 ldv_i_match_ptr
@@ -404,14 +503,51 @@ ldv_create_info_match (void)
   return match;
 }
 
+void
+ldv_free_info_match (ldv_i_match_ptr match)
+{
+  free (match);
+}
+
 ldv_i_param_ptr
 ldv_create_info_param (void)
 {
-  ldv_i_param_ptr i_param = NULL;
+  ldv_i_param_ptr param = NULL;
 
-  i_param = XCNEW (ldv_info_param);
+  param = XCNEW (ldv_info_param);
 
-  return i_param;
+  return param;
+}
+
+ldv_i_param_ptr
+ldv_copy_iparam (ldv_i_param_ptr iparam)
+{
+  ldv_i_param_ptr iparam_new = NULL;
+
+  iparam_new = ldv_create_info_param ();
+
+  /* Copy parameter name. */
+  iparam_new->name = ldv_create_id ();
+  ldv_puts_id (ldv_cpp_get_id_name (iparam->name), iparam_new->name);
+
+  /* Copy parameter type. */
+  iparam_new->type = ldv_copy_itype (iparam->type);
+
+  /* Copy the rest of parameter information. */
+  iparam_new->isany_params = iparam->isany_params;
+
+  return iparam_new;
+}
+
+void
+ldv_free_info_param (ldv_i_param_ptr param)
+{
+  if (param->name)
+    ldv_free_id (param->name);
+
+  ldv_free_info_type (param->type);
+
+  free (param);
 }
 
 ldv_i_type_ptr
@@ -426,6 +562,96 @@ ldv_create_info_type (void)
   return type;
 }
 
+ldv_i_type_ptr
+ldv_copy_itype (ldv_i_type_ptr itype)
+{
+  ldv_i_type_ptr itype_new = NULL;
+  ldv_list_ptr param_list = NULL;
+  ldv_i_param_ptr iparam = NULL;
+
+  itype_new = ldv_create_info_type ();
+
+  itype_new->it_kind = itype->it_kind;
+
+  if (itype->primitive_type)
+    itype_new->primitive_type = ldv_copy_declspecs (itype->primitive_type);
+
+  /* Copy array element types and the number of elements. */
+  if (itype->array_type)
+    itype_new->array_type = ldv_copy_itype (itype->array_type);
+  itype_new->array_size = itype->array_size;
+  itype_new->issize_specified = itype->issize_specified;
+  itype_new->isany_size = itype->isany_size;
+
+  /* Copy pointed type. */
+  if (itype->ptr_type)
+    itype_new->ptr_type = ldv_copy_itype (itype->ptr_type);
+  itype_new->isconst = itype->isconst;
+  itype_new->isvolatile = itype->isvolatile;
+  itype_new->isrestrict = itype->isrestrict;
+
+  /* Copy function return type and argument types. */
+  if (itype->ret_type)
+    itype_new->ret_type = ldv_copy_itype (itype->ret_type);
+  if (itype->param)
+    {
+      for (param_list = itype->param
+        ; param_list
+        ; param_list = ldv_list_get_next (param_list))
+        {
+          iparam = (ldv_i_param_ptr) ldv_list_get_data (param_list);
+          ldv_list_push_back (&itype_new->param, ldv_copy_iparam (iparam));
+        }
+    }
+  itype_new->isva = itype->isva;
+
+  return itype_new;
+}
+
+void
+ldv_free_info_type (ldv_i_type_ptr type)
+{
+  ldv_list_ptr param_list = NULL;
+  ldv_i_param_ptr param = NULL;
+
+  switch (type->it_kind)
+    {
+    case LDV_IT_FUNC:
+      ldv_free_info_type (type->ret_type);
+
+      for (param_list = type->param
+        ; param_list
+        ; param_list = ldv_list_get_next (param_list))
+      {
+        param = (ldv_i_param_ptr) ldv_list_get_data (param_list);
+        ldv_free_info_param (param);
+      }
+
+      ldv_list_delete_all (type->param);
+      break;
+
+    case LDV_IT_PRIMITIVE:
+      ldv_free_declspecs (type->primitive_type);
+      break;
+
+    case LDV_IT_NONE:
+      break;
+
+    case LDV_IT_PTR:
+      ldv_free_info_type (type->ptr_type);
+      break;
+
+    case LDV_IT_ARRAY:
+      ldv_free_info_type (type->array_type);
+      break;
+
+    default:
+      LDV_CPP_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
+    }
+
+  free (type);
+}
+
 ldv_i_typedecl_ptr
 ldv_create_info_typedecl (void)
 {
@@ -438,6 +664,15 @@ ldv_create_info_typedecl (void)
   return i_typedecl;
 }
 
+void
+ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
+{
+  if (typedecl->name)
+    ldv_free_id (typedecl->name);
+
+  free (typedecl);
+}
+
 ldv_i_var_ptr
 ldv_create_info_var (void)
 {
@@ -446,6 +681,33 @@ ldv_create_info_var (void)
   i_var = XCNEW (ldv_info_var);
 
   return i_var;
+}
+
+void
+ldv_free_info_var (ldv_i_var_ptr var)
+{
+  ldv_list_ptr var_init = NULL;
+  ldv_i_initializer_ptr initializer = NULL;
+
+  if (var->name)
+    ldv_free_id (var->name);
+
+  ldv_free_info_type (var->type);
+
+  if (var->initializer_list)
+    {
+      for (var_init = var->initializer_list
+        ; var_init
+        ; var_init = ldv_list_get_next (var_init))
+        {
+          initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
+          ldv_free_info_initializer (initializer);
+        }
+
+      ldv_list_delete_all (var->initializer_list);
+    }
+
+  free (var);
 }
 
 ldv_id_ptr
@@ -462,6 +724,27 @@ ldv_create_id (void)
   return id;
 }
 
+ldv_id_ptr
+ldv_copy_id (ldv_id_ptr id)
+{
+  ldv_id_ptr id_new = NULL;
+
+  id_new = XCNEW (ldv_id);
+
+  id_new->id_name = ldv_copy_string (id->id_name);
+  id_new->isany_chars = id->isany_chars;
+
+  return id_new;
+}
+
+void
+ldv_free_id (ldv_id_ptr id)
+{
+  ldv_free_str (id->id_name);
+  free (id);
+}
+
+/* TODO: develop single internal representation for dynamic strings. */
 ldv_str_ptr
 ldv_create_str (ldv_token_k token_kind)
 {
@@ -508,9 +791,46 @@ ldv_create_str (ldv_token_k token_kind)
 }
 
 ldv_str_ptr
+ldv_copy_string (ldv_str_ptr string)
+{
+  ldv_str_ptr string_new = NULL;
+
+  string_new = XCNEW (ldv_string);
+
+  string_new->text = ldv_copy_str (string->text);
+  string_new->len = string->len;
+  string_new->max_len = string->max_len;
+
+  return string_new;
+}
+
+void
+ldv_free_str (ldv_str_ptr string)
+{
+  if (string)
+    {
+      free (string->text);
+      /*ldv_print_info (LDV_INFO_MEM, "string text memory was free");*/
+
+      free (string);
+      /*ldv_print_info (LDV_INFO_MEM, "string memory was free");*/
+    }
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+}
+
+ldv_str_ptr
 ldv_create_string (void)
 {
   return ldv_create_str (LDV_T_STRING);
+}
+
+void
+ldv_free_string (ldv_str_ptr str)
+{
+  ldv_free_str (str);
 }
 
 static bool
@@ -535,18 +855,17 @@ ldv_isvoid (ldv_i_type_ptr type)
 }
 
 ldv_pps_declspecs_ptr
-ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second, bool universal)
+ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_ptr declspecs_second)
 {
   ldv_pps_declspecs_ptr declspecs = NULL;
-
-  /* In that case when merge isn't needed. */
-  if (!declspecs_second)
-    return declspecs_first;
 
   declspecs = ldv_create_declspecs ();
 
   /* Merge all declaration specifiers from two structures. */
-  declspecs->type_name = declspecs_first->type_name ? declspecs_first->type_name : declspecs_second->type_name;
+  if (declspecs_first->type_name)
+    declspecs->type_name = ldv_copy_id (declspecs_first->type_name);
+  else if (declspecs_second->type_name)
+    declspecs->type_name = ldv_copy_id (declspecs_second->type_name);
   declspecs->istypedef = declspecs_first->istypedef || declspecs_second->istypedef;
   declspecs->isextern = declspecs_first->isextern || declspecs_second->isextern;
   declspecs->isstatic = declspecs_first->isstatic || declspecs_second->isstatic;
@@ -569,7 +888,7 @@ ldv_merge_declspecs (ldv_pps_declspecs_ptr declspecs_first, ldv_pps_declspecs_pt
   declspecs->isshort = declspecs_first->isshort || declspecs_second->isshort;
 
   /* Process "long long" as special case. */
-  if (declspecs_first->islong && declspecs_second->islong && !universal)
+  if (declspecs_first->islong && declspecs_second->islong)
     {
       declspecs->islong = false;
       declspecs->islonglong = true;
@@ -636,7 +955,6 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 void
 ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
 {
-  char *str_text = NULL;
   unsigned int len_add;
 
   if (!string)
@@ -681,15 +999,10 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
   /* Otherwise a new memory is allocated for a large string text. */
   else
     {
-      /* Remember a current string text. */
-      str_text = XCNEWVEC (char, (string->len + 1));
-      memcpy (str_text, string->text, string->len + 1);
-
       /* Allocate a new memory for a large string text. */
       string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
 
-      /* Back a string text and increase its maximum length. */
-      memcpy (string->text, str_text, string->len + 1);
+      /* Enlarge buffer length respectively. */
       string->max_len += len_add;
 
       /* Put a new character to a large string text. */
@@ -771,7 +1084,7 @@ ldv_set_ldv_stage (int ldv_gcc_stage)
 }
 
 char *
-ldv_trunkate_braces (char *str)
+ldv_truncate_braces (char *str)
 {
   if (str[0] == '{')
     {
@@ -784,7 +1097,7 @@ ldv_trunkate_braces (char *str)
         }
     }
 
-  LDV_CPP_FATAL_ERROR ("can't trunkate braces from \"%s\" string", str);
+  LDV_CPP_FATAL_ERROR ("can't truncate braces from \"%s\" string", str);
 
   return NULL;
 }

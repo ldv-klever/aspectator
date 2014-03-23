@@ -37,7 +37,7 @@ ldv_convert_body_to_macro (ldv_ab_ptr body)
   char *value = NULL, *value_new = NULL, *value_new_begin = NULL;
 
   value = ldv_copy_str (ldv_cpp_get_body_text (body));
-  value = ldv_trunkate_braces (value);
+  value = ldv_truncate_braces (value);
   value_new_begin = value_new = ldv_copy_str (value);
 
   /* Go to a first non whitespace symbol. */
@@ -89,7 +89,9 @@ ldv_convert_declspecs_declarator_to_internal (ldv_pps_declspecs_ptr declspecs, l
   if (declarator_cur_list == declarator_first_list)
     {
       type_first->it_kind = LDV_IT_PRIMITIVE;
-      type_first->primitive_type = declspecs;
+      /* Copy declaration specifiers rather then keep reference to them
+         since they will be freed. */
+      type_first->primitive_type = ldv_copy_declspecs (declspecs);
 
       /* That is an id or an abstract declarator that has just declarations
          specifiers without intermediate declarators. A function declarator base
@@ -176,7 +178,9 @@ ldv_convert_func_signature_to_internal (ldv_pps_decl_ptr pps_func)
   /* Convert a declarator name to a function name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_func->name = declarator->declarator_name;
+      /* Copy function name rather then keep reference to it since it
+         will be freed. */
+      i_func->name = ldv_copy_id (declarator->declarator_name);
 
       /* A previous to last declarators contains a function type. */
       declarator_list = ldv_list_get_prev (pps_func->pps_declarator, declarator_list);
@@ -203,8 +207,9 @@ ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
   /* Copy a macro kind. */
   i_macro->macro_kind = pps_macro->pps_macro_kind;
 
-  /* Convert a declarator name to a macro name. */
-  i_macro->macro_name = pps_macro->macro_name;
+  /* Copy macro name rather then keep reference to it since it will be
+     freed. */
+  i_macro->macro_name = ldv_copy_id (pps_macro->macro_name);
 
   /* Convert declarator parameters to macro parameters. */
   for (macro_param_list = pps_macro->macro_param_list
@@ -213,7 +218,9 @@ ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
     {
       pps_macro_param = (ldv_id_ptr) ldv_list_get_data (macro_param_list);
 
-      ldv_list_push_back (&i_macro->macro_param, pps_macro_param);
+      /* Copy macro parameter name rather then keep reference to it
+         since it will be freed. */
+      ldv_list_push_back (&i_macro->macro_param, ldv_copy_id (pps_macro_param));
     }
 
   return i_macro;

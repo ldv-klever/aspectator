@@ -46,6 +46,27 @@ ldv_create_aspect_pattern (void)
   return aspect_pattern;
 }
 
+void
+ldv_free_aspect_pattern (ldv_aspect_pattern_ptr aspect_pattern)
+{
+  ldv_list_ptr params;
+  ldv_aspect_pattern_param_ptr param;
+
+  free (aspect_pattern->name);
+
+  for (params = aspect_pattern->params
+    ; params
+    ; params = ldv_list_get_next (params))
+    {
+      param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (params);
+      free (param->string);
+      free (param);
+    }
+
+  ldv_list_delete_all (aspect_pattern->params);
+  free (aspect_pattern);
+}
+
 ldv_aspect_pattern_param_ptr
 ldv_create_aspect_pattern_param (void)
 {
@@ -94,6 +115,48 @@ ldv_create_declarator (void)
   return declarator;
 }
 
+void
+ldv_free_declarator (ldv_pps_declarator_ptr declarator)
+{
+  ldv_list_ptr func_arg_list = NULL;
+  ldv_pps_func_arg_ptr func_arg = NULL;
+
+  switch (declarator->pps_declarator_kind)
+    {
+    case LDV_PPS_DECLARATOR_FUNC:
+      for (func_arg_list = declarator->func_arg_list
+        ; func_arg_list
+        ; func_arg_list = ldv_list_get_next (func_arg_list))
+        {
+          func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (func_arg_list);
+          ldv_free_pps_func_arg (func_arg);
+        }
+
+      ldv_list_delete_all (declarator->func_arg_list);
+      break;
+
+    case LDV_PPS_DECLARATOR_ID:
+      ldv_free_id (declarator->declarator_name);
+      break;
+
+    case LDV_PPS_DECLARATOR_PTR:
+      ldv_free_ptr_quals (declarator->pps_ptr_quals);
+      break;
+
+    case LDV_PPS_DECLARATOR_ARRAY:
+      ldv_free_pps_array_size (declarator->pps_array_size);
+      break;
+
+    case LDV_PPS_DECLARATOR_NONE:
+      break;
+
+    default:
+      LDV_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
+    }
+
+  free (declarator);
+}
+
 ldv_file_ptr
 ldv_create_file (void)
 {
@@ -105,6 +168,22 @@ ldv_create_file (void)
   file->file_name = ldv_create_str (LDV_T_FILE);
 
   return file;
+}
+
+void
+ldv_free_file (ldv_file_ptr file)
+{
+  if (file)
+    {
+      ldv_free_str (file->file_name);
+
+      free (file);
+      ldv_print_info (LDV_INFO_MEM, "file memory was free");
+    }
+  else
+    {
+      LDV_FATAL_ERROR ("file pointer wasn't initialized");
+    }
 }
 
 ldv_int_ptr
@@ -129,6 +208,12 @@ ldv_create_pps_array_size (void)
   return pps_array_size;
 }
 
+void
+ldv_free_pps_array_size (ldv_pps_array_size_ptr pps_array_size)
+{
+  free (pps_array_size);
+}
+
 ldv_pps_decl_ptr
 ldv_create_pps_decl (void)
 {
@@ -142,6 +227,27 @@ ldv_create_pps_decl (void)
   return pps_decl;
 }
 
+void
+ldv_free_pps_decl (ldv_pps_decl_ptr pps_decl)
+{
+  ldv_pps_declarator_ptr declarator = NULL;
+  ldv_list_ptr declarator_list = NULL;
+
+  ldv_free_declspecs (pps_decl->pps_declspecs);
+
+  for (declarator_list = pps_decl->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
+    {
+      declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+      ldv_free_declarator (declarator);
+    }
+
+  ldv_list_delete_all (pps_decl->pps_declarator);
+  free (pps_decl);
+  ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was freed");
+}
+
+/* TODO: clarify names for these 2 functions, since below there is pps_func_arg->pps_func_arg. */
 ldv_pps_func_arg_ptr
 ldv_create_pps_func_arg (void)
 {
@@ -153,6 +259,13 @@ ldv_create_pps_func_arg (void)
   return pps_func_arg;
 }
 
+void
+ldv_free_pps_func_arg (ldv_pps_func_arg_ptr pps_func_arg)
+{
+  ldv_free_pps_decl (pps_func_arg->pps_func_arg);
+  free (pps_func_arg);
+}
+
 ldv_pps_ptr_quals_ptr
 ldv_create_ptr_quals (void)
 {
@@ -162,6 +275,12 @@ ldv_create_ptr_quals (void)
   ldv_print_info (LDV_INFO_MEM, "declarator pointer qualifiers memory was released");
 
   return ptr_quals;
+}
+
+void
+ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr ptr_quals)
+{
+  free (ptr_quals);
 }
 
 ldv_text_ptr
@@ -178,11 +297,27 @@ ldv_create_text (void)
 }
 
 void
+ldv_free_text (ldv_text_ptr text)
+{
+  if (text)
+    {
+      ldv_free_str (text->text);
+
+      free (text);
+      ldv_print_info (LDV_INFO_MEM, "text memory was free");
+    }
+  else
+    {
+      LDV_FATAL_ERROR ("text pointer wasn't initialized");
+    }
+}
+
+void
 ldv_delete_body (ldv_ab_ptr body)
 {
   if (body)
     {
-      ldv_delete_str (body->ab_text);
+      ldv_free_str (body->ab_text);
 
       free (body);
       ldv_print_info (LDV_INFO_MEM, "body memory was free");
@@ -194,27 +329,11 @@ ldv_delete_body (ldv_ab_ptr body)
 }
 
 void
-ldv_delete_file (ldv_file_ptr file)
-{
-  if (file)
-    {
-      ldv_delete_str (file->file_name);
-
-      free (file);
-      ldv_print_info (LDV_INFO_MEM, "file memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
-}
-
-void
 ldv_delete_id (ldv_id_ptr id)
 {
   if (id)
     {
-      ldv_delete_str (id->id_name);
+      ldv_free_str (id->id_name);
 
       free (id);
       ldv_print_info (LDV_INFO_MEM, "identifier memory was free");
@@ -239,48 +358,15 @@ ldv_delete_int (ldv_int_ptr integer)
     }
 }
 
-void
-ldv_delete_str (ldv_str_ptr str)
-{
-  if (str)
-    {
-      free (str->text);
-      ldv_print_info (LDV_INFO_MEM, "string text memory was free");
-
-      free (str);
-      ldv_print_info (LDV_INFO_MEM, "string memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("string pointer wasn't initialized");
-    }
-}
-
-void
-ldv_delete_text (ldv_text_ptr text)
-{
-  if (text)
-    {
-      ldv_delete_str (text->text);
-
-      free (text);
-      ldv_print_info (LDV_INFO_MEM, "text memory was free");
-    }
-  else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
-    }
-}
-
-const char *
+char *
 ldv_itoa (unsigned int n)
 {
   int int_digits, order;
   char *str = NULL;
 
-  /* Obtain the number of digits that are contained in an unsigned integer
+  /* Obtain the number of digits that are contained in unsigned integer
      number. */
-  for (int_digits = 1, order = 10.0; n / order > 1.0; int_digits++, order *= 10) ;
+  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
 
   str = XCNEWVEC (char, (int_digits + 1));
   ldv_print_info (LDV_INFO_MEM, "string memory was released");

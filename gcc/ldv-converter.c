@@ -176,6 +176,8 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
     case LDV_IT_PRIMITIVE:
       /* A primitive type corresponds to declaration specifiers. And it's
          processed separately. */
+      ldv_free_declarator (declarator);
+      ldv_list_delete_all (declarator_list);
       return NULL;
 
     case LDV_IT_PTR:
@@ -203,8 +205,6 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
 ldv_pps_declspecs_ptr
 ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
 {
-  ldv_pps_declspecs_ptr pps_declspecs = NULL;
-
   switch (type->it_kind)
     {
     case LDV_IT_ARRAY:
@@ -217,10 +217,7 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
 
     case LDV_IT_PRIMITIVE:
       /* A primitive type corresponds to declaration specifiers. */
-      pps_declspecs = ldv_create_declspecs ();
-      pps_declspecs = type->primitive_type;
-
-      return pps_declspecs;
+      return ldv_copy_declspecs (type->primitive_type);
 
     case LDV_IT_PTR:
       /* Get declaration specifiers from a pointed type. */
@@ -305,6 +302,11 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                   artificial_ret_type_decl->type = artificial_decl->type->ptr_type->ret_type;
                   initializer->pointed_func_ret_type_decl = ldv_print_var_decl (artificial_ret_type_decl);
 
+                  /* Explicitly free memory for artificial variable and
+                     its name, since its type references main variable
+                     type. */
+                  ldv_free_id (artificial_ret_type_decl->name);
+                  free (artificial_ret_type_decl);
                   for (params = artificial_decl->type->ptr_type->param
                     ; params
                     ; params = ldv_list_get_next (params))
@@ -315,7 +317,13 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
                       artificial_param_decl->name = ldv_create_id ();
                       ldv_puts_id ("%s", artificial_param_decl->name);
                       artificial_param_decl->type = param->type;
-                      ldv_list_push_back (&initializer->pointed_func_arg_type_decls, xstrdup (ldv_print_var_decl (artificial_param_decl)));
+                      ldv_list_push_back (&initializer->pointed_func_arg_type_decls, ldv_print_var_decl (artificial_param_decl));
+
+                      /* Explicitly free memory for artificial variable
+                         and its name, since its type references main
+                         variable type. */
+                      ldv_free_id (artificial_param_decl->name);
+                      free (artificial_param_decl);
                     }
                 }
               else
@@ -327,6 +335,8 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
             {
               LDV_FATAL_ERROR ("can't process type");
             }
+
+          ldv_free_info_var (artificial_decl);
 
           if (TREE_CODE (value) == CONSTRUCTOR)
             initializer->initializer = ldv_convert_initializer_to_internal (value);
@@ -355,6 +365,8 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
   tree func_arg_tree = NULL_TREE, func_param_tree = NULL_TREE;
   ldv_i_type_ptr arg_type_new = NULL;
   ldv_i_param_ptr param_new = NULL;
+  bool isvoid_arg_type_new = false;
+  ldv_pps_declspecs_ptr declspecs_aux = NULL;
 
   /* Do nothing if there is no tree node implementing type. */
   if (!type_tree)
@@ -390,14 +402,15 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
         ; func_arg_tree = TREE_CHAIN (func_arg_tree), func_param_tree = func_param_tree ? TREE_CHAIN (func_param_tree) : NULL)
         {
           arg_type_new = ldv_convert_type_tree_to_internal (TREE_VALUE (func_arg_tree), NULL);
+          isvoid_arg_type_new = ldv_isvoid (arg_type_new);
 
           /* Finish the cycle when a gcc artificial void type from the end of a
              function parameters list is found. Note that it's needed in case
              when it isn't the only i.e. if a function has other parameters. */
-          if (type->param)
+          if (type->param && isvoid_arg_type_new)
             {
-              if (ldv_isvoid (arg_type_new))
-                break;
+              ldv_free_info_type (arg_type_new);
+              break;
             }
 
           param_new = ldv_create_info_param ();
@@ -415,7 +428,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
 
       /* Check whether function arguments have a variable length. In that case
          gcc doesn't put a void type at the end of a  list of argument types. */
-      if (arg_type_new && !ldv_isvoid (arg_type_new))
+      if (arg_type_new && !isvoid_arg_type_new)
         arg_type_new->isva = true;
 
       break;
@@ -435,10 +448,16 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
          obtained earlier. */
       if (ldv_entity_declspecs)
         {
-          type->primitive_type = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs, false);
+          declspecs_aux = ldv_merge_declspecs (type->primitive_type, ldv_entity_declspecs);
+
+          /* In merging declaration specifiers new declaration
+             specifiers are created. So old ones should be freed. */
+          ldv_free_declspecs (type->primitive_type);
+          type->primitive_type = declspecs_aux;
 
           /* Additional declaration specifiers may be applied just one time for
              some entity return type. */
+          ldv_free_declspecs (ldv_entity_declspecs);
           ldv_entity_declspecs = NULL;
         }
 

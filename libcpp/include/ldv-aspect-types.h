@@ -313,13 +313,13 @@ typedef struct ldv_aspect_pattern_param_internal
   ldv_aspect_pattern_param_kind kind;
   struct ldv_aspect_pattern_internal *aspect_pattern;
   unsigned int integer;
-  const char *string;
+  char *string;
 } ldv_aspect_pattern_param;
 typedef ldv_aspect_pattern_param *ldv_aspect_pattern_param_ptr;
 
 typedef struct ldv_aspect_pattern_internal
 {
-  const char *name;
+  char *name;
   const char *value;
   unsigned int arg_numb;
   ldv_list_ptr params;
@@ -399,7 +399,7 @@ typedef struct ldv_func_arg_info_internal
   ldv_func_arg_info_k func_arg_info_kind;
   unsigned int arg_numb;
   const char *arg_name;
-  const char *sign;
+  char *sign;
   const char *func_name;
   unsigned int one_dim_array_size;
 } ldv_func_arg_info;
@@ -452,10 +452,10 @@ typedef struct ldv_info_initializer_internal
   bool isarray_index;
   unsigned int array_index;
   const char *type;
-  const char *decl;
-  const char *pointed_func_ret_type_decl;
+  char *decl;
+  char *pointed_func_ret_type_decl;
   ldv_list_ptr pointed_func_arg_type_decls;
-  const char *value;
+  char *value;
   ldv_list_ptr initializer;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;

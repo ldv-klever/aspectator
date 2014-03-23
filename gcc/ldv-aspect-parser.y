@@ -68,7 +68,7 @@ typedef struct YYLTYPE
   int first_column;
   int last_line;
   int last_column;
-  const char *file_name;
+  char *file_name;
 } YYLTYPE;
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
@@ -94,8 +94,8 @@ static ldv_aspect_pattern_ptr ldv_parse_aspect_pattern (void);
 static ldv_aspect_pattern_param_ptr ldv_parse_aspect_pattern_param (void);
 static unsigned int ldv_parse_aspect_pattern_param_str (char **str);
 static ldv_list_ptr ldv_parse_aspect_pattern_params (void);
-static int ldv_parse_aspect_pattern_known_value (char const **str);
-static char *ldv_parse_comments (void);
+static int ldv_parse_aspect_pattern_known_value (char **str);
+static ldv_text_ptr ldv_parse_comments (void);
 static unsigned int ldv_parse_file_name (char **file_name);
 static unsigned int ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern);
 static int ldv_parse_preprocessor_directives (void);
@@ -237,7 +237,7 @@ static int yylex (void);
   @$.first_column = @$.last_column = 1;
   ldv_set_first_column (@$.first_column);
   ldv_set_last_column (@$.last_column);
-  @$.file_name = ldv_aspect_fname;
+  @$.file_name = ldv_copy_str (ldv_aspect_fname);
   ldv_set_file_name (@$.file_name);
 }
 
@@ -279,13 +279,15 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
 
       /* Set a pointcut name from a lexer identifier. This name can't contain
          any '$' wildcards. */
-      p_name = ldv_get_id_name ($2);
+      p_name = ldv_copy_str (ldv_get_id_name ($2));
 
       if ($2->isany_chars)
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "'$' wildcard was used in pointcut name \"%s\"", p_name);
           LDV_FATAL_ERROR ("pointcut name should be a correct identifier");
         }
+
+      ldv_free_id ($2);
 
       n_pointcut_new->p_name = p_name;
 
@@ -401,6 +403,8 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
         {
           LDV_FATAL_ERROR ("undefined pointcut with name \"%s\" was used", p_name);
         }
+
+      ldv_free_id ($1);
     }
   | primitive_pointcut /* The primitive poincut form is described below. */
     {
@@ -843,7 +847,15 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+      if ($2)
+        {
+          /* TODO: implement ldv_merge_declspecs_free(). */
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
+          ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
+        }
+      else
+        pps_declspecs = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -853,7 +865,14 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+      if ($2)
+        {
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
+          ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
+        }
+      else
+        pps_declspecs = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -863,7 +882,14 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+      if ($2)
+        {
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
+          ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
+        }
+      else
+        pps_declspecs = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -873,7 +899,14 @@ c_declaration_specifiers_aux:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+      if ($2)
+        {
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
+          ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
+        }
+      else
+        pps_declspecs = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison merged declaration specifiers");
 
@@ -1400,7 +1433,14 @@ c_type_qualifier_list:
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
-      pps_declspecs = ldv_merge_declspecs ($1, $2, false);
+      if ($2)
+        {
+          pps_declspecs = ldv_merge_declspecs ($1, $2);
+          ldv_free_declspecs ($1);
+          ldv_free_declspecs ($2);
+        }
+      else
+        pps_declspecs = $1;
 
       ldv_print_info (LDV_INFO_BISON, "bison merged type qualifiers");
 
@@ -1500,6 +1540,8 @@ c_parameter_declaration:
   | c_declaration_specifiers c_abstract_declarator_opt
     {
       ldv_pps_decl_ptr pps_decl = NULL;
+      ldv_pps_declarator_ptr declarator = NULL;
+      ldv_list_ptr declarator_list = NULL;
 
       pps_decl = ldv_create_pps_decl ();
 
@@ -1530,6 +1572,19 @@ c_parameter_declaration:
           pps_decl->pps_declarator = $2;
 
           ldv_print_info (LDV_INFO_BISON, "bison parsed parameter declaration");
+        }
+
+      if (pps_decl->pps_declspecs->isany_params
+        || pps_decl->pps_declspecs->isvar_params)
+        {
+          for (declarator_list = $2; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
+            {
+              declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+              ldv_free_declarator (declarator);
+            }
+
+          ldv_list_delete_all ($2);
         }
 
       $$ = pps_decl;
@@ -1794,6 +1849,9 @@ ldv_get_id_kind (char *id)
               if (i > 4 && i < 19)
                 ldv_istype_spec = true;
 
+              /* Corresponding identifier won't be used any more. */
+              ldv_free_id (yylval.id);
+
               return ldv_keyword_token_map[i].token;
             }
         }
@@ -1809,6 +1867,9 @@ ldv_get_id_kind (char *id)
               ldv_print_info (LDV_INFO_LEX, "lex parsed universal type specifier \"%s\"", id);
 
               ldv_isuniversal_type_spec = true;
+
+              /* Corresponding identifier won't be used any more. */
+              ldv_free_id (yylval.id);
 
               return LDV_UNIVERSAL_TYPE_SPECIFIER;
             }
@@ -1844,7 +1905,7 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
   int brace_count = 1;
   ldv_aspect_pattern_ptr pattern = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
-  char *comment = NULL;
+  ldv_text_ptr comment = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -1871,7 +1932,8 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
              be model comments through them. */
           if ((comment = ldv_parse_comments ()))
             {
-              ldv_puts_body (comment, *body);
+              ldv_puts_body (ldv_get_text (comment), *body);
+              ldv_free_text (comment);
               continue;
             }
 
@@ -2194,7 +2256,7 @@ ldv_parse_aspect_pattern_params (void)
 }
 
 int
-ldv_parse_aspect_pattern_known_value (char const **str)
+ldv_parse_aspect_pattern_known_value (char **str)
 {
   ldv_aspect_pattern_ptr pattern = NULL;
 
@@ -2203,7 +2265,9 @@ ldv_parse_aspect_pattern_known_value (char const **str)
     {
       if (pattern->value)
         {
-          *str = pattern->value;
+          *str = ldv_copy_str (pattern->value);
+
+          ldv_free_aspect_pattern (pattern);
 
           return 1;
         }
@@ -2223,7 +2287,7 @@ ldv_parse_aspect_pattern_known_value (char const **str)
   return 0;
 }
 
-char *
+ldv_text_ptr
 ldv_parse_comments (void)
 {
   int c, c_next;
@@ -2262,7 +2326,7 @@ ldv_parse_comments (void)
                 }
 
               /* So, we'll skip following whitespaces and comments if so. */
-              return ldv_get_text (comment);
+              return comment;
             }
           /* Drop a C comment '/_*...*_/' from '/_*' up to '*_/'. Track a
              current file position, since '*_/' can be placed at another line
@@ -2285,7 +2349,7 @@ ldv_parse_comments (void)
                           ldv_puts_text ("*/", comment);
                           ldv_set_last_column (yylloc.last_column + 2);
                           /* So, we'll skip following whitespaces and comments if so. */
-                          return ldv_get_text (comment);
+                          return comment;
                         }
                       else
                         {
@@ -2336,7 +2400,7 @@ ldv_parse_file_name (char **file_name)
   int c;
   unsigned int byte_count = 0;
   ldv_str_ptr str = NULL;
-  char const *aspect_pattern_value = NULL;
+  char *aspect_pattern_value = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -2353,6 +2417,7 @@ ldv_parse_file_name (char **file_name)
           if (ldv_parse_aspect_pattern_known_value (&aspect_pattern_value))
             {
               ldv_puts_string (aspect_pattern_value, str);
+              free (aspect_pattern_value);
               continue;
             }
 
@@ -2374,7 +2439,8 @@ ldv_parse_file_name (char **file_name)
         }
 
       /* Assign read file name to file name passed through parameter. */
-      *file_name = ldv_get_str (str);
+      *file_name = ldv_copy_str (ldv_get_str (str));
+      ldv_free_str (str);
 
       /* Move current position properly. */
       ldv_set_last_column (yylloc.last_column + byte_count);
@@ -2427,7 +2493,8 @@ ldv_parse_id (char **id, bool *isany_chars, bool isaspect_pattern)
   if (str)
     {
       /* Assign read identifier to identifier passed through parameter. */
-      *id = ldv_get_str (str);
+      *id = ldv_copy_str (ldv_get_str (str));
+      ldv_free_string (str);
 
       /* Specify whether '$' wildcard was read or not. */
       *isany_chars = isread_any_chars;
@@ -2481,7 +2548,12 @@ ldv_parse_preprocessor_directives (void)
                      ldv_putc_string (c_next, file_name);
                    }
 
-                  ldv_set_file_name (ldv_get_str(file_name));
+                  /* Free previously used file name. */
+                  free (yylloc.file_name);
+
+                  ldv_set_file_name (ldv_copy_str (ldv_get_str (file_name)));
+
+                  ldv_free_str (file_name);
                 }
 
               /* Update the current line with respect to a special line. */
@@ -2664,14 +2736,19 @@ yylex (void)
   ldv_id_ptr id = NULL;
   unsigned int i;
   ldv_int_ptr integer = NULL;
+  ldv_text_ptr comment = NULL;
+  int id_kind;
 
   /* Skip nonsignificant whitespaces from the beginning of a current line. */
   ldv_parse_whitespaces ();
 
   /* Examine whether a C or C++ comment is encountered. Skip a corresponding
      comment if so and continue parsing. */
-  if (ldv_parse_comments ())
-    return yylex ();
+  if ((comment = ldv_parse_comments ()))
+    {
+      ldv_free_text (comment);
+      return yylex ();
+    }
 
   /* Examine whether a special preprocessor line is encountered. */
   if (ldv_parse_preprocessor_directives ())
@@ -2717,6 +2794,8 @@ yylex (void)
       else
         file->isthis = false;
 
+      free (str);
+
       /* Set a corresponding semantic value. */
       yylval.file = file;
 
@@ -2735,7 +2814,10 @@ yylex (void)
       /* Set a corresponding semantic value. */
       yylval.id = id;
 
-      return ldv_get_id_kind (str);
+      id_kind = ldv_get_id_kind (str);
+      free (str);
+
+      return id_kind;
     }
 
   /* Parse some integer number. It consists of digits. */

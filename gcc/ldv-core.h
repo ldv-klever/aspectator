@@ -45,14 +45,20 @@ extern ldv_pps_func_arg_ptr ldv_create_pps_func_arg (void);
 extern ldv_pps_ptr_quals_ptr ldv_create_ptr_quals (void);
 extern ldv_text_ptr ldv_create_text (void);
 
+extern void ldv_free_aspect_pattern (ldv_aspect_pattern_ptr);
+extern void ldv_free_declarator (ldv_pps_declarator_ptr);
+extern void ldv_free_file (ldv_file_ptr);
+extern void ldv_free_pps_array_size (ldv_pps_array_size_ptr);
+extern void ldv_free_pps_decl (ldv_pps_decl_ptr);
+extern void ldv_free_pps_func_arg (ldv_pps_func_arg_ptr);
+extern void ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr);
+extern void ldv_free_text (ldv_text_ptr);
+
 extern void ldv_delete_body (ldv_ab_ptr);
-extern void ldv_delete_file (ldv_file_ptr);
 extern void ldv_delete_id (ldv_id_ptr);
 extern void ldv_delete_int (ldv_int_ptr);
-extern void ldv_delete_str (ldv_str_ptr);
-extern void ldv_delete_text (ldv_text_ptr);
 
-extern const char *ldv_itoa (unsigned int);
+extern char *ldv_itoa (unsigned int);
 
 extern char *ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr);
 

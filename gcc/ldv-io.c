@@ -104,7 +104,7 @@ ldv_create_files (void)
 
           fname = ldv_get_str (adef->a_declaration->c_pointcut->p_pointcut->pp_signature->pps_file->file_name->file_name);
           fcontent = ldv_copy_str (ldv_get_body_text (adef->a_body));
-          fcontent = ldv_trunkate_braces (fcontent);
+          fcontent = ldv_truncate_braces (fcontent);
 
           /* Instance different body patterns if it's needed. */
           body_with_patterns = ldv_create_text ();
@@ -140,6 +140,10 @@ ldv_create_files (void)
                 }
             }
 
+          /* In truncating braces this pointer was moved ahead exactly
+             by 1. */
+          free (fcontent - 1);
+
           if ((fstream = fopen (fname, "w")) == NULL)
             {
               LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", fname);
@@ -151,6 +155,8 @@ ldv_create_files (void)
             {
               LDV_FATAL_ERROR ("can%'t write to file \"%s\": %m", fname);
             }
+
+          ldv_free_text (body_with_patterns);
 
           fclose (fstream);
 
@@ -232,11 +238,12 @@ ldv_getc (FILE *stream)
   return c;
 }
 
-const char *
+char *
 ldv_gets (FILE *stream)
 {
   int c;
   ldv_text_ptr line = NULL;
+  char *str = NULL;
 
   if ((c = ldv_getc (stream)) == EOF)
     return NULL;
@@ -253,7 +260,12 @@ ldv_gets (FILE *stream)
       ldv_putc_text (c, line);
     }
 
-  return ldv_get_text (line);
+  str = ldv_get_text (line);
+
+  free (line->text);
+  free (line);
+
+  return str;
 }
 
 char
@@ -316,7 +328,7 @@ ldv_make_includes (void)
           ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
           include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-          include = ldv_trunkate_braces (include);
+          include = ldv_truncate_braces (include);
 
           ldv_puts (include, LDV_FILE_PREPARED_STREAM);
           ldv_print_info (LDV_INFO_WEAVE, "include was weaved for around advice");
@@ -338,10 +350,16 @@ ldv_make_includes (void)
 
               ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
+              /* TODO: let's keep body without braces? */
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-              include = ldv_trunkate_braces (include);
+              include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
+
+              /* In truncating braces this pointer was moved ahead
+                 exactly by 1. */
+              free (include - 1);
+
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for before advice");
             }
         }
@@ -362,7 +380,7 @@ ldv_make_includes (void)
               ldv_print_info (LDV_INFO_MATCH, "match file \"%s\"", match->i_file->name);
 
               include = ldv_copy_str (ldv_get_body_text (adef->a_body));
-              include = ldv_trunkate_braces (include);
+              include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for after advice");
@@ -371,6 +389,10 @@ ldv_make_includes (void)
     }
 
   fclose (LDV_FILE_PREPARED_STREAM);
+
+  free (file);
+  ldv_free_info_match (match);
+
   ldv_print_info (LDV_INFO_IO, "finish make includes");
 }
 
@@ -478,7 +500,7 @@ ldv_print_info (const char *info_kind, const char *format, ...)
 void
 ldv_print_to_awfile (void)
 {
-  const char *line = NULL, *quote_left = NULL, *quote_right = NULL, *c = NULL;
+  char *line = NULL, *quote_left = NULL, *quote_right = NULL, *c = NULL;
   int line_numb = 0;
   ldv_file_ptr file = NULL;
   ldv_decl_for_print_ptr decl_for_print = NULL;
@@ -509,6 +531,10 @@ ldv_print_to_awfile (void)
           /* If the format of a file name in quotes is correct. */
           if ((quote_left = strchr (line, '"')) && (quote_right = strrchr (line, '"')))
             {
+              /* Free previously stored file. */
+              if (file)
+                ldv_free_file (file);
+
               file = ldv_create_file ();
 
               for (c = quote_left + 1; c != quote_right; c++)
@@ -568,6 +594,8 @@ ldv_print_to_awfile (void)
       else
         ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
 
+      free (line);
+
       /* Put the end of a line to the end. */
       ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
 
@@ -576,6 +604,9 @@ ldv_print_to_awfile (void)
       if (!ispreprocessor_directive)
         line_numb++;
     }
+
+  if (file)
+    ldv_free_file (file);
 
   /* Add auxiliary function definitions to the end of an advice weaved file if
      it's needed. */

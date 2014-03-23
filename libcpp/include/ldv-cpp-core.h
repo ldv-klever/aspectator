@@ -56,9 +56,30 @@ extern ldv_i_type_ptr ldv_create_info_type (void);
 extern ldv_i_typedecl_ptr ldv_create_info_typedecl (void);
 extern ldv_i_var_ptr ldv_create_info_var (void);
 
+extern ldv_pps_declspecs_ptr ldv_copy_declspecs (ldv_pps_declspecs_ptr);
+extern ldv_i_param_ptr ldv_copy_iparam (ldv_i_param_ptr);
+extern ldv_i_type_ptr ldv_copy_itype (ldv_i_type_ptr);
+
+extern void ldv_free_declspecs (ldv_pps_declspecs_ptr);
+extern void ldv_free_info_func (ldv_i_func_ptr);
+extern void ldv_free_info_initializer (ldv_i_initializer_ptr);
+extern void ldv_free_info_macro (ldv_i_macro_ptr);
+extern void ldv_free_info_match (ldv_i_match_ptr);
+extern void ldv_free_info_param (ldv_i_param_ptr);
+extern void ldv_free_info_type (ldv_i_type_ptr);
+extern void ldv_free_info_typedecl (ldv_i_typedecl_ptr);
+extern void ldv_free_info_var (ldv_i_var_ptr);
+
 extern ldv_id_ptr ldv_create_id (void);
 extern ldv_str_ptr ldv_create_str (ldv_token_k);
 extern ldv_str_ptr ldv_create_string (void);
+
+extern ldv_id_ptr ldv_copy_id (ldv_id_ptr);
+extern ldv_str_ptr ldv_copy_string (ldv_str_ptr);
+
+extern void ldv_free_id (ldv_id_ptr);
+extern void ldv_free_str (ldv_str_ptr);
+extern void ldv_free_string (ldv_str_ptr);
 
 extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
 
@@ -70,7 +91,7 @@ extern char *ldv_get_str (ldv_str_ptr);
 
 extern bool ldv_isvoid (ldv_i_type_ptr );
 
-extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr, bool);
+extern ldv_pps_declspecs_ptr ldv_merge_declspecs (ldv_pps_declspecs_ptr, ldv_pps_declspecs_ptr);
 
 extern FILE *ldv_open_file_stream (const char *, const char *);
 extern void ldv_close_file_stream (FILE *);
@@ -86,6 +107,6 @@ extern void ldv_set_ldv (bool);
 extern void ldv_set_ldv_opts (bool);
 extern void ldv_set_ldv_stage (int);
 
-extern char *ldv_trunkate_braces (char *);
+extern char *ldv_truncate_braces (char *);
 
 #endif /* _LDV_CPP_CORE_H_ */

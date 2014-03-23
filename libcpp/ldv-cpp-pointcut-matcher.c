@@ -380,6 +380,9 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
         }
     }
 
+  ldv_free_info_macro (macro);
+  ldv_free_info_match (match);
+
   /* Nothing was matched. */
   ldv_i_match = NULL;
 
@@ -431,19 +434,27 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
 
   /* Compare functions names. */
   if (ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
-    return false;
+    {
+      ldv_free_info_func (func_aspect);
+      return false;
+    }
 
-  /* Replace aspect function name used just for a current matching with the source
-     one since they match each other but the aspect one can contain '$'
-     wildcards.*/
-  func_aspect->name = func_source->name;
+  /* Replace aspect function name used just for a current matching with
+     the source one since they match each other but the aspect one can
+     contain '$' wildcards.*/
+  ldv_free_id (func_aspect->name);
+  func_aspect->name = ldv_create_id ();
+  ldv_puts_id (ldv_cpp_get_id_name (func_source->name), func_aspect->name);
 
   /* Specify that a function was matched by name. */
   i_match->ismatched_by_name = true;
 
   /* Compare functions types. */
   if (!ldv_match_type (func_source->type, func_aspect->type))
-    return false;
+    {
+      ldv_free_info_func (func_aspect);
+      return false;
+    }
 
   /* Specify that a function was matched by a whole signature not just by a
      name. */
@@ -468,16 +479,24 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* Compare macro kinds. */
   if (i_match->i_macro->macro_kind != i_match->i_macro_aspect->macro_kind)
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
   /* Compare macro names. */
   if (ldv_cmp_str (macro_aspect->macro_name, ldv_cpp_get_id_name (macro_source->macro_name)))
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
-  /* Replace aspect macro name used just for a current matching with the source
-     one since they match each other but the aspect one can contain '$'
-     wildcards.*/
-  macro_aspect->macro_name = macro_source->macro_name;
+  /* Replace aspect macro name used just for a current matching with
+     the source one since they match each other but the aspect one can
+     contain '$' wildcards.*/
+  ldv_free_id (macro_aspect->macro_name);
+  macro_aspect->macro_name = ldv_create_id ();
+  ldv_puts_id (ldv_cpp_get_id_name (macro_source->macro_name), macro_aspect->macro_name);
 
   /* Specify that a macro was matched by a name. */
   i_match->ismatched_by_name = true;
@@ -495,7 +514,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
       if (i_macro_param_second->isany_chars)
         {
           if (ldv_cmp_str (i_macro_param_second, ldv_cpp_get_id_name (i_macro_param_first)))
-            return false;
+            {
+              ldv_free_info_macro (macro_aspect);
+              return false;
+            }
 
           ldv_list_set_data (i_macro_param_second_list, i_macro_param_first);
         }
@@ -503,7 +525,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* I.e. the numbers of macro parameters aren't equal. */
   if (i_macro_param_first_list || i_macro_param_second_list)
-    return false;
+    {
+      ldv_free_info_macro (macro_aspect);
+      return false;
+    }
 
   /* Specify that a macro was matched by a whole signature not just by a
      name. */
@@ -612,6 +637,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
          universal type specifier.*/
+      /* TODO: use one of functions for copy internal representation. */
       memcpy (second, first, sizeof (*second));
 
       return true;
@@ -664,7 +690,10 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                   param_second_next = (ldv_i_param_ptr) ldv_list_get_data (param_second_list_next);
 
                   if (param_second_next->isany_params)
-                    ldv_list_delete (&param_second_list, param_second_list_next);
+                    {
+                      ldv_free_info_param (param_second_next);
+                      ldv_list_delete (&param_second_list, param_second_list_next);
+                    }
                   else
                       break;
                 }
@@ -963,6 +992,11 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 break;
             }
 
+          for (i = 0; i < param_aspect_numb; i++)
+            free (param_matching_table[i]);
+
+          free (param_matching_table);
+
           /* Dump the 'true' path if needed. */
           if (ldv_cpp_isinfo_matching_table)
             {
@@ -1027,6 +1061,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                          be on the first place of aspect function agruments
                          (this case is considered below), so the list_delete
                          function always must return a non 0 element. */
+                      ldv_free_info_param (param_second);
                       param_second_list = ldv_list_delete (&second->param, param_second_list);
 
                       /* Replace a '..' wildcard with some data just in case
@@ -1035,7 +1070,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                         && matching_table_coord->x != matching_table_coord_next->x)
                         || (!matching_table_coord_next && matching_table_coord_prev))
                         {
-                          param_second_list = ldv_list_insert_data (param_second_list, params_first[j]);
+                          param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
                           j++;
                         }
 
@@ -1056,7 +1091,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                      arguments list. */
                   else if (matching_table_coord->y == matching_table_coord_prev->y)
                     {
-                      param_second_list = ldv_list_insert_data (param_second_list, params_first[j]);
+                      param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
                       j++;
 
                       /* Shift an aspect function argument when a next true
@@ -1088,6 +1123,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                   if (param_second->isany_params)
                     {
                       /* Delete a '..' wildcard list element. */
+                      ldv_free_info_param (param_second);
                       ldv_list_delete (&second->param, param_second_list);
 
                       /* Replace a '..' wildcard with some data just in case
@@ -1099,7 +1135,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                              wildcard. */
                           if (matching_table_coord->x != matching_table_coord_next->x)
                             {
-                              param_second_list = second->param = ldv_list_push_front (second->param, params_first[j]);
+                              param_second_list = second->param = ldv_list_push_front (second->param, ldv_copy_iparam (params_first[j]));
                               j++;
 
                               /* Finalize a '..' wildcard. */
@@ -1121,7 +1157,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                          source function argument. */
                       else
                         {
-                          ldv_list_push_back (&second->param, params_first[j]);
+                          ldv_list_push_back (&second->param, ldv_copy_iparam (params_first[j]));
                           param_second_list = second->param;
                           param_second_list = ldv_list_get_next (param_second_list);
                           i++;
@@ -1138,14 +1174,30 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 }
             }
 
+          free (params_first);
+
+          for (matching_table_coord_list_cur = matching_table_coord_list
+            ; matching_table_coord_list_cur
+            ; matching_table_coord_list_cur = ldv_list_get_next (matching_table_coord_list_cur))
+            {
+              /* TODO: guess that all these casts are redundant. */
+              matching_table_coord = (ldv_coord_ptr) ldv_list_get_data (matching_table_coord_list_cur);
+              free (matching_table_coord);
+            }
+
+          ldv_list_delete_all (matching_table_coord_list);
+
           /* Remove a trailing '..' wildcard that catches nothing. */
           if (param_second_list)
             {
               param_second = (ldv_i_param_ptr) ldv_list_get_data (param_second_list);
 
               if (param_second->isany_params)
-                /* Delete a '..' wildcard list element. */
-                ldv_list_delete (&second->param, param_second_list);
+                {
+                  /* Delete a '..' wildcard list element. */
+                  ldv_free_info_param (param_second);
+                  ldv_list_delete (&second->param, param_second_list);
+                }
               else
                 {
                   LDV_CPP_FATAL_ERROR ("Meet something that isn't '..' wildcard that catches nothing at the end of arguments lists");
@@ -1187,10 +1239,11 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
       if (!ldv_match_declspecs (first->primitive_type, second->primitive_type))
         return false;
 
-      /* Merge aspect declaration specifiers used just for a current matching
-         with the source one since they match each other but the aspect one can
-         contain '$' universal type specifier.*/
-      second->primitive_type = ldv_merge_declspecs (first->primitive_type, second->primitive_type, true);
+      /* Replace aspect declaration specifiers with the source ones
+         since they match each other but aspect ones can contain '$'
+         universal type specifier.*/
+      ldv_free_declspecs (second->primitive_type);
+      second->primitive_type = ldv_copy_declspecs (first->primitive_type);
 
       break;
 

@@ -31,8 +31,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* Macro from ldv-io.h that's needed for printing of matched just by name macros. */
 #define LDV_MATCHED_BY_NAME (stderr)
 
-static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, const char **, unsigned int *);
-static const char *ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro);
+static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
+static char *ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro);
 
 
 void
@@ -121,10 +121,10 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 }
 
 int
-ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
 {
-  const char *text = NULL;
-  const char *arg_value = NULL;
+  char *text = NULL;
+  char *arg_value = NULL;
   bool is_number = false;
   ldv_list_ptr arg_value_list = NULL;
   unsigned int number;
@@ -141,7 +141,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
       ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
       {
         arg_value = (char *) ldv_list_get_data (arg_value_list);
-        
+
         if (i == pattern->arg_numb)
         {
           text = arg_value;
@@ -174,7 +174,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
   return 0;
 }
 
-const char *
+char *
 ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
@@ -215,7 +215,7 @@ ldv_cpp_weave (void)
   ldv_aspect_pattern_ptr pattern = NULL;
   ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
-  const char *text = NULL;
+  char *text = NULL;
   unsigned int number;
   FILE *file_stream = NULL;
 
