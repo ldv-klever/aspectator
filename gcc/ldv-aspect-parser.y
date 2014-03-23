@@ -2076,10 +2076,7 @@ ldv_parse_aspect_pattern_param_str (char **str)
       while (1)
         {
           if (pattern = ldv_parse_aspect_pattern ())
-            {
-              ldv_puts_string (pattern->value, str_read);
-              pattern=NULL;
-            }
+            ldv_puts_string (pattern->value, str_read);
 
           c = ldv_getc (LDV_ASPECT_STREAM);
           byte_count++;
