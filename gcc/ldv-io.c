@@ -294,7 +294,7 @@ ldv_make_includes (void)
   ldv_open_file_prepared_stream ();
 
   /* There is no advice definitions at all. So nothing will be matched. */
-  if (ldv_adef_list == NULL)
+  if ((ldv_adef_list == NULL) || getenv ("LDV_DIAGNOSTICS"))
     {
       /* Just copy a file itself. This is needed in case when no advices were
          specified. */
