@@ -223,7 +223,7 @@ ldv_getc (FILE *stream)
 {
   int c = getc (stream);
 
-#ifdef LDV_GETC_DEBUG
+#ifdef LDV_CHAR_DEBUG
 
   /* Print information on an obtained character. */
   if (c == EOF)
@@ -231,7 +231,7 @@ ldv_getc (FILE *stream)
   else
     ldv_print_info (LDV_INFO_IO, "get char \"%c\"", ldv_end_of_line (c));
 
-#endif /* LDV_GETC_DEBUG */
+#endif /* LDV_CHAR_DEBUG */
 
   return c;
 }
@@ -596,11 +596,11 @@ ldv_putc (int c, FILE *stream)
       LDV_FATAL_ERROR ("character \"%c\" wasn't put to stream", c);
     }
 
-#ifdef LDV_GETC_DEBUG
+#ifdef LDV_CHAR_DEBUG
 
   ldv_print_info (LDV_INFO_IO, "put character \"%c\"", ldv_end_of_line (c));
 
-#endif /* LDV_GETC_DEBUG */
+#endif /* LDV_CHAR_DEBUG */
 }
 
 void
@@ -659,9 +659,9 @@ ldv_ungetc (int c, FILE *stream)
       LDV_FATAL_ERROR ("character \"%c\" wasn't back to stream", c);
     }
 
-#ifdef LDV_GETC_DEBUG
+#ifdef LDV_CHAR_DEBUG
 
   ldv_print_info (LDV_INFO_IO, "unget character \"%c\"", ldv_end_of_line (c));
 
-#endif /* LDV_GETC_DEBUG */
+#endif /* LDV_CHAR_DEBUG */
 }
