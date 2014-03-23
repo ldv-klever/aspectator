@@ -186,6 +186,10 @@ ldv_cpp_print_macro_path (ldv_i_macro_ptr i_macro)
   char *occurrence = NULL;
 
   path = i_macro->file_path;
+
+  /* TODO: remove processing of ".prepared" after all intermediate code will
+     reference the original one (there is the same trick in
+     gcc/ldv-advice-weaver.c). */
   occurrence = strstr (path, ".prepared");
   if (occurrence)
     *occurrence = '\0';
