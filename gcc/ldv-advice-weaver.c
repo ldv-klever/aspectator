@@ -1494,7 +1494,6 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut, FILE *ldv_diag_file)
   ldv_list_ptr func_arg_list = NULL;
   ldv_pps_decl_ptr pps_declaration = NULL;
   ldv_pps_ptr pp_signature = NULL;
-  ldv_i_func_ptr i_func_sign = NULL;
   const char* format = NULL;
   const char* ldv_diag_text = NULL;
 
