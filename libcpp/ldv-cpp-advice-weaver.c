@@ -132,7 +132,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
   unsigned int i;
 
   if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
-    text = ldv_cpp_print_macro_signature(ldv_i_match->i_macro);
+    text = ldv_cpp_print_macro_signature (ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "macro_name"))
     text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
   else if (!strcmp (pattern->name, "arg_val"))
@@ -142,7 +142,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
       ; i++, arg_value_list = ldv_list_get_next (arg_value_list))
       {
         arg_value = (char *) ldv_list_get_data (arg_value_list);
-        
+
         if (i == pattern->arg_numb)
         {
           text = arg_value;
@@ -180,13 +180,13 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
 }
 
 const char *
-ldv_cpp_print_macro_path(ldv_i_macro_ptr i_macro)
+ldv_cpp_print_macro_path (ldv_i_macro_ptr i_macro)
 {
-  char* path = NULL;
-  char* occurrence = NULL;
+  char *path = NULL;
+  char *occurrence = NULL;
 
   path = i_macro->file_path;
-  occurrence = strstr(path, ".prepared");
+  occurrence = strstr (path, ".prepared");
   if (occurrence)
     *occurrence = '\0';
 
@@ -194,7 +194,7 @@ ldv_cpp_print_macro_path(ldv_i_macro_ptr i_macro)
 }
 
 const char *
-ldv_cpp_print_macro_signature(ldv_i_macro_ptr i_macro)
+ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
   ldv_id_ptr i_macro_param = NULL;
@@ -446,7 +446,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
           /* Print previously collected text. */
           if (text)
             {
-              fprintf(file_stream, ldv_get_str (text));
+              fprintf (file_stream, ldv_get_str (text));
               text = NULL;
             }
 
@@ -477,7 +477,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
                 }
               else if (*format == '%')
                 {
-                  fprintf(file_stream, "%s", ldv_get_str (conversion));
+                  fprintf (file_stream, "%s", ldv_get_str (conversion));
                   break;
                 }
 
@@ -500,7 +500,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
 
   /* Print the rest of collected text. */
   if (text)
-    fprintf(file_stream, ldv_get_str (text));
+    fprintf (file_stream, ldv_get_str (text));
 }
 
 void
