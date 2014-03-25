@@ -526,9 +526,12 @@ ldv_copy_iparam (ldv_i_param_ptr iparam)
 
   iparam_new = ldv_create_info_param ();
 
-  /* Copy parameter name. */
-  iparam_new->name = ldv_create_id ();
-  ldv_puts_id (ldv_cpp_get_id_name (iparam->name), iparam_new->name);
+  /* Copy parameter name if so. */
+  if (iparam->name)
+    {
+      iparam_new->name = ldv_create_id ();
+      ldv_puts_id (ldv_cpp_get_id_name (iparam->name), iparam_new->name);
+    }
 
   /* Copy parameter type. */
   iparam_new->type = ldv_copy_itype (iparam->type);
