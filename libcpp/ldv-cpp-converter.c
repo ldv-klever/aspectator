@@ -255,7 +255,7 @@ ldv_convert_param_signature_to_internal (ldv_pps_decl_ptr pps_param)
   /* Convert a declarator name to a parameter name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_param->name = declarator->declarator_name;
+      i_param->name = ldv_copy_id (declarator->declarator_name);
 
       /* A previous to last declarators contain a paramter type. */
       declarator_list = ldv_list_get_prev (pps_param->pps_declarator, declarator_list);
@@ -284,7 +284,7 @@ ldv_convert_typedecl_signature_to_internal (ldv_pps_decl_ptr pps_typedecl)
   pps_declspecs = pps_typedecl->pps_declspecs;
 
   /* Obtain a type declaration name. */
-  i_typedecl->name = pps_declspecs->type_name;
+  i_typedecl->name = ldv_copy_id (pps_declspecs->type_name);
 
   /* Obtain a type declaration type type. */
   if (pps_declspecs->isstruct)
@@ -318,7 +318,7 @@ ldv_convert_var_signature_to_internal (ldv_pps_decl_ptr pps_var)
   /* Convert a declarator name to a variable name. */
   if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
     {
-      i_var->name = declarator->declarator_name;
+      i_var->name = ldv_copy_id (declarator->declarator_name);
 
       /* A previous to last declarators contain a variable type. */
       declarator_list = ldv_list_get_prev (pps_var->pps_declarator, declarator_list);
