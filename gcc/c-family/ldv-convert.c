@@ -5180,7 +5180,7 @@ type-qualifier-list:
 static ldv_type_qual_list_ptr
 ldv_convert_type_qual_list (tree t)
 {
-  ldv_decl_spec_ptr decl_spec_cur;
+  ldv_decl_spec_ptr decl_spec_cur, decl_spec_prev;
   ldv_type_qual_list_ptr type_qual_list, type_qual_list_cur;
   ldv_type_qual_ptr type_qual;
   bool is_type_qual;
@@ -5188,7 +5188,9 @@ ldv_convert_type_qual_list (tree t)
   type_qual_list_cur = type_qual_list = XCNEW (struct ldv_type_qual_list);
   is_type_qual = false;
 
-  for (decl_spec_cur = ldv_convert_type_qual_internal (t); decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
+  for (decl_spec_cur = ldv_convert_type_qual_internal (t)
+    ; decl_spec_cur
+    ; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur), XDELETE (decl_spec_prev))
     {
       if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)))
         {
@@ -5204,7 +5206,7 @@ ldv_convert_type_qual_list (tree t)
       else
         LDV_WARN ("incorrect declaration specifier");
 
-      XDELETE (decl_spec_cur);
+      decl_spec_prev = decl_spec_cur;
     }
 
   if (is_type_qual)
