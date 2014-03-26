@@ -1076,7 +1076,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                         && matching_table_coord->x != matching_table_coord_next->x)
                         || (!matching_table_coord_next && matching_table_coord_prev))
                         {
-                          param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
+                          param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (params_first[j]));
                           j++;
                         }
 
@@ -1097,7 +1097,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                      arguments list. */
                   else if (matching_table_coord->y == matching_table_coord_prev->y)
                     {
-                      param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (param_second));
+                      param_second_list = ldv_list_insert_data (param_second_list, ldv_copy_iparam (params_first[j]));
                       j++;
 
                       /* Shift an aspect function argument when a next true
