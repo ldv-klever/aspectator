@@ -597,6 +597,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
   ldv_coord_ptr matching_table_coord = NULL, matching_table_coord_next = NULL, matching_table_coord_prev = NULL;
   ldv_list_ptr matching_table_coord_list = NULL;
   ldv_list_ptr matching_table_coord_list_cur = NULL;
+  ldv_i_type_ptr aux = NULL;
 
   /* Separately matches universal type specifier with nonprimitive source type.
      At this point they are matched unconditionally. Note that universal type
@@ -642,9 +643,14 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
 
       /* Replace aspect type used just for a current matching with the source
          one since they match each other but the aspect one can contain '$'
-         universal type specifier.*/
-      /* TODO: use one of functions for copy internal representation. */
-      memcpy (second, first, sizeof (*second));
+         universal type specifier. Auxiliary type is used because of types
+         are passed to this function by values not by references. Actually it
+         would be better to pass these types by references to avoid all these
+         dangerous tricks with memory. */
+      ldv_free_declspecs (second->primitive_type);
+      aux = ldv_copy_itype (first);
+      memcpy (second, aux, sizeof (*second));
+      free (aux);
 
       return true;
     }
