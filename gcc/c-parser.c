@@ -1763,6 +1763,15 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
       DECL_STRUCT_FUNCTION (current_function_decl)->function_start_locus
 	= c_parser_peek_token (parser)->location;
       fnbody = c_parser_compound_statement (parser);
+
+      /* LDV extension beginning. */
+      
+      /* Recalculate a current location after function body processing to point
+         to point to the proper function end. */
+      input_location = c_parser_peek_token (parser)->location;
+      
+      /* LDV extension end. */
+      
       if (nested)
 	{
 	  tree decl = current_function_decl;

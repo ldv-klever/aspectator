@@ -778,7 +778,11 @@ ldv_match_expr (tree t)
                   if ((cfunc = DECL_STRUCT_FUNCTION (func_called)) != NULL)
                     func_close_brace_location = expand_location (cfunc->function_end_locus);
                   else
-                    func_close_brace_location = expand_location (DECL_SOURCE_LOCATION (func_called));
+                    {
+                      func_close_brace_location = expand_location (DECL_SOURCE_LOCATION (func_called));
+                      /* Point to the following token to place declarations after ';'. */
+                      func_close_brace_location.column++;
+                    }
 
                   /* Weave a matched advice. */
                   ldv_weave_advice (NULL, &func_close_brace_location);

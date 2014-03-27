@@ -1856,8 +1856,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           aspect_func_decl_for_print_new->file = (*close_brace).file;
           func_decl_for_print_new->line = (*close_brace).line;
           aspect_func_decl_for_print_new->line = (*close_brace).line;
-          func_decl_for_print_new->column = (*close_brace).column;
-          aspect_func_decl_for_print_new->column = (*close_brace).column;
+          /* Since this location points to the following token after function
+             end ('}' or ';') use the location directly before it. */
+          func_decl_for_print_new->column = (*close_brace).column - 1;
+          aspect_func_decl_for_print_new->column = (*close_brace).column - 1;
 
           /* Create list of function parameter names on the basis of a source
              function declaration and a pointcut function signature. */
