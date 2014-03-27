@@ -93,8 +93,9 @@ static void ldv_check_pp_semantics (ldv_pp_ptr);
 static ldv_cp_ptr ldv_create_c_pointcut (void);
 static ldv_pps_ptr ldv_create_pp_signature (void);
 static int ldv_get_id_kind (char *id);
-static void ldv_hash_add_name (const char *name);
+static void ldv_hash_add_name (char *name);
 static void ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut);
+static void ldv_hash_string_del (void *s_p);
 static int ldv_hash_string_eq (const void *s1_p, const void *s2_p);
 static hashval_t ldv_hash_string_hash (const void *s_p);
 static unsigned int ldv_parse_advice_body (ldv_ab_ptr *body);
@@ -364,7 +365,7 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       if (a_declaration->c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         {
           /* Create hash table with called function names. */
-          ldv_called_func_names = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, NULL);
+          ldv_called_func_names = htab_create (1, ldv_hash_string_hash, ldv_hash_string_eq, ldv_hash_string_del);
           /* Store information about called function names in hash table. */
           ldv_hash_recursive_composite_pointcut (a_declaration->c_pointcut);
 
@@ -1962,7 +1963,7 @@ ldv_get_id_kind (char *id)
 }
 
 void
-ldv_hash_add_name (const char *name)
+ldv_hash_add_name (char *name)
 {
   void **hash_element;
 
@@ -1975,7 +1976,7 @@ ldv_hash_add_name (const char *name)
 
   /* Assign a given called function name to a hash element. */
   if (*hash_element == NULL)
-    *hash_element = (void *) xstrdup (name);
+    *hash_element = (void *) name;
 }
 
 void
@@ -1989,6 +1990,7 @@ ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
 
       if ((c_pointcut->cp_kind == LDV_CP_PRIMITIVE) && (c_pointcut->p_pointcut->pp_kind == LDV_PP_CALL))
         {
+          /* TODO: obtain function name on the basis of declaration (see ldv_convert_func_signature_to_internal()) rather then utilize this expensive transformation. */
           i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
 
           /* Store special "$" function name in hash table if "$" wildcard was
@@ -1997,16 +1999,24 @@ ldv_hash_recursive_composite_pointcut (ldv_cp_ptr c_pointcut)
              name in hash table since it can be matched by some name with "$"
              wildcard. */
           if (i_func->name->isany_chars)
-            ldv_hash_add_name ("$");
+            /* TODO: ldv_copy_str() === xstrdup(). */
+            ldv_hash_add_name (ldv_copy_str ("$"));
           else
-            ldv_hash_add_name (ldv_get_id_name (i_func->name));
+            ldv_hash_add_name (ldv_copy_str (ldv_get_id_name (i_func->name)));
+
+          ldv_free_info_func (i_func);
         }
 
       ldv_hash_recursive_composite_pointcut (c_pointcut->c_pointcut_second);
     }
 }
 
-static int
+void ldv_hash_string_del (void *s_p)
+{
+    free (s_p);
+}
+
+int
 ldv_hash_string_eq (const void *s1_p, const void *s2_p)
 {
   const char *s1 = (const char *) s1_p;
@@ -2014,7 +2024,7 @@ ldv_hash_string_eq (const void *s1_p, const void *s2_p)
   return strcmp (s1, s2) == 0;
 }
 
-static hashval_t
+hashval_t
 ldv_hash_string_hash (const void *s_p)
 {
   const char *s = (const char *) s_p;
