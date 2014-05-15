@@ -4192,7 +4192,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
   ldv_primary_expr_ptr primary_expr;
   tree initial;
   tree op1, type;
-  /* tree type, cast; */
+  tree copy, cast;
 
   primary_expr = XCNEW (struct ldv_primary_expr);
 
@@ -4210,21 +4210,33 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
     case INTEGER_CST:
     case REAL_CST:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_SECOND;
-/* TODO: deal with commented code
+
       if ((type = TREE_TYPE (t)))
         {
           switch (TREE_CODE (type))
             {
-            case INTEGER_TYPE:
-            case REAL_TYPE:
-              break;
-
-             Build artificial conversion for "pointer" constants to avoid
-               int-to-pointer conversion warning.
+            /* Build artificial conversion for "pointer" constants to avoid
+               int-to-pointer conversion warning. As well it is required to
+               resolve #4911 issue. */
             case POINTER_TYPE:
- TODO: don't break do conversation!!!
-              break;
-              if (!(cast = build1 (CONVERT_EXPR, type, t)))
+              /* Copy constant to replace its pointer type with pointed integer
+                 type. */
+              if (!(copy = copy_node (t)))
+                {
+                  LDV_WARN ("can't copy constant");
+                  break;
+                }
+
+              /* Replace pointer type by pointed non pointer type to avoid
+                 infinite recursion in further conversions that will pass here
+                 again. */
+              do
+                {
+                  TREE_TYPE (copy) = TREE_TYPE (TREE_TYPE (copy));
+                }
+              while (POINTER_TYPE_P (TREE_TYPE (copy)));
+
+              if (!(cast = build1 (CONVERT_EXPR, type, copy)))
                 {
                   LDV_WARN ("can't build cast for constant");
                   break;
@@ -4236,12 +4248,12 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
               break;
 
             default:
-              LDV_CONVERT_WARN (t);
+              ; /* TODO: anything else? No additional warnings observed... */
             }
         }
       else
         LDV_WARN ("can't find constant type");
-        */
+
       if ((LDV_PRIMARY_EXPR_KIND (primary_expr) == LDV_PRIMARY_EXPR_SECOND))
         ldv_constant_current = LDV_PRIMARY_EXPR_CONSTANT (primary_expr) = ldv_convert_constant (t);
 
