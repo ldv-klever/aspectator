@@ -1000,7 +1000,10 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   ldv_print_c ('}');
 
   if (ldv_func_call)
-    ldv_free_text (ldv_func_call);
+    {
+      ldv_free_text (ldv_func_call);
+      ldv_func_call = NULL;
+    }
 }
 
 void
