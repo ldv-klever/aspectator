@@ -318,7 +318,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   char *text = NULL;
   unsigned int number;
   bool is_number = false;
-  char *func_arg = NULL;
+  const char *func_arg = NULL;
   int func_arg_size;
 
   if (!strcmp (pattern->name, "arg"))
@@ -342,7 +342,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     }
   else if (!strcmp (pattern->name, "arg_value"))
     {
-      func_arg = ldv_copy_str (ldv_get_arg_value (pattern->arg_numb));
+      func_arg = ldv_get_arg_value (pattern->arg_numb);
 
       /* Print stub 'NULL' when an argument size isn't specified. */
       if (func_arg == NULL)
@@ -351,7 +351,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           ldv_print_info (LDV_INFO_WEAVE, "generate stub \"0\" for aspect pattern \"%s\"", pattern->name);
         }
       else
-        text = func_arg;
+        text = ldv_copy_str (func_arg);
     }
   else if (!strcmp (pattern->name, "arg_numb"))
     {
