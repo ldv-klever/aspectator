@@ -4830,6 +4830,8 @@ ldv_convert_struct_decl (tree t)
     case FIELD_DECL:
       if ((field_type = TREE_TYPE (t)))
         LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
+      else
+        LDV_WARN ("can't find field declaration type");
 
       /* Do not create artificial structure declarators (the GNU extension
          allows empty structure declarator lists). This fixes
