@@ -3582,6 +3582,11 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
 /*
 struct-declaration:
     specifier-qualifier-list struct-declarator-list ;
+
+GNU extensions:
+
+struct-declaration:
+    specifier-qualifier-list
 */
 static void
 ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_decl)
@@ -3608,8 +3613,6 @@ ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_dec
 
   if ((struct_declarator_list = LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl)))
     ldv_print_struct_declarator_list (indent_level, struct_declarator_list);
-  else
-    LDV_WARN ("struct declaration struct declarator list wasn't printed");
 
   ldv_c_backend_print (indent_level, false, ";");
 
@@ -3708,7 +3711,6 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
   ldv_struct_or_union_ptr struct_or_union;
   ldv_struct_decl_list_ptr struct_decl_list;
   const char *struct_or_union_name;
-
 
   switch (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec))
     {

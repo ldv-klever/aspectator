@@ -1639,6 +1639,11 @@ typedef struct ldv_spec_qual_list *ldv_spec_qual_list_ptr;
 /*
 struct-declaration:
     specifier-qualifier-list struct-declarator-list ;
+
+GNU extensions:
+
+struct-declaration:
+    specifier-qualifier-list
 */
 struct ldv_struct_decl
 {

@@ -4811,6 +4811,11 @@ ldv_convert_str_literal (tree t)
 /*
 struct-declaration:
     specifier-qualifier-list struct-declarator-list ;
+
+GNU extensions:
+
+struct-declaration:
+    specifier-qualifier-list
 */
 static ldv_struct_decl_ptr
 ldv_convert_struct_decl (tree t)
@@ -4825,7 +4830,13 @@ ldv_convert_struct_decl (tree t)
     case FIELD_DECL:
       if ((field_type = TREE_TYPE (t)))
         LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
-      LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl) = ldv_convert_struct_declarator_list (t);
+
+      /* Do not create artificial structure declarators (the GNU extension
+         allows empty structure declarator lists). This fixes
+         http://forge.ispras.ru/issues/5280. */
+      if (DECL_NAME (t))
+        LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl) = ldv_convert_struct_declarator_list (t);
+
       break;
 
     default:
