@@ -3150,7 +3150,11 @@ ldv_convert_initializer_list (tree t)
                   LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_SECOND;
                 }
 
-              LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
+              /* Handle initialization of fields without names
+                 (http://forge.ispras.ru/issues/5280. */
+              if (TREE_CODE (index) != FIELD_DECL || DECL_NAME (index))
+                LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
+
               LDV_INITIALIZER_LIST_INITIALIZER (initializer_list_next) = ldv_convert_initializer (value);
             }
         }
