@@ -4078,7 +4078,23 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
       if (TREE_CODE (t) == ARRAY_REF)
         LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_SECOND;
       else if (TREE_CODE (t) == COMPONENT_REF)
-        LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FOURTH;
+        {
+          /* Handle accesses to fields without names
+             (http://forge.ispras.ru/issues/5280. */
+          if ((op1 = LDV_OP_FIRST (t)) && (op2 = LDV_OP_SECOND (t)))
+            {
+              if (!DECL_NAME (op2))
+                {
+                  LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FIRST;
+                  LDV_POSTFIX_EXPR_PRIMARY_EXPR (postfix_expr) = ldv_convert_primary_expr (op1, recursion_limit);
+                  break;
+                }
+            }
+          else
+            LDV_WARN ("can't find the first or the second operand of postfix expression");
+
+          LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FOURTH;
+        }
       else if (TREE_CODE (t) == POSTINCREMENT_EXPR)
         LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_SIXTH;
       else if (TREE_CODE (t) == POSTDECREMENT_EXPR)
