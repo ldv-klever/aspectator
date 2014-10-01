@@ -3150,7 +3150,11 @@ ldv_convert_initializer_list (tree t)
                   LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_SECOND;
                 }
 
-              LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
+              /* Handle initialization of fields without names
+                 (http://forge.ispras.ru/issues/5280. */
+              if (TREE_CODE (index) != FIELD_DECL || DECL_NAME (index))
+                LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
+
               LDV_INITIALIZER_LIST_INITIALIZER (initializer_list_next) = ldv_convert_initializer (value);
             }
         }
@@ -4078,7 +4082,23 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
       if (TREE_CODE (t) == ARRAY_REF)
         LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_SECOND;
       else if (TREE_CODE (t) == COMPONENT_REF)
-        LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FOURTH;
+        {
+          /* Handle accesses to fields without names
+             (http://forge.ispras.ru/issues/5280. */
+          if ((op1 = LDV_OP_FIRST (t)) && (op2 = LDV_OP_SECOND (t)))
+            {
+              if (!DECL_NAME (op2))
+                {
+                  LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FIRST;
+                  LDV_POSTFIX_EXPR_PRIMARY_EXPR (postfix_expr) = ldv_convert_primary_expr (op1, recursion_limit);
+                  break;
+                }
+            }
+          else
+            LDV_WARN ("can't find the first or the second operand of postfix expression");
+
+          LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FOURTH;
+        }
       else if (TREE_CODE (t) == POSTINCREMENT_EXPR)
         LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_SIXTH;
       else if (TREE_CODE (t) == POSTDECREMENT_EXPR)
@@ -4811,6 +4831,11 @@ ldv_convert_str_literal (tree t)
 /*
 struct-declaration:
     specifier-qualifier-list struct-declarator-list ;
+
+GNU extensions:
+
+struct-declaration:
+    specifier-qualifier-list
 */
 static ldv_struct_decl_ptr
 ldv_convert_struct_decl (tree t)
@@ -4825,7 +4850,15 @@ ldv_convert_struct_decl (tree t)
     case FIELD_DECL:
       if ((field_type = TREE_TYPE (t)))
         LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
-      LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl) = ldv_convert_struct_declarator_list (t);
+      else
+        LDV_WARN ("can't find field declaration type");
+
+      /* Do not create artificial structure declarators (the GNU extension
+         allows empty structure declarator lists). This fixes
+         http://forge.ispras.ru/issues/5280. */
+      if (DECL_NAME (t))
+        LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl) = ldv_convert_struct_declarator_list (t);
+
       break;
 
     default:

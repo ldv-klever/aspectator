@@ -3582,24 +3582,17 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
 /*
 struct-declaration:
     specifier-qualifier-list struct-declarator-list ;
+
+GNU extensions:
+
+struct-declaration:
+    specifier-qualifier-list
 */
 static void
 ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_decl)
 {
   ldv_spec_qual_list_ptr spec_qual_list;
   ldv_struct_declarator_list_ptr struct_declarator_list;
-  ldv_struct_declarator_ptr struct_declarator;
-  ldv_declarator_ptr declarator;
-  ldv_location_ptr location;
-
-  /* Print #line directive before field declaration. */
-  if ((struct_declarator_list = LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl))
-    && (struct_declarator = LDV_STRUCT_DECLARATOR_LIST_STRUCT_DECLARATOR (struct_declarator_list))
-    && (declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator))
-    && (location = ldv_declarator_location (declarator)))
-    ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
-  else
-    LDV_PRETTY_PRINT_WARN (indent_level, "line directive for field declaration was not printed");
 
   if ((spec_qual_list = LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl)))
     ldv_print_spec_qual_list (indent_level, spec_qual_list);
@@ -3608,8 +3601,6 @@ ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_dec
 
   if ((struct_declarator_list = LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl)))
     ldv_print_struct_declarator_list (indent_level, struct_declarator_list);
-  else
-    LDV_WARN ("struct declaration struct declarator list wasn't printed");
 
   ldv_c_backend_print (indent_level, false, ";");
 
@@ -3650,10 +3641,19 @@ static void
 ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_ptr struct_declarator)
 {
   ldv_declarator_ptr declarator;
+  ldv_location_ptr location;
   int const_expr;
 
   if ((declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator)))
-    ldv_print_declarator (indent_level, declarator);
+    {
+      /* Print #line directive before a given field declaration. */
+      if ((location = ldv_declarator_location (declarator)))
+        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+      else
+        LDV_PRETTY_PRINT_WARN (indent_level, "line directive for field declaration was not printed");
+
+      ldv_print_declarator (indent_level, declarator);
+    }
 
   if ((const_expr = LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator)))
     {
@@ -3708,7 +3708,6 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
   ldv_struct_or_union_ptr struct_or_union;
   ldv_struct_decl_list_ptr struct_decl_list;
   const char *struct_or_union_name;
-
 
   switch (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec))
     {
