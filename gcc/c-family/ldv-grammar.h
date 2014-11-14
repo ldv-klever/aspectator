@@ -1064,32 +1064,40 @@ typedef struct ldv_expr_statement *ldv_expr_statement_ptr;
 #define LDV_EXPR_STATEMENT_EXPR(expr_statement)     (expr_statement->expr)
 #define LDV_EXPR_STATEMENT_LOCATION(expr_statement) (expr_statement->location)
 
-/* ! NOT FINISHED !
+/*
 labeled-statement:
     identifier : statement
     case constant-expression : statement
     default : statement
+
+GNU extensions:
+
+labeled-statement:
+    case constant-expression ... constant-expression : statement
 */
 enum ldv_labeled_statement_kind
 {
   LDV_LABELED_STATEMENT_LABEL = 1,
   LDV_LABELED_STATEMENT_CASE,
-  LDV_LABELED_STATEMENT_DEFAULT
+  LDV_LABELED_STATEMENT_DEFAULT,
+  LDV_LABELED_STATEMENT_CASE_RANGE
 };
 struct ldv_labeled_statement
 {
   enum ldv_labeled_statement_kind kind;
   const char *id;
   struct ldv_statement *statement;
-  int const_expr;
+  int const_expr1;
+  int const_expr2;
   ldv_location_ptr location;
 };
 typedef struct ldv_labeled_statement *ldv_labeled_statement_ptr;
-#define LDV_LABELED_STATEMENT_KIND(labeled_statement)       (labeled_statement->kind)
-#define LDV_LABELED_STATEMENT_ID(labeled_statement)         (labeled_statement->id)
-#define LDV_LABELED_STATEMENT_STATEMENT(labeled_statement)  (labeled_statement->statement)
-#define LDV_LABELED_STATEMENT_CONST_EXPR(labeled_statement) (labeled_statement->const_expr)
-#define LDV_LABELED_STATEMENT_LOCATION(labeled_statement)   (labeled_statement->location)
+#define LDV_LABELED_STATEMENT_KIND(labeled_statement)        (labeled_statement->kind)
+#define LDV_LABELED_STATEMENT_ID(labeled_statement)          (labeled_statement->id)
+#define LDV_LABELED_STATEMENT_STATEMENT(labeled_statement)   (labeled_statement->statement)
+#define LDV_LABELED_STATEMENT_CONST_EXPR1(labeled_statement) (labeled_statement->const_expr1)
+#define LDV_LABELED_STATEMENT_CONST_EXPR2(labeled_statement) (labeled_statement->const_expr2)
+#define LDV_LABELED_STATEMENT_LOCATION(labeled_statement)    (labeled_statement->location)
 
 /* Gcc replaces 'continue' and 'break' statements with 'goto'.
 jump-statement:

@@ -2392,6 +2392,11 @@ labeled-statement:
     identifier : statement
     case constant-expression : statement
     default : statement
+
+GNU extensions:
+
+labeled-statement:
+    case constant-expression ... constant-expression : statement
 */
 static void
 ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_ptr labeled_statement)
@@ -2423,6 +2428,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
       break;
 
     case LDV_LABELED_STATEMENT_CASE:
+    case LDV_LABELED_STATEMENT_CASE_RANGE:
       if ((location = LDV_LABELED_STATEMENT_LOCATION (labeled_statement)))
         ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
@@ -2430,8 +2436,15 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
 
       ldv_c_backend_print (indent_level, true, "case");
 
-      const_expr = LDV_LABELED_STATEMENT_CONST_EXPR (labeled_statement);
+      const_expr = LDV_LABELED_STATEMENT_CONST_EXPR1 (labeled_statement);
       ldv_c_backend_print (indent_level, true, "%d", const_expr);
+
+      if (LDV_LABELED_STATEMENT_KIND (labeled_statement) == LDV_LABELED_STATEMENT_CASE_RANGE)
+        {
+          ldv_c_backend_print (indent_level, true, "...");
+          const_expr = LDV_LABELED_STATEMENT_CONST_EXPR2 (labeled_statement);
+          ldv_c_backend_print (indent_level, true, "%d", const_expr);
+        }
 
       ldv_c_backend_print (indent_level, false, ":");
 

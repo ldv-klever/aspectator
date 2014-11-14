@@ -3419,6 +3419,11 @@ labeled-statement:
     identifier : statement
     case constant-expression : statement
     default : statement
+
+GNU extensions:
+
+labeled-statement:
+    case constant-expression ... constant-expression : statement
 */
 static ldv_labeled_statement_ptr
 ldv_convert_labeled_statement (tree t)
@@ -3444,19 +3449,25 @@ ldv_convert_labeled_statement (tree t)
       break;
 
     case CASE_LABEL_EXPR:
-      if (!CASE_LOW (t))
+      /* Handle various cases like suggested in comments to function
+         c_add_case_label() in c-common.c. */
+      if (!CASE_LOW (t) && !CASE_HIGH (t))
         LDV_LABELED_STATEMENT_KIND (labeled_statement) = LDV_LABELED_STATEMENT_DEFAULT;
-      else if (!CASE_HIGH (t))
+      else
         {
           LDV_LABELED_STATEMENT_KIND (labeled_statement) = LDV_LABELED_STATEMENT_CASE;
 
           if ((const_expr = CASE_LOW (t)))
-            LDV_LABELED_STATEMENT_CONST_EXPR (labeled_statement) = (int) TREE_INT_CST_LOW (const_expr);
+            LDV_LABELED_STATEMENT_CONST_EXPR1 (labeled_statement) = (int) TREE_INT_CST_LOW (const_expr);
           else
             LDV_WARN ("can't find case constant");
+
+          if ((const_expr = CASE_HIGH (t)))
+            {
+              LDV_LABELED_STATEMENT_KIND (labeled_statement) = LDV_LABELED_STATEMENT_CASE_RANGE;
+              LDV_LABELED_STATEMENT_CONST_EXPR2 (labeled_statement) = (int) TREE_INT_CST_LOW (const_expr);
+            }
         }
-      else
-        LDV_WARN ("neither case nor default is catched");
 
       LDV_LABELED_STATEMENT_LOCATION (labeled_statement) = ldv_convert_location (t);
 
