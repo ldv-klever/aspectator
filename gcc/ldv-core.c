@@ -478,6 +478,29 @@ ldv_get_unique_numb(void)
   return ldv_unique_numb;
 }
 
+unsigned int
+ldv_get_current_line_number(const char *fname)
+{
+  FILE *fstream = NULL;
+  int c;
+  unsigned int line_number = 1;
+
+  if ((fstream = fopen (fname, "r")) == NULL)
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", fname);
+    }
+
+  while ((c = ldv_getc (fstream)) != EOF)
+    {
+      if (c == '\n')
+        line_number++;
+    }
+
+  fclose (fstream);
+
+  return line_number;
+}
+
 void
 ldv_putc_body (unsigned char c, ldv_ab_ptr body)
 {

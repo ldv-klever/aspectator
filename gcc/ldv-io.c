@@ -180,6 +180,11 @@ ldv_copy_file (const char *fname, FILE *stream)
 
   ldv_print_info (LDV_INFO_IO, "file \"%s\" that content will be copied was successfully opened for write", fname);
 
+  /* Refer to the original file (fix #5431). */
+  ldv_puts ("#line 1 \"", stream);
+  ldv_puts (fname, stream);
+  ldv_puts ("\"\n", stream);
+
   /* Copy a content of a file to a stream. */
   while ((c = ldv_getc (fstream)) != EOF)
     ldv_putc (c, stream);
@@ -290,6 +295,8 @@ ldv_make_includes (void)
   ldv_i_file_ptr file = NULL;
   char *include = NULL;
   bool isaround = false;
+  unsigned int line_cur = 0;
+  char *line_cur_str = NULL;
 
   ldv_open_file_prepared_stream ();
 
@@ -368,8 +375,24 @@ ldv_make_includes (void)
             }
         }
 
+      /* Remember current line to print line directive below. */
+      if (fflush (LDV_FILE_PREPARED_STREAM))
+      {
+        LDV_FATAL_ERROR ("can%'t flush to file \"%s\": %m", ldv_output_fname);
+      }
+      line_cur = ldv_get_current_line_number(ldv_output_fname);
+
       /* Then copy a file itself. */
       ldv_copy_file (main_input_filename, LDV_FILE_PREPARED_STREAM);
+
+      /* Refer to the prepared file (fix #5431). */
+      line_cur_str = ldv_itoa (line_cur);
+      ldv_puts ("\n#line ", LDV_FILE_PREPARED_STREAM);
+      ldv_puts (line_cur_str, LDV_FILE_PREPARED_STREAM);
+      ldv_puts (" \"", LDV_FILE_PREPARED_STREAM);
+      ldv_puts (ldv_output_fname, LDV_FILE_PREPARED_STREAM);
+      ldv_puts ("\"\n", LDV_FILE_PREPARED_STREAM);
+      free (line_cur_str);
 
       /* Then copy all after includes. */
       for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

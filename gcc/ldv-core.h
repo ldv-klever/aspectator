@@ -70,6 +70,8 @@ extern char *ldv_get_text (ldv_text_ptr);
 
 extern unsigned int ldv_get_unique_numb(void);
 
+extern unsigned int ldv_get_current_line_number(const char *);
+
 extern void ldv_putc_body (unsigned char, ldv_ab_ptr);
 extern void ldv_putc_file (unsigned char, ldv_file_ptr);
 extern void ldv_putc_text (unsigned char, ldv_text_ptr);
