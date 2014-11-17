@@ -1875,8 +1875,11 @@ _cpp_lex_token (cpp_reader *pfile)
                               ldv_cpp_weave();
                             }
 
-                          ldv_cpp_undef (pfile);
-                          ldv_cpp_define (pfile);
+                          if (a_kind != LDV_A_INFO)
+                            {
+                              ldv_cpp_undef (pfile);
+                              ldv_cpp_define (pfile);
+                            }
 
                           /* Matching is finished. */
                           ldv_i_match = NULL;
