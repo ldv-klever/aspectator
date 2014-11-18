@@ -935,7 +935,11 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
         }
     }
 
-  ldv_free_info_func (func);
+  /* We need to remember current function context till we will finish processing
+     of this function body. */
+  if (pp_kind != LDV_PP_EXECUTION)
+    ldv_free_info_func (func);
+  
   ldv_free_info_match (match);
 
   /* Nothing was matched. */
@@ -967,6 +971,9 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
   /* Visualize a body after matching and weaving. */
   ldv_visualize_body (fndecl);
 
+  /* Matching of function body is finished, so we can forget current function
+     context. */
+  ldv_free_info_func (func_context);
   func_context = NULL;
 }
 
