@@ -259,7 +259,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   match->pp_kind = pp_kind;
   match->i_macro = macro;
 
-  map = linemap_lookup (pfile->line_table, pfile->directive_line);
+  map = linemap_lookup (pfile->line_table, pfile->cur_token[-1].src_loc);
 
   /* Understand whether a macro function or a macro definition is given. */
   if (node->value.macro->fun_like)
