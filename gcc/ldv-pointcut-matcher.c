@@ -838,12 +838,11 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   const char *func_decl_printed;
   htab_t called_func_names = NULL;
 
-  /* There is no advice definitions at all. So nothing will be matched. */
-  if (ldv_adef_list == NULL)
-    {
-      ldv_i_match = NULL;
-      return func;
-    }
+  /* TODO: Even if there is no advice definitions at all we should proceed since
+     callers of this function expect that information on a given function will
+     be returned. Indeed optimization like an empty list of advice definitions
+     means no need to perform converting and matching should be done in another
+     place rather then in ldv_match*() functions. */
 
   match = ldv_create_info_match ();
 
