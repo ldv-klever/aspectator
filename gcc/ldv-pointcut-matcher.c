@@ -877,6 +877,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
 
   func->file_path = DECL_SOURCE_FILE (t);
+  func->decl_line = DECL_SOURCE_LINE (t);
 
   if (pp_kind == LDV_PP_CALL)
     func->func_context = func_context;

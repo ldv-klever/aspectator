@@ -107,6 +107,7 @@ static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_context_name (ldv_i_func_ptr);
 static const char *ldv_print_func_context_path (ldv_i_func_ptr);
+static const char *ldv_print_func_decl_line (ldv_i_func_ptr);
 static const char *ldv_print_func_path (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
 static void ldv_print_macro_name (ldv_id_ptr);
@@ -428,6 +429,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     {
       if (ldv_func_signature)
         text = ldv_copy_str (ldv_print_func_decl (ldv_func_signature));
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "decl_line"))
+    {
+      if (ldv_func_signature)
+        text = ldv_copy_str (ldv_print_func_decl_line (ldv_func_signature));
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -1277,6 +1287,18 @@ ldv_print_func_decl (ldv_i_func_ptr func)
   ldv_padding_cur = LDV_PADDING_NONE;
 
   ldv_print_decl (decl);
+
+  return ldv_get_text (ldv_text_printed);
+}
+
+const char *
+ldv_print_func_decl_line (ldv_i_func_ptr decl)
+{
+  ldv_text_printed = ldv_create_text ();
+
+  ldv_padding_cur = LDV_PADDING_NONE;
+  
+  ldv_print_int (decl->decl_line);
 
   return ldv_get_text (ldv_text_printed);
 }
