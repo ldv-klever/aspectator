@@ -79,6 +79,7 @@ typedef ldv_var_array *ldv_var_array_ptr;
 
 ldv_pps_declspecs_ptr ldv_entity_declspecs = NULL;
 ldv_list_ptr ldv_func_arg_info_list = NULL;
+tree ldv_call_expr = NULL_TREE;
 tree ldv_func_called_matched = NULL_TREE;
 tree ldv_func_decl_matched = NULL_TREE;
 ldv_i_match_ptr ldv_i_match = NULL;
@@ -665,6 +666,7 @@ ldv_match_expr (tree t)
             && TREE_CODE (func_called) == FUNCTION_DECL)
             {
               ldv_func_arg_info_list = NULL;
+              ldv_call_expr = t;
 
               /* Store information on called function arguments values by walking
                  through tree lists. */
@@ -810,6 +812,7 @@ ldv_match_expr (tree t)
 
               ldv_list_delete_all (ldv_func_arg_info_list);
               ldv_func_arg_info_list = NULL;
+              ldv_call_expr = NULL_TREE;
             }
           /* A function can be called not only by means of its name but also
              by means of a function pointer that may be a structure field. But
@@ -880,7 +883,10 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   func->decl_line = DECL_SOURCE_LINE (t);
 
   if (pp_kind == LDV_PP_CALL)
-    func->func_context = func_context;
+    {
+      func->func_context = func_context;
+      func->call_line = DECL_SOURCE_LINE (ldv_call_expr);
+    }
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
