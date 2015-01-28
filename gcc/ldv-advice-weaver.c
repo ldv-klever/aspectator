@@ -105,6 +105,7 @@ static void ldv_print_declspecs (ldv_pps_declspecs_ptr);
 static void ldv_print_direct_declarator (ldv_list_ptr);
 static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
+static const char *ldv_print_func_context_decl_line (ldv_i_func_ptr);
 static const char *ldv_print_func_context_name (ldv_i_func_ptr);
 static const char *ldv_print_func_context_path (ldv_i_func_ptr);
 static const char *ldv_print_func_call_line (ldv_i_func_ptr);
@@ -384,6 +385,22 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
         {
           if (ldv_func_signature->func_context)
             text = ldv_copy_str (ldv_print_func_context (ldv_func_signature));
+          else
+            {
+              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
+            }
+        }
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "func_context_decl_line"))
+    {
+      if (ldv_func_signature)
+        {
+          if (ldv_func_signature->func_context)
+            text = ldv_copy_str (ldv_print_func_context_decl_line (ldv_func_signature));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -1271,6 +1288,12 @@ const char *
 ldv_print_func_context (ldv_i_func_ptr decl)
 {
   return ldv_print_func_decl (decl->func_context);
+}
+
+const char *
+ldv_print_func_context_decl_line (ldv_i_func_ptr decl)
+{
+  return ldv_print_func_decl_line (decl->func_context);
 }
 
 const char *
