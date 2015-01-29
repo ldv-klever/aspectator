@@ -658,115 +658,115 @@ ldv_match_expr (tree t)
       switch (code)
         {
         case CALL_EXPR:
+          ldv_func_arg_info_list = NULL;
+
+          /* Store information on called function arguments values by walking
+             through tree lists. */
+          arg_numb = 0;
+          FOR_EACH_CALL_EXPR_ARG (arg, iter, t)
+            {
+              arg_numb++;
+              func_arg_info_new = ldv_create_func_arg_info ();
+
+              func_arg_info_new->arg_numb = arg_numb;
+
+              ldv_list_push_back (&ldv_func_arg_info_list, func_arg_info_new);
+
+              /* Argument may be the first operand of the NOP expression. */
+              if (TREE_CODE (arg) == NOP_EXPR)
+                {
+                  arg = TREE_OPERAND (arg, 0);
+                }
+
+              /* Argument name can be calculated just in case when some
+               * declaration name is passed as a function parameter
+               * directly. */
+              if (DECL_P (arg) && DECL_NAME (arg)
+                && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
+                func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
+
+              func_arg_info_new->sign = ldv_get_arg_sign (arg, ldv_get_arg_sign_algo ());
+
+              switch (TREE_CODE (arg))
+                {
+                case ADDR_EXPR:
+                  op1 = TREE_OPERAND (arg, 0);
+
+                  /* Function, variable and field declarations that have an array
+                     type are interest for us at the moment. */
+                  switch (TREE_CODE (op1))
+                    {
+                    case VAR_DECL:
+                      /* Just those variables for which we can obtain their
+                         array type sizes are of interest. */
+                      if ((array_size_tree = LDV_ARRAY_SIZE (op1)))
+                        {
+                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                          /* Store an one dimensional arrary size of a variable used as
+                             a value of a function argument. */
+                          func_arg_info_new->one_dim_array_size = TREE_INT_CST_LOW (array_size_tree) + 1;
+                        }
+
+                      break;
+
+                    case FUNCTION_DECL:
+                      /* Just named functions are of interest. */
+                      if (DECL_NAME (op1))
+                        {
+                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_FUNC_NAME;
+                          /* Store a function name used as a value of a
+                             function argument. */
+                          func_arg_info_new->func_name = IDENTIFIER_POINTER (DECL_NAME (op1));
+                        }
+
+                       break;
+
+                    default:
+                      if ((array_size = ldv_array_field_size (arg)))
+                        {
+                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                          /* Store an one dimensional arrary size of a field used as a
+                             value of a function argument. */
+                          func_arg_info_new->one_dim_array_size = array_size;
+                        }
+                    }
+
+                  break;
+
+                case VAR_DECL:
+                  /* See on whether for this variable size was stored. */
+                  for (var_array_list = ldv_var_array_list
+                    ; var_array_list
+                    ; var_array_list = ldv_list_get_next (var_array_list))
+                    {
+                      var_array = (ldv_var_array_ptr) ldv_list_get_data (var_array_list);
+
+                      /* Compare unique ids. */
+                      if (var_array->uid == DECL_UID (arg)
+                        && var_array->issize_specified)
+                        {
+                          func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
+
+                          /* Store an one dimensional arrary size refferenced by a
+                             variable used as a value of a function argument. */
+                          func_arg_info_new->one_dim_array_size = var_array->array_size;
+                        }
+                    }
+
+                  break;
+
+                default: ;
+                }
+            }
+
           /* Try to get a called function. */
           if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == ADDR_EXPR
             && (func_called = TREE_OPERAND (func_called_addr, 0))
             && TREE_CODE (func_called) == FUNCTION_DECL)
             {
-              ldv_func_arg_info_list = NULL;
-
-              /* Store information on called function arguments values by walking
-                 through tree lists. */
-              arg_numb = 0;
-              FOR_EACH_CALL_EXPR_ARG (arg, iter, t)
-                {
-                  arg_numb++;
-                  func_arg_info_new = ldv_create_func_arg_info ();
-
-                  func_arg_info_new->arg_numb = arg_numb;
-
-                  ldv_list_push_back (&ldv_func_arg_info_list, func_arg_info_new);
-
-                  /* Argument may be the first operand of the NOP expression. */
-                  if (TREE_CODE (arg) == NOP_EXPR)
-                    {
-                      arg = TREE_OPERAND (arg, 0);
-                    }
-
-                  /* Argument name can be calculated just in case when some
-                   * declaration name is passed as a function parameter
-                   * directly. */
-                  if (DECL_P (arg) && DECL_NAME (arg)
-                    && (TREE_CODE (DECL_NAME (arg)) == IDENTIFIER_NODE))
-                    func_arg_info_new->arg_name = IDENTIFIER_POINTER (DECL_NAME (arg));
-
-                  func_arg_info_new->sign = ldv_get_arg_sign (arg, ldv_get_arg_sign_algo ());
-
-                  switch (TREE_CODE (arg))
-                    {
-                    case ADDR_EXPR:
-                      op1 = TREE_OPERAND (arg, 0);
-
-                      /* Function, variable and field declarations that have an array
-                         type are interest for us at the moment. */
-                      switch (TREE_CODE (op1))
-                        {
-                        case VAR_DECL:
-                          /* Just those variables for which we can obtain their
-                             array type sizes are of interest. */
-                          if ((array_size_tree = LDV_ARRAY_SIZE (op1)))
-                            {
-                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
-
-                              /* Store an one dimensional arrary size of a variable used as
-                                 a value of a function argument. */
-                              func_arg_info_new->one_dim_array_size = TREE_INT_CST_LOW (array_size_tree) + 1;
-                            }
-
-                          break;
-
-                        case FUNCTION_DECL:
-                          /* Just named functions are of interest. */
-                          if (DECL_NAME (op1))
-                            {
-                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_FUNC_NAME;
-                              /* Store a function name used as a value of a
-                                 function argument. */
-                              func_arg_info_new->func_name = IDENTIFIER_POINTER (DECL_NAME (op1));
-                            }
-
-                           break;
-
-                        default:
-                          if ((array_size = ldv_array_field_size (arg)))
-                            {
-                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
-
-                              /* Store an one dimensional arrary size of a field used as a
-                                 value of a function argument. */
-                              func_arg_info_new->one_dim_array_size = array_size;
-                            }
-                        }
-
-                      break;
-
-                    case VAR_DECL:
-                      /* See on whether for this variable size was stored. */
-                      for (var_array_list = ldv_var_array_list
-                        ; var_array_list
-                        ; var_array_list = ldv_list_get_next (var_array_list))
-                        {
-                          var_array = (ldv_var_array_ptr) ldv_list_get_data (var_array_list);
-
-                          /* Compare unique ids. */
-                          if (var_array->uid == DECL_UID (arg)
-                            && var_array->issize_specified)
-                            {
-                              func_arg_info_new->func_arg_info_kind = LDV_FUNC_ARG_INFO_ONE_DIM_ARRAY_SIZE;
-
-                              /* Store an one dimensional arrary size refferenced by a
-                                 variable used as a value of a function argument. */
-                              func_arg_info_new->one_dim_array_size = var_array->array_size;
-                            }
-                        }
-
-                      break;
-
-                    default: ;
-                    }
-                }
-
               /* Try to match a function declaration for a call join point. */
               ldv_match_func (func_called, LDV_PP_CALL);
 
@@ -798,22 +798,35 @@ ldv_match_expr (tree t)
                       ldv_func_called_matched = NULL;
                     }
                 }
-
-              /* Walk through function arguments to free memory. */
-              for (func_arg_info_list = ldv_func_arg_info_list
-                ; func_arg_info_list
-                ; func_arg_info_list = ldv_list_get_next (func_arg_info_list))
-                {
-                  func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
-                  ldv_free_func_arg_info (func_arg_info);
-                }
-
-              ldv_list_delete_all (ldv_func_arg_info_list);
-              ldv_func_arg_info_list = NULL;
             }
-          /* A function can be called not only by means of its name but also
-             by means of a function pointer that may be a structure field. But
-             at the moment we don't treat these cases. */
+          /* Process call by function pointer. */
+          else if ((func_called_addr = CALL_EXPR_FN (t))
+            && TREE_CODE (func_called_addr) == VAR_DECL)
+            {
+              ldv_match_func (func_called_addr, LDV_PP_CALLP);
+
+              /* Weave a matched advice. */
+              ldv_weave_advice (NULL, NULL);
+
+              /* Finish matching. */
+              ldv_i_match = NULL;
+            }
+          else
+            {
+              LDV_CONVERT_WARN (t);
+            }
+
+          /* Walk through function arguments to free memory. */
+          for (func_arg_info_list = ldv_func_arg_info_list
+            ; func_arg_info_list
+            ; func_arg_info_list = ldv_list_get_next (func_arg_info_list))
+            {
+              func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
+              ldv_free_func_arg_info (func_arg_info);
+            }
+
+          ldv_list_delete_all (ldv_func_arg_info_list);
+          ldv_func_arg_info_list = NULL;
 
           break;
 
@@ -837,6 +850,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   ldv_i_func_ptr func = NULL;
   const char *func_decl_printed;
   htab_t called_func_names = NULL;
+  bool isfunc_ptr = false;
 
   /* TODO: Even if there is no advice definitions at all we should proceed since
      callers of this function expect that information on a given function will
@@ -852,33 +866,53 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   match->pp_kind = pp_kind;
   match->i_func = func;
 
+  isfunc_ptr = (TREE_CODE (t) == VAR_DECL);
+
   /* Obtain information on a function signature. */
   func->name = ldv_create_id ();
-  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), func->name);
 
-  /* Remember whether a function is inline/static to add this information to
-     a function return type. */
-  if (DECL_DECLARED_INLINE_P (t) || !TREE_PUBLIC (t) || !TREE_STATIC (t))
+  /* If function is called by pointer we won't treat its name since we don't
+     know it (we know just a name of variable or field that holds corresponding
+     function pointer). */
+  if (!isfunc_ptr)
     {
-      ldv_entity_declspecs = ldv_create_declspecs ();
-
-      if (DECL_DECLARED_INLINE_P (t))
-        ldv_entity_declspecs->isinline = true;
-
-      if (!TREE_PUBLIC (t))
-        ldv_entity_declspecs->isstatic = true;
-      /* Ignore an extern flag since it isn't stored in gcc internal
-         representation in the same way as it's declared in source code.
-      if (!TREE_STATIC (t))
-        ldv_entity_declspecs->isextern = true;
-      */
+      ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), func->name);
     }
 
-  func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
+  /* Remember whether a function is inline/static to add this information to
+     a function return type. This information has sense just when function isn't
+     called by pointer. */
+  if (!isfunc_ptr)
+    {
+      if (DECL_DECLARED_INLINE_P (t) || !TREE_PUBLIC (t) || !TREE_STATIC (t))
+        {
+          ldv_entity_declspecs = ldv_create_declspecs ();
+
+          if (DECL_DECLARED_INLINE_P (t))
+            ldv_entity_declspecs->isinline = true;
+
+          if (!TREE_PUBLIC (t))
+            ldv_entity_declspecs->isstatic = true;
+          /* Ignore an extern flag since it isn't stored in gcc internal
+             representation in the same way as it's declared in source code.
+          if (!TREE_STATIC (t))
+            ldv_entity_declspecs->isextern = true;
+          */
+        }
+    }
+
+  if (isfunc_ptr)
+    {
+      func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (TREE_TYPE (t)), NULL_TREE);
+    }
+  else
+    {
+      func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
+    }
 
   func->file_path = DECL_SOURCE_FILE (t);
 
-  if (pp_kind == LDV_PP_CALL)
+  if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
     func->func_context = func_context;
 
   /* Walk through an advice definitions list to find matches. */
@@ -938,7 +972,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
      of this function body. */
   if (pp_kind != LDV_PP_EXECUTION)
     ldv_free_info_func (func);
-  
+
   ldv_free_info_match (match);
 
   /* Nothing was matched. */
