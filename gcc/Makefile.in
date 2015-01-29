@@ -2030,7 +2030,8 @@ c-decl.o : c-decl.c c-lang.h $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) \
 	$(INPUT_H) langhooks.h tree-mudflap.h pointer-set.h tree-iterator.h \
 	$(PLUGIN_H) c-family/c-ada-spec.h c-family/c-objc.h \
 	$(srcdir)/../libcpp/include/ldv-cpp-pointcut-matcher.h \
-	ldv-advice-weaver.h ldv-io.h ldv-opts.h ldv-pointcut-matcher.h
+	ldv-advice-weaver.h ldv-io.h ldv-opts.h ldv-pointcut-matcher.h \
+	$(srcdir)/../libcpp/include/ldv-aspect-types.h
 
 c-errors.o: c-errors.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(TREE_H) \
 	$(C_TREE_H) $(FLAGS_H) $(DIAGNOSTIC_H) $(TM_P_H)
