@@ -230,7 +230,7 @@ ldv_match_expr (tree t)
 {
   enum tree_code code;
   enum tree_code_class code_class;
-  tree block_decl, statement, func_called, func_called_addr;
+  tree block_decl = NULL_TREE, statement = NULL_TREE, func_called = NULL_TREE, func_called_addr = NULL_TREE;
   tree_stmt_iterator si;
   struct function *cfunc = NULL;
   expanded_location func_close_brace_location;
