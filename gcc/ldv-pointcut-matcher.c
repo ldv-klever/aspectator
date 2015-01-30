@@ -799,11 +799,23 @@ ldv_match_expr (tree t)
                     }
                 }
             }
-          /* Process call by function pointer. */
+          /* Process call by function pointer (variable). */
           else if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == VAR_DECL)
             {
               ldv_match_func (func_called_addr, LDV_PP_CALLP);
+
+              /* Weave a matched advice. */
+              ldv_weave_advice (NULL, NULL);
+
+              /* Finish matching. */
+              ldv_i_match = NULL;
+            }
+          /* Process call by function pointer (field). */
+          else if ((func_called_addr = CALL_EXPR_FN (t))
+            && TREE_CODE (func_called_addr) == COMPONENT_REF)
+            {
+              ldv_match_func (TREE_OPERAND (func_called_addr, 1), LDV_PP_CALLP);
 
               /* Weave a matched advice. */
               ldv_weave_advice (NULL, NULL);
@@ -866,7 +878,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   match->pp_kind = pp_kind;
   match->i_func = func;
 
-  isfunc_ptr = (TREE_CODE (t) == VAR_DECL);
+  isfunc_ptr = (TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == FIELD_DECL);
 
   /* Obtain information on a function signature. */
   func->name = ldv_create_id ();
