@@ -45,6 +45,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-converter.h"
 #include "ldv-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
+#include "c-family/ldv-grammar.h"
 #include "ldv-io.h"
 #include "ldv-opts.h"
 #include "ldv-pointcut-matcher.h"
@@ -860,6 +861,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_func_ptr func = NULL;
+  ldv_identifier_ptr func_ptr_id = NULL;
   const char *func_decl_printed;
   htab_t called_func_names = NULL;
   bool isfunc_ptr = false;
@@ -882,6 +884,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
 
   /* Obtain information on a function signature. */
   func->name = ldv_create_id ();
+  func->ptr_name = ldv_create_id ();
 
   /* If function is called by pointer we won't treat its name since we don't
      know it (we know just a name of variable or field that holds corresponding
@@ -889,6 +892,21 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   if (!isfunc_ptr)
     {
       ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), func->name);
+    }
+  else
+    {
+      if (TREE_CODE (t) == FIELD_DECL && TREE_CODE (DECL_CONTEXT (t)) == RECORD_TYPE && TYPE_NAME (DECL_CONTEXT (t)))
+        {
+          if (TREE_CODE (TYPE_NAME (DECL_CONTEXT (t))) == IDENTIFIER_NODE)
+            ldv_puts_id ((const char *) (IDENTIFIER_POINTER (TYPE_NAME (DECL_CONTEXT (t)))), func->ptr_name);
+          else
+            ldv_puts_id ((const char *) "", func->ptr_name);
+
+          ldv_puts_id ((const char *) "->", func->ptr_name);
+        }
+
+      func_ptr_id = ldv_convert_identifier (t);
+      ldv_puts_id ((const char *) (func_ptr_id->str), func->ptr_name);
     }
 
   /* Remember whether a function is inline/static to add this information to
