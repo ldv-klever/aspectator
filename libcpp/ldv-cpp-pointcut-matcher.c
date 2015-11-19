@@ -110,6 +110,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
           break;
 
         case LDV_PP_CALL:
+        case LDV_PP_CALLP:
         case LDV_PP_EXECUTION:
         case LDV_PP_DECLARE_FUNC:
           if (i_kind == LDV_I_FUNC && i_match->pp_kind == pp_kind && ldv_match_func_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
@@ -439,8 +440,9 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   /* Set an aspect function declaration. */
   i_match->i_func_aspect = func_aspect;
 
-  /* Compare functions names. */
-  if (ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
+  /* Compare functions names. If function is called by pointer, then source
+     function name is empty string and aspect function name is ignored. */
+  if (strcmp ("", ldv_cpp_get_id_name (func_source->name)) && ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
     {
       ldv_free_info_func (func_aspect);
       return false;
