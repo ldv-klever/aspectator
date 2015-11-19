@@ -440,6 +440,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
     case REAL_TYPE:
     case RECORD_TYPE:
     case VOID_TYPE:
+    case COMPLEX_TYPE:
       type->it_kind = LDV_IT_PRIMITIVE;
 
       type->primitive_type = ldv_create_declspecs ();
@@ -609,6 +610,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
       break;
 
     case POINTER_TYPE:
+    case REFERENCE_TYPE:
       type->it_kind = LDV_IT_PTR;
       type->ptr_type = ldv_convert_type_tree_to_internal (TREE_TYPE (type_tree), NULL);
 
