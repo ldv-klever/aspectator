@@ -1340,7 +1340,7 @@ ldv_print_func_call_line (ldv_i_func_ptr decl)
   ldv_text_printed = ldv_create_text ();
 
   ldv_padding_cur = LDV_PADDING_NONE;
-  
+
   ldv_print_int (decl->call_line);
 
   return ldv_get_text (ldv_text_printed);
@@ -1352,7 +1352,7 @@ ldv_print_func_decl_line (ldv_i_func_ptr decl)
   ldv_text_printed = ldv_create_text ();
 
   ldv_padding_cur = LDV_PADDING_NONE;
-  
+
   ldv_print_int (decl->decl_line);
 
   return ldv_get_text (ldv_text_printed);
@@ -1901,6 +1901,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
        ldv_func_signature = ldv_i_match->i_func;
        ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
        ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
+       ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
        ldv_func_signature = NULL;
        ldv_func_name = NULL;
