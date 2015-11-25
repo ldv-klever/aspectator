@@ -945,7 +945,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
     {
       func->func_context = func_context;
-      func->call_line = DECL_SOURCE_LINE (ldv_call_expr);
+      func->call_line = EXPR_LINENO (ldv_call_expr);
     }
 
   /* Walk through an advice definitions list to find matches. */
