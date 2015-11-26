@@ -528,7 +528,10 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
               return false;
             }
 
-          ldv_list_set_data (i_macro_param_second_list, i_macro_param_first);
+          ldv_free_id (i_macro_param_second);
+          i_macro_param_second = ldv_create_id();
+          ldv_puts_id(ldv_cpp_get_id_name (i_macro_param_first), i_macro_param_second);
+          ldv_list_set_data (i_macro_param_second_list, i_macro_param_second);
         }
     }
 
