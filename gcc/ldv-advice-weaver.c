@@ -1903,6 +1903,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
        ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
        ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+       ldv_list_delete_all (ldv_func_arg_type_decl_list);
+       ldv_func_arg_type_decl_list = NULL;
        ldv_func_signature = NULL;
        ldv_func_name = NULL;
        ldv_func_ptr_name = NULL;
