@@ -97,6 +97,7 @@ static const char *ldv_get_arg_type_name (unsigned int);
 static int ldv_get_arg_size (unsigned int);
 static const char *ldv_get_arg_value (unsigned int);
 static const char *ldv_get_param_name (unsigned int);
+static char *ldv_print_arg_type_str (unsigned int);
 static void ldv_print_c (unsigned int);
 static void ldv_print_composite_pointcut (ldv_cp_ptr);
 static void ldv_print_body (ldv_ab_ptr, ldv_ak);
@@ -117,6 +118,7 @@ static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
 static const char *ldv_print_macro_signature (ldv_pps_macro_ptr);
 static ldv_list_ptr ldv_print_ptr (ldv_list_ptr);
+static char *ldv_print_ret_type_str (void);
 static void ldv_print_qual (bool, bool, bool);
 static void ldv_print_separator (unsigned int);
 static bool ldv_print_space (void);
@@ -329,6 +331,8 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     text = ldv_copy_str (ldv_get_param_name (pattern->arg_numb));
   else if (!strcmp (pattern->name, "arg_type"))
     text = ldv_copy_str (ldv_get_arg_type_name (pattern->arg_numb));
+  else if (!strcmp (pattern->name, "arg_type_str"))
+    text = ldv_print_arg_type_str (pattern->arg_numb);
   else if (!strcmp (pattern->name, "arg_name"))
     text = ldv_copy_str (ldv_get_arg_name (pattern->arg_numb));
   else if (!strcmp (pattern->name, "arg_size"))
@@ -498,6 +502,8 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     text = ldv_copy_str (LDV_FUNC_RES);
   else if (!strcmp (pattern->name, "ret_type"))
     text = ldv_copy_str (LDV_FUNC_RET_TYPE);
+  else if (!strcmp (pattern->name, "ret_type_str"))
+    text = ldv_print_ret_type_str ();
   else if (!strcmp (pattern->name, "var_name"))
     {
       if (ldv_var_name)
@@ -716,6 +722,62 @@ ldv_isweaved (const char *name, bool is_check)
 
   /* An entity with such name wasn't weaved yet. */
   return false;
+}
+
+/* Adapted from ldv_print_types_typedefs(). */
+char *
+ldv_print_arg_type_str (unsigned int arg_numb)
+{
+  ldv_pps_decl_ptr func_arg_type_decl = NULL;
+  ldv_list_ptr func_arg_type_decl_list = NULL;
+  unsigned int i;
+  char *arg_type_str;
+
+  if (ldv_text_printed)
+    {
+      ldv_free_text (ldv_text_printed);
+      ldv_text_printed = ldv_create_text ();
+      ldv_padding_cur = LDV_PADDING_NONE;
+    }
+
+  ldv_isstorage_class_and_function_specifiers_needed = false;
+
+  if (!ldv_func_arg_type_decl_list)
+    {
+      LDV_FATAL_ERROR ("argument type declarations list wasn't found");
+    }
+
+  for (func_arg_type_decl_list = ldv_func_arg_type_decl_list, i = 1
+    ; func_arg_type_decl_list
+    ; func_arg_type_decl_list = ldv_list_get_next (func_arg_type_decl_list), i++)
+    {
+      if (i == arg_numb)
+        {
+          func_arg_type_decl = (ldv_pps_decl_ptr) ldv_list_get_data (func_arg_type_decl_list);
+
+          ldv_add_id_declarator (func_arg_type_decl, "%s");
+
+          ldv_print_decl (func_arg_type_decl);
+
+          ldv_delete_id_declarator (func_arg_type_decl->pps_declarator);
+
+          break;
+        }
+    }
+
+  if (arg_numb > i)
+    {
+      LDV_FATAL_ERROR ("required argument type string has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+    }
+
+  ldv_isstorage_class_and_function_specifiers_needed = true;
+
+  arg_type_str = ldv_copy_str (ldv_get_text (ldv_text_printed));
+
+  ldv_free_text (ldv_text_printed);
+  ldv_text_printed = ldv_create_text ();
+
+  return arg_type_str;
 }
 
 void
@@ -1536,6 +1598,42 @@ ldv_print_ptr (ldv_list_ptr declarator_list)
   return declarator_list;
 }
 
+/* Adapted from ldv_print_types_typedefs(). */
+char *
+ldv_print_ret_type_str (void)
+{
+  char *ret_type_str;
+
+  if (ldv_text_printed)
+    {
+      ldv_free_text (ldv_text_printed);
+      ldv_text_printed = ldv_create_text ();
+      ldv_padding_cur = LDV_PADDING_NONE;
+    }
+
+  ldv_isstorage_class_and_function_specifiers_needed = false;
+
+  if (ldv_func_ret_type_decl)
+    {
+      ldv_add_id_declarator (ldv_func_ret_type_decl, "%s");
+      ldv_print_decl (ldv_func_ret_type_decl);
+      ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
+    }
+  else
+    {
+      LDV_FATAL_ERROR ("return type declaration wasn't found");
+    }
+
+  ldv_isstorage_class_and_function_specifiers_needed = true;
+
+  ret_type_str = ldv_copy_str (ldv_get_text (ldv_text_printed));
+
+  ldv_free_text (ldv_text_printed);
+  ldv_text_printed = ldv_create_text ();
+
+  return ret_type_str;
+}
+
 void
 ldv_print_qual (bool isconst, bool isrestrict, bool isvolatile)
 {
@@ -1818,7 +1916,9 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
             }
         }
 
-      ldv_free_pps_decl (func_arg_type_decl);
+      /* TODO: do not free this declaration since it could be used for $arg_type_strN aspect patterns.
+       * Free should be done at the end of advice weaving.
+      ldv_free_pps_decl (func_arg_type_decl); */
 
       str = ldv_create_string ();
 
@@ -1885,29 +1985,45 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL))
     {
       ldv_text_printed = ldv_create_text ();
+
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
         ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
       ldv_var_init_list = ldv_i_match->i_var->initializer_list;
+
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+
       ldv_var_name = NULL;
       ldv_var_type_name = NULL;
       ldv_var_init_list = NULL;
+
       return;
     }
   else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION || pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP))
     {
        ldv_text_printed = ldv_create_text ();
+
        ldv_func_signature = ldv_i_match->i_func;
        ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
        ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
+
+       /* TODO: merge this code with the same code below. */
+       /* Store an information on a function return type and function
+          arguments types that will be used in a body patterns weaving. */
+       ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (ldv_i_match->i_func_aspect->type->ret_type, NULL);
+
        ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
+
        ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+
        ldv_list_delete_all (ldv_func_arg_type_decl_list);
        ldv_func_arg_type_decl_list = NULL;
+       ldv_free_pps_decl (ldv_func_ret_type_decl);
+       ldv_func_ret_type_decl = NULL;
        ldv_func_signature = NULL;
        ldv_func_name = NULL;
        ldv_func_ptr_name = NULL;
+
        return;
     }
 
