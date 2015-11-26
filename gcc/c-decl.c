@@ -4509,7 +4509,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
       else if (ldv_instrumentation () && TREE_CODE (decl) == FUNCTION_DECL)
         {
           /* Try to match a function declaration. */
-          ldv_match_func (decl, LDV_PP_DECLARE_FUNC);
+          ldv_match_func (decl, 0, LDV_PP_DECLARE_FUNC);
 
           /* Instance a matched advice. */
           ldv_weave_advice (NULL, NULL);
@@ -8415,7 +8415,7 @@ finish_function (void)
       if (ldv_instrumentation () || ldv_compilation ())
         {
           /* Try to match a function declaration for an execution join point. */
-          i_func = ldv_match_func (fndecl, LDV_PP_EXECUTION);
+          i_func = ldv_match_func (fndecl, 0, LDV_PP_EXECUTION);
 
           ldv_func_close_brace_location = expand_location (DECL_STRUCT_FUNCTION (fndecl)->function_end_locus);
         

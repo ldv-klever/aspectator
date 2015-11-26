@@ -80,7 +80,6 @@ typedef ldv_var_array *ldv_var_array_ptr;
 
 ldv_pps_declspecs_ptr ldv_entity_declspecs = NULL;
 ldv_list_ptr ldv_func_arg_info_list = NULL;
-tree ldv_call_expr = NULL_TREE;
 tree ldv_func_called_matched = NULL_TREE;
 tree ldv_func_decl_matched = NULL_TREE;
 ldv_i_match_ptr ldv_i_match = NULL;
@@ -661,7 +660,6 @@ ldv_match_expr (tree t)
         {
         case CALL_EXPR:
           ldv_func_arg_info_list = NULL;
-          ldv_call_expr = t;
 
           /* Store information on called function arguments values by walking
              through tree lists. */
@@ -771,7 +769,7 @@ ldv_match_expr (tree t)
             && TREE_CODE (func_called) == FUNCTION_DECL)
             {
               /* Try to match a function declaration for a call join point. */
-              ldv_match_func (func_called, LDV_PP_CALL);
+              ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);
 
               if (ldv_i_match)
                 {
@@ -806,7 +804,7 @@ ldv_match_expr (tree t)
           else if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == VAR_DECL)
             {
-              ldv_match_func (func_called_addr, LDV_PP_CALLP);
+              ldv_match_func (func_called_addr, EXPR_LINENO(t), LDV_PP_CALLP);
 
               /* Weave a matched advice. */
               ldv_weave_advice (NULL, NULL);
@@ -818,7 +816,7 @@ ldv_match_expr (tree t)
           else if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == COMPONENT_REF)
             {
-              ldv_match_func (TREE_OPERAND (func_called_addr, 1), LDV_PP_CALLP);
+              ldv_match_func (TREE_OPERAND (func_called_addr, 1), EXPR_LINENO(t), LDV_PP_CALLP);
 
               /* Weave a matched advice. */
               ldv_weave_advice (NULL, NULL);
@@ -838,7 +836,6 @@ ldv_match_expr (tree t)
 
           ldv_list_delete_all (ldv_func_arg_info_list);
           ldv_func_arg_info_list = NULL;
-          ldv_call_expr = NULL_TREE;
 
           break;
 
@@ -853,7 +850,7 @@ ldv_match_expr (tree t)
 }
 
 ldv_i_func_ptr
-ldv_match_func (tree t, ldv_ppk pp_kind)
+ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -945,7 +942,7 @@ ldv_match_func (tree t, ldv_ppk pp_kind)
   if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
     {
       func->func_context = func_context;
-      func->call_line = EXPR_LINENO (ldv_call_expr);
+      func->call_line = call_line;
     }
 
   /* Walk through an advice definitions list to find matches. */
