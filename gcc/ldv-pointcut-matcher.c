@@ -837,6 +837,12 @@ ldv_match_expr (tree t)
           ldv_list_delete_all (ldv_func_arg_info_list);
           ldv_func_arg_info_list = NULL;
 
+          FOR_EACH_CALL_EXPR_ARG (arg, iter, t)
+            {
+              /* Walk through arguments. */
+              ldv_match_expr(arg);
+            }
+
           break;
 
         default:
