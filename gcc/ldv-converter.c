@@ -279,6 +279,8 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
             {
               if (artificial_decl->type->primitive_type->isstruct)
                 initializer->type = "structure";
+              else if (artificial_decl->type->primitive_type->istypedef_name)
+                initializer->type = "typedef";
               else
                 initializer->type = "primitive";
             }
