@@ -77,6 +77,7 @@ static void ldv_open_aspect_stream (void);
 static void ldv_open_main_stream (void);
 static void ldv_open_file_prepared_stream (void);
 
+static void ldv_get_aux_file_name_and_stream (char **, FILE **);
 
 void
 ldv_create_files (void)
@@ -297,6 +298,8 @@ ldv_make_includes (void)
   bool isaround = false;
   unsigned int line_cur = 0;
   char *line_cur_str = NULL;
+  char *aux_fname = NULL;
+  FILE *aux_file_stream = NULL;
 
   ldv_open_file_prepared_stream ();
 
@@ -349,6 +352,13 @@ ldv_make_includes (void)
   /* Other file advices are applied just when an arround advice wasn't used. */
   if (!isaround)
     {
+      ldv_get_aux_file_name_and_stream (&aux_fname, &aux_file_stream);
+
+      /* Refer to the auxiliary file (fix #6487). */
+      ldv_puts ("#line 1 \"", LDV_FILE_PREPARED_STREAM);
+      ldv_puts (aux_fname, LDV_FILE_PREPARED_STREAM);
+      ldv_puts ("\"\n", LDV_FILE_PREPARED_STREAM);
+
       /* Copy all before includes. */
       for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
         {
@@ -366,6 +376,7 @@ ldv_make_includes (void)
               include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
+              ldv_puts (include, aux_file_stream);
 
               /* In truncating braces this pointer was moved ahead
                  exactly by 1. */
@@ -375,22 +386,23 @@ ldv_make_includes (void)
             }
         }
 
-      /* Remember current line to print line directive below. */
+      /* Remember current line to print line directive below. -1 is to take into
+         account line directive at the beginning of auxiliary file. */
       if (fflush (LDV_FILE_PREPARED_STREAM))
       {
         LDV_FATAL_ERROR ("can%'t flush to file \"%s\": %m", ldv_output_fname);
       }
-      line_cur = ldv_get_current_line_number(ldv_output_fname);
+      line_cur = ldv_get_current_line_number(ldv_output_fname) - 1;
 
       /* Then copy a file itself. */
       ldv_copy_file (main_input_filename, LDV_FILE_PREPARED_STREAM);
 
-      /* Refer to the prepared file (fix #5431). */
+      /* Refer to the auxiliary file (fix #6487). */
       line_cur_str = ldv_itoa (line_cur);
       ldv_puts ("\n#line ", LDV_FILE_PREPARED_STREAM);
       ldv_puts (line_cur_str, LDV_FILE_PREPARED_STREAM);
       ldv_puts (" \"", LDV_FILE_PREPARED_STREAM);
-      ldv_puts (ldv_output_fname, LDV_FILE_PREPARED_STREAM);
+      ldv_puts (aux_fname, LDV_FILE_PREPARED_STREAM);
       ldv_puts ("\"\n", LDV_FILE_PREPARED_STREAM);
       free (line_cur_str);
 
@@ -410,6 +422,7 @@ ldv_make_includes (void)
               include = ldv_truncate_braces (include);
 
               ldv_puts (include, LDV_FILE_PREPARED_STREAM);
+              ldv_puts (include, aux_file_stream);
               ldv_print_info (LDV_INFO_WEAVE, "include was weaved for after advice");
             }
         }
@@ -536,6 +549,8 @@ ldv_print_to_awfile (void)
   bool ispreprocessor_directive = false;
   bool isline_beginning_printed;
   int symbol_printed_numb;
+  char *aux_fname = NULL;
+  FILE *aux_file_stream = NULL;
 
   /* Add needed declarations untill a line remains in a main file. */
   while ((line = ldv_gets (LDV_MAIN_STREAM)))
@@ -638,7 +653,13 @@ ldv_print_to_awfile (void)
   /* Add auxiliary function definitions to the end of an advice weaved file if
      it's needed. */
   if (ldv_func_defs_for_print)
-    ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_INSTRUMENTED_FILE_STREAM);
+    {
+      ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_INSTRUMENTED_FILE_STREAM);
+      /* As well print them to the end of auxiliary file with hope that line
+         directives already properly point to that file. */
+      ldv_get_aux_file_name_and_stream (&aux_fname, &aux_file_stream);
+      ldv_puts (ldv_get_text (ldv_func_defs_for_print), aux_file_stream);
+    }
 }
 
 void
@@ -718,4 +739,29 @@ ldv_ungetc (int c, FILE *stream)
   ldv_print_info (LDV_INFO_IO, "unget character \"%c\"", ldv_end_of_line (c));
 
 #endif /* LDV_CHAR_DEBUG */
+}
+
+void
+ldv_get_aux_file_name_and_stream (char **aux_fname, FILE **aux_file_stream)
+{
+  char *aux_fname_prefix = NULL;
+  char *aux_fname_last_dot = NULL;
+  ldv_str_ptr aux_fname_str = NULL;
+
+  aux_fname_str = ldv_create_string ();
+  /* Replace suffix ".prepared" with ".aux". */
+  aux_fname_prefix = xstrdup(ldv_output_fname);
+  aux_fname_last_dot = strrchr(aux_fname_prefix, '.');
+  *aux_fname_last_dot = '\0';
+  ldv_puts_string (aux_fname_prefix, aux_fname_str);
+  ldv_puts_string (".aux", aux_fname_str);
+  *aux_fname = xstrdup (ldv_get_str (aux_fname_str));
+  ldv_free_string (aux_fname_str);
+
+  if ((*aux_file_stream = fopen (*aux_fname, "a")) == NULL)
+    {
+      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", *aux_fname);
+    }
+
+  ldv_print_info (LDV_INFO_IO, "Auxiliary file \"%s\" was successfully opened for write", *aux_fname);
 }
