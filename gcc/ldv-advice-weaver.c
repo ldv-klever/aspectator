@@ -2007,7 +2007,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       return;
     }
-  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION || pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP))
+  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION|| pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC))
     {
        ldv_text_printed = ldv_create_text ();
 

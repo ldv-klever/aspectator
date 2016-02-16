@@ -270,33 +270,45 @@ ldv_match_expr (tree t)
     /* For declarations just investigate variable initializers. */
     case tcc_declaration:
       if (code == VAR_DECL)
-        /* To avoid infinite recursion check that initializer isn't equal to
-           an initialized variable itself. */
-        /* Don't consider an initialized variable in scope of initialization. */
-        if (t != cur_var)
-          {
-            /* Set a current variable just ones. */
-            if (!cur_var)
-              cur_var = t;
+        {
+          /* To avoid infinite recursion check that initializer isn't equal to
+             an initialized variable itself. */
+          /* Don't consider an initialized variable in scope of initialization. */
+          if (t != cur_var)
+            {
+              /* Set a current variable just ones. */
+              if (!cur_var)
+                cur_var = t;
 
-            /* Consider initialization just in global scope and through function
-               variables. Prevent considering global variables initialization in
-               function context (#4397). Indeed their initialization isn't
-               treated at all from now. */
-            global_var_init = DECL_FILE_SCOPE_P (cur_var) && !func_context;
-            if (global_var_init || isfunc_vars)
-              {
-                if (!global_var_init)
-                  isfunc_vars = false;
-                ldv_match_expr (DECL_INITIAL (t));
-                if (!global_var_init)
-                  isfunc_vars = true;
-              }
+              /* Consider initialization just in global scope and through function
+                 variables. Prevent considering global variables initialization in
+                 function context (#4397). Indeed their initialization isn't
+                 treated at all from now. */
+              global_var_init = DECL_FILE_SCOPE_P (cur_var) && !func_context;
+              if (global_var_init || isfunc_vars)
+                {
+                  if (!global_var_init)
+                    isfunc_vars = false;
+                  ldv_match_expr (DECL_INITIAL (t));
+                  if (!global_var_init)
+                    isfunc_vars = true;
+                }
 
-            /* Finish current variable processing. */
-            if (t == cur_var)
-              cur_var = NULL_TREE;
-          }
+              /* Finish current variable processing. */
+              if (t == cur_var)
+                cur_var = NULL_TREE;
+            }
+        }
+      else if (code == FUNCTION_DECL)
+        {
+          ldv_match_func (t, 1, LDV_PP_USE_FUNC);
+
+          /* Weave a matched advice. */
+          ldv_weave_advice (NULL, NULL);
+
+          /* Finish matching. */
+          ldv_i_match = NULL;
+        }
 
       break;
 
@@ -945,7 +957,7 @@ ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
   func->file_path = DECL_SOURCE_FILE (t);
   func->decl_line = DECL_SOURCE_LINE (t);
 
-  if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
+  if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC)
     {
       func->func_context = func_context;
       func->call_line = call_line;
