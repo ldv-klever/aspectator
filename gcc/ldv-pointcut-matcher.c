@@ -800,9 +800,9 @@ ldv_match_expr (tree t)
                     }
                 }
             }
-          /* Process call by function pointer (variable). */
+          /* Process call by function pointer (variable and parameter). */
           else if ((func_called_addr = CALL_EXPR_FN (t))
-            && TREE_CODE (func_called_addr) == VAR_DECL)
+            && (TREE_CODE (func_called_addr) == VAR_DECL || TREE_CODE (func_called_addr) == PARM_DECL))
             {
               ldv_match_func (func_called_addr, EXPR_LINENO(t), LDV_PP_CALLP);
 
@@ -882,7 +882,7 @@ ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
   match->pp_kind = pp_kind;
   match->i_func = func;
 
-  isfunc_ptr = (TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == FIELD_DECL);
+  isfunc_ptr = (TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == PARM_DECL || TREE_CODE (t) == FIELD_DECL);
 
   /* Obtain information on a function signature. */
   func->name = ldv_create_id ();
