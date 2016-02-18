@@ -164,6 +164,11 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
     {
       text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
     }
+  else if (!strcmp (pattern->name, "line"))
+    {
+      text = ldv_itoa(ldv_i_match->i_macro->line);
+    }
+
 
   if (text)
     {

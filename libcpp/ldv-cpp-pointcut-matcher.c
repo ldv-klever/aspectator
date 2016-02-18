@@ -274,6 +274,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   macro->macro_name = ldv_create_id ();
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
   macro->file_path = map->to_file;
+  macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
   macro->macro_param = NULL;
 
   /* Remember macro parameters. */
