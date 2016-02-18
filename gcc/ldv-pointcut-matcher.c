@@ -86,7 +86,7 @@ ldv_i_match_ptr ldv_i_match = NULL;
 
 static ldv_list_ptr ldv_var_array_list;
 
-static tree cur_var;
+static ldv_list_ptr ldv_cur_vars_list;
 static bool isfunc_vars;
 
 static ldv_i_func_ptr func_context;
@@ -252,6 +252,9 @@ ldv_match_expr (tree t)
   bool global_var_init = false;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
+  ldv_list_ptr cur_vars_list = NULL;
+  tree cur_var = NULL_TREE;
+  bool is_var_new = true;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -274,17 +277,23 @@ ldv_match_expr (tree t)
           /* To avoid infinite recursion check that initializer isn't equal to
              an initialized variable itself. */
           /* Don't consider an initialized variable in scope of initialization. */
-          if (t != cur_var)
+          for (cur_vars_list = ldv_cur_vars_list; cur_vars_list; cur_vars_list = ldv_list_get_next (cur_vars_list))
+            {
+              cur_var = (tree) ldv_list_get_data (cur_vars_list);
+              if (cur_var == t)
+                is_var_new = false;
+            }
+
+          if (is_var_new)
             {
               /* Set a current variable just ones. */
-              if (!cur_var)
-                cur_var = t;
+              ldv_list_push_back (&ldv_cur_vars_list, t);
 
               /* Consider initialization just in global scope and through function
                  variables. Prevent considering global variables initialization in
                  function context (#4397). Indeed their initialization isn't
                  treated at all from now. */
-              global_var_init = DECL_FILE_SCOPE_P (cur_var) && !func_context;
+              global_var_init = DECL_FILE_SCOPE_P (t) && !func_context;
               if (global_var_init || isfunc_vars)
                 {
                   if (!global_var_init)
@@ -295,8 +304,7 @@ ldv_match_expr (tree t)
                 }
 
               /* Finish current variable processing. */
-              if (t == cur_var)
-                cur_var = NULL_TREE;
+              ldv_cur_vars_list = NULL;
             }
         }
       else if (code == FUNCTION_DECL)
