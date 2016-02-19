@@ -983,9 +983,6 @@ ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
       func->func_context = func_context;
       func->use_line = cur_var_line;
       func->file_path = cur_var_path;
-
-      unsigned int line1 = DECL_SOURCE_LINE(DECL_CONTEXT(t));
-      char *path1 = DECL_SOURCE_FILE(DECL_CONTEXT(t));
     }
 
   /* Walk through an advice definitions list to find matches. */
