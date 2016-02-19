@@ -83,6 +83,8 @@ ldv_list_ptr ldv_func_arg_info_list = NULL;
 tree ldv_func_called_matched = NULL_TREE;
 tree ldv_func_decl_matched = NULL_TREE;
 ldv_i_match_ptr ldv_i_match = NULL;
+unsigned int cur_var_line = 0;
+char *cur_var_path;
 
 static ldv_list_ptr ldv_var_array_list;
 
@@ -298,6 +300,8 @@ ldv_match_expr (tree t)
                 {
                   if (!global_var_init)
                     isfunc_vars = false;
+                  cur_var_line = DECL_SOURCE_LINE(t);
+                  cur_var_path = DECL_SOURCE_FILE(t);
                   ldv_match_expr (DECL_INITIAL (t));
                   if (!global_var_init)
                     isfunc_vars = true;
@@ -327,6 +331,8 @@ ldv_match_expr (tree t)
         case ADDR_EXPR:
         case TRUTH_NOT_EXPR:
         case VA_ARG_EXPR:
+          cur_var_line = EXPR_LINENO(t);
+          cur_var_path = EXPR_FILENAME(t);
           ldv_match_expr (LDV_OP1);
 
           break;
@@ -361,6 +367,8 @@ ldv_match_expr (tree t)
 
         /* It also has two operands but may be involved in set/get pointcuts. */
         case MODIFY_EXPR:
+          cur_var_line = EXPR_LINENO(t);
+          cur_var_path = EXPR_FILENAME(t);
           /* See just on a modified parameter or a variable declaration. */
           if (TREE_CODE (LDV_OP1) == PARM_DECL || TREE_CODE (LDV_OP1) == VAR_DECL)
             {
@@ -965,10 +973,19 @@ ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
   func->file_path = DECL_SOURCE_FILE (t);
   func->decl_line = DECL_SOURCE_LINE (t);
 
-  if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC)
+  if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
     {
       func->func_context = func_context;
       func->call_line = call_line;
+    }
+  else if (pp_kind == LDV_PP_USE_FUNC)
+    {
+      func->func_context = func_context;
+      func->use_line = cur_var_line;
+      func->file_path = cur_var_path;
+
+      unsigned int line1 = DECL_SOURCE_LINE(DECL_CONTEXT(t));
+      char *path1 = DECL_SOURCE_FILE(DECL_CONTEXT(t));
     }
 
   /* Walk through an advice definitions list to find matches. */
