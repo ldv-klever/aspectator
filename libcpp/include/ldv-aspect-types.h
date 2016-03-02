@@ -454,15 +454,12 @@ typedef struct ldv_info_typedecl_internal
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
 /* Initializer information. */
+typedef enum { LDV_II_FIELD, LDV_II_ARRAY_ELEMENT, LDV_II_OTHER } ldv_iik;
 typedef struct ldv_info_initializer_internal
 {
-  const char *field_name;
-  bool isarray_index;
+  ldv_iik ii_kind;
+  char *field_decl;
   unsigned int array_index;
-  const char *type;
-  char *decl;
-  char *pointed_func_ret_type_decl;
-  ldv_list_ptr pointed_func_arg_type_decls;
   char *value;
   ldv_list_ptr initializer;
 } ldv_info_initializer;

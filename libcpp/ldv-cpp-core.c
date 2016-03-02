@@ -440,21 +440,8 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
       ldv_list_delete_all (initializer->initializer);
     }
 
-  if (initializer->decl)
-    free (initializer->decl);
-
-  if (initializer->pointed_func_ret_type_decl)
-    free (initializer->pointed_func_ret_type_decl);
-
-  for (params = initializer->pointed_func_arg_type_decls
-    ; params
-    ; params = ldv_list_get_next (params))
-    {
-      param = (char *) ldv_list_get_data (params);
-      free (param);
-    }
-
-  ldv_list_delete_all (initializer->pointed_func_arg_type_decls);
+  if (initializer->field_decl)
+    free (initializer->field_decl);
 
   free (initializer);
 }
