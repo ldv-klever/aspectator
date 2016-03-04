@@ -109,7 +109,7 @@ static void ldv_print_direct_declarator (ldv_list_ptr);
 static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_context_decl_line (ldv_i_func_ptr);
-static const char *ldv_print_func_context_name (ldv_i_func_ptr);
+static const char *ldv_print_func_name (ldv_i_func_ptr);
 static const char *ldv_print_func_call_line (ldv_i_func_ptr);
 static const char *ldv_print_func_decl_line (ldv_i_func_ptr);
 static const char *ldv_print_func_use_line (ldv_i_func_ptr);
@@ -431,7 +431,14 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_func_context_name (ldv_func_signature));
+            text = ldv_copy_str (ldv_print_func_name (ldv_func_signature->func_context));
+          else
+            text = "NULL";
+        }
+      else if (ldv_var_signature)
+        {
+          if (ldv_var_signature->func_context)
+            text = ldv_copy_str (ldv_print_func_name (ldv_var_signature->func_context));
           else
             text = "NULL";
         }
@@ -1381,9 +1388,9 @@ ldv_print_func_context_decl_line (ldv_i_func_ptr decl)
 }
 
 const char *
-ldv_print_func_context_name (ldv_i_func_ptr decl)
+ldv_print_func_name (ldv_i_func_ptr decl)
 {
-  return ldv_get_id_name (decl->func_context->name);
+  return ldv_get_id_name (decl->name);
 }
 
 const char *
