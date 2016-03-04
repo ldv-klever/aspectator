@@ -85,9 +85,9 @@ tree ldv_func_decl_matched = NULL_TREE;
 ldv_i_match_ptr ldv_i_match = NULL;
 
 static ldv_list_ptr ldv_var_array_list;
-
+static ldv_list_ptr ldv_cur_vars_list;
+static bool isfunc_vars;
 static ldv_i_func_ptr func_context = NULL;
-
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
 static void ldv_free_func_arg_info (ldv_func_arg_info_ptr);
@@ -249,6 +249,9 @@ ldv_match_expr (tree t)
   bool global_var_init = false;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
+  ldv_list_ptr cur_vars_list = NULL;
+  tree cur_var = NULL_TREE;
+  bool is_var_new = true;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -262,7 +265,46 @@ ldv_match_expr (tree t)
     /* These entities aren't matched at the moment. */
     case tcc_constant:
     case tcc_type:
+      break;
+
+    /* For declarations just investigate variable initializers. */
     case tcc_declaration:
+      if (code == VAR_DECL)
+        {
+          /* To avoid infinite recursion check that initializer isn't equal to
+             an initialized variable itself. */
+          /* Don't consider an initialized variable in scope of initialization. */
+          for (cur_vars_list = ldv_cur_vars_list; cur_vars_list; cur_vars_list = ldv_list_get_next (cur_vars_list))
+            {
+              cur_var = (tree) ldv_list_get_data (cur_vars_list);
+              if (cur_var == t)
+                is_var_new = false;
+            }
+
+          if (is_var_new)
+            {
+              /* Set a current variable just ones. */
+              ldv_list_push_back (&ldv_cur_vars_list, t);
+
+              /* Consider initialization just in global scope and through function
+                 variables. Prevent considering global variables initialization in
+                 function context (#4397). Indeed their initialization isn't
+                 treated at all from now. */
+              global_var_init = DECL_FILE_SCOPE_P (t) && !func_context;
+              if (global_var_init || isfunc_vars)
+                {
+                  if (!global_var_init)
+                    isfunc_vars = false;
+                  ldv_match_expr (DECL_INITIAL (t));
+                  if (!global_var_init)
+                    isfunc_vars = true;
+                }
+
+              /* Finish current variable processing. */
+              ldv_cur_vars_list = NULL;
+            }
+        }
+
       break;
 
     case tcc_expression:
@@ -289,8 +331,10 @@ ldv_match_expr (tree t)
         case BIND_EXPR:
           /* Match information on bound variables. Mark that we process function
              variables to avoid infinite recursion in initialization. */
+          isfunc_vars = true;
           for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
             ldv_match_expr (block_decl);
+          isfunc_vars = false;
 
           /* Match a statement list. */
           ldv_match_expr (BIND_EXPR_BODY (t));
@@ -1186,7 +1230,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
     {
       var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
-      // ldv_match_expr(DECL_INITIAL (t));
+      ldv_match_expr(t);
     }
 
   /* Walk through an advice definitions list to find matches. */
