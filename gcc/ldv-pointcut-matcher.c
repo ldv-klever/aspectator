@@ -272,6 +272,14 @@ ldv_match_expr (tree t, tree context)
 
           ldv_i_match = NULL;
         }
+      else if (code == VAR_DECL)
+        {
+          ldv_match_var (t, LDV_PP_USE_VAR);
+
+          ldv_weave_advice (NULL, NULL);
+
+          ldv_i_match = NULL;
+        }
 
       break;
 

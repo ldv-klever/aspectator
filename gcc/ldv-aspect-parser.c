@@ -593,15 +593,15 @@ static const yytype_uint8 yytranslate[] =
 static const yytype_uint16 yyrline[] =
 {
        0,   255,   255,   257,   262,   268,   312,   334,   385,   428,
-     467,   487,   512,   541,   549,   587,   625,   700,   720,   742,
-     759,   762,   768,   776,   782,   793,   803,   813,   823,   829,
-     848,   908,   908,   908,   914,   932,   949,   966,   983,   991,
-    1002,  1005,  1011,  1024,  1036,  1048,  1060,  1074,  1086,  1098,
-    1110,  1122,  1134,  1146,  1158,  1175,  1192,  1209,  1226,  1239,
-    1252,  1265,  1278,  1292,  1304,  1316,  1330,  1344,  1352,  1369,
-    1375,  1403,  1422,  1425,  1431,  1448,  1467,  1470,  1475,  1487,
-    1490,  1496,  1500,  1519,  1544,  1560,  1589,  1608,  1662,  1668,
-    1677,  1686,  1692,  1698,  1724,  1743,  1746,  1753,  1756
+     467,   487,   512,   541,   549,   587,   625,   702,   722,   744,
+     761,   764,   770,   778,   784,   795,   805,   815,   825,   831,
+     850,   910,   910,   910,   916,   934,   951,   968,   985,   993,
+    1004,  1007,  1013,  1026,  1038,  1050,  1062,  1076,  1088,  1100,
+    1112,  1124,  1136,  1148,  1160,  1177,  1194,  1211,  1228,  1241,
+    1254,  1267,  1280,  1294,  1306,  1318,  1332,  1346,  1354,  1371,
+    1377,  1405,  1424,  1427,  1433,  1450,  1469,  1472,  1477,  1489,
+    1492,  1498,  1502,  1521,  1546,  1562,  1591,  1610,  1664,  1670,
+    1679,  1688,  1694,  1700,  1726,  1745,  1748,  1755,  1758
 };
 #endif
 
@@ -2014,6 +2014,8 @@ yyreduce:
         p_pointcut->pp_kind = LDV_PP_CALLP;
       else if (!strcmp ("use_func", pp_kind))
         p_pointcut->pp_kind = LDV_PP_USE_FUNC;
+      else if (!strcmp ("use_var", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_USE_VAR;
       else if (!strcmp ("execution", pp_kind))
         p_pointcut->pp_kind = LDV_PP_EXECUTION;
       else if (!strcmp ("declare_func", pp_kind))
@@ -2068,11 +2070,11 @@ yyreduce:
 
       (yyval.p_pointcut) = p_pointcut;
     }
-#line 2072 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2074 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 17:
-#line 701 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 703 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_macro_ptr macro = NULL;
 
@@ -2092,11 +2094,11 @@ yyreduce:
 
       (yyval.pps_macro) = macro;
     }
-#line 2096 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2098 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 18:
-#line 721 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 723 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_macro_ptr macro = NULL;
 
@@ -2116,11 +2118,11 @@ yyreduce:
 
       (yyval.pps_macro) = macro;
     }
-#line 2120 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2122 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 19:
-#line 743 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 745 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_file_ptr file = NULL;
 
@@ -2134,27 +2136,27 @@ yyreduce:
 
       (yyval.pps_file) = file;
     }
-#line 2138 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2140 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 20:
-#line 759 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 761 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = NULL;
     }
-#line 2146 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2148 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 21:
-#line 763 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 765 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 2154 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2156 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 22:
-#line 769 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 771 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_list_ptr macro_param_list = NULL;
 
@@ -2162,21 +2164,21 @@ yyreduce:
 
       (yyval.list) = macro_param_list;
     }
-#line 2166 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2168 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 23:
-#line 777 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 779 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_list_push_back (&(yyvsp[-2].list), (yyvsp[0].id));
 
       (yyval.list) = (yyvsp[-2].list);
     }
-#line 2176 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2178 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 24:
-#line 783 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 785 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_list_ptr macro_param_list = NULL;
       ldv_id_ptr id = ldv_create_id ();
@@ -2187,11 +2189,11 @@ yyreduce:
 
       (yyval.list) = macro_param_list;
     }
-#line 2191 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2193 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 25:
-#line 794 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 796 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_list_ptr macro_param_list = NULL;
 
@@ -2201,11 +2203,11 @@ yyreduce:
 
       (yyval.list) = macro_param_list;
     }
-#line 2205 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2207 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 26:
-#line 804 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 806 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_id_ptr id = ldv_create_id ();
 
@@ -2215,11 +2217,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-2].list);
     }
-#line 2219 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2221 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 27:
-#line 814 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 816 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_puts_id ("...", (yyvsp[-1].id));
 
@@ -2227,19 +2229,19 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 2231 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2233 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 28:
-#line 824 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 826 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_decl) = (yyvsp[0].pps_decl);
     }
-#line 2239 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2241 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 29:
-#line 830 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 832 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -2258,11 +2260,11 @@ yyreduce:
 
       (yyval.pps_decl) = pps_decl;
     }
-#line 2262 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2264 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 30:
-#line 849 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 851 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_decl_ptr decl = NULL;
       ldv_pps_declarator_ptr declarator = NULL;
@@ -2321,31 +2323,31 @@ yyreduce:
           LDV_FATAL_ERROR ("declaration kind can't be determined");
         }
     }
-#line 2325 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2327 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 31:
-#line 908 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 910 "ldv-aspect-parser.y" /* yacc.c:1646  */
     { ldv_isdecl = true; ldv_istype_spec = false; ldv_isuniversal_type_spec = false; }
-#line 2331 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2333 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 32:
-#line 908 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 910 "ldv-aspect-parser.y" /* yacc.c:1646  */
     { ldv_isdecl = false; }
-#line 2337 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2339 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 33:
-#line 909 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 911 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
     (yyval.pps_declspecs) = (yyvsp[-1].pps_declspecs);
   }
-#line 2345 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2347 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 34:
-#line 915 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 917 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2363,11 +2365,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2367 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2369 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 35:
-#line 933 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 935 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2384,11 +2386,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2388 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2390 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 36:
-#line 950 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 952 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2405,11 +2407,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2409 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2411 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 37:
-#line 967 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 969 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2426,11 +2428,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2430 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2432 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 38:
-#line 984 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 986 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = ldv_create_declspecs ();
 
@@ -2438,11 +2440,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2442 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2444 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 39:
-#line 992 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 994 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = ldv_create_declspecs ();
 
@@ -2450,27 +2452,27 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2454 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2456 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 40:
-#line 1002 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1004 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_declspecs) = NULL;
     }
-#line 2462 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2464 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 41:
-#line 1006 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1008 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_declspecs) = (yyvsp[0].pps_declspecs);
     }
-#line 2470 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2472 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 42:
-#line 1012 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1014 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2483,11 +2485,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2487 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2489 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 43:
-#line 1025 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1027 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2499,11 +2501,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2503 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2505 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 44:
-#line 1037 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1039 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2515,11 +2517,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2519 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2521 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 45:
-#line 1049 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1051 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2531,11 +2533,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2535 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2537 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 46:
-#line 1061 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1063 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2547,11 +2549,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2551 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2553 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 47:
-#line 1075 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1077 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2563,11 +2565,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2567 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2569 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 48:
-#line 1087 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1089 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2579,11 +2581,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2583 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2585 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 49:
-#line 1099 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1101 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2595,11 +2597,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2599 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2601 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 50:
-#line 1111 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1113 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2611,11 +2613,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2615 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2617 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 51:
-#line 1123 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1125 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2627,11 +2629,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2631 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2633 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 52:
-#line 1135 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1137 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2643,11 +2645,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2647 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2649 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 53:
-#line 1147 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1149 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2659,11 +2661,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2663 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2665 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 54:
-#line 1159 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1161 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2680,11 +2682,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2684 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2686 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 55:
-#line 1176 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1178 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2701,11 +2703,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2705 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2707 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 56:
-#line 1193 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1195 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2722,11 +2724,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2726 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2728 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 57:
-#line 1210 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1212 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2743,11 +2745,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2747 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2749 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 58:
-#line 1227 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1229 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2760,11 +2762,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2764 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2766 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 59:
-#line 1240 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1242 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2777,11 +2779,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2781 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2783 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 60:
-#line 1253 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1255 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2794,11 +2796,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2798 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2800 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 61:
-#line 1266 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1268 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2811,11 +2813,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2815 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2817 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 62:
-#line 1279 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1281 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2827,11 +2829,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2831 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2833 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 63:
-#line 1293 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1295 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2843,11 +2845,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2847 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2849 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 64:
-#line 1305 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1307 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2859,11 +2861,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2863 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2865 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 65:
-#line 1317 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1319 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2875,11 +2877,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2879 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2881 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 66:
-#line 1331 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1333 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -2891,21 +2893,21 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 2895 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2897 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 67:
-#line 1345 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1347 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed declarator");
 
       (yyval.list) = ldv_list_splice ((yyvsp[-1].list), (yyvsp[0].list));
     }
-#line 2905 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2907 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 68:
-#line 1353 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1355 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
       ldv_list_ptr declarator_list = NULL;
@@ -2922,21 +2924,21 @@ yyreduce:
 
       (yyval.list) = declarator_list;
     }
-#line 2926 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2928 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 69:
-#line 1370 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1372 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed direct declarator of associativity");
 
       (yyval.list) = (yyvsp[-1].list);
     }
-#line 2936 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2938 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 70:
-#line 1376 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1378 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -2964,11 +2966,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 2968 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2970 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 71:
-#line 1404 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1406 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -2984,27 +2986,27 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 2988 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2990 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 72:
-#line 1422 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1424 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = NULL;
     }
-#line 2996 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 2998 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 73:
-#line 1426 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1428 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3004 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3006 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 74:
-#line 1432 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1434 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
       ldv_list_ptr declarator_list = NULL;
@@ -3021,11 +3023,11 @@ yyreduce:
 
       (yyval.list) = declarator_list;
     }
-#line 3025 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3027 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 75:
-#line 1449 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1451 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3041,27 +3043,27 @@ yyreduce:
 
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3045 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3047 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 76:
-#line 1467 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1469 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.integer) = NULL;
     }
-#line 3053 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3055 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 77:
-#line 1471 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1473 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.integer) = (yyvsp[0].integer);
     }
-#line 3061 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3063 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 78:
-#line 1476 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1478 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_int_ptr integer = NULL;
 
@@ -3070,35 +3072,35 @@ yyreduce:
 
       (yyval.integer) = integer;
     }
-#line 3074 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3076 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 79:
-#line 1487 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1489 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_declspecs) = NULL;
     }
-#line 3082 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3084 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 80:
-#line 1491 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1493 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_declspecs) = (yyvsp[0].pps_declspecs);
     }
-#line 3090 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3092 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 81:
-#line 1497 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1499 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.pps_declspecs) = (yyvsp[0].pps_declspecs);
     }
-#line 3098 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3100 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 82:
-#line 1501 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1503 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declspecs_ptr pps_declspecs = NULL;
 
@@ -3115,11 +3117,11 @@ yyreduce:
 
       (yyval.pps_declspecs) = pps_declspecs;
     }
-#line 3119 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3121 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 83:
-#line 1520 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1522 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_func_arg_ptr pps_func_arg = NULL;
       ldv_list_ptr pps_func_arg_list = NULL;
@@ -3142,11 +3144,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3146 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3148 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 84:
-#line 1545 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1547 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_list_ptr func_arg_list = NULL;
@@ -3162,11 +3164,11 @@ yyreduce:
 
       (yyval.list) = func_arg_list;
     }
-#line 3166 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3168 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 85:
-#line 1561 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1563 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_pps_func_arg_ptr pps_func_arg_last = NULL;
@@ -3193,11 +3195,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-2].list);
     }
-#line 3197 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3199 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 86:
-#line 1590 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1592 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -3216,11 +3218,11 @@ yyreduce:
 
       (yyval.pps_decl) = pps_decl;
     }
-#line 3220 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3222 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 87:
-#line 1609 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1611 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_decl_ptr pps_decl = NULL;
       ldv_pps_declarator_ptr declarator = NULL;
@@ -3272,31 +3274,31 @@ yyreduce:
 
       (yyval.pps_decl) = pps_decl;
     }
-#line 3276 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3278 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 88:
-#line 1663 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1665 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3286 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3288 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 89:
-#line 1669 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1671 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
       (yyval.list) = ldv_list_splice ((yyvsp[-1].list), (yyvsp[0].list));
     }
-#line 3296 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3298 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 90:
-#line 1677 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1679 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_list_ptr declarator_list = NULL;
 
@@ -3306,29 +3308,29 @@ yyreduce:
 
       (yyval.list) = declarator_list;
     }
-#line 3310 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3312 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 91:
-#line 1687 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1689 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3318 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3320 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 92:
-#line 1693 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1695 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed direct abstract declarator of associativity");
 
       (yyval.list) = (yyvsp[-1].list);
     }
-#line 3328 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3330 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 93:
-#line 1699 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1701 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3353,11 +3355,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 3357 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3359 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 94:
-#line 1725 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1727 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3373,43 +3375,43 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 3377 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3379 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 95:
-#line 1743 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1745 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = NULL;
     }
-#line 3385 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3387 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 96:
-#line 1747 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1749 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3393 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3395 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 97:
-#line 1753 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1755 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = NULL;
     }
-#line 3401 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3403 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
   case 98:
-#line 1757 "ldv-aspect-parser.y" /* yacc.c:1646  */
+#line 1759 "ldv-aspect-parser.y" /* yacc.c:1646  */
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3409 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3411 "ldv-aspect-parser.c" /* yacc.c:1646  */
     break;
 
 
-#line 3413 "ldv-aspect-parser.c" /* yacc.c:1646  */
+#line 3415 "ldv-aspect-parser.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -3644,7 +3646,7 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 1761 "ldv-aspect-parser.y" /* yacc.c:1906  */
+#line 1763 "ldv-aspect-parser.y" /* yacc.c:1906  */
 
 
 void
@@ -3680,6 +3682,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
        LDV_PPS_DECL - LDV_PP_CALL
        LDV_PPS_DECL - LDV_PP_CALLP
        LDV_PPS_DECL - LDV_PP_USE_FUNC
+       LDV_PPS_DECL - LDV_PP_USE_VAR
        LDV_PPS_DECL - LDV_PP_DECLARE_FUNC
        LDV_PPS_DECL - LDV_PP_EXECUTION
        LDV_PPS_DECL - LDV_PP_GET
@@ -3707,9 +3710,9 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
 
     case LDV_PPS_DECL:
       if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP
-        || pp_kind == LDV_PP_USE_FUNC || pp_kind == LDV_PP_DECLARE_FUNC
-        || pp_kind == LDV_PP_EXECUTION || pp_kind == LDV_PP_GET
-        || pp_kind == LDV_PP_GET_GLOBAL || pp_kind == LDV_PP_GET_LOCAL
+        || pp_kind == LDV_PP_USE_FUNC || pp_kind == LDV_PP_USE_VAR
+        || pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION
+        || pp_kind == LDV_PP_GET || pp_kind == LDV_PP_GET_GLOBAL || pp_kind == LDV_PP_GET_LOCAL
         || pp_kind == LDV_PP_INCALL || pp_kind == LDV_PP_INFUNC
         || pp_kind == LDV_PP_INIT || pp_kind == LDV_PP_INIT_GLOBAL
         || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_INTRODUCE

@@ -641,6 +641,8 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
         p_pointcut->pp_kind = LDV_PP_CALLP;
       else if (!strcmp ("use_func", pp_kind))
         p_pointcut->pp_kind = LDV_PP_USE_FUNC;
+      else if (!strcmp ("use_var", pp_kind))
+        p_pointcut->pp_kind = LDV_PP_USE_VAR;
       else if (!strcmp ("execution", pp_kind))
         p_pointcut->pp_kind = LDV_PP_EXECUTION;
       else if (!strcmp ("declare_func", pp_kind))
@@ -1793,6 +1795,7 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
        LDV_PPS_DECL - LDV_PP_CALL
        LDV_PPS_DECL - LDV_PP_CALLP
        LDV_PPS_DECL - LDV_PP_USE_FUNC
+       LDV_PPS_DECL - LDV_PP_USE_VAR
        LDV_PPS_DECL - LDV_PP_DECLARE_FUNC
        LDV_PPS_DECL - LDV_PP_EXECUTION
        LDV_PPS_DECL - LDV_PP_GET
@@ -1820,9 +1823,9 @@ ldv_check_pp_semantics (ldv_pp_ptr p_pointcut)
 
     case LDV_PPS_DECL:
       if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP
-        || pp_kind == LDV_PP_USE_FUNC || pp_kind == LDV_PP_DECLARE_FUNC
-        || pp_kind == LDV_PP_EXECUTION || pp_kind == LDV_PP_GET
-        || pp_kind == LDV_PP_GET_GLOBAL || pp_kind == LDV_PP_GET_LOCAL
+        || pp_kind == LDV_PP_USE_FUNC || pp_kind == LDV_PP_USE_VAR
+        || pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION
+        || pp_kind == LDV_PP_GET || pp_kind == LDV_PP_GET_GLOBAL || pp_kind == LDV_PP_GET_LOCAL
         || pp_kind == LDV_PP_INCALL || pp_kind == LDV_PP_INFUNC
         || pp_kind == LDV_PP_INIT || pp_kind == LDV_PP_INIT_GLOBAL
         || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_INTRODUCE

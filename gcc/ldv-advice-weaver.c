@@ -2009,7 +2009,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
   /* In case of information request do not perform weaving just "print" advice
      body that implicitly invokes evaluation of all $fprintf. */
-  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL))
+  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_USE_VAR))
     {
       ldv_text_printed = ldv_create_text ();
 
