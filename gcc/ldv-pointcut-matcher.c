@@ -1167,15 +1167,18 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
 
   var->file_path = DECL_SOURCE_FILE (t);
 
+  if (pp_kind == LDV_PP_USE_VAR)
+    var->func_context = func_context;
+
   /* Add a function context for a variable if it's needed. */
   if (DECL_CONTEXT (t) && (TREE_CODE (DECL_CONTEXT (t)) == FUNCTION_DECL))
     {
-      var->func_context = ldv_create_info_match ();
+      var->decl_func_context = ldv_create_info_match ();
 
       f_context = ldv_create_info_func ();
 
-      var->func_context->i_kind = LDV_I_FUNC;
-      var->func_context->i_func = f_context;
+      var->decl_func_context->i_kind = LDV_I_FUNC;
+      var->decl_func_context->i_func = f_context;
 
       f_context->name = ldv_create_id ();
       ldv_puts_id (IDENTIFIER_POINTER (DECL_NAME (DECL_CONTEXT (t))), f_context->name);
@@ -1191,7 +1194,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
       f_context->file_path = DECL_SOURCE_FILE (DECL_CONTEXT (t));
     }
   else
-    var->func_context = NULL;
+    var->decl_func_context = NULL;
 
   /* Convert variable declaration initializer to internal representation.
      Do this just for structure variables. */
@@ -1239,10 +1242,10 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
         }
     }
 
-  if (var->func_context)
+  if (var->decl_func_context)
   {
     ldv_free_info_func (f_context);
-    ldv_free_info_match (var->func_context);
+    ldv_free_info_match (var->decl_func_context);
   }
 
   ldv_free_info_var (var);

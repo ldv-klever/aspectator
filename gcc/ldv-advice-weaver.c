@@ -2336,7 +2336,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              will be placed. */
           /* Place an aspect function declaration directly before a function
              definition for local variables and parameters declarations. */
-          if (var->func_context)
+          if (var->decl_func_context)
             {
               aspect_func_decl_for_print_new->file = ldv_decl_beginning_location.file;
               aspect_func_decl_for_print_new->line = ldv_decl_beginning_location.line;
