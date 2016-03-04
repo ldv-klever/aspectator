@@ -274,7 +274,7 @@ ldv_match_expr (tree t, tree context)
         }
       else if (code == VAR_DECL)
         {
-          ldv_match_var (t, LDV_PP_USE_VAR);
+          ldv_match_var (t, EXPR_LINENO(context), LDV_PP_USE_VAR);
 
           ldv_weave_advice (NULL, NULL);
 
@@ -351,9 +351,9 @@ ldv_match_expr (tree t, tree context)
               if (DECL_NAME (LDV_OP1) && (TREE_CODE (DECL_NAME (LDV_OP1)) == IDENTIFIER_NODE))
                 {
                   if (isvar_global)
-                    ldv_match_var (LDV_OP1, LDV_PP_SET_GLOBAL);
+                    ldv_match_var (LDV_OP1, 0, LDV_PP_SET_GLOBAL);
                   else
-                    ldv_match_var (LDV_OP1, LDV_PP_SET_LOCAL);
+                    ldv_match_var (LDV_OP1, 0, LDV_PP_SET_LOCAL);
 
                   if (ldv_i_match)
                     {
@@ -405,9 +405,9 @@ ldv_match_expr (tree t, tree context)
               if (DECL_NAME (LDV_OP2) && (TREE_CODE (DECL_NAME (LDV_OP2)) == IDENTIFIER_NODE))
                 {
                   if (isvar_global)
-                    ldv_match_var (LDV_OP2, LDV_PP_GET_GLOBAL);
+                    ldv_match_var (LDV_OP2, 0, LDV_PP_GET_GLOBAL);
                   else
-                    ldv_match_var (LDV_OP2, LDV_PP_GET_LOCAL);
+                    ldv_match_var (LDV_OP2, 0, LDV_PP_GET_LOCAL);
 
                   if (ldv_i_match)
                     {
@@ -1134,7 +1134,7 @@ ldv_match_typedecl (tree t, const char *file_path)
 }
 
 void
-ldv_match_var (tree t, ldv_ppk pp_kind)
+ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -1168,7 +1168,10 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   var->file_path = DECL_SOURCE_FILE (t);
 
   if (pp_kind == LDV_PP_USE_VAR)
-    var->func_context = func_context;
+    {
+      var->func_context = func_context;
+      var->use_line = line;
+    }
 
   /* Add a function context for a variable if it's needed. */
   if (DECL_CONTEXT (t) && (TREE_CODE (DECL_CONTEXT (t)) == FUNCTION_DECL))

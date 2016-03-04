@@ -478,6 +478,7 @@ typedef struct ldv_info_var_internal
   const char *file_path;
   struct ldv_info_match_internal *decl_func_context;
   ldv_i_func_ptr func_context;
+  unsigned int use_line;
   ldv_list_ptr initializer_list;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
