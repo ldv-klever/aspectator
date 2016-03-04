@@ -110,12 +110,11 @@ static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_context_decl_line (ldv_i_func_ptr);
 static const char *ldv_print_func_context_name (ldv_i_func_ptr);
-static const char *ldv_print_func_context_path (ldv_i_func_ptr);
 static const char *ldv_print_func_call_line (ldv_i_func_ptr);
 static const char *ldv_print_func_decl_line (ldv_i_func_ptr);
 static const char *ldv_print_func_use_line (ldv_i_func_ptr);
-static const char *ldv_print_func_path (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
+static const char *ldv_print_file_path (const char*);
 static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
 static const char *ldv_print_macro_signature (ldv_pps_macro_ptr);
@@ -446,7 +445,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_func_context_path (ldv_func_signature));
+            text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->func_context->file_path));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -498,10 +497,12 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "path"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_func_path (ldv_func_signature));
+        text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->file_path));
+      else if (ldv_var_signature)
+        text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->file_path));
       else
         {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+          LDV_FATAL_ERROR ("no signature was found for aspect pattern \"%s\"", pattern->name);
         }
     }
   else if (!strcmp (pattern->name, "proceed"))
@@ -1386,12 +1387,6 @@ ldv_print_func_context_name (ldv_i_func_ptr decl)
 }
 
 const char *
-ldv_print_func_context_path (ldv_i_func_ptr decl)
-{
-  return ldv_print_func_path (decl->func_context);
-}
-
-const char *
 ldv_print_func_decl (ldv_i_func_ptr func)
 {
   ldv_pps_decl_ptr decl;
@@ -1444,16 +1439,14 @@ ldv_print_func_use_line (ldv_i_func_ptr decl)
 }
 
 const char *
-ldv_print_func_path (ldv_i_func_ptr decl)
+ldv_print_file_path (const char* path)
 {
-  const char* path = NULL;
   char* occurrence = NULL;
 
   ldv_text_printed = ldv_create_text ();
 
   ldv_padding_cur = LDV_PADDING_NONE;
 
-  path = decl->file_path;
   occurrence = strstr(path, ".prepared");
   if (occurrence)
     *occurrence = '\0';
