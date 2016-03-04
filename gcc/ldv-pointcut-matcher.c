@@ -85,15 +85,13 @@ tree ldv_func_decl_matched = NULL_TREE;
 ldv_i_match_ptr ldv_i_match = NULL;
 
 static ldv_list_ptr ldv_var_array_list;
-static ldv_list_ptr ldv_cur_vars_list;
-static bool isfunc_vars;
 static ldv_i_func_ptr func_context = NULL;
 static unsigned int ldv_array_field_size (tree);
 static ldv_func_arg_info_ptr ldv_create_func_arg_info (void);
 static void ldv_free_func_arg_info (ldv_func_arg_info_ptr);
 static ldv_var_array_ptr ldv_create_var_array (void);
 static char *ldv_get_arg_sign (tree, enum ldv_arg_signs);
-static void ldv_match_expr (tree);
+static void ldv_match_expr (tree, tree);
 static void ldv_visualize_expr (tree, int);
 static void ldv_visualize_body (tree);
 
@@ -224,7 +222,7 @@ ldv_get_arg_sign (tree t, enum ldv_arg_signs ldv_arg_sign)
 }
 
 void
-ldv_match_expr (tree t)
+ldv_match_expr (tree t, tree context)
 {
   enum tree_code code;
   enum tree_code_class code_class;
@@ -249,9 +247,6 @@ ldv_match_expr (tree t)
   bool global_var_init = false;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
-  ldv_list_ptr cur_vars_list = NULL;
-  tree cur_var = NULL_TREE;
-  bool is_var_new = true;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -269,40 +264,13 @@ ldv_match_expr (tree t)
 
     /* For declarations just investigate variable initializers. */
     case tcc_declaration:
-      if (code == VAR_DECL)
+      if (code == FUNCTION_DECL)
         {
-          /* To avoid infinite recursion check that initializer isn't equal to
-             an initialized variable itself. */
-          /* Don't consider an initialized variable in scope of initialization. */
-          for (cur_vars_list = ldv_cur_vars_list; cur_vars_list; cur_vars_list = ldv_list_get_next (cur_vars_list))
-            {
-              cur_var = (tree) ldv_list_get_data (cur_vars_list);
-              if (cur_var == t)
-                is_var_new = false;
-            }
+          ldv_match_func (t, EXPR_LINENO(context), LDV_PP_USE_FUNC);
 
-          if (is_var_new)
-            {
-              /* Set a current variable just ones. */
-              ldv_list_push_back (&ldv_cur_vars_list, t);
+          ldv_weave_advice (NULL, NULL);
 
-              /* Consider initialization just in global scope and through function
-                 variables. Prevent considering global variables initialization in
-                 function context (#4397). Indeed their initialization isn't
-                 treated at all from now. */
-              global_var_init = DECL_FILE_SCOPE_P (t) && !func_context;
-              if (global_var_init || isfunc_vars)
-                {
-                  if (!global_var_init)
-                    isfunc_vars = false;
-                  ldv_match_expr (DECL_INITIAL (t));
-                  if (!global_var_init)
-                    isfunc_vars = true;
-                }
-
-              /* Finish current variable processing. */
-              ldv_cur_vars_list = NULL;
-            }
+          ldv_i_match = NULL;
         }
 
       break;
@@ -314,16 +282,7 @@ ldv_match_expr (tree t)
         case ADDR_EXPR:
         case TRUTH_NOT_EXPR:
         case VA_ARG_EXPR:
-          if (TREE_CODE (LDV_OP1) == FUNCTION_DECL)
-            {
-              ldv_match_func (LDV_OP1, EXPR_LINENO(t), LDV_PP_USE_FUNC);
-
-              ldv_weave_advice (NULL, NULL);
-
-              ldv_i_match = NULL;
-            }
-          else
-            ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP1, t);
 
           break;
 
@@ -331,13 +290,14 @@ ldv_match_expr (tree t)
         case BIND_EXPR:
           /* Match information on bound variables. Mark that we process function
              variables to avoid infinite recursion in initialization. */
-          isfunc_vars = true;
           for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
-            ldv_match_expr (block_decl);
-          isfunc_vars = false;
+            if (TREE_CODE(block_decl) == VAR_DECL && DECL_INITIAL(block_decl))
+              ldv_match_expr (DECL_INITIAL(block_decl), t);
+            else
+              ldv_match_expr (block_decl, t);
 
           /* Match a statement list. */
-          ldv_match_expr (BIND_EXPR_BODY (t));
+          ldv_match_expr (BIND_EXPR_BODY (t), t);
 
           /* Third operand is required for debugging purposes. */
 
@@ -350,8 +310,8 @@ ldv_match_expr (tree t)
         case TRUTH_AND_EXPR:
         case TRUTH_OR_EXPR:
         case TRUTH_XOR_EXPR:
-          ldv_match_expr (LDV_OP1);
-          ldv_match_expr (LDV_OP2);
+          ldv_match_expr (LDV_OP1, t);
+          ldv_match_expr (LDV_OP2, t);
 
           break;
 
@@ -422,7 +382,7 @@ ldv_match_expr (tree t)
                 }
             }
 
-          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP1, t);
 
           /* See just on a modified parameter or a variable declaration. */
           if (TREE_CODE (LDV_OP2) == PARM_DECL || TREE_CODE (LDV_OP2) == VAR_DECL)
@@ -476,22 +436,22 @@ ldv_match_expr (tree t)
                 }
             }
 
-          ldv_match_expr (LDV_OP2);
+          ldv_match_expr (LDV_OP2, t);
 
           break;
 
         /* It has one operand. */
         case COMPOUND_LITERAL_EXPR:
           /* But in fact just it initializer is interested. */
-          ldv_match_expr (DECL_INITIAL (COMPOUND_LITERAL_EXPR_DECL (t)));
+          ldv_match_expr (DECL_INITIAL (COMPOUND_LITERAL_EXPR_DECL (t)), t);
 
           break;
 
         /* It has three operands. */
         case COND_EXPR:
-          ldv_match_expr (COND_EXPR_COND (t));
-          ldv_match_expr (COND_EXPR_THEN (t));
-          ldv_match_expr (COND_EXPR_ELSE (t));
+          ldv_match_expr (COND_EXPR_COND (t), t);
+          ldv_match_expr (COND_EXPR_THEN (t), t);
+          ldv_match_expr (COND_EXPR_ELSE (t), t);
 
           break;
 
@@ -500,7 +460,7 @@ ldv_match_expr (tree t)
         case PREDECREMENT_EXPR:
         case POSTINCREMENT_EXPR:
         case POSTDECREMENT_EXPR:
-          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP1, t);
 
           /* Second operand represents an integer number to be added or
              subtracted. It isn't interesting. */
@@ -514,7 +474,7 @@ ldv_match_expr (tree t)
         /* It has four operands. */
         case TARGET_EXPR:
           /* Nevertheless we are interested just in one operand. */
-          ldv_match_expr (TARGET_EXPR_INITIAL (t));
+          ldv_match_expr (TARGET_EXPR_INITIAL (t), t);
 
           break;
 
@@ -527,14 +487,14 @@ ldv_match_expr (tree t)
     /* They both has two operands to be examined. */
     case tcc_binary:
     case tcc_comparison:
-      ldv_match_expr (LDV_OP1);
-      ldv_match_expr (LDV_OP2);
+      ldv_match_expr (LDV_OP1, t);
+      ldv_match_expr (LDV_OP2, t);
 
       break;
 
     /* It has one operand. */
     case tcc_unary:
-      ldv_match_expr (LDV_OP1);
+      ldv_match_expr (LDV_OP1, t);
 
       break;
 
@@ -545,8 +505,8 @@ ldv_match_expr (tree t)
         case ARRAY_REF:
           /* But in fact just a first representing an array itself and a second
              responsible for index are considered. */
-          ldv_match_expr (LDV_OP1);
-          ldv_match_expr (LDV_OP2);
+          ldv_match_expr (LDV_OP1, t);
+          ldv_match_expr (LDV_OP2, t);
 
           break;
 
@@ -556,8 +516,8 @@ ldv_match_expr (tree t)
 
         /* It has three operands. */
         case COMPONENT_REF:
-          ldv_match_expr (LDV_OP1);
-          ldv_match_expr (LDV_OP2);
+          ldv_match_expr (LDV_OP1, t);
+          ldv_match_expr (LDV_OP2, t);
 
           /* Third operand provides a field offset. */
 
@@ -565,7 +525,7 @@ ldv_match_expr (tree t)
 
         /* It has one operand. */
         case INDIRECT_REF:
-          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP1, t);
 
           break;
 
@@ -588,7 +548,7 @@ ldv_match_expr (tree t)
           /* CASE_HIGH corresponds to default label while CASE_LOW to the usual
              one. */
           if (CASE_LOW (t) && !CASE_HIGH (t))
-            ldv_match_expr (CASE_LOW (t));
+            ldv_match_expr (CASE_LOW (t), t);
 
           /* The third operand represents an auxliary label. */
 
@@ -600,26 +560,26 @@ ldv_match_expr (tree t)
 
         /* It has one operand. */
         case GOTO_EXPR:
-          ldv_match_expr (GOTO_DESTINATION (t));
+          ldv_match_expr (GOTO_DESTINATION (t), t);
 
           break;
 
         /* It has one operand. */
         case LABEL_EXPR:
-          ldv_match_expr (LABEL_EXPR_LABEL (t));
+          ldv_match_expr (LABEL_EXPR_LABEL (t), t);
 
           break;
 
         /* It has one operand. */
         case RETURN_EXPR:
-          ldv_match_expr (LDV_OP1);
+          ldv_match_expr (LDV_OP1, t);
 
           break;
 
         /* It has three operands. */
         case SWITCH_EXPR:
-          ldv_match_expr (SWITCH_COND (t));
-          ldv_match_expr (SWITCH_BODY (t));
+          ldv_match_expr (SWITCH_COND (t), t);
+          ldv_match_expr (SWITCH_BODY (t), t);
 
           /* The third operand in fact represents a collection of the second one
              case labels. */
@@ -651,7 +611,7 @@ ldv_match_expr (tree t)
                         break;
 
                       default:
-                        ldv_match_expr (statement);
+                        ldv_match_expr (statement, t);
                     }
                 }
             }
@@ -660,7 +620,7 @@ ldv_match_expr (tree t)
 
         case CONSTRUCTOR:
           FOR_EACH_CONSTRUCTOR_VALUE (CONSTRUCTOR_ELTS (t), ix, value)
-            ldv_match_expr (value);
+            ldv_match_expr (value, t);
 
           break;
 
@@ -856,7 +816,7 @@ ldv_match_expr (tree t)
           FOR_EACH_CALL_EXPR_ARG (arg, iter, t)
             {
               /* Walk through arguments. */
-              ldv_match_expr(arg);
+              ldv_match_expr(arg, t);
             }
 
           break;
@@ -1056,7 +1016,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
      of a body that may be a pointer on arrays with sizes. */
   ldv_var_array_list = NULL;
 
-  ldv_match_expr (body);
+  ldv_match_expr (body, fndecl);
 
   /* Visualize a body after matching and weaving. */
   ldv_visualize_body (fndecl);
@@ -1228,10 +1188,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   /* Convert variable declaration initializer to internal representation.
      Do this just for structure variables. */
   if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
-    {
-      var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
-      ldv_match_expr(t);
-    }
+    var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
