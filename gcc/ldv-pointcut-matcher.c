@@ -1161,7 +1161,10 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
 
   /* Obtain information on a variable signature. */
   var->name = ldv_create_id ();
-  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), var->name);
+  if (DECL_NAME (t))
+    ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), var->name);
+  else
+    ldv_puts_id ((const char *) "", var->name);
 
   var->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 

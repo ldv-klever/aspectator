@@ -1051,6 +1051,15 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_init_list (file_stream, 0, ldv_var_init_list);
                   ldv_close_file_stream (file_stream);
                 }
+              else if (!strcmp (pattern->name, "fprintf_var_init_values"))
+                {
+                  pattern_params = pattern->params;
+                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+
+                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
+                  ldv_print_var_init_values(file_stream, ldv_var_init_list);
+                  ldv_close_file_stream (file_stream);
+                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);

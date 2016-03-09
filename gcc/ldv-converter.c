@@ -273,7 +273,14 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
           if (TREE_CODE (value) == CONSTRUCTOR)
             initializer->initializer = ldv_convert_initializer_to_internal (value);
           else
-            initializer->value = ldv_convert_and_print_assignment_expr (value);
+            {
+              initializer->value = ldv_convert_and_print_assignment_expr (value);
+
+              if (TREE_CODE (value) == ADDR_EXPR && TREE_CODE (TREE_OPERAND (value, 0)) == FUNCTION_DECL)
+                initializer->is_func_ptr = 1;
+              else
+                initializer->is_func_ptr = 0;
+            }
 
           ldv_list_push_back (&initializer_list, initializer);
         }
@@ -283,6 +290,12 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
       initializer = ldv_create_info_initializer ();
       initializer->ii_kind = LDV_II_OTHER;
       initializer->value = ldv_convert_and_print_assignment_expr (initializer_tree);
+
+      if (TREE_CODE (initializer_tree) == ADDR_EXPR && TREE_CODE (TREE_OPERAND (initializer_tree, 0)) == FUNCTION_DECL)
+        initializer->is_func_ptr = 1;
+      else
+        initializer->is_func_ptr = 0;
+
       ldv_list_push_back (&initializer_list, initializer);
     }
 

@@ -464,6 +464,7 @@ typedef struct ldv_info_initializer_internal
   ldv_iik ii_kind;
   char *field_decl;
   unsigned int array_index;
+  unsigned int is_func_ptr;
   char *value;
   ldv_list_ptr initializer;
 } ldv_info_initializer;

@@ -387,6 +387,31 @@ ldv_print_init_list (FILE *file_stream, unsigned int indent_level, ldv_list_ptr 
 }
 
 void
+ldv_print_var_init_values (FILE *file_stream, ldv_list_ptr var_inits)
+{
+  ldv_list_ptr var_init = NULL;
+  ldv_i_initializer_ptr initializer = NULL;
+
+  if (!file_stream)
+    {
+      LDV_CPP_FATAL_ERROR ("file stream where structure variable initializer list to be printed isn't specified");
+    }
+
+  for (var_init = var_inits; var_init; var_init = ldv_list_get_next (var_init))
+  {
+    initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
+
+    if (initializer->value)
+      fprintf (file_stream, "||%s:%d", initializer->value, initializer->is_func_ptr);
+    else
+      {
+        /* Print internal structure or array initializer list. */
+        ldv_print_var_init_values (file_stream, initializer->initializer);
+      }
+  }
+}
+
+void
 ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr pattern_params)
 {
   ldv_str_ptr conversion = NULL, text = NULL;
