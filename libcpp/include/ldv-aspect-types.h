@@ -454,16 +454,25 @@ typedef struct ldv_info_typedecl_internal
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
 /* Initializer information. */
-typedef enum { LDV_II_FIELD, LDV_II_ARRAY_ELEMENT, LDV_II_OTHER } ldv_iik;
 typedef struct ldv_info_initializer_internal
 {
-  ldv_iik ii_kind;
-  char *field_decl;
-  unsigned int array_index;
-  char *value;
-  ldv_list_ptr initializer;
+  char *non_struct_or_array_initializer;
+  ldv_list_ptr struct_initializer;
+  ldv_list_ptr array_initializer;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;
+typedef struct ldv_info_struct_field_initializer_internal
+{
+  char *decl;
+  ldv_i_initializer_ptr initializer;
+} ldv_info_struct_field_initializer;
+typedef ldv_info_struct_field_initializer *ldv_i_struct_field_initializer_ptr;
+typedef struct ldv_info_array_elem_initializer_internal
+{
+  unsigned int index;
+  ldv_i_initializer_ptr initializer;
+} ldv_info_array_elem_initializer;
+typedef ldv_info_array_elem_initializer *ldv_i_array_elem_initializer_ptr;
 
 struct ldv_info_match_internal;
 /* Variable declaration information = variable name + variable type. */
@@ -473,7 +482,7 @@ typedef struct ldv_info_var_internal
   ldv_i_type_ptr type;
   const char *file_path;
   struct ldv_info_match_internal *func_context;
-  ldv_list_ptr initializer_list;
+  ldv_i_initializer_ptr initializer;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 
