@@ -455,6 +455,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
             }
         }
+      else if (ldv_var_signature)
+        {
+          if (ldv_var_signature->func_context)
+            text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->func_context->file_path));
+          else
+            {
+              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
+            }
+        }
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
