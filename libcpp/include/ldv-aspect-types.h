@@ -445,12 +445,12 @@ typedef struct ldv_info_param_internal
 typedef ldv_info_param *ldv_i_param_ptr;
 
 /* Type declaration information = type name + type type. */
-typedef enum { LDV_ITD_ENUM, LDV_ITD_NONE, LDV_ITD_STRUCT, LDV_ITD_UNION } ldv_itdk;
 typedef struct ldv_info_typedecl_internal
 {
   ldv_id_ptr name;
-  ldv_itdk itd_kind;
+  ldv_i_type_ptr type;
   const char *file_path;
+  char *decl;
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 

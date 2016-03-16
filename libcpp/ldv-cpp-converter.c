@@ -273,32 +273,34 @@ ldv_i_typedecl_ptr
 ldv_convert_typedecl_signature_to_internal (ldv_pps_decl_ptr pps_typedecl)
 {
   ldv_i_typedecl_ptr i_typedecl = NULL;
-  ldv_pps_declspecs_ptr pps_declspecs = NULL;
+  ldv_pps_declarator_ptr declarator = NULL;
+  ldv_list_ptr declarator_list = NULL;
 
   i_typedecl = ldv_create_info_typedecl ();
 
-  /* Specify that a type type is absent at the beginnning. */
-  i_typedecl->itd_kind = LDV_ITD_NONE;
-
-  /* A type declaration signature has just declaration specifiers and no declarators. */
-  pps_declspecs = pps_typedecl->pps_declspecs;
-
-  /* Obtain a type declaration name. */
-  i_typedecl->name = ldv_copy_id (pps_declspecs->type_name);
-
-  /* Obtain a type declaration type type. */
-  if (pps_declspecs->isstruct)
-    i_typedecl->itd_kind = LDV_ITD_STRUCT;
-  else if (pps_declspecs->isunion)
-    i_typedecl->itd_kind = LDV_ITD_UNION;
-  else if (pps_declspecs->isenum)
-    i_typedecl->itd_kind = LDV_ITD_ENUM;
-  else
+  if (pps_typedecl->pps_declarator)
     {
-      LDV_CPP_FATAL_ERROR ("incorrect type declaration information kind \"%d\" is used", i_typedecl->itd_kind);
-    }
+      /* A last declarator in a chain must contain a type definition name. */
+      declarator_list = ldv_list_get_last (pps_typedecl->pps_declarator);
 
-  return i_typedecl;
+      declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
+
+      /* Convert a declarator name to a type definition name. */
+      if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
+        {
+          i_typedecl->name = ldv_copy_id (declarator->declarator_name);
+
+          /* A previous to last declarators contain a type definition type. */
+          declarator_list = ldv_list_get_prev (pps_typedecl->pps_declarator, declarator_list);
+
+          /* Convert a declarator type to a type definition type. */
+          i_typedecl->type = ldv_convert_declspecs_declarator_to_internal (pps_typedecl->pps_declspecs, pps_typedecl->pps_declarator, declarator_list);
+
+          return i_typedecl;
+        }
+     }
+
+  LDV_CPP_FATAL_ERROR ("can't convert type signature from declaration form to the internal type representation");
 }
 
 ldv_i_var_ptr

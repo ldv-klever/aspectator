@@ -658,8 +658,6 @@ ldv_create_info_typedecl (void)
 
   i_typedecl = XCNEW (ldv_info_typedecl);
 
-  i_typedecl->itd_kind = LDV_ITD_NONE;
-
   return i_typedecl;
 }
 
@@ -668,6 +666,8 @@ ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
 {
   if (typedecl->name)
     ldv_free_id (typedecl->name);
+
+  ldv_free_info_type (typedecl->type);
 
   free (typedecl);
 }

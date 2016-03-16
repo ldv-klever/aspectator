@@ -1050,7 +1050,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 }
 
 void
-ldv_match_typedecl (tree t, const char *file_path)
+ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -1071,31 +1071,30 @@ ldv_match_typedecl (tree t, const char *file_path)
   typedecl = ldv_create_info_typedecl ();
 
   match->i_kind = LDV_I_TYPE;
+  match->pp_kind = pp_kind;
   match->i_typedecl = typedecl;
 
   /* Obtain information on a type declaration signature. */
   typedecl->name = ldv_create_id ();
-  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (TYPE_NAME (t))), typedecl->name);
+  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
 
-  switch (TREE_CODE (t))
+  typedecl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
+
+  typedecl->file_path = DECL_SOURCE_FILE (t);
+
+  /* typedecl->file_path = file_path; */
+
+  typedecl->decl = ldv_convert_and_print_decl (t);
+  /* Replace all new lines with spaces to avoid multi-line type definitions. */
+  while (1)
     {
-    case ENUMERAL_TYPE:
-      typedecl->itd_kind = LDV_ITD_ENUM;
-      break;
-
-    case RECORD_TYPE:
-      typedecl->itd_kind = LDV_ITD_STRUCT;
-      break;
-
-    case UNION_TYPE:
-      typedecl->itd_kind = LDV_ITD_UNION;
-      break;
-
-    default:
-      LDV_FATAL_ERROR ("incorrect type type");
+      char *newline = strstr(typedecl->decl, "\n");
+      if (newline)
+        *newline = ' ';
+      else
+        break;
     }
 
-  typedecl->file_path = file_path;
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

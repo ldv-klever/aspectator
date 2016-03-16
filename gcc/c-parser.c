@@ -2345,7 +2345,7 @@ c_parser_enum_specifier (c_parser *parser)
             {        
               /* Try to match an enumeral typedecl. Note that a context of a typedecl is
                  defined by its open brace location. */
-              ldv_match_typedecl (type, ldv_open_brace.file);
+              /* Does not work any more: ldv_match_typedecl (type, ldv_open_brace.file); */
     
               /* Weave a matched advice. */
               ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);
@@ -2592,7 +2592,7 @@ c_parser_struct_or_union_specifier (c_parser *parser)
             {        
               /* Try to match a struct or union typedecl. Note that a context of 
                  a typedecl is defined by its open brace location. */
-              ldv_match_typedecl (type, ldv_open_brace.file);
+              /* Does not work any more: ldv_match_typedecl (type, ldv_open_brace.file); */
     
               /* Weave a matched advice. */
               ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);
