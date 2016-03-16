@@ -420,6 +420,7 @@ typedef struct ldv_info_func_internal
   unsigned int call_line;
   unsigned int decl_line;
   struct ldv_info_func_internal *func_context;
+  char *decl;
 } ldv_info_func;
 typedef ldv_info_func *ldv_i_func_ptr;
 
@@ -483,6 +484,7 @@ typedef struct ldv_info_var_internal
   const char *file_path;
   struct ldv_info_match_internal *func_context;
   ldv_i_initializer_ptr initializer;
+  char *decl;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 

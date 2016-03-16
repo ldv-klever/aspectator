@@ -232,7 +232,6 @@ ldv_i_initializer_ptr
 ldv_convert_initializer_to_internal (tree initializer_tree)
 {
   ldv_i_initializer_ptr initializer = NULL;
-  ldv_i_var_ptr artificial_decl = NULL;
   unsigned HOST_WIDE_INT ix;
   tree index, value;
   ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
@@ -251,19 +250,8 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
           if (TREE_CODE (index) == FIELD_DECL)
             {
               struct_field_initializer = XCNEW (ldv_info_struct_field_initializer);
-
-              /* Create artificial declaration corresponding to structure field. */
-              artificial_decl = ldv_create_info_var ();
-              artificial_decl->name = ldv_create_id ();
-              ldv_puts_id (DECL_NAME (index)
-                ? (const char *) (IDENTIFIER_POINTER (DECL_NAME (index)))
-                : "", artificial_decl->name);
-              artificial_decl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (index), NULL);
-              struct_field_initializer->decl = ldv_print_var_decl (artificial_decl);
-              ldv_free_info_var (artificial_decl);
-
+              struct_field_initializer->decl = ldv_convert_and_print_struct_decl (index);
               struct_field_initializer->initializer = ldv_convert_initializer_to_internal (value);
-
               ldv_list_push_back (&initializer->struct_initializer, struct_field_initializer);
             }
           else if (TREE_CODE (index) == INTEGER_CST)

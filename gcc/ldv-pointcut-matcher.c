@@ -951,6 +951,9 @@ ldv_match_func (tree t, unsigned int call_line, ldv_ppk pp_kind)
       func->call_line = call_line;
     }
 
+  if (TREE_CODE (t) == FUNCTION_DECL)
+    func->decl = ldv_convert_and_print_decl (t);
+
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
@@ -1154,6 +1157,7 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
   ldv_i_var_ptr var = NULL;
   ldv_i_func_ptr func_context = NULL;
   const char *var_decl_printed;
+  tree initializer = NULL_TREE;
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
@@ -1208,6 +1212,14 @@ ldv_match_var (tree t, ldv_ppk pp_kind)
      Do this just for structure variables. */
   if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
     var->initializer = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
+
+  if (TREE_CODE (t) == VAR_DECL)
+    {
+      initializer = DECL_INITIAL (t);
+      DECL_INITIAL (t) = NULL_TREE;
+      var->decl = ldv_convert_and_print_decl (t);
+      DECL_INITIAL (t) = initializer;
+    }
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

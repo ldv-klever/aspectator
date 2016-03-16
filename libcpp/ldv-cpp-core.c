@@ -401,6 +401,8 @@ ldv_free_info_func (ldv_i_func_ptr func)
 
   ldv_free_info_type (func->type);
 
+  free (func->decl);
+
   free (func);
 }
 
@@ -690,6 +692,8 @@ ldv_free_info_var (ldv_i_var_ptr var)
 
   if (var->initializer)
     ldv_free_info_initializer (var->initializer);
+
+  free (var->decl);
 
   free (var);
 }
