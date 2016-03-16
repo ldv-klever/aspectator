@@ -64,7 +64,6 @@ static ldv_cond_expr_ptr ldv_convert_cond_expr (tree, unsigned int);
 static ldv_const_expr_ptr ldv_convert_const_expr (tree);
 static ldv_constant_ptr ldv_convert_constant (tree);
 static ldv_compound_statement_ptr ldv_convert_compound_statement (tree);
-static ldv_decl_ptr ldv_convert_decl (tree);
 static ldv_decl_spec_ptr ldv_convert_decl_spec (tree, bool);
 static void ldv_convert_declarator (tree, bool, ldv_declarator_ptr *, ldv_direct_declarator_ptr, ldv_declarator_ptr);
 static ldv_declarator_ptr ldv_convert_declarator_internal (tree, bool);
@@ -116,7 +115,6 @@ static ldv_spec_qual_list_ptr ldv_convert_spec_qual_list (tree);
 static ldv_statement_ptr ldv_convert_statement (tree);
 static ldv_decl_spec_ptr ldv_convert_storage_class_spec (tree);
 static ldv_str_literal_ptr ldv_convert_str_literal (tree);
-static ldv_struct_decl_ptr ldv_convert_struct_decl (tree);
 static ldv_struct_decl_list_ptr ldv_convert_struct_decl_list (tree);
 static ldv_struct_declarator_ptr ldv_convert_struct_declarator (tree);
 static ldv_struct_declarator_list_ptr ldv_convert_struct_declarator_list (tree);
@@ -1559,7 +1557,7 @@ ldv_convert_compound_statement (tree t)
 declaration:
     declaration-specifiers init-declarator-listopt ;
 */
-static ldv_decl_ptr
+ldv_decl_ptr
 ldv_convert_decl (tree t)
 {
   ldv_decl_ptr decl;
@@ -4848,7 +4846,7 @@ GNU extensions:
 struct-declaration:
     specifier-qualifier-list
 */
-static ldv_struct_decl_ptr
+ldv_struct_decl_ptr
 ldv_convert_struct_decl (tree t)
 {
   ldv_struct_decl_ptr struct_decl;
