@@ -2144,6 +2144,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
+          /* Make auxiliary functions static to avoid duplicates
+           * (http://forge.ispras.ru/issues/7100). */
+          decl->pps_declspecs->isstatic = true;
+
           ldv_print_decl (decl);
 
           ldv_free_pps_decl (decl);
