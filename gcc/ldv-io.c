@@ -264,10 +264,10 @@ ldv_gets (FILE *stream)
 
   while ((c = ldv_getc (stream)) != EOF)
     {
+      ldv_putc_text (c, line);
+
       if (c == '\n')
         break;
-
-      ldv_putc_text (c, line);
     }
 
   str = ldv_get_text (line);
@@ -637,9 +637,6 @@ ldv_print_to_awfile (void)
         ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
 
       free (line);
-
-      /* Put the end of a line to the end. */
-      ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
 
       /* Enlarge a line number in a currently processed file. Special
          preprocessor directives are skipped. */
