@@ -1076,7 +1076,10 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 
   /* Obtain information on a type declaration signature. */
   typedecl->name = ldv_create_id ();
-  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
+  if (DECL_NAME (t)) 
+    ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
+  else
+    ldv_puts_id ("", typedecl->name);
 
   typedecl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 
