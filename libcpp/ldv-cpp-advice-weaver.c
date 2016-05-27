@@ -168,6 +168,10 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
     {
       text = ldv_itoa(ldv_i_match->i_macro->line);
     }
+  else if (!strcmp (pattern->name, "env"))
+    {
+      text = ldv_copy_str (pattern->value);
+    }
 
 
   if (text)
