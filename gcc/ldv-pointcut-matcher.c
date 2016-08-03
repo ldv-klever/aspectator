@@ -766,7 +766,8 @@ ldv_match_expr (tree t)
           if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == ADDR_EXPR
             && (func_called = TREE_OPERAND (func_called_addr, 0))
-            && TREE_CODE (func_called) == FUNCTION_DECL)
+            && TREE_CODE (func_called) == FUNCTION_DECL
+            && !DECL_IS_BUILTIN (func_called))
             {
               /* Try to match a function declaration for a call join point. */
               ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);
