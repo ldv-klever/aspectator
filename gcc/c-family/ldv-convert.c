@@ -4857,10 +4857,19 @@ ldv_convert_struct_decl (tree t)
   switch (TREE_CODE (t))
     {
     case FIELD_DECL:
-      if ((field_type = TREE_TYPE (t)))
-        LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
+      if (DECL_C_BIT_FIELD (t))
+        {
+          if (!(field_type = DECL_BIT_FIELD_TYPE (t)))
+            LDV_WARN ("can't find original bitfield type");
+        }
       else
-        LDV_WARN ("can't find field declaration type");
+        {
+          if (!(field_type = TREE_TYPE (t)))
+            LDV_WARN ("can't find field declaration type");
+        }
+
+      if (field_type)
+        LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
 
       /* Do not create artificial structure declarators (the GNU extension
          allows empty structure declarator lists). This fixes
@@ -5398,26 +5407,12 @@ ldv_convert_type_spec_internal (tree t)
   ldv_decl_spec_ptr decl_spec, decl_spec_cur;
   bool is_type_spec;
   tree type_decl, type_name;
-  tree type;
-  tree bitfield_type;
   const char *type_name_str;
 
   decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   is_type_spec = false;
 
-  type = NULL;
-
-  if (!(type_decl = TYPE_NAME (t)))
-    {
-      if ((bitfield_type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
-        type = bitfield_type;
-      else
-        LDV_WARN ("can't find bitfield type");
-    }
-  else
-    type = t;
-
-  if ((type_decl = TYPE_NAME (type)))
+  if ((type_decl = TYPE_NAME (t)))
     {
       if ((type_name = DECL_NAME (type_decl)))
         {
