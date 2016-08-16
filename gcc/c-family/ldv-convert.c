@@ -4948,7 +4948,8 @@ ldv_convert_struct_declarator (tree t)
         {
           if (!DECL_SIZE (t) || TREE_CODE (DECL_SIZE (t)) != INTEGER_CST)
             LDV_WARN ("can't find bitfield size");
-          LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = ldv_convert_integer_constant(DECL_SIZE (t));
+          else
+            LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = ldv_convert_integer_constant(DECL_SIZE (t));
         }
 
       break;
