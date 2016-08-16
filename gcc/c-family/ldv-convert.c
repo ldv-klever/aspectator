@@ -1066,7 +1066,7 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
              references in C so just ignore this casting at all. 
              In addition we wouldn't like to introduce casts for bitfields since
              artificial types that haven't names are used for them. */
-          if (TREE_CODE (type) == REFERENCE_TYPE || !(TYPE_NAME (type)))
+          if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
             {
               LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
 
