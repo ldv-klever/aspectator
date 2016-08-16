@@ -1600,7 +1600,7 @@ typedef struct ldv_enum_spec *ldv_enum_spec_ptr;
 #define LDV_ENUM_SPEC_IDENTIFIER(enum_spec) (enum_spec->identifier)
 #define LDV_ENUM_SPEC_ENUM_LIST(enum_spec)  (enum_spec->enum_list)
 
-/* ! NOT FINISHED !
+/*
 struct-declarator:
     declarator
     declaratoropt : constant-expression
@@ -1608,11 +1608,11 @@ struct-declarator:
 struct ldv_struct_declarator
 {
   ldv_declarator_ptr declarator;
-  int a;
+  ldv_integer_constant_ptr const_expr;
 };
 typedef struct ldv_struct_declarator *ldv_struct_declarator_ptr;
 #define LDV_STRUCT_DECLARATOR_DECLARATOR(struct_declarator) (struct_declarator->declarator)
-#define LDV_STRUCT_DECLARATOR_CONST_EXPR(struct_declarator) (struct_declarator->a)
+#define LDV_STRUCT_DECLARATOR_CONST_EXPR(struct_declarator) (struct_declarator->const_expr)
 
 /*
 struct-declarator-list:

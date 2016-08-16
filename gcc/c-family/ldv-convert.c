@@ -4936,8 +4936,6 @@ static ldv_struct_declarator_ptr
 ldv_convert_struct_declarator (tree t)
 {
   ldv_struct_declarator_ptr struct_declarator;
-  tree field_type;
-  int bitfield_size;
 
   struct_declarator = XCNEW (struct ldv_struct_declarator);
 
@@ -4946,19 +4944,13 @@ ldv_convert_struct_declarator (tree t)
   switch (TREE_CODE (t))
     {
     case FIELD_DECL:
-      if ((field_type = TREE_TYPE (t)))
+      if (DECL_C_BIT_FIELD (t))
         {
-          if (TREE_CODE (field_type) == INTEGER_TYPE)
-            {
-              if (!TYPE_NAME (field_type))
-                {
-                  bitfield_size = TYPE_PRECISION (field_type);
-                  LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = bitfield_size;
-                }
-            }
+          if (!DECL_SIZE (t) || TREE_CODE (DECL_SIZE (t)) != INTEGER_CST)
+            LDV_WARN ("can't find bitfield size");
+          LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = ldv_convert_integer_constant(DECL_SIZE (t));
         }
-      else
-        LDV_WARN ("can't find field declaration type");
+
       break;
 
     default:
