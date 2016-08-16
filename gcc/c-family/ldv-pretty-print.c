@@ -3655,7 +3655,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
 {
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
-  int const_expr;
+  ldv_integer_constant_ptr const_expr;
 
   if ((declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator)))
     {
@@ -3671,7 +3671,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
   if ((const_expr = LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator)))
     {
       ldv_c_backend_print (indent_level, true, ":");
-      ldv_c_backend_print (indent_level, true, "%d", const_expr);
+      ldv_print_integer_constant (indent_level, const_expr);
     }
 
   if (!declarator && !const_expr)
