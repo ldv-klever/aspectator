@@ -1063,8 +1063,10 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
              with __builtin_va_start and similar functions because of their
              parameters have reference type. Thus in their calls casting to
              reference type is performed. But we wouldn't like to introduce
-             references in C so just ignore this casting at all. */
-          if (TREE_CODE (type) == REFERENCE_TYPE)
+             references in C so just ignore this casting at all. 
+             In addition we wouldn't like to introduce casts for bitfields since
+             artificial types that haven't names are used for them. */
+          if (TREE_CODE (type) == REFERENCE_TYPE || !(TYPE_NAME (type)))
             {
               LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
 
