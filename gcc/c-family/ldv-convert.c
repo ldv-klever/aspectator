@@ -5409,12 +5409,21 @@ ldv_convert_type_spec_internal (tree t)
   ldv_decl_spec_ptr decl_spec, decl_spec_cur;
   bool is_type_spec;
   tree type_decl, type_name;
+  tree type = NULL_TREE;
   const char *type_name_str;
 
   decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   is_type_spec = false;
 
-  if ((type_decl = TYPE_NAME (t)))
+  if (!(type_decl = TYPE_NAME (t)))
+    {
+      if (!(type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
+        LDV_WARN ("can't find appropriate type");
+    }
+  else
+    type = t;
+
+  if (type && (type_decl = TYPE_NAME (type)))
     {
       if ((type_name = DECL_NAME (type_decl)))
         {
