@@ -2197,7 +2197,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Create an aspect function definition. */
           ldv_text_printed = ldv_create_text ();
 
-          ldv_putc_text ('\n', ldv_text_printed);
+          if (pp_kind == LDV_PP_EXECUTION)
+            ldv_putc_text ('\n', ldv_text_printed);
+          else if (pp_kind == LDV_PP_CALL)
+            ldv_puts_text ("\n/* AUX_FUNC */\n", ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
             func_name = ldv_get_id_name (func_aspect->name);
