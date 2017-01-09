@@ -295,6 +295,24 @@ ldv_convert_additive_expr (tree t, unsigned int recursion_limit)
     case PLUS_EXPR:
     case POINTER_PLUS_EXPR:
     case MINUS_EXPR:
+      /* Fix https://forge.ispras.ru/issues/7673 by introducing correct
+       * casting expression for the whole expression and omitting the
+       * incorrect one for its first operand. */
+      if (TREE_CODE (t) == POINTER_PLUS_EXPR)
+        {
+          if ((op1 = LDV_OP_FIRST (t)))
+            {
+              if (TREE_CODE (op1) == NOP_EXPR)
+                {
+                  LDV_OP_FIRST (t) = LDV_OP_FIRST (op1);
+                  LDV_OP_FIRST (op1) = t;
+                  return ldv_convert_additive_expr (op1, recursion_limit);
+                }
+            }
+          else
+            LDV_WARN ("can't find the first operand of additive expression");
+        }
+
       if (TREE_CODE (t) == PLUS_EXPR || TREE_CODE (t) == POINTER_PLUS_EXPR)
         LDV_ADDITIVE_EXPR_KIND (additive_expr) = LDV_ADDITIVE_EXPR_SECOND;
       else
