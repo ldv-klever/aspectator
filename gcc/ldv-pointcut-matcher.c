@@ -1088,7 +1088,10 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 
   /* typedecl->file_path = file_path; */
 
+  ldv_disable_anon_enum_spec = true;
   typedecl->decl = ldv_convert_and_print_decl (t);
+  ldv_disable_anon_enum_spec = false;
+
   /* Replace all new lines with spaces to avoid multi-line type definitions. */
   while (1)
     {
