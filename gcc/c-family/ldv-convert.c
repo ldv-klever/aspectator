@@ -38,6 +38,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
 
 
+bool ldv_disable_anon_enum_spec;
+
+
 static ldv_constant_ptr ldv_constant_current;
 static bool ldv_is_convert_enum_const_const_expr;
 
@@ -2345,12 +2348,21 @@ ldv_convert_enum_spec (tree t, bool is_decl_decl_spec)
     case ENUMERAL_TYPE:
       LDV_TYPE_SPEC_KIND (type_spec) = LDV_TYPE_SPEC_SECOND;
 
-      LDV_ENUM_SPEC_IDENTIFIER (enum_spec) = ldv_convert_identifier (t);
+      if (!TYPE_NAME (t) && ldv_disable_anon_enum_spec)
+        {
+            if ((enum_values = TYPE_VALUES (t)))
+              if ((enum_list = ldv_convert_enum_list (enum_values)))
+                LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+	    }
+      else
+        {
+          LDV_ENUM_SPEC_IDENTIFIER (enum_spec) = ldv_convert_identifier (t);
 
-      if (is_decl_decl_spec)
-        if ((enum_values = TYPE_VALUES (t)))
-          if ((enum_list = ldv_convert_enum_list (enum_values)))
-            LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+          if (is_decl_decl_spec)
+            if ((enum_values = TYPE_VALUES (t)))
+              if ((enum_list = ldv_convert_enum_list (enum_values)))
+                LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+        }
 
       break;
 

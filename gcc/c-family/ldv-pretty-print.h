@@ -22,6 +22,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "tree.h"
 
 
+extern bool ldv_disable_anon_enum_spec;
+
+
 char *ldv_convert_and_print_assignment_expr (tree);
 char *ldv_convert_and_print_decl (tree);
 char *ldv_convert_and_print_struct_decl (tree);
