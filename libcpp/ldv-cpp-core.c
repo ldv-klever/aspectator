@@ -401,6 +401,8 @@ ldv_free_info_func (ldv_i_func_ptr func)
 
   ldv_free_info_type (func->type);
 
+  free (func->decl);
+
   free (func);
 }
 
@@ -417,31 +419,38 @@ ldv_create_info_initializer (void)
 void
 ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
 {
-  ldv_list_ptr initializer_list = NULL;
-  /* TODO: looks like name of parameter is bad, since we need "nested" suffix. */
-  ldv_i_initializer_ptr initializer_nested = NULL;
-  /* TODO: not widely used names. */
-  ldv_list_ptr params;
-  char *param;
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
 
-  if (initializer->value)
-    free (initializer->value);
-
-  if (initializer->initializer)
+  if (initializer->non_struct_or_array_initializer)
+    free (initializer->non_struct_or_array_initializer);
+  else if (initializer->struct_initializer)
     {
-      for (initializer_list = initializer->initializer
-        ; initializer_list
-        ; initializer_list = ldv_list_get_next (initializer_list))
+      for (struct_field_initializer_list = initializer->struct_initializer
+        ; struct_field_initializer_list
+        ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
         {
-          initializer_nested = (ldv_i_initializer_ptr) ldv_list_get_data (initializer_list);
-          ldv_free_info_initializer (initializer_nested);
+          struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+          free (struct_field_initializer->decl);
+          ldv_free_info_initializer (struct_field_initializer->initializer);
         }
 
-      ldv_list_delete_all (initializer->initializer);
+      ldv_list_delete_all (initializer->struct_initializer);
     }
+  else
+    {
+      for (array_elem_initializer_list = initializer->array_initializer
+        ; array_elem_initializer_list
+        ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+        {
+          array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+          ldv_free_info_initializer (array_elem_initializer->initializer);
+        }
 
-  if (initializer->field_decl)
-    free (initializer->field_decl);
+      ldv_list_delete_all (initializer->array_initializer);
+    }
 
   free (initializer);
 }
@@ -649,8 +658,6 @@ ldv_create_info_typedecl (void)
 
   i_typedecl = XCNEW (ldv_info_typedecl);
 
-  i_typedecl->itd_kind = LDV_ITD_NONE;
-
   return i_typedecl;
 }
 
@@ -659,6 +666,8 @@ ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
 {
   if (typedecl->name)
     ldv_free_id (typedecl->name);
+
+  ldv_free_info_type (typedecl->type);
 
   free (typedecl);
 }
@@ -676,26 +685,15 @@ ldv_create_info_var (void)
 void
 ldv_free_info_var (ldv_i_var_ptr var)
 {
-  ldv_list_ptr var_init = NULL;
-  ldv_i_initializer_ptr initializer = NULL;
-
   if (var->name)
     ldv_free_id (var->name);
 
   ldv_free_info_type (var->type);
 
-  if (var->initializer_list)
-    {
-      for (var_init = var->initializer_list
-        ; var_init
-        ; var_init = ldv_list_get_next (var_init))
-        {
-          initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
-          ldv_free_info_initializer (initializer);
-        }
+  if (var->initializer)
+    ldv_free_info_initializer (var->initializer);
 
-      ldv_list_delete_all (var->initializer_list);
-    }
+  free (var->decl);
 
   free (var);
 }

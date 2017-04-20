@@ -423,6 +423,7 @@ typedef struct ldv_info_func_internal
   unsigned int decl_line;
   unsigned int use_line;
   struct ldv_info_func_internal *func_context;
+  char *decl;
 } ldv_info_func;
 typedef ldv_info_func *ldv_i_func_ptr;
 
@@ -448,27 +449,36 @@ typedef struct ldv_info_param_internal
 typedef ldv_info_param *ldv_i_param_ptr;
 
 /* Type declaration information = type name + type type. */
-typedef enum { LDV_ITD_ENUM, LDV_ITD_NONE, LDV_ITD_STRUCT, LDV_ITD_UNION } ldv_itdk;
 typedef struct ldv_info_typedecl_internal
 {
   ldv_id_ptr name;
-  ldv_itdk itd_kind;
+  ldv_i_type_ptr type;
   const char *file_path;
+  char *decl;
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
 /* Initializer information. */
-typedef enum { LDV_II_FIELD, LDV_II_ARRAY_ELEMENT, LDV_II_OTHER } ldv_iik;
 typedef struct ldv_info_initializer_internal
 {
-  ldv_iik ii_kind;
-  char *field_decl;
-  unsigned int array_index;
+  char *non_struct_or_array_initializer;
+  ldv_list_ptr struct_initializer;
+  ldv_list_ptr array_initializer;
   unsigned int is_func_ptr;
-  char *value;
-  ldv_list_ptr initializer;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;
+typedef struct ldv_info_struct_field_initializer_internal
+{
+  char *decl;
+  ldv_i_initializer_ptr initializer;
+} ldv_info_struct_field_initializer;
+typedef ldv_info_struct_field_initializer *ldv_i_struct_field_initializer_ptr;
+typedef struct ldv_info_array_elem_initializer_internal
+{
+  unsigned int index;
+  ldv_i_initializer_ptr initializer;
+} ldv_info_array_elem_initializer;
+typedef ldv_info_array_elem_initializer *ldv_i_array_elem_initializer_ptr;
 
 struct ldv_info_match_internal;
 /* Variable declaration information = variable name + variable type. */
@@ -480,7 +490,8 @@ typedef struct ldv_info_var_internal
   struct ldv_info_match_internal *decl_func_context;
   ldv_i_func_ptr func_context;
   unsigned int use_line;
-  ldv_list_ptr initializer_list;
+  ldv_i_initializer_ptr initializer;
+  char *decl;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 

@@ -71,7 +71,7 @@ static ldv_pps_decl_ptr ldv_func_ret_type_decl = NULL;
 static ldv_text_ptr ldv_func_va_init = NULL;
 static const char *ldv_var_name = NULL;
 static const char *ldv_var_type_name = NULL;
-static ldv_list_ptr ldv_var_init_list = NULL;
+static ldv_i_initializer_ptr ldv_var_initializer = NULL;
 static bool ldv_isstatic_specifier_needed = true;
 static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
@@ -79,6 +79,9 @@ static ldv_padding ldv_padding_cur = LDV_PADDING_NONE;
 static ldv_text_ptr ldv_text_printed = NULL;
 static ldv_i_func_ptr ldv_func_signature = NULL;
 static ldv_i_var_ptr ldv_var_signature = NULL;
+static const char *ldv_func_decl = NULL;
+static const char *ldv_var_decl = NULL;
+static const char *ldv_type_decl = NULL;
 
 
 static void ldv_add_id_declarator (ldv_pps_decl_ptr, const char *);
@@ -471,10 +474,12 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     }
   else if ((!strcmp (pattern->name, "func_signature")) || (!strcmp (pattern->name, "signature")))
     {
-      if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_func_decl (ldv_func_signature));
-      else if (ldv_var_signature)
-        text = ldv_copy_str (ldv_print_var_decl (ldv_var_signature));
+      if (ldv_func_decl)
+        text = ldv_copy_str (ldv_func_decl);
+      else if (ldv_var_decl)
+        text = ldv_copy_str (ldv_var_decl);
+      else if (ldv_type_decl)
+        text = ldv_copy_str (ldv_type_decl);
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -1057,7 +1062,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
 
                   file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
-                  ldv_print_init_list (file_stream, 0, ldv_var_init_list);
+                  ldv_print_initializer (file_stream, 0, ldv_var_initializer);
                   ldv_close_file_stream (file_stream);
                 }
               else if (!strcmp (pattern->name, "fprintf_var_init_values"))
@@ -1066,7 +1071,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
 
                   file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
-                  ldv_print_var_init_values(file_stream, ldv_var_init_list);
+                  ldv_print_var_init_values(file_stream, ldv_var_initializer);
                   ldv_close_file_stream (file_stream);
                 }
               else
@@ -1519,6 +1524,7 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
 
   ldv_padding_cur = LDV_PADDING_NONE;
 
+  /* Does not work any more.
   switch (typedecl->itd_kind)
     {
       case LDV_ITD_ENUM:
@@ -1538,6 +1544,7 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
     }
 
   ldv_print_str (ldv_get_id_name (typedecl->name));
+  */
 
   return ldv_get_text (ldv_text_printed);
 }
@@ -2001,16 +2008,19 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_text_printed = ldv_create_text ();
 
       ldv_var_signature = ldv_i_match->i_var;
+      ldv_var_decl = ldv_i_match->i_var->decl;
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
         ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
-      ldv_var_init_list = ldv_i_match->i_var->initializer_list;
+      ldv_var_initializer = ldv_i_match->i_var->initializer;
 
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
+      ldv_var_signature = NULL;
+      ldv_var_decl = NULL;
       ldv_var_name = NULL;
       ldv_var_type_name = NULL;
-      ldv_var_init_list = NULL;
+      ldv_var_initializer = NULL;
 
       return;
     }
@@ -2019,6 +2029,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
        ldv_text_printed = ldv_create_text ();
 
        ldv_func_signature = ldv_i_match->i_func;
+       ldv_func_decl = ldv_i_match->i_func->decl;
        ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
        ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
 
@@ -2036,10 +2047,20 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
        ldv_free_pps_decl (ldv_func_ret_type_decl);
        ldv_func_ret_type_decl = NULL;
        ldv_func_signature = NULL;
+       ldv_func_decl = NULL;
        ldv_func_name = NULL;
        ldv_func_ptr_name = NULL;
 
        return;
+    }
+  if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_INTRODUCE)
+    {
+      ldv_text_printed = ldv_create_text ();
+      ldv_type_decl = ldv_i_match->i_typedecl->decl;
+      ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+      ldv_type_decl = NULL;
+
+      return;
     }
 
   ldv_padding_cur = LDV_PADDING_NONE;
@@ -2133,6 +2154,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 
+          /* Make auxiliary functions static to avoid duplicates
+           * (http://forge.ispras.ru/issues/7100). */
+          decl->pps_declspecs->isstatic = true;
+
           ldv_print_decl (decl);
 
           ldv_free_pps_decl (decl);
@@ -2182,12 +2207,14 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Create an aspect function definition. */
           ldv_text_printed = ldv_create_text ();
 
-          ldv_putc_text ('\n', ldv_text_printed);
-
           if (pp_kind == LDV_PP_EXECUTION)
             func_name = ldv_get_id_name (func_aspect->name);
           else if (pp_kind == LDV_PP_CALL)
             func_name = aspected_name;
+
+          ldv_puts_text ("\n/* AUX_FUNC  ", ldv_text_printed);
+          ldv_puts_text (func_name, ldv_text_printed);
+          ldv_puts_text (" */\n", ldv_text_printed);
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
 

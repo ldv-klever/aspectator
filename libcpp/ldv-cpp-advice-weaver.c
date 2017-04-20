@@ -347,11 +347,14 @@ ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr param)
 }
 
 void
-ldv_print_init_list (FILE *file_stream, unsigned int indent_level, ldv_list_ptr var_inits)
+ldv_print_initializer (FILE *file_stream, unsigned int indent_level, ldv_i_initializer_ptr initializer)
 {
-  ldv_list_ptr var_init = NULL;
-  ldv_i_initializer_ptr initializer = NULL;
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
   const char *indent_spaces = "";
+  const char *next_level_indent_spaces = "";
 
   if (!file_stream)
     {
@@ -364,55 +367,79 @@ ldv_print_init_list (FILE *file_stream, unsigned int indent_level, ldv_list_ptr 
   if (indent_level)
     indent_spaces = ldv_copy_str (spaces (2 * indent_level));
 
-  for (var_init = var_inits
-  ; var_init
-  ; var_init = ldv_list_get_next (var_init))
-  {
-    initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
+  next_level_indent_spaces = ldv_copy_str (spaces (2 * (indent_level + 1)));
 
-    if (initializer->ii_kind == LDV_II_FIELD)
-      {
-        fprintf (file_stream, "%sfield declaration: %s\n", indent_spaces, initializer->field_decl);
-      }
-    else if (initializer->ii_kind == LDV_II_ARRAY_ELEMENT)
-      {
-        fprintf (file_stream, "%sarray element index: %d\n", indent_spaces, initializer->array_index);
-      }
+  fprintf (file_stream, "%svalue:", indent_spaces);
 
-    if (initializer->value)
-      fprintf (file_stream, "%svalue: %s\n", indent_spaces, initializer->value);
-    else
-      {
-        /* Print internal structure or array initializer list. */
-        fprintf (file_stream, "%svalue:\n", indent_spaces);
-        ldv_print_init_list (file_stream, indent_level + 1, initializer->initializer);
-      }
-  }
+  if (initializer->non_struct_or_array_initializer)
+    fprintf (file_stream, " %s\n", initializer->non_struct_or_array_initializer);
+  else
+    {
+      fprintf (file_stream, "\n");
+
+      if (initializer->struct_initializer)
+        {
+          for (struct_field_initializer_list = initializer->struct_initializer
+            ; struct_field_initializer_list
+            ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+            {
+              struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+              fprintf (file_stream, "%sfield declaration: %s\n", next_level_indent_spaces, struct_field_initializer->decl);
+              ldv_print_initializer (file_stream, indent_level + 1, struct_field_initializer->initializer);
+            }
+        }
+      else
+        {
+          for (array_elem_initializer_list = initializer->array_initializer
+            ; array_elem_initializer_list
+            ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+            {
+              array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+              fprintf (file_stream, "%sarray element index: %d\n", next_level_indent_spaces, array_elem_initializer->index);
+              ldv_print_initializer (file_stream, indent_level + 1, array_elem_initializer->initializer);
+            }
+        }
+    }
 }
 
 void
-ldv_print_var_init_values (FILE *file_stream, ldv_list_ptr var_inits)
+ldv_print_var_init_values (FILE *file_stream, ldv_i_initializer_ptr initializer)
 {
-  ldv_list_ptr var_init = NULL;
-  ldv_i_initializer_ptr initializer = NULL;
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
 
   if (!file_stream)
     {
       LDV_CPP_FATAL_ERROR ("file stream where structure variable initializer list to be printed isn't specified");
     }
 
-  for (var_init = var_inits; var_init; var_init = ldv_list_get_next (var_init))
-  {
-    initializer = (ldv_i_initializer_ptr) ldv_list_get_data (var_init);
-
-    if (initializer->value)
-      fprintf (file_stream, "||%s:%d", initializer->value, initializer->is_func_ptr);
-    else
-      {
-        /* Print internal structure or array initializer list. */
-        ldv_print_var_init_values (file_stream, initializer->initializer);
-      }
-  }
+  if (initializer->non_struct_or_array_initializer)
+    fprintf (file_stream, "||%s:%d", initializer->non_struct_or_array_initializer, initializer->is_func_ptr);
+  else
+    {
+      if (initializer->struct_initializer)
+        {
+          for (struct_field_initializer_list = initializer->struct_initializer
+            ; struct_field_initializer_list
+            ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+            {
+              struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+              ldv_print_var_init_values (file_stream, struct_field_initializer->initializer);
+            }
+        }
+      else
+        {
+          for (array_elem_initializer_list = initializer->array_initializer
+            ; array_elem_initializer_list
+            ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+            {
+              array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+              ldv_print_var_init_values (file_stream, array_elem_initializer->initializer);
+            }
+        }
+    }
 }
 
 void

@@ -228,78 +228,56 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
     }
 }
 
-ldv_list_ptr
+ldv_i_initializer_ptr
 ldv_convert_initializer_to_internal (tree initializer_tree)
 {
-  ldv_list_ptr initializer_list = NULL;
   ldv_i_initializer_ptr initializer = NULL;
-  ldv_i_var_ptr artificial_decl = NULL;
   unsigned HOST_WIDE_INT ix;
   tree index, value;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
 
   /* Do nothing if there is no tree node implementing initializer. */
   if (!initializer_tree)
     return NULL;
 
+  initializer = ldv_create_info_initializer ();
+
   if (TREE_CODE (initializer_tree) == CONSTRUCTOR)
     {
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (initializer_tree), ix, index, value)
         {
-          initializer = ldv_create_info_initializer ();
-
           if (TREE_CODE (index) == FIELD_DECL)
             {
-              initializer->ii_kind = LDV_II_FIELD;
-              /* Create artificial declaration corresponding to structure field. */
-              artificial_decl = ldv_create_info_var ();
-              artificial_decl->name = ldv_create_id ();
-              ldv_puts_id (DECL_NAME (index)
-                ? (const char *) (IDENTIFIER_POINTER (DECL_NAME (index)))
-                : "", artificial_decl->name);
-              artificial_decl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (index), NULL);
-              initializer->field_decl = ldv_print_var_decl (artificial_decl);
-              ldv_free_info_var (artificial_decl);
+              struct_field_initializer = XCNEW (ldv_info_struct_field_initializer);
+              struct_field_initializer->decl = ldv_convert_and_print_struct_decl (index);
+              struct_field_initializer->initializer = ldv_convert_initializer_to_internal (value);
+              ldv_list_push_back (&initializer->struct_initializer, struct_field_initializer);
             }
           else if (TREE_CODE (index) == INTEGER_CST)
             {
-              initializer->ii_kind = LDV_II_ARRAY_ELEMENT;
-              initializer->array_index = TREE_INT_CST_LOW (index);
+              array_elem_initializer = XCNEW (ldv_info_array_elem_initializer);
+              array_elem_initializer->index = TREE_INT_CST_LOW (index);
+              array_elem_initializer->initializer = ldv_convert_initializer_to_internal (value);
+              ldv_list_push_back (&initializer->array_initializer, array_elem_initializer);
             }
           else
             {
               LDV_FATAL_ERROR ("can't find neiter initialized structure field nor array element");
             }
-
-          if (TREE_CODE (value) == CONSTRUCTOR)
-            initializer->initializer = ldv_convert_initializer_to_internal (value);
-          else
-            {
-              initializer->value = ldv_convert_and_print_assignment_expr (value);
-
-              if (TREE_CODE (value) == ADDR_EXPR && TREE_CODE (TREE_OPERAND (value, 0)) == FUNCTION_DECL)
-                initializer->is_func_ptr = 1;
-              else
-                initializer->is_func_ptr = 0;
-            }
-
-          ldv_list_push_back (&initializer_list, initializer);
         }
     }
   else
     {
-      initializer = ldv_create_info_initializer ();
-      initializer->ii_kind = LDV_II_OTHER;
-      initializer->value = ldv_convert_and_print_assignment_expr (initializer_tree);
+      initializer->non_struct_or_array_initializer = ldv_convert_and_print_assignment_expr (initializer_tree);
 
       if (TREE_CODE (initializer_tree) == ADDR_EXPR && TREE_CODE (TREE_OPERAND (initializer_tree, 0)) == FUNCTION_DECL)
         initializer->is_func_ptr = 1;
       else
         initializer->is_func_ptr = 0;
-
-      ldv_list_push_back (&initializer_list, initializer);
     }
 
-  return initializer_list;
+  return initializer;
 }
 
 ldv_i_type_ptr

@@ -153,7 +153,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
           break;
 
         case LDV_PP_INTRODUCE:
-          if (i_kind == LDV_I_TYPE && ldv_match_typedecl_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
+          if (i_kind == LDV_I_TYPE && i_match->pp_kind == pp_kind && ldv_match_typedecl_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
             {
               i_match->p_pointcut = c_pointcut->p_pointcut;
 
@@ -1310,9 +1310,10 @@ ldv_match_typedecl_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_type
   /* Specify that a type declaration was matched by a name. */
   i_match->ismatched_by_name = true;
 
-  /* Compare a type declaration type type. */
-  if (typedecl_source->itd_kind != typedecl_aspect->itd_kind)
+  /* Compare type definition types. */
+  if (!ldv_match_type (typedecl_source->type, typedecl_aspect->type))
     return false;
+
 
   /* Specify that a type declaration was matched by a whole signature not just
      by a name. */

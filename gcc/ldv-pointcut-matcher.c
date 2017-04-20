@@ -750,7 +750,8 @@ ldv_match_expr (tree t, tree context)
           if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == ADDR_EXPR
             && (func_called = TREE_OPERAND (func_called_addr, 0))
-            && TREE_CODE (func_called) == FUNCTION_DECL)
+            && TREE_CODE (func_called) == FUNCTION_DECL
+            && !DECL_IS_BUILTIN (func_called))
             {
               /* Try to match a function declaration for a call join point. */
               ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);
@@ -940,6 +941,9 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
       func->use_line = line;
     }
 
+  if (TREE_CODE (t) == FUNCTION_DECL)
+    func->decl = ldv_convert_and_print_decl (t);
+
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
     {
@@ -1036,7 +1040,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 }
 
 void
-ldv_match_typedecl (tree t, const char *file_path)
+ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -1057,31 +1061,36 @@ ldv_match_typedecl (tree t, const char *file_path)
   typedecl = ldv_create_info_typedecl ();
 
   match->i_kind = LDV_I_TYPE;
+  match->pp_kind = pp_kind;
   match->i_typedecl = typedecl;
 
   /* Obtain information on a type declaration signature. */
   typedecl->name = ldv_create_id ();
-  ldv_puts_id ((const char *) (IDENTIFIER_POINTER (TYPE_NAME (t))), typedecl->name);
+  if (DECL_NAME (t)) 
+    ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
+  else
+    ldv_puts_id ("", typedecl->name);
 
-  switch (TREE_CODE (t))
+  typedecl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
+
+  typedecl->file_path = DECL_SOURCE_FILE (t);
+
+  /* typedecl->file_path = file_path; */
+
+  ldv_disable_anon_enum_spec = true;
+  typedecl->decl = ldv_convert_and_print_decl (t);
+  ldv_disable_anon_enum_spec = false;
+
+  /* Replace all new lines with spaces to avoid multi-line type definitions. */
+  while (1)
     {
-    case ENUMERAL_TYPE:
-      typedecl->itd_kind = LDV_ITD_ENUM;
-      break;
-
-    case RECORD_TYPE:
-      typedecl->itd_kind = LDV_ITD_STRUCT;
-      break;
-
-    case UNION_TYPE:
-      typedecl->itd_kind = LDV_ITD_UNION;
-      break;
-
-    default:
-      LDV_FATAL_ERROR ("incorrect type type");
+      char *newline = strstr(typedecl->decl, "\n");
+      if (newline)
+        *newline = ' ';
+      else
+        break;
     }
 
-  typedecl->file_path = file_path;
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
@@ -1143,6 +1152,7 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   ldv_i_var_ptr var = NULL;
   ldv_i_func_ptr f_context = NULL;
   const char *var_decl_printed;
+  tree initializer = NULL_TREE;
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
@@ -1205,7 +1215,15 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   /* Convert variable declaration initializer to internal representation.
      Do this just for structure variables. */
   if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
-    var->initializer_list = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
+    var->initializer = ldv_convert_initializer_to_internal (DECL_INITIAL (t));
+
+  if (TREE_CODE (t) == VAR_DECL)
+    {
+      initializer = DECL_INITIAL (t);
+      DECL_INITIAL (t) = NULL_TREE;
+      var->decl = ldv_convert_and_print_decl (t);
+      DECL_INITIAL (t) = initializer;
+    }
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

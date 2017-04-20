@@ -860,20 +860,29 @@ c_declaration:
       decl->pps_declspecs = $1;
       decl->pps_declarator = $2;
 
-      /* Specify a kind of a declaration, a function or a variable. */
+      /* Specify a kind of a declaration, a function, a variable or a type definition. */
       for (declarator_list = $2
         ;
         ; declarator_list = ldv_list_get_next (declarator_list))
         {
           declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
 
-          /* We deal with a variable declaration in this case. */
+          /* We deal with a variable declaration or a type definition in this case. */
           if (declarator->pps_declarator_kind == LDV_PPS_DECLARATOR_ID)
             {
-              decl->pps_decl_kind = LDV_PPS_DECL_VAR;
-              isdecl_kind_specified = true;
+              if (decl->pps_declspecs->istypedef)
+                {
+                  decl->pps_declspecs->istypedef = false;
+                  decl->pps_decl_kind = LDV_PPS_DECL_TYPE;
+                  ldv_print_info (LDV_INFO_BISON, "bison parsed type definition signature pointcut");
+                }
+              else
+                {
+                  decl->pps_decl_kind = LDV_PPS_DECL_VAR;
+                  ldv_print_info (LDV_INFO_BISON, "bison parsed variable declaration signature pointcut");
+                }
 
-              ldv_print_info (LDV_INFO_BISON, "bison parsed variable declaration signature pointcut");
+              isdecl_kind_specified = true;
 
               $$ = decl;
 
@@ -1019,7 +1028,6 @@ c_storage_class_specifier:
       pps_declspecs->istypedef = true;
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed \"typedef\" storage class specifier");
-      LDV_FATAL_ERROR ("Typedefs aren't supported at the moment");
 
       $$ = pps_declspecs;
     }

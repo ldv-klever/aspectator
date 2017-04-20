@@ -264,10 +264,10 @@ ldv_gets (FILE *stream)
 
   while ((c = ldv_getc (stream)) != EOF)
     {
+      ldv_putc_text (c, line);
+
       if (c == '\n')
         break;
-
-      ldv_putc_text (c, line);
     }
 
   str = ldv_get_text (line);
@@ -638,9 +638,6 @@ ldv_print_to_awfile (void)
 
       free (line);
 
-      /* Put the end of a line to the end. */
-      ldv_putc ('\n', LDV_INSTRUMENTED_FILE_STREAM);
-
       /* Enlarge a line number in a currently processed file. Special
          preprocessor directives are skipped. */
       if (!ispreprocessor_directive)
@@ -654,10 +651,19 @@ ldv_print_to_awfile (void)
      it's needed. */
   if (ldv_func_defs_for_print)
     {
-      ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_INSTRUMENTED_FILE_STREAM);
-      /* As well print them to the end of auxiliary file with hope that line
-         directives already properly point to that file. */
+      /* Auxiliary files are not preprocessed while prepared ones were 
+       * preprocessed and trailing new lines were removed from them. So
+       * update line reference. This finally fixes #6487. */
       ldv_get_aux_file_name_and_stream (&aux_fname, &aux_file_stream);
+      line_numb = 0;
+      while (ldv_gets(aux_file_stream))
+        line_numb++;
+      ldv_puts ("\n#line ", LDV_INSTRUMENTED_FILE_STREAM);
+      ldv_puts (ldv_itoa(line_numb + 1), LDV_INSTRUMENTED_FILE_STREAM);
+      ldv_puts (" \"", LDV_INSTRUMENTED_FILE_STREAM);
+      ldv_puts (aux_fname, LDV_INSTRUMENTED_FILE_STREAM);
+      ldv_puts ("\"\n", LDV_INSTRUMENTED_FILE_STREAM);
+      ldv_puts (ldv_get_text (ldv_func_defs_for_print), LDV_INSTRUMENTED_FILE_STREAM);
       ldv_puts (ldv_get_text (ldv_func_defs_for_print), aux_file_stream);
     }
 }
@@ -758,7 +764,7 @@ ldv_get_aux_file_name_and_stream (char **aux_fname, FILE **aux_file_stream)
   *aux_fname = xstrdup (ldv_get_str (aux_fname_str));
   ldv_free_string (aux_fname_str);
 
-  if ((*aux_file_stream = fopen (*aux_fname, "a")) == NULL)
+  if ((*aux_file_stream = fopen (*aux_fname, "a+")) == NULL)
     {
       LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", *aux_fname);
     }

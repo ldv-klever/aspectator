@@ -34,7 +34,7 @@ extern tree ldv_func_decl_matched;
 
 extern ldv_i_func_ptr ldv_match_func (tree, unsigned int, ldv_ppk);
 extern void ldv_match_func_body (tree, ldv_i_func_ptr);
-extern void ldv_match_typedecl (tree, const char *);
+extern void ldv_match_typedecl (tree, ldv_ppk);
 extern void ldv_match_var (tree, unsigned int, ldv_ppk);
 
 

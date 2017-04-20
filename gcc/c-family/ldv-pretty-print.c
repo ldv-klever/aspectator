@@ -3655,7 +3655,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
 {
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
-  int const_expr;
+  ldv_integer_constant_ptr const_expr;
 
   if ((declarator = LDV_STRUCT_DECLARATOR_DECLARATOR (struct_declarator)))
     {
@@ -3671,7 +3671,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
   if ((const_expr = LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator)))
     {
       ldv_c_backend_print (indent_level, true, ":");
-      ldv_c_backend_print (indent_level, true, "%d", const_expr);
+      ldv_print_integer_constant (indent_level, const_expr);
     }
 
   if (!declarator && !const_expr)
@@ -3788,6 +3788,58 @@ ldv_convert_and_print_assignment_expr (tree t)
 
   ldv_free_on_printing = false;
   ldv_disable_cast_printing = false;
+  ldv_c_backend_padding_cancel ();
+  ldv_c_backend_print_to_file ();
+  ldv_c_backend_set_lines_level (current_lines_level);
+
+  return ldv_c_backend_get_buffer ();
+}
+
+char *
+ldv_convert_and_print_decl (tree t)
+{
+  ldv_decl_ptr decl = NULL;
+  int current_lines_level;
+
+  decl = ldv_convert_decl (t);
+
+  /* Store current lines level and set it to LDV_C_BACKEND_LINES_LEVEL_NO to
+     avoid printing of lines directives. */
+  current_lines_level = ldv_c_backend_get_lines_level ();
+  ldv_c_backend_set_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO);
+  ldv_c_backend_print_to_buffer ();
+  /* We do not need corresponding entities after printing is completed. */
+  ldv_free_on_printing = true;
+
+  ldv_print_decl (0, decl);
+
+  ldv_free_on_printing = false;
+  ldv_c_backend_padding_cancel ();
+  ldv_c_backend_print_to_file ();
+  ldv_c_backend_set_lines_level (current_lines_level);
+
+  return ldv_c_backend_get_buffer ();
+}
+
+char *
+ldv_convert_and_print_struct_decl (tree t)
+{
+  ldv_struct_decl_ptr struct_decl = NULL;
+  int current_lines_level;
+
+  struct_decl = ldv_convert_struct_decl (t);
+
+  /* Store current lines level and set it to LDV_C_BACKEND_LINES_LEVEL_NO to
+     avoid printing of lines directives. */
+  current_lines_level = ldv_c_backend_get_lines_level ();
+  ldv_c_backend_set_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO);
+  ldv_c_backend_print_to_buffer ();
+  /* We do not need corresponding entities after printing is completed. */
+  ldv_free_on_printing = true;
+
+  ldv_print_struct_decl (0, struct_decl);
+
+  ldv_free_on_printing = false;
   ldv_c_backend_padding_cancel ();
   ldv_c_backend_print_to_file ();
   ldv_c_backend_set_lines_level (current_lines_level);

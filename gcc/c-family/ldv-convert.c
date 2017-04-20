@@ -38,6 +38,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
 
 
+bool ldv_disable_anon_enum_spec;
+
+
 static ldv_constant_ptr ldv_constant_current;
 static bool ldv_is_convert_enum_const_const_expr;
 
@@ -64,7 +67,6 @@ static ldv_cond_expr_ptr ldv_convert_cond_expr (tree, unsigned int);
 static ldv_const_expr_ptr ldv_convert_const_expr (tree);
 static ldv_constant_ptr ldv_convert_constant (tree);
 static ldv_compound_statement_ptr ldv_convert_compound_statement (tree);
-static ldv_decl_ptr ldv_convert_decl (tree);
 static ldv_decl_spec_ptr ldv_convert_decl_spec (tree, bool);
 static void ldv_convert_declarator (tree, bool, ldv_declarator_ptr *, ldv_direct_declarator_ptr, ldv_declarator_ptr);
 static ldv_declarator_ptr ldv_convert_declarator_internal (tree, bool);
@@ -116,7 +118,6 @@ static ldv_spec_qual_list_ptr ldv_convert_spec_qual_list (tree);
 static ldv_statement_ptr ldv_convert_statement (tree);
 static ldv_decl_spec_ptr ldv_convert_storage_class_spec (tree);
 static ldv_str_literal_ptr ldv_convert_str_literal (tree);
-static ldv_struct_decl_ptr ldv_convert_struct_decl (tree);
 static ldv_struct_decl_list_ptr ldv_convert_struct_decl_list (tree);
 static ldv_struct_declarator_ptr ldv_convert_struct_declarator (tree);
 static ldv_struct_declarator_list_ptr ldv_convert_struct_declarator_list (tree);
@@ -1065,8 +1066,10 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
              with __builtin_va_start and similar functions because of their
              parameters have reference type. Thus in their calls casting to
              reference type is performed. But we wouldn't like to introduce
-             references in C so just ignore this casting at all. */
-          if (TREE_CODE (type) == REFERENCE_TYPE)
+             references in C so just ignore this casting at all. 
+             In addition we wouldn't like to introduce casts for bitfields since
+             artificial types that haven't names are used for them. */
+          if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
             {
               LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
 
@@ -1559,7 +1562,7 @@ ldv_convert_compound_statement (tree t)
 declaration:
     declaration-specifiers init-declarator-listopt ;
 */
-static ldv_decl_ptr
+ldv_decl_ptr
 ldv_convert_decl (tree t)
 {
   ldv_decl_ptr decl;
@@ -2327,12 +2330,21 @@ ldv_convert_enum_spec (tree t, bool is_decl_decl_spec)
     case ENUMERAL_TYPE:
       LDV_TYPE_SPEC_KIND (type_spec) = LDV_TYPE_SPEC_SECOND;
 
-      LDV_ENUM_SPEC_IDENTIFIER (enum_spec) = ldv_convert_identifier (t);
+      if (!TYPE_NAME (t) && ldv_disable_anon_enum_spec)
+        {
+            if ((enum_values = TYPE_VALUES (t)))
+              if ((enum_list = ldv_convert_enum_list (enum_values)))
+                LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+	    }
+      else
+        {
+          LDV_ENUM_SPEC_IDENTIFIER (enum_spec) = ldv_convert_identifier (t);
 
-      if (is_decl_decl_spec)
-        if ((enum_values = TYPE_VALUES (t)))
-          if ((enum_list = ldv_convert_enum_list (enum_values)))
-            LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+          if (is_decl_decl_spec)
+            if ((enum_values = TYPE_VALUES (t)))
+              if ((enum_list = ldv_convert_enum_list (enum_values)))
+                LDV_ENUM_SPEC_ENUM_LIST (enum_spec) = enum_list;
+        }
 
       break;
 
@@ -4848,7 +4860,7 @@ GNU extensions:
 struct-declaration:
     specifier-qualifier-list
 */
-static ldv_struct_decl_ptr
+ldv_struct_decl_ptr
 ldv_convert_struct_decl (tree t)
 {
   ldv_struct_decl_ptr struct_decl;
@@ -4859,10 +4871,19 @@ ldv_convert_struct_decl (tree t)
   switch (TREE_CODE (t))
     {
     case FIELD_DECL:
-      if ((field_type = TREE_TYPE (t)))
-        LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
+      if (DECL_C_BIT_FIELD (t))
+        {
+          if (!(field_type = DECL_BIT_FIELD_TYPE (t)))
+            LDV_WARN ("can't find original bitfield type");
+        }
       else
-        LDV_WARN ("can't find field declaration type");
+        {
+          if (!(field_type = TREE_TYPE (t)))
+            LDV_WARN ("can't find field declaration type");
+        }
+
+      if (field_type)
+        LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) = ldv_convert_spec_qual_list (field_type);
 
       /* Do not create artificial structure declarators (the GNU extension
          allows empty structure declarator lists). This fixes
@@ -4938,8 +4959,6 @@ static ldv_struct_declarator_ptr
 ldv_convert_struct_declarator (tree t)
 {
   ldv_struct_declarator_ptr struct_declarator;
-  tree field_type;
-  int bitfield_size;
 
   struct_declarator = XCNEW (struct ldv_struct_declarator);
 
@@ -4948,19 +4967,14 @@ ldv_convert_struct_declarator (tree t)
   switch (TREE_CODE (t))
     {
     case FIELD_DECL:
-      if ((field_type = TREE_TYPE (t)))
+      if (DECL_C_BIT_FIELD (t))
         {
-          if (TREE_CODE (field_type) == INTEGER_TYPE)
-            {
-              if (!TYPE_NAME (field_type))
-                {
-                  bitfield_size = TYPE_PRECISION (field_type);
-                  LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = bitfield_size;
-                }
-            }
+          if (!DECL_SIZE (t) || TREE_CODE (DECL_SIZE (t)) != INTEGER_CST)
+            LDV_WARN ("can't find bitfield size");
+          else
+            LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = ldv_convert_integer_constant(DECL_SIZE (t));
         }
-      else
-        LDV_WARN ("can't find field declaration type");
+
       break;
 
     default:
@@ -5407,26 +5421,21 @@ ldv_convert_type_spec_internal (tree t)
   ldv_decl_spec_ptr decl_spec, decl_spec_cur;
   bool is_type_spec;
   tree type_decl, type_name;
-  tree type;
-  tree bitfield_type;
+  tree type = NULL_TREE;
   const char *type_name_str;
 
   decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   is_type_spec = false;
 
-  type = NULL;
-
   if (!(type_decl = TYPE_NAME (t)))
     {
-      if ((bitfield_type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
-        type = bitfield_type;
-      else
-        LDV_WARN ("can't find bitfield type");
+      if (!(type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
+        LDV_WARN ("can't find appropriate type");
     }
   else
     type = t;
 
-  if ((type_decl = TYPE_NAME (type)))
+  if (type && (type_decl = TYPE_NAME (type)))
     {
       if ((type_name = DECL_NAME (type_decl)))
         {
