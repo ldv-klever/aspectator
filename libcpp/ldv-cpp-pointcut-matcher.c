@@ -164,10 +164,13 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
         case LDV_PP_GET_GLOBAL:
         case LDV_PP_GET_LOCAL:
+        case LDV_PP_GET:
         case LDV_PP_INIT_GLOBAL:
         case LDV_PP_INIT_LOCAL:
+        case LDV_PP_INIT:
         case LDV_PP_SET_GLOBAL:
         case LDV_PP_SET_LOCAL:
+        case LDV_PP_SET:
         case LDV_PP_USE_VAR:
           if (i_kind == LDV_I_VAR
             /* * = *_local || *_local, where "*" is "get", "init" or "set". */
