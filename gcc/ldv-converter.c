@@ -270,6 +270,11 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
   else
     {
       initializer->non_struct_or_array_initializer = ldv_convert_and_print_assignment_expr (initializer_tree);
+
+      if (TREE_CODE (initializer_tree) == ADDR_EXPR && TREE_CODE (TREE_OPERAND (initializer_tree, 0)) == FUNCTION_DECL)
+        initializer->is_func_ptr = 1;
+      else
+        initializer->is_func_ptr = 0;
     }
 
   return initializer;

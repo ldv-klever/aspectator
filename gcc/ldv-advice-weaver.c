@@ -78,6 +78,7 @@ static ldv_list_ptr ldv_name_weaved_list = NULL;
 static ldv_padding ldv_padding_cur = LDV_PADDING_NONE;
 static ldv_text_ptr ldv_text_printed = NULL;
 static ldv_i_func_ptr ldv_func_signature = NULL;
+static ldv_i_var_ptr ldv_var_signature = NULL;
 static const char *ldv_func_decl = NULL;
 static const char *ldv_var_decl = NULL;
 static const char *ldv_type_decl = NULL;
@@ -110,13 +111,10 @@ static void ldv_print_declspecs (ldv_pps_declspecs_ptr);
 static void ldv_print_direct_declarator (ldv_list_ptr);
 static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
-static const char *ldv_print_func_context_decl_line (ldv_i_func_ptr);
-static const char *ldv_print_func_context_name (ldv_i_func_ptr);
-static const char *ldv_print_func_context_path (ldv_i_func_ptr);
-static const char *ldv_print_func_call_line (ldv_i_func_ptr);
-static const char *ldv_print_func_decl_line (ldv_i_func_ptr);
-static const char *ldv_print_func_path (ldv_i_func_ptr);
+static const char *ldv_print_func_name (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
+static const char *ldv_print_file_path (const char*);
+static const char *ldv_print_line_number (unsigned int);
 static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
 static const char *ldv_print_macro_signature (ldv_pps_macro_ptr);
@@ -417,7 +415,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_func_context_decl_line (ldv_func_signature));
+            text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->func_context->decl_line));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -433,11 +431,16 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_func_context_name (ldv_func_signature));
+            text = ldv_copy_str (ldv_print_func_name (ldv_func_signature->func_context));
           else
-            {
-              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
-            }
+            text = "NULL";
+        }
+      else if (ldv_var_signature)
+        {
+          if (ldv_var_signature->func_context)
+            text = ldv_copy_str (ldv_print_func_name (ldv_var_signature->func_context));
+          else
+            text = "NULL";
         }
       else
         {
@@ -449,7 +452,16 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_func_context_path (ldv_func_signature));
+            text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->func_context->file_path));
+          else
+            {
+              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
+            }
+        }
+      else if (ldv_var_signature)
+        {
+          if (ldv_var_signature->func_context)
+            text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->func_context->file_path));
           else
             {
               LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
@@ -476,7 +488,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "call_line"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_func_call_line (ldv_func_signature));
+        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->call_line));
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -485,7 +497,18 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "decl_line"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_func_decl_line (ldv_func_signature));
+        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->decl_line));
+      else
+        {
+          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        }
+    }
+  else if (!strcmp (pattern->name, "use_line"))
+    {
+      if (ldv_func_signature)
+        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->use_line));
+      else if (ldv_var_signature)
+        text = ldv_copy_str (ldv_print_line_number (ldv_var_signature->use_line));
       else
         {
           LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
@@ -494,10 +517,12 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "path"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_func_path (ldv_func_signature));
+        text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->file_path));
+      else if (ldv_var_signature)
+        text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->file_path));
       else
         {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+          LDV_FATAL_ERROR ("no signature was found for aspect pattern \"%s\"", pattern->name);
         }
     }
   else if (!strcmp (pattern->name, "proceed"))
@@ -1040,6 +1065,15 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_initializer (file_stream, 0, ldv_var_initializer);
                   ldv_close_file_stream (file_stream);
                 }
+              else if (!strcmp (pattern->name, "fprintf_var_init_values"))
+                {
+                  pattern_params = pattern->params;
+                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+
+                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
+                  ldv_print_var_init_values(file_stream, ldv_var_initializer);
+                  ldv_close_file_stream (file_stream);
+                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
@@ -1370,21 +1404,9 @@ ldv_print_func_context (ldv_i_func_ptr decl)
 }
 
 const char *
-ldv_print_func_context_decl_line (ldv_i_func_ptr decl)
+ldv_print_func_name (ldv_i_func_ptr decl)
 {
-  return ldv_print_func_decl_line (decl->func_context);
-}
-
-const char *
-ldv_print_func_context_name (ldv_i_func_ptr decl)
-{
-  return ldv_get_id_name (decl->func_context->name);
-}
-
-const char *
-ldv_print_func_context_path (ldv_i_func_ptr decl)
-{
-  return ldv_print_func_path (decl->func_context);
+  return ldv_get_id_name (decl->name);
 }
 
 const char *
@@ -1404,44 +1426,30 @@ ldv_print_func_decl (ldv_i_func_ptr func)
 }
 
 const char *
-ldv_print_func_call_line (ldv_i_func_ptr decl)
+ldv_print_file_path (const char* path)
 {
-  ldv_text_printed = ldv_create_text ();
-
-  ldv_padding_cur = LDV_PADDING_NONE;
-
-  ldv_print_int (decl->call_line);
-
-  return ldv_get_text (ldv_text_printed);
-}
-
-const char *
-ldv_print_func_decl_line (ldv_i_func_ptr decl)
-{
-  ldv_text_printed = ldv_create_text ();
-
-  ldv_padding_cur = LDV_PADDING_NONE;
-
-  ldv_print_int (decl->decl_line);
-
-  return ldv_get_text (ldv_text_printed);
-}
-
-const char *
-ldv_print_func_path (ldv_i_func_ptr decl)
-{
-  const char* path = NULL;
   char* occurrence = NULL;
 
   ldv_text_printed = ldv_create_text ();
 
   ldv_padding_cur = LDV_PADDING_NONE;
 
-  path = decl->file_path;
   occurrence = strstr(path, ".prepared");
   if (occurrence)
     *occurrence = '\0';
   ldv_print_str (path);
+
+  return ldv_get_text (ldv_text_printed);
+}
+
+const char *
+ldv_print_line_number (unsigned int line_number)
+{
+  ldv_text_printed = ldv_create_text ();
+
+  ldv_padding_cur = LDV_PADDING_NONE;
+
+  ldv_print_int (line_number);
 
   return ldv_get_text (ldv_text_printed);
 }
@@ -1995,10 +2003,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
   /* In case of information request do not perform weaving just "print" advice
      body that implicitly invokes evaluation of all $fprintf. */
-  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL))
+  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_USE_VAR))
     {
       ldv_text_printed = ldv_create_text ();
 
+      ldv_var_signature = ldv_i_match->i_var;
       ldv_var_decl = ldv_i_match->i_var->decl;
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
@@ -2007,6 +2016,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
+      ldv_var_signature = NULL;
       ldv_var_decl = NULL;
       ldv_var_name = NULL;
       ldv_var_type_name = NULL;
@@ -2014,7 +2024,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       return;
     }
-  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION || pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP))
+  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION|| pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC))
     {
        ldv_text_printed = ldv_create_text ();
 
@@ -2340,7 +2350,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              will be placed. */
           /* Place an aspect function declaration directly before a function
              definition for local variables and parameters declarations. */
-          if (var->func_context)
+          if (var->decl_func_context)
             {
               aspect_func_decl_for_print_new->file = ldv_decl_beginning_location.file;
               aspect_func_decl_for_print_new->line = ldv_decl_beginning_location.line;

@@ -164,6 +164,15 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
     {
       text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
     }
+  else if (!strcmp (pattern->name, "line"))
+    {
+      text = ldv_itoa(ldv_i_match->i_macro->line);
+    }
+  else if (!strcmp (pattern->name, "env"))
+    {
+      text = ldv_copy_str (pattern->value);
+    }
+
 
   if (text)
     {
@@ -388,6 +397,46 @@ ldv_print_initializer (FILE *file_stream, unsigned int indent_level, ldv_i_initi
               array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
               fprintf (file_stream, "%sarray element index: %d\n", next_level_indent_spaces, array_elem_initializer->index);
               ldv_print_initializer (file_stream, indent_level + 1, array_elem_initializer->initializer);
+            }
+        }
+    }
+}
+
+void
+ldv_print_var_init_values (FILE *file_stream, ldv_i_initializer_ptr initializer)
+{
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
+
+  if (!file_stream)
+    {
+      LDV_CPP_FATAL_ERROR ("file stream where structure variable initializer list to be printed isn't specified");
+    }
+
+  if (initializer->non_struct_or_array_initializer)
+    fprintf (file_stream, "||%s:%d", initializer->non_struct_or_array_initializer, initializer->is_func_ptr);
+  else
+    {
+      if (initializer->struct_initializer)
+        {
+          for (struct_field_initializer_list = initializer->struct_initializer
+            ; struct_field_initializer_list
+            ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+            {
+              struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+              ldv_print_var_init_values (file_stream, struct_field_initializer->initializer);
+            }
+        }
+      else
+        {
+          for (array_elem_initializer_list = initializer->array_initializer
+            ; array_elem_initializer_list
+            ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+            {
+              array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+              ldv_print_var_init_values (file_stream, array_elem_initializer->initializer);
             }
         }
     }

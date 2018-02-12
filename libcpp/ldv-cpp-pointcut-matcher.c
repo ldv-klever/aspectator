@@ -111,6 +111,7 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
         case LDV_PP_CALL:
         case LDV_PP_CALLP:
+        case LDV_PP_USE_FUNC:
         case LDV_PP_EXECUTION:
         case LDV_PP_DECLARE_FUNC:
           if (i_kind == LDV_I_FUNC && i_match->pp_kind == pp_kind && ldv_match_func_signature (i_match, c_pointcut->p_pointcut->pp_signature->pps_declaration))
@@ -163,10 +164,14 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
         case LDV_PP_GET_GLOBAL:
         case LDV_PP_GET_LOCAL:
+        case LDV_PP_GET:
         case LDV_PP_INIT_GLOBAL:
         case LDV_PP_INIT_LOCAL:
+        case LDV_PP_INIT:
         case LDV_PP_SET_GLOBAL:
         case LDV_PP_SET_LOCAL:
+        case LDV_PP_SET:
+        case LDV_PP_USE_VAR:
           if (i_kind == LDV_I_VAR
             /* * = *_local || *_local, where "*" is "get", "init" or "set". */
             && (i_match->pp_kind == pp_kind
@@ -273,6 +278,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   macro->macro_name = ldv_create_id ();
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
   macro->file_path = map->to_file;
+  macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
   macro->macro_param = NULL;
 
   /* Remember macro parameters. */

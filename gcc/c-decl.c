@@ -4498,7 +4498,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
       if (ldv_instrumentation () && TREE_CODE (decl) == VAR_DECL && DECL_INITIAL (decl))
         {
           /* Try to match a variable declaration. */
-          ldv_match_var (decl, DECL_FILE_SCOPE_P (decl) ? LDV_PP_INIT_GLOBAL : LDV_PP_INIT_LOCAL);
+          ldv_match_var (decl, 0, DECL_FILE_SCOPE_P (decl) ? LDV_PP_INIT_GLOBAL : LDV_PP_INIT_LOCAL);
 
           /* Instance a matched advice. */
           ldv_weave_advice (NULL, NULL);

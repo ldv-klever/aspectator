@@ -246,6 +246,8 @@ typedef ldv_primitive_pointcut_signature *ldv_pps_ptr;
    LDV_PPS_FILE - LDV_PP_INFILE
    LDV_PPS_DECL - LDV_PP_CALL
    LDV_PPS_DECL - LDV_PP_CALLP
+   LDV_PPS_DECL - LDV_PP_USE_FUNC
+   LDV_PPS_DECL - LDV_PP_USE_VAR
    LDV_PPS_DECL - LDV_PP_DECLARE_FUNC
    LDV_PPS_DECL - LDV_PP_EXECUTION
    LDV_PPS_DECL - LDV_PP_GET
@@ -261,7 +263,7 @@ typedef ldv_primitive_pointcut_signature *ldv_pps_ptr;
    LDV_PPS_DECL - LDV_PP_SET_GLOBAL
    LDV_PPS_DECL - LDV_PP_SET_LOCAL
    Matching depends on a primitive pointcut kind. */
-typedef enum { LDV_PP_CALL, LDV_PP_CALLP, LDV_PP_DEFINE, LDV_PP_DECLARE_FUNC, LDV_PP_EXECUTION, LDV_PP_EXPAND, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INIT, LDV_PP_INIT_GLOBAL, LDV_PP_INIT_LOCAL, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
+typedef enum { LDV_PP_CALL, LDV_PP_CALLP, LDV_PP_USE_FUNC, LDV_PP_USE_VAR, LDV_PP_DEFINE, LDV_PP_DECLARE_FUNC, LDV_PP_EXECUTION, LDV_PP_EXPAND, LDV_PP_FILE, LDV_PP_GET, LDV_PP_GET_GLOBAL, LDV_PP_GET_LOCAL, LDV_PP_INCALL, LDV_PP_INFILE, LDV_PP_INFUNC, LDV_PP_INIT, LDV_PP_INIT_GLOBAL, LDV_PP_INIT_LOCAL, LDV_PP_INTRODUCE, LDV_PP_NONE, LDV_PP_SET, LDV_PP_SET_GLOBAL, LDV_PP_SET_LOCAL } ldv_ppk;
 typedef struct ldv_primitive_pointcut_internal
 {
   ldv_ppk pp_kind;
@@ -419,6 +421,7 @@ typedef struct ldv_info_func_internal
   const char *file_path;
   unsigned int call_line;
   unsigned int decl_line;
+  unsigned int use_line;
   struct ldv_info_func_internal *func_context;
   char *decl;
 } ldv_info_func;
@@ -432,6 +435,7 @@ typedef struct ldv_info_macro_internal
   ldv_list_ptr macro_param;
   ldv_list_ptr macro_param_value;
   const char *file_path;
+  unsigned int line;
 } ldv_info_macro;
 typedef ldv_info_macro *ldv_i_macro_ptr;
 
@@ -460,6 +464,7 @@ typedef struct ldv_info_initializer_internal
   char *non_struct_or_array_initializer;
   ldv_list_ptr struct_initializer;
   ldv_list_ptr array_initializer;
+  unsigned int is_func_ptr;
 } ldv_info_initializer;
 typedef ldv_info_initializer *ldv_i_initializer_ptr;
 typedef struct ldv_info_struct_field_initializer_internal
@@ -482,7 +487,9 @@ typedef struct ldv_info_var_internal
   ldv_id_ptr name;
   ldv_i_type_ptr type;
   const char *file_path;
-  struct ldv_info_match_internal *func_context;
+  struct ldv_info_match_internal *decl_func_context;
+  ldv_i_func_ptr func_context;
+  unsigned int use_line;
   ldv_i_initializer_ptr initializer;
   char *decl;
 } ldv_info_var;
