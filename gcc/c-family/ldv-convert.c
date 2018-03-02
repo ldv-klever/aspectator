@@ -3368,10 +3368,16 @@ ldv_convert_jump_statement (tree t)
 
       if ((ret_val_expr = LDV_OP_FIRST (t)))
         {
-          if ((ret_val = LDV_OP_SECOND (ret_val_expr)))
-            LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+          /* Skip artificial RESULT_DECL introduce for non-void functions. */
+          if (TREE_CODE (ret_val_expr) == MODIFY_EXPR)
+            {
+              if ((ret_val = LDV_OP_SECOND (ret_val_expr)))
+                LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+              else
+                LDV_WARN ("can't find return value");
+            }
           else
-            LDV_WARN ("can't find return value");
+              LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
         }
 
       LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
