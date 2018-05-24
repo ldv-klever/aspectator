@@ -2105,6 +2105,11 @@ initializer:
     assignment-expression
     { initializer-list }
     { initializer-list , }
+
+GNU extensions:
+
+initializer:
+    { }
 */
 static void
 ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initializer)
@@ -2124,15 +2129,19 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
 
     case LDV_INITIALIZER_SECOND:
     case LDV_INITIALIZER_THIRD:
+    case LDV_INITIALIZER_FOURTH:
       ldv_c_backend_print (indent_level, true, "{");
 
-      if ((initializer_list = LDV_INITIALIZER_INITIALIZER_LIST (initializer)))
-        ldv_print_initializer_list (indent_level, initializer_list);
-      else
-        LDV_PRETTY_PRINT_WARN (indent_level, "initializer list of inititializer was not printed");
+      if (LDV_INITIALIZER_KIND (initializer) != LDV_INITIALIZER_FOURTH)
+        {
+          if ((initializer_list = LDV_INITIALIZER_INITIALIZER_LIST (initializer)))
+            ldv_print_initializer_list (indent_level, initializer_list);
+          else
+            LDV_PRETTY_PRINT_WARN (indent_level, "initializer list of inititializer was not printed");
 
-      if (LDV_INITIALIZER_KIND (initializer) == LDV_INITIALIZER_THIRD)
-        ldv_c_backend_print (indent_level, true, ",");
+          if (LDV_INITIALIZER_KIND (initializer) == LDV_INITIALIZER_THIRD)
+            ldv_c_backend_print (indent_level, true, ",");
+        }
 
       ldv_c_backend_print (indent_level, true, "}");
 
@@ -2912,6 +2921,11 @@ postfix-expression:
     postfix-expression --
     ( type-name ) { initializer-list }
     ( type-name ) { initializer-list , }
+
+GNU extensions (not mentioned in c-parser.c):
+
+postfix-expression:
+    ( type-name ) { }
 */
 static void
 ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_expr)
@@ -2942,7 +2956,9 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
     case LDV_POSTFIX_EXPR_SIXTH:
     case LDV_POSTFIX_EXPR_SEVENTH:
     case LDV_POSTFIX_EXPR_EIGHTH:
-      if (LDV_POSTFIX_EXPR_KIND (postfix_expr) != LDV_POSTFIX_EXPR_EIGHTH)
+    case LDV_POSTFIX_EXPR_NINETH:
+      if (LDV_POSTFIX_EXPR_KIND (postfix_expr) != LDV_POSTFIX_EXPR_EIGHTH
+          && LDV_POSTFIX_EXPR_KIND (postfix_expr) != LDV_POSTFIX_EXPR_NINETH)
         {
           if ((postfix_expr_next = LDV_POSTFIX_EXPR_POSTFIX_EXPR (postfix_expr)))
             ldv_print_postfix_expr (indent_level, postfix_expr_next);
@@ -2999,10 +3015,13 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
 
           ldv_c_backend_print (indent_level, true, "{");
 
-          if ((initializer_list = LDV_POSTFIX_EXPR_INITIALIZER_LIST (postfix_expr)))
-            ldv_print_initializer_list (indent_level, initializer_list);
-          else
-            LDV_PRETTY_PRINT_WARN (indent_level, "initializer list of postfix expression was not printed");
+          if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_EIGHTH)
+            {
+              if ((initializer_list = LDV_POSTFIX_EXPR_INITIALIZER_LIST (postfix_expr)))
+                ldv_print_initializer_list (indent_level, initializer_list);
+              else
+                LDV_PRETTY_PRINT_WARN (indent_level, "initializer list of postfix expression was not printed");
+            }
 
           ldv_c_backend_print (indent_level, true, "}");
         }

@@ -3096,6 +3096,11 @@ initializer:
     assignment-expression
     { initializer-list }
     { initializer-list , }
+
+GNU extensions:
+
+initializer:
+    { }
 */
 static ldv_initializer_ptr
 ldv_convert_initializer (tree t)
@@ -3107,8 +3112,13 @@ ldv_convert_initializer (tree t)
   switch (TREE_CODE (t))
     {
     case CONSTRUCTOR:
-      LDV_INITIALIZER_KIND (initializer) = LDV_INITIALIZER_SECOND;
-      LDV_INITIALIZER_INITIALIZER_LIST (initializer) = ldv_convert_initializer_list (t);
+      if (CONSTRUCTOR_ELTS (t))
+        {
+          LDV_INITIALIZER_KIND (initializer) = LDV_INITIALIZER_SECOND;
+          LDV_INITIALIZER_INITIALIZER_LIST (initializer) = ldv_convert_initializer_list (t);
+        }
+      else
+        LDV_INITIALIZER_KIND (initializer) = LDV_INITIALIZER_FOURTH;
 
       break;
 
@@ -3145,33 +3155,29 @@ ldv_convert_initializer_list (tree t)
   switch (TREE_CODE (t))
     {
     case CONSTRUCTOR:
-      if (CONSTRUCTOR_ELTS (t))
+      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
         {
-          FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
+          if (!initializer_list_next)
             {
-              if (!initializer_list_next)
-                {
-                  initializer_list_next = initializer_list;
-                  LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_FIRST;
-                }
-              else
-                {
-                  initializer_list_next_next = XCNEW (struct ldv_initializer_list);
-                  LDV_INITIALIZER_LIST_INITIALIZER_LIST (initializer_list_next_next) = initializer_list_next;
-                  initializer_list_next = initializer_list_next_next;
-                  LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_SECOND;
-                }
-
-              /* Handle initialization of fields without names
-                 (http://forge.ispras.ru/issues/5280. */
-              if (TREE_CODE (index) != FIELD_DECL || DECL_NAME (index))
-                LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
-
-              LDV_INITIALIZER_LIST_INITIALIZER (initializer_list_next) = ldv_convert_initializer (value);
+              initializer_list_next = initializer_list;
+              LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_FIRST;
             }
+          else
+            {
+              initializer_list_next_next = XCNEW (struct ldv_initializer_list);
+              LDV_INITIALIZER_LIST_INITIALIZER_LIST (initializer_list_next_next) = initializer_list_next;
+              initializer_list_next = initializer_list_next_next;
+              LDV_INITIALIZER_LIST_KIND (initializer_list_next) = LDV_INITIALIZER_LIST_SECOND;
+            }
+
+          /* Handle initialization of fields without names
+             (http://forge.ispras.ru/issues/5280. */
+          if (TREE_CODE (index) != FIELD_DECL || DECL_NAME (index))
+            LDV_INITIALIZER_LIST_DESIGNATION (initializer_list_next) = ldv_convert_designation (index);
+
+          LDV_INITIALIZER_LIST_INITIALIZER (initializer_list_next) = ldv_convert_initializer (value);
         }
-      else
-        LDV_WARN ("can't find constructor elements");
+
 
       break;
 
@@ -4089,6 +4095,11 @@ postfix-expression:
     postfix-expression --
     ( type-name ) { initializer-list }
     ( type-name ) { initializer-list , }
+
+GNU extensions (not mentioned in c-parser.c):
+
+postfix-expression:
+    ( type-name ) { }
 */
 static ldv_postfix_expr_ptr
 ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
@@ -4167,7 +4178,12 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
                 LDV_WARN ("can't find initialization of expression declaration");
 
               if ((expr_decl_initial = DECL_INITIAL (expr_decl)))
-                LDV_POSTFIX_EXPR_INITIALIZER_LIST (postfix_expr) = ldv_convert_initializer_list (expr_decl_initial);
+                {
+                  if (CONSTRUCTOR_ELTS (expr_decl_initial))
+                    LDV_POSTFIX_EXPR_INITIALIZER_LIST (postfix_expr) = ldv_convert_initializer_list (expr_decl_initial);
+                  else
+                    LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_NINETH;
+                }
               else
                 LDV_WARN ("can't find initialization of expression declaration");
             }

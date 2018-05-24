@@ -380,6 +380,11 @@ postfix-expression:
     postfix-expression --
     ( type-name ) { initializer-list }
     ( type-name ) { initializer-list , }
+
+GNU extensions (not mentioned in c-parser.c):
+
+postfix-expression:
+    ( type-name ) { }
 */
 enum ldv_postfix_expr_kind
 {
@@ -390,7 +395,8 @@ enum ldv_postfix_expr_kind
   LDV_POSTFIX_EXPR_FIFTH,
   LDV_POSTFIX_EXPR_SIXTH,
   LDV_POSTFIX_EXPR_SEVENTH,
-  LDV_POSTFIX_EXPR_EIGHTH
+  LDV_POSTFIX_EXPR_EIGHTH,
+  LDV_POSTFIX_EXPR_NINETH
 };
 struct ldv_postfix_expr
 {
@@ -1820,12 +1826,18 @@ initializer:
     assignment-expression
     { initializer-list }
     { initializer-list , }
+
+GNU extensions:
+
+initializer:
+    { }
 */
 enum ldv_initializer_kind
 {
   LDV_INITIALIZER_FIRST = 1,
   LDV_INITIALIZER_SECOND,
-  LDV_INITIALIZER_THIRD
+  LDV_INITIALIZER_THIRD,
+  LDV_INITIALIZER_FOURTH
 };
 struct ldv_initializer
 {
