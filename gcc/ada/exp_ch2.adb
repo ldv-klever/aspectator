@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -24,14 +24,13 @@
 ------------------------------------------------------------------------------
 
 with Atree;    use Atree;
+with Checks;   use Checks;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
-with Errout;   use Errout;
 with Exp_Smem; use Exp_Smem;
 with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
-with Exp_VFpt; use Exp_VFpt;
 with Namet;    use Namet;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
@@ -45,7 +44,6 @@ with Sinfo;    use Sinfo;
 with Sinput;   use Sinput;
 with Snames;   use Snames;
 with Tbuild;   use Tbuild;
-with Uintp;    use Uintp;
 
 package body Exp_Ch2 is
 
@@ -163,12 +161,11 @@ package body Exp_Ch2 is
          --  lvalue references in the arguments.
 
          and then not (Nkind (Parent (N)) = N_Attribute_Reference
-                         and then
-                           (Attribute_Name (Parent (N)) = Name_Asm_Input
-                              or else
-                            Attribute_Name (Parent (N)) = Name_Asm_Output
-                              or else
-                            Prefix (Parent (N)) = N))
+                        and then
+                          (Nam_In (Attribute_Name (Parent (N)),
+                                   Name_Asm_Input,
+                                   Name_Asm_Output)
+                            or else Prefix (Parent (N)) = N))
 
       then
          --  Case of Current_Value is a compile time known value
@@ -176,7 +173,7 @@ package body Exp_Ch2 is
          if Nkind (CV) in N_Subexpr then
             Val := CV;
 
-         --  Case of Current_Value is a conditional expression reference
+         --  Case of Current_Value is an if expression reference
 
          else
             Get_Current_Value_Condition (N, Op, Val);
@@ -196,7 +193,16 @@ package body Exp_Ch2 is
               Unchecked_Convert_To (T,
                 New_Occurrence_Of (Entity (Val), Loc)));
 
-         --  If constant is of an integer type, just make an appropriately
+         --  If constant is of a character type, just make an appropriate
+         --  character literal, which will get the proper type.
+
+         elsif Is_Character_Type (T) then
+            Rewrite (N,
+              Make_Character_Literal (Loc,
+                Chars => Chars (Val),
+                Char_Literal_Value => Expr_Rep_Value (Val)));
+
+         --  If constant is of an integer type, just make an appropriate
          --  integer literal, which will get the proper type.
 
          elsif Is_Integer_Type (T) then
@@ -341,7 +347,8 @@ package body Exp_Ch2 is
    begin
       --  Defend against errors
 
-      if No (E) and then Total_Errors_Detected /= 0 then
+      if No (E) then
+         Check_Error_Detected;
          return;
       end if;
 
@@ -354,9 +361,9 @@ package body Exp_Ch2 is
       elsif Is_Protected_Component (E) then
          if No_Run_Time_Mode then
             return;
+         else
+            Expand_Protected_Component (N);
          end if;
-
-         Expand_Protected_Component (N);
 
       elsif Ekind (E) = E_Entry_Index_Parameter then
          Expand_Entry_Index_Parameter (N);
@@ -381,7 +388,7 @@ package body Exp_Ch2 is
         and then Is_Scalar_Type (Etype (N))
         and then (Is_Assignable (E) or else Is_Constant_Object (E))
         and then Comes_From_Source (N)
-        and then not Is_LHS (N)
+        and then Is_LHS (N) = No
         and then not Is_Actual_Out_Parameter (N)
         and then (Nkind (Parent (N)) /= N_Attribute_Reference
                    or else Attribute_Name (Parent (N)) /= Name_Valid)
@@ -396,6 +403,46 @@ package body Exp_Ch2 is
          end if;
 
          Write_Eol;
+      end if;
+
+      --  Set Atomic_Sync_Required if necessary for atomic variable. Note that
+      --  this processing does NOT apply to Volatile_Full_Access variables.
+
+      if Nkind_In (N, N_Identifier, N_Expanded_Name)
+        and then Ekind (E) = E_Variable
+        and then (Is_Atomic (E) or else Is_Atomic (Etype (E)))
+      then
+         declare
+            Set : Boolean;
+
+         begin
+            --  If variable is atomic, but type is not, setting depends on
+            --  disable/enable state for the variable.
+
+            if Is_Atomic (E) and then not Is_Atomic (Etype (E)) then
+               Set := not Atomic_Synchronization_Disabled (E);
+
+            --  If variable is not atomic, but its type is atomic, setting
+            --  depends on disable/enable state for the type.
+
+            elsif not Is_Atomic (E) and then Is_Atomic (Etype (E)) then
+               Set := not Atomic_Synchronization_Disabled (Etype (E));
+
+            --  Else both variable and type are atomic (see outer if), and we
+            --  disable if either variable or its type have sync disabled.
+
+            else
+               Set := (not Atomic_Synchronization_Disabled (E))
+                        and then
+                      (not Atomic_Synchronization_Disabled (Etype (E)));
+            end if;
+
+            --  Set flag if required
+
+            if Set then
+               Activate_Atomic_Synchronization (N);
+            end if;
+         end;
       end if;
 
       --  Interpret possible Current_Value for variable case
@@ -520,9 +567,6 @@ package body Exp_Ch2 is
          then
             Note_Possible_Modification (N, Sure => True);
          end if;
-
-         Rewrite (N, New_Occurrence_Of (Renamed_Object (Entity (N)), Loc));
-         return;
       end if;
 
       --  What we need is a reference to the corresponding component of the
@@ -532,14 +576,17 @@ package body Exp_Ch2 is
       --  to turn this into a pointer to the parameter record and then we
       --  select the required parameter field.
 
+      --  The same processing applies to protected entries, where the Accept_
+      --  Address is also the address of the Parameters record.
+
       P_Comp_Ref :=
         Make_Selected_Component (Loc,
           Prefix =>
             Make_Explicit_Dereference (Loc,
               Unchecked_Convert_To (Parm_Type,
-                New_Reference_To (Addr_Ent, Loc))),
+                New_Occurrence_Of (Addr_Ent, Loc))),
           Selector_Name =>
-            New_Reference_To (Entry_Component (Ent_Formal), Loc));
+            New_Occurrence_Of (Entry_Component (Ent_Formal), Loc));
 
       --  For all types of parameters, the constructed parameter record object
       --  contains a pointer to the parameter. Thus we must dereference them to
@@ -596,10 +643,14 @@ package body Exp_Ch2 is
    ---------------------------
 
    procedure Expand_N_Real_Literal (N : Node_Id) is
+      pragma Unreferenced (N);
+
    begin
-      if Vax_Float (Etype (N)) then
-         Expand_Vax_Real_Literal (N);
-      end if;
+      --  Historically, this routine existed because there were expansion
+      --  requirements for Vax real literals, but now Vax real literals
+      --  are now handled by gigi, so this routine no longer does anything.
+
+      null;
    end Expand_N_Real_Literal;
 
    --------------------------------
@@ -683,6 +734,10 @@ package body Exp_Ch2 is
    --    typ!(recobj).rec.all'Constrained
 
    --  where rec is a selector whose Entry_Formal link points to the formal
+
+   --  If the type of the entry parameter has a representation clause, then an
+   --  extra temp is involved (see below).
+
    --  For a formal of a task entity, the formal is rewritten as a local
    --  renaming.
 
@@ -720,10 +775,30 @@ package body Exp_Ch2 is
       else
          if Nkind (N) = N_Explicit_Dereference then
             declare
-               P : constant Node_Id := Prefix (N);
-               S : Node_Id;
+               P    : Node_Id := Prefix (N);
+               S    : Node_Id;
+               E    : Entity_Id;
+               Decl : Node_Id;
 
             begin
+               --  If the type of an entry parameter has a representation
+               --  clause, then the prefix is not a selected component, but
+               --  instead a reference to a temp pointing at the selected
+               --  component. In this case, set P to be the initial value of
+               --  that temp.
+
+               if Nkind (P) = N_Identifier then
+                  E := Entity (P);
+
+                  if Ekind (E) = E_Constant then
+                     Decl := Parent (E);
+
+                     if Nkind (Decl) = N_Object_Declaration then
+                        P := Expression (Decl);
+                     end if;
+                  end if;
+               end if;
+
                if Nkind (P) = N_Selected_Component then
                   S := Selector_Name (P);
 

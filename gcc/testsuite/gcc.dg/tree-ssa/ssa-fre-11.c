@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O -fdump-tree-fre-details" } */
+/* { dg-options "-O -fdump-tree-fre1-details" } */
 
 struct
 {
@@ -22,5 +22,4 @@ foo (int y)
   return (x);
 }
 
-/* { dg-final { scan-tree-dump "Replaced S\\\[5\\\].x with 4" "fre" } } */
-/* { dg-final { cleanup-tree-dump "fre" } } */
+/* { dg-final { scan-tree-dump "Replaced S\\\[5\\\].x with 4" "fre1" } } */

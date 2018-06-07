@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1997-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -261,14 +261,28 @@ package body Sem_Elim is
             --------------------
 
             procedure Set_Eliminated is
+               Overridden : Entity_Id;
+
             begin
                if Is_Dispatching_Operation (E) then
 
                   --  If an overriding dispatching primitive is eliminated then
-                  --  its parent must have been eliminated.
+                  --  its parent must have been eliminated. If the parent is an
+                  --  inherited operation, check the operation that it renames,
+                  --  because flag Eliminated is only set on source operations.
 
-                  if Present (Overridden_Operation (E))
-                    and then not Is_Eliminated (Overridden_Operation (E))
+                  Overridden := Overridden_Operation (E);
+
+                  if Present (Overridden)
+                    and then not Comes_From_Source (Overridden)
+                    and then Present (Alias (Overridden))
+                  then
+                     Overridden := Alias (Overridden);
+                  end if;
+
+                  if Present (Overridden)
+                    and then not Is_Eliminated (Overridden)
+                    and then not Is_Abstract_Subprogram (Overridden)
                   then
                      Error_Msg_Name_1 := Chars (E);
                      Error_Msg_N ("cannot eliminate subprogram %", E);
@@ -394,7 +408,7 @@ package body Sem_Elim is
             end if;
 
             --  If given entity is a library level subprogram and pragma had a
-            --  single parameter, a match!
+            --  single parameter, a match.
 
             if Is_Compilation_Unit (E)
               and then Is_Subprogram (E)
@@ -560,7 +574,7 @@ package body Sem_Elim is
                      --------------------
 
                      function Line_Num_Match return Boolean is
-                        N : Int := 0;
+                        N : Nat := 0;
 
                      begin
                         if Idx = 0 then
@@ -585,9 +599,8 @@ package body Sem_Elim is
                               Idx := Idx + 1;
                            end loop;
 
-                           if Idx <= Last and then
-                             Sloc_Trace (Idx) = '['
-                           then
+                           if Idx <= Last then
+                              pragma Assert (Sloc_Trace (Idx) = '[');
                               Idx := Idx + 1;
                               Idx := Skip_Spaces;
                            else
@@ -710,6 +723,14 @@ package body Sem_Elim is
       Enclosing_Subp : Entity_Id;
 
    begin
+      --  No check needed within a default expression for a formal, since this
+      --  is not really a use, and the expression (a call or attribute) may
+      --  never be used if the enclosing subprogram is itself eliminated.
+
+      if In_Spec_Expression then
+         return;
+      end if;
+
       if Is_Eliminated (Ultimate_Subp)
         and then not Inside_A_Generic
         and then not Is_Generic_Unit (Cunit_Entity (Current_Sem_Unit))
@@ -809,10 +830,10 @@ package body Sem_Elim is
       Arg_Uname : Node_Id;
 
       function OK_Selected_Component (N : Node_Id) return Boolean;
-      --  Test if N is a selected component with all identifiers, or a
-      --  selected component whose selector is an operator symbol. As a
-      --  side effect if result is True, sets Num_Names to the number
-      --  of names present (identifiers and operator if any).
+      --  Test if N is a selected component with all identifiers, or a selected
+      --  component whose selector is an operator symbol. As a side effect
+      --  if result is True, sets Num_Names to the number of names present
+      --  (identifiers, and operator if any).
 
       ---------------------------
       -- OK_Selected_Component --

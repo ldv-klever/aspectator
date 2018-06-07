@@ -1,5 +1,6 @@
 /* { dg-do run } */
 /* { dg-options "-O2" } */
+/* { dg-require-effective-target alloca } */
 
 typedef __SIZE_TYPE__ size_t;
 extern void abort (void);
@@ -64,7 +65,11 @@ test1 (void *q, int x)
     r = malloc (30);
   else
     r = calloc (2, 16);
-  if (__builtin_object_size (r, 0) != 2 * 16)
+  /* We may duplicate this test onto the two exit paths.  On one path
+     the size will be 32, the other it will be 30.  If we don't duplicate
+     this test, then the size will be 32.  */
+  if (__builtin_object_size (r, 0) != 2 * 16
+      && __builtin_object_size (r, 0) != 30)
     abort ();
   if (x < 20)
     r = malloc (30);
@@ -356,7 +361,7 @@ test5 (size_t x)
   /* My understanding of ISO C99 6.5.6 is that a conforming
      program will not end up with p equal to &buf[0]
      through &buf[7], i.e. calling this function with say
-     UINTPTR_MAX / 4 results in undefined behaviour.
+     UINTPTR_MAX / 4 results in undefined behavior.
      If that's true, then the maximum number of remaining
      bytes from p until end of the object is 56, otherwise
      it would be 64 (or conservative (size_t) -1 == unknown).  */

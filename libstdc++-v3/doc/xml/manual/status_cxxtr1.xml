@@ -4,12 +4,8 @@
 
 <info><title>C++ TR1</title>
   <keywordset>
-    <keyword>
-      ISO C++
-    </keyword>
-    <keyword>
-      tr1
-    </keyword>
+    <keyword>ISO C++</keyword>
+    <keyword>tr1</keyword>
   </keywordset>
 </info>
 
@@ -26,8 +22,7 @@ In this implementation the header names are prefixed by
 </para>
 
 <para>
-This page describes the TR1 support in mainline GCC SVN, not in any particular
-release.
+This page describes the TR1 support in the GCC 7 series.
 </para>
 
 <!-- Status is Yes or No, Broken/Partial-->
@@ -39,7 +34,7 @@ release.
    Broken/Partial
       <?dbhtml bgcolor="#B0B0B0" ?>
 -->
-<table frame="all">
+<table frame="all" xml:id="table.tr1_status">
 <title>C++ TR1 Implementation Status</title>
 
 <tgroup cols="4" align="left" colsep="0" rowsep="1">
@@ -1778,5 +1773,21 @@ release.
   </tbody>
 </tgroup>
 </table>
+
+<section xml:id="iso.tr1.specific" xreflabel="Implementation Specific"><info><title>Implementation Specific Behavior</title></info>
+
+   <para>For behaviour which is specified by the 1998 and 2003 standards,
+      see <link linkend="iso.1998.specific">C++ 1998/2003 Implementation
+      Specific Behavior</link>. This section documents behaviour which
+      is required by TR1.
+   </para>
+
+   <para>
+     <emphasis>3.6.4 [tr.func.bind.place]/1</emphasis> There are 29
+     placeholders defined and the placeholder types are
+     <literal>Assignable</literal>.
+   </para>
+
+</section>
 
 </section>

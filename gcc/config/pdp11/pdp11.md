@@ -1,6 +1,5 @@
 ;;- Machine description for the pdp11 for GNU C compiler
-;; Copyright (C) 1994, 1995, 1997, 1998, 1999, 2000, 2001, 2004, 2005
-;; 2007, 2008, 2010 Free Software Foundation, Inc.
+;; Copyright (C) 1994-2017 Free Software Foundation, Inc.
 ;; Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
 ;; This file is part of GCC.
@@ -21,6 +20,13 @@
 
 (include "predicates.md")
 (include "constraints.md")
+
+(define_c_enum "unspecv"
+  [
+    UNSPECV_BLOCKAGE
+    UNSPECV_SETD
+    UNSPECV_SETI
+  ])
 
 (define_constants
   [
@@ -103,6 +109,50 @@
    (set_attr "length" "6")])
 
 ;; define function units
+
+;; Prologue and epilogue support.
+
+(define_expand "prologue"
+  [(const_int 0)]
+  ""
+{
+  pdp11_expand_prologue ();
+  DONE;
+})
+
+(define_expand "epilogue"
+  [(const_int 0)]
+  ""
+{
+  pdp11_expand_epilogue ();
+  DONE;
+})
+
+(define_expand "return"
+  [(return)]
+  "reload_completed && !frame_pointer_needed && pdp11_sp_frame_offset () == 0"
+  "")
+
+(define_insn "*rts"
+  [(return)]
+  ""
+  "rts pc")
+
+(define_insn "blockage"
+  [(unspec_volatile [(const_int 0)] UNSPECV_BLOCKAGE)]
+  ""
+  ""
+  [(set_attr "length" "0")])
+
+(define_insn "setd"
+  [(unspec_volatile [(const_int 0)] UNSPECV_SETD)]
+  ""
+  "setd")
+
+(define_insn "seti"
+  [(unspec_volatile [(const_int 0)] UNSPECV_SETI)]
+  ""
+  "seti")
 
 ;; arithmetic - values here immediately when next insn issued
 ;; or does it mean the number of cycles after this insn was issued?
@@ -323,9 +373,9 @@
 		   (match_operand:BLK 1 "general_operand" "g,g"))
 	      (use (match_operand:HI 2 "general_operand" "n,mr"))
 	      (use (match_operand:HI 3 "immediate_operand" "i,i"))
-	      (clobber (match_scratch:HI 4 "=&r,X"))
+	      (clobber (match_scratch:HI 6 "=&r,X"))
+	      (clobber (match_dup 4))
 	      (clobber (match_dup 5))
-	      (clobber (match_dup 6))
 	      (clobber (match_dup 2))])]
   "(TARGET_BCOPY_BUILTIN)"
   "
@@ -337,8 +387,8 @@
     = replace_equiv_address (operands[1],
 			     copy_to_mode_reg (Pmode, XEXP (operands[1], 0)));
 
-  operands[5] = XEXP (operands[0], 0);
-  operands[6] = XEXP (operands[1], 0);
+  operands[4] = XEXP (operands[0], 0);
+  operands[5] = XEXP (operands[1], 0);
 }")
 
 

@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                    Copyright (C) 2007-2009, AdaCore                      --
+--                    Copyright (C) 2007-2016, AdaCore                      --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -33,16 +31,21 @@
 
 --  This is the Windows implementation of this package
 
-with Ada.Unchecked_Deallocation; use Ada;
 with Ada.Streams;                use Ada.Streams;
+with Ada.Unchecked_Deallocation; use Ada;
 
 with System;               use System;
 with System.Communication; use System.Communication;
 with System.CRTL;          use System.CRTL;
+with System.OS_Constants;
 with System.Win32;         use System.Win32;
 with System.Win32.Ext;     use System.Win32.Ext;
 
+with GNAT.OS_Lib;
+
 package body GNAT.Serial_Communications is
+
+   package OSC renames System.OS_Constants;
 
    --  Common types
 
@@ -89,7 +92,13 @@ package body GNAT.Serial_Communications is
    function Name (Number : Positive) return Port_Name is
       N_Img : constant String := Positive'Image (Number);
    begin
-      return Port_Name ("COM" & N_Img (N_Img'First + 1 .. N_Img'Last) & ':');
+      if Number > 9 then
+         return
+           Port_Name ("\\.\COM" & N_Img (N_Img'First + 1 .. N_Img'Last));
+      else
+         return
+           Port_Name ("COM" & N_Img (N_Img'First + 1 .. N_Img'Last) & ':');
+      end if;
    end Name;
 
    ----------
@@ -120,7 +129,7 @@ package body GNAT.Serial_Communications is
          dwFlagsAndAttributes  => 0,
          hTemplateFile         => 0);
 
-      if Port.H.all = 0 then
+      if Port.H.all = Port_Data (INVALID_HANDLE_VALUE) then
          Raise_Error ("cannot open com port");
       end if;
    end Open;
@@ -131,7 +140,10 @@ package body GNAT.Serial_Communications is
 
    procedure Raise_Error (Message : String; Error : DWORD := GetLastError) is
    begin
-      raise Serial_Error with Message & " (" & DWORD'Image (Error) & ')';
+      raise Serial_Error with Message
+        & (if Error /= 0
+           then " (" & GNAT.OS_Lib.Errno_Message (Err => Integer (Error)) & ')'
+           else "");
    end Raise_Error;
 
    ----------
@@ -177,8 +189,12 @@ package body GNAT.Serial_Communications is
       Stop_Bits : Stop_Bits_Number := One;
       Parity    : Parity_Check     := None;
       Block     : Boolean          := True;
+      Local     : Boolean          := True;
+      Flow      : Flow_Control     := None;
       Timeout   : Duration         := 10.0)
    is
+      pragma Unreferenced (Local);
+
       Success      : BOOL;
       Com_Time_Out : aliased COMMTIMEOUTS;
       Com_Settings : aliased DCB;
@@ -199,17 +215,30 @@ package body GNAT.Serial_Communications is
       Com_Settings.BaudRate        := DWORD (Data_Rate_Value (Rate));
       Com_Settings.fParity         := 1;
       Com_Settings.fBinary         := Bits1 (System.Win32.TRUE);
-      Com_Settings.fOutxCtsFlow    := 0;
       Com_Settings.fOutxDsrFlow    := 0;
       Com_Settings.fDsrSensitivity := 0;
-      Com_Settings.fDtrControl     := DTR_CONTROL_DISABLE;
-      Com_Settings.fOutX           := 0;
+      Com_Settings.fDtrControl     := OSC.DTR_CONTROL_ENABLE;
       Com_Settings.fInX            := 0;
-      Com_Settings.fRtsControl     := RTS_CONTROL_DISABLE;
-      Com_Settings.fAbortOnError   := 0;
-      Com_Settings.ByteSize        := BYTE (C_Bits (Bits));
-      Com_Settings.Parity          := BYTE (C_Parity (Parity));
-      Com_Settings.StopBits        := BYTE (C_Stop_Bits (Stop_Bits));
+      Com_Settings.fRtsControl     := OSC.RTS_CONTROL_ENABLE;
+
+      case Flow is
+         when None =>
+            Com_Settings.fOutX        := 0;
+            Com_Settings.fOutxCtsFlow := 0;
+
+         when RTS_CTS =>
+            Com_Settings.fOutX        := 0;
+            Com_Settings.fOutxCtsFlow := 1;
+
+         when Xon_Xoff =>
+            Com_Settings.fOutX        := 1;
+            Com_Settings.fOutxCtsFlow := 0;
+      end case;
+
+      Com_Settings.fAbortOnError := 0;
+      Com_Settings.ByteSize      := BYTE (C_Bits (Bits));
+      Com_Settings.Parity        := BYTE (C_Parity (Parity));
+      Com_Settings.StopBits      := BYTE (C_Stop_Bits (Stop_Bits));
 
       Success := SetCommState (HANDLE (Port.H.all), Com_Settings'Access);
 
@@ -219,10 +248,24 @@ package body GNAT.Serial_Communications is
          Raise_Error ("cannot set comm state");
       end if;
 
-      --  Set the timeout status
+      --  Set the timeout status, to honor our spec with respect to read
+      --  timeouts. Always disconnect write timeouts.
+
+      --  Blocking reads - no timeout at all
 
       if Block then
          Com_Time_Out := (others => 0);
+
+      --  Non-blocking reads and null timeout - immediate return with what we
+      --  have - set ReadIntervalTimeout to MAXDWORD.
+
+      elsif Timeout = 0.0 then
+         Com_Time_Out :=
+           (ReadIntervalTimeout => DWORD'Last,
+            others              => 0);
+
+      --  Non-blocking reads with timeout - set total read timeout accordingly
+
       else
          Com_Time_Out :=
            (ReadTotalTimeoutConstant => DWORD (1000 * Timeout),

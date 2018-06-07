@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -31,6 +31,9 @@
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+with Ada.Iterator_Interfaces;
+
+with Ada.Containers.Helpers;
 private with Ada.Finalization;
 private with Ada.Streams;
 
@@ -41,10 +44,17 @@ generic
       return Boolean is <>;
 
 package Ada.Containers.Doubly_Linked_Lists is
+   pragma Annotate (CodePeer, Skip_Analysis);
    pragma Preelaborate;
    pragma Remote_Types;
 
-   type List is tagged private;
+   type List is tagged private
+   with
+      Constant_Indexing => Constant_Reference,
+      Variable_Indexing => Reference,
+      Default_Iterator  => Iterate,
+      Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (List);
 
    type Cursor is private;
@@ -53,6 +63,11 @@ package Ada.Containers.Doubly_Linked_Lists is
    Empty_List : constant List;
 
    No_Element : constant Cursor;
+
+   function Has_Element (Position : Cursor) return Boolean;
+
+   package List_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    function "=" (Left, Right : List) return Boolean;
 
@@ -77,6 +92,30 @@ package Ada.Containers.Doubly_Linked_Lists is
      (Container : in out List;
       Position  : Cursor;
       Process   : not null access procedure (Element : in out Element_Type));
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   type Reference_Type
+     (Element : not null access Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased List;
+      Position  : Cursor) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   function Reference
+     (Container : aliased in out List;
+      Position  : Cursor) return Reference_Type;
+   pragma Inline (Reference);
+
+   procedure Assign (Target : in out List; Source : List);
+
+   function Copy (Source : List) return List;
 
    procedure Move
      (Target : in out List;
@@ -125,6 +164,12 @@ package Ada.Containers.Doubly_Linked_Lists is
       Count     : Count_Type := 1);
 
    procedure Reverse_Elements (Container : in out List);
+
+   function Iterate (Container : List)
+      return List_Iterator_Interfaces.Reversible_Iterator'Class;
+
+   function Iterate (Container : List; Start : Cursor)
+      return List_Iterator_Interfaces.Reversible_Iterator'Class;
 
    procedure Swap
      (Container : in out List;
@@ -180,8 +225,6 @@ package Ada.Containers.Doubly_Linked_Lists is
      (Container : List;
       Item      : Element_Type) return Boolean;
 
-   function Has_Element (Position : Cursor) return Boolean;
-
    procedure Iterate
      (Container : List;
       Process   : not null access procedure (Position : Cursor));
@@ -207,34 +250,34 @@ private
    pragma Inline (Next);
    pragma Inline (Previous);
 
+   use Ada.Containers.Helpers;
+   package Implementation is new Generic_Implementation;
+   use Implementation;
+
    type Node_Type;
    type Node_Access is access Node_Type;
 
    type Node_Type is
       limited record
-         Element : Element_Type;
+         Element : aliased Element_Type;
          Next    : Node_Access;
          Prev    : Node_Access;
       end record;
 
    use Ada.Finalization;
+   use Ada.Streams;
 
    type List is
      new Controlled with record
-        First  : Node_Access;
-        Last   : Node_Access;
+        First  : Node_Access := null;
+        Last   : Node_Access := null;
         Length : Count_Type := 0;
-        Busy   : Natural := 0;
-        Lock   : Natural := 0;
+        TC     : aliased Tamper_Counts;
      end record;
 
-   overriding
-   procedure Adjust (Container : in out List);
+   overriding procedure Adjust (Container : in out List);
 
-   overriding
-   procedure Finalize (Container : in out List) renames Clear;
-
-   use Ada.Streams;
+   overriding procedure Finalize (Container : in out List) renames Clear;
 
    procedure Read
      (Stream : not null access Root_Stream_Type'Class;
@@ -248,7 +291,7 @@ private
 
    for List'Write use Write;
 
-   type List_Access is access constant List;
+   type List_Access is access all List;
    for List_Access'Storage_Size use 0;
 
    type Cursor is
@@ -269,8 +312,95 @@ private
 
    for Cursor'Write use Write;
 
-   Empty_List : constant List := (Controlled with null, null, 0, 0, 0);
+   subtype Reference_Control_Type is Implementation.Reference_Control_Type;
+   --  It is necessary to rename this here, so that the compiler can find it
+
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
+
+   for Constant_Reference_Type'Read use Read;
+
+   type Reference_Type
+     (Element : not null access Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type);
+
+   for Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type);
+
+   for Reference_Type'Read use Read;
+
+   --  Three operations are used to optimize in the expansion of "for ... of"
+   --  loops: the Next(Cursor) procedure in the visible part, and the following
+   --  Pseudo_Reference and Get_Element_Access functions. See Sem_Ch5 for
+   --  details.
+
+   function Pseudo_Reference
+     (Container : aliased List'Class) return Reference_Control_Type;
+   pragma Inline (Pseudo_Reference);
+   --  Creates an object of type Reference_Control_Type pointing to the
+   --  container, and increments the Lock. Finalization of this object will
+   --  decrement the Lock.
+
+   type Element_Access is access all Element_Type with
+     Storage_Size => 0;
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access;
+   --  Returns a pointer to the element designated by Position.
+
+   Empty_List : constant List := (Controlled with others => <>);
 
    No_Element : constant Cursor := Cursor'(null, null);
+
+   type Iterator is new Limited_Controlled and
+     List_Iterator_Interfaces.Reversible_Iterator with
+   record
+      Container : List_Access;
+      Node      : Node_Access;
+   end record
+     with Disable_Controlled => not T_Check;
+
+   overriding procedure Finalize (Object : in out Iterator);
+
+   overriding function First (Object : Iterator) return Cursor;
+   overriding function Last  (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
+
+   overriding function Previous
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
 
 end Ada.Containers.Doubly_Linked_Lists;

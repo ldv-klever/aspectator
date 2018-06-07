@@ -235,8 +235,28 @@ fi
 ])
 
 
+dnl ####
+dnl # GCC_BASE_VER
+dnl # Determine GCC version number to use in compiler directories.
+
+AC_DEFUN([GCC_BASE_VER],
+[
+  get_gcc_base_ver="cat"
+  AC_ARG_WITH(gcc-major-version-only,
+  [AS_HELP_STRING([--with-gcc-major-version-only], [use only GCC major number in filesystem paths])],
+  [if test x$with_gcc_major_version_only = xyes ; then
+    changequote(,)dnl
+    get_gcc_base_ver="sed -e 's/^\([0-9]*\).*\$\$/\1/'"
+    changequote([,])dnl
+  fi
+  ])
+  AC_SUBST(get_gcc_base_ver)
+])
+
+
 AC_DEFUN([ACX_TOOL_DIRS], [
 AC_REQUIRE([ACX_PATH_SEP])
+AC_REQUIRE([GCC_BASE_VER])
 if test "x$exec_prefix" = xNONE; then
         if test "x$prefix" = xNONE; then
                 gcc_cv_tool_prefix=$ac_default_prefix
@@ -251,7 +271,13 @@ fi
 # case, if there is no compiler in the tree nobody should use
 # AS_FOR_TARGET and LD_FOR_TARGET.
 if test x$host = x$build && test -f $srcdir/gcc/BASE-VER; then
-    gcc_version=`cat $srcdir/gcc/BASE-VER`
+    if test x$with_gcc_major_version_only = xyes ; then
+        changequote(,)dnl
+        gcc_version=`sed -e 's/^\([0-9]*\).*$/\1/' $srcdir/gcc/BASE-VER`
+        changequote([,])dnl
+    else
+        gcc_version=`cat $srcdir/gcc/BASE-VER`
+    fi
     gcc_cv_tool_dirs="$gcc_cv_tool_prefix/libexec/gcc/$target_noncanonical/$gcc_version$PATH_SEPARATOR"
     gcc_cv_tool_dirs="$gcc_cv_tool_dirs$gcc_cv_tool_prefix/libexec/gcc/$target_noncanonical$PATH_SEPARATOR"
     gcc_cv_tool_dirs="$gcc_cv_tool_dirs/usr/lib/gcc/$target_noncanonical/$gcc_version$PATH_SEPARATOR"
@@ -356,9 +382,9 @@ m4_define([AC_CHECK_HEADER],m4_defn([_AC_CHECK_HEADER_OLD]))
 ac_c_preproc_warn_flag=yes])# AC_PROG_CPP_WERROR
 
 # Test for GNAT.
-# We require the gnatbind program, and a compiler driver that
-# understands Ada.  We use the user's CC setting, already found,
-# and possibly add $1 to the command-line parameters.
+# We require the gnatbind & gnatmake programs, as well as a compiler driver
+# that understands Ada.  We use the user's CC setting, already found, and
+# possibly add $1 to the command-line parameters.
 #
 # Sets the shell variable have_gnat to yes or no as appropriate, and
 # substitutes GNATBIND and GNATMAKE.
@@ -387,7 +413,7 @@ if test x"$errors" = x && test -f conftest.$ac_objext; then
 fi
 rm -f conftest.*])
 
-if test x$GNATBIND != xno && test x$GNATMAKE != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
+if test "x$GNATBIND" != xno && test "x$GNATMAKE" != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
   have_gnat=yes
 else
   have_gnat=no
@@ -404,7 +430,7 @@ AC_DEFUN([ACX_PROG_CMP_IGNORE_INITIAL],
 [AC_CACHE_CHECK([how to compare bootstrapped objects], gcc_cv_prog_cmp_skip,
 [ echo abfoo >t1
   echo cdfoo >t2
-  gcc_cv_prog_cmp_skip='tail +16c $$f1 > tmp-foo1; tail +16c $$f2 > tmp-foo2; cmp tmp-foo1 tmp-foo2'
+  gcc_cv_prog_cmp_skip='tail -c +17 $$f1 > tmp-foo1; tail -c +17 $$f2 > tmp-foo2; cmp tmp-foo1 tmp-foo2'
   if cmp t1 t2 2 2 > /dev/null 2>&1; then
     if cmp t1 t2 1 1 > /dev/null 2>&1; then
       :

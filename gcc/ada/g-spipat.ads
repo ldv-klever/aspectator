@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 1997-2008, AdaCore                     --
+--                     Copyright (C) 1997-2015, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -731,7 +729,7 @@ package GNAT.Spitbol.Patterns is
    function "*" (P : PString; Var : VString_Var)  return Pattern;
    function "*" (P : PChar;   Var : VString_Var)  return Pattern;
    --  Matches P, and if the match succeeds, assigns the matched substring
-   --  to the given VString variable S. This assignment happens as soon as
+   --  to the given VString variable Var. This assignment happens as soon as
    --  the substring is matched, and if the pattern P1 is matched more than
    --  once during the course of the match, then the assignment will occur
    --  more than once.
@@ -901,7 +899,7 @@ package GNAT.Spitbol.Patterns is
    function Span   (Str : VString_Func)                     return Pattern;
    --  Constructs a pattern that matches the longest possible string
    --  consisting entirely of characters from the given argument. The
-   --  string cannot be empty , so the pattern fails if the current
+   --  string cannot be empty, so the pattern fails if the current
    --  character is not one of the characters in Str.
 
    function Succeed                                         return Pattern;

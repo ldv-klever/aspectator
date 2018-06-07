@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *            Copyright (C) 1992-2007, Free Software Foundation, Inc.       *
+ *            Copyright (C) 1992-2014, Free Software Foundation, Inc.       *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -23,8 +23,12 @@
  *                                                                          *
  ****************************************************************************/
 
-/* This file corresponds to the Ada package specification Urealp. It was
-   created manually from the files urealp.ads and urealp.adb  */
+/* This file corresponds to the Ada package specification Urealp.  It was
+   created manually from the files urealp.ads and urealp.adb.  */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Support for universal real arithmetic.  */
 
@@ -37,6 +41,12 @@ extern Uint Denominator		(Ureal);
 #define Rbase urealp__rbase
 extern Nat Rbase		(Ureal);
 
+#define Norm_Den urealp__norm_den
+extern Uint Norm_Den		(Ureal);
+
+#define Norm_Num urealp__norm_num
+extern Uint Norm_Num		(Ureal);
+
 #define UR_Is_Negative urealp__ur_is_negative
 extern Boolean UR_Is_Negative	(Ureal);
 
@@ -48,3 +58,7 @@ enum Rounding_Mode {Floor = 0, Ceiling = 1, Round = 2, Round_Even = 3};
 #define Machine eval_fat__machine
 extern Ureal Machine		(Entity_Id, Ureal, enum Rounding_Mode,
 				 Node_Id);
+
+#ifdef __cplusplus
+}
+#endif

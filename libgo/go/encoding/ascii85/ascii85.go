@@ -8,7 +8,6 @@ package ascii85
 
 import (
 	"io"
-	"os"
 	"strconv"
 )
 
@@ -21,7 +20,7 @@ import (
 //
 // The encoding handles 4-byte chunks, using a special encoding
 // for the last fragment, so Encode is not appropriate for use on
-// individual blocks of a large data stream.  Use NewEncoder() instead.
+// individual blocks of a large data stream. Use NewEncoder() instead.
 //
 // Often, ascii85-encoded data is wrapped in <~ and ~> symbols.
 // Encode does not add these.
@@ -58,6 +57,7 @@ func Encode(dst, src []byte) int {
 		if v == 0 && len(src) >= 4 {
 			dst[0] = 'z'
 			dst = dst[1:]
+			src = src[4:]
 			n++
 			continue
 		}
@@ -85,7 +85,7 @@ func Encode(dst, src []byte) int {
 // MaxEncodedLen returns the maximum length of an encoding of n source bytes.
 func MaxEncodedLen(n int) int { return (n + 3) / 4 * 5 }
 
-// NewEncoder returns a new ascii85 stream encoder.  Data written to
+// NewEncoder returns a new ascii85 stream encoder. Data written to
 // the returned writer will be encoded and then written to w.
 // Ascii85 encodings operate in 32-bit blocks; when finished
 // writing, the caller must Close the returned encoder to flush any
@@ -93,14 +93,14 @@ func MaxEncodedLen(n int) int { return (n + 3) / 4 * 5 }
 func NewEncoder(w io.Writer) io.WriteCloser { return &encoder{w: w} }
 
 type encoder struct {
-	err  os.Error
+	err  error
 	w    io.Writer
 	buf  [4]byte    // buffered data waiting to be encoded
 	nbuf int        // number of bytes in buf
 	out  [1024]byte // output buffer
 }
 
-func (e *encoder) Write(p []byte) (n int, err os.Error) {
+func (e *encoder) Write(p []byte) (n int, err error) {
 	if e.err != nil {
 		return 0, e.err
 	}
@@ -152,7 +152,7 @@ func (e *encoder) Write(p []byte) (n int, err os.Error) {
 
 // Close flushes any pending output from the encoder.
 // It is an error to call Write after calling Close.
-func (e *encoder) Close() os.Error {
+func (e *encoder) Close() error {
 	// If there's anything left in the buffer, flush it out
 	if e.err == nil && e.nbuf > 0 {
 		nout := Encode(e.out[0:], e.buf[0:e.nbuf])
@@ -168,8 +168,8 @@ func (e *encoder) Close() os.Error {
 
 type CorruptInputError int64
 
-func (e CorruptInputError) String() string {
-	return "illegal ascii85 data at input byte " + strconv.Itoa64(int64(e))
+func (e CorruptInputError) Error() string {
+	return "illegal ascii85 data at input byte " + strconv.FormatInt(int64(e), 10)
 }
 
 // Decode decodes src into dst, returning both the number
@@ -186,7 +186,7 @@ func (e CorruptInputError) String() string {
 //
 // NewDecoder wraps an io.Reader interface around Decode.
 //
-func Decode(dst, src []byte, flush bool) (ndst, nsrc int, err os.Error) {
+func Decode(dst, src []byte, flush bool) (ndst, nsrc int, err error) {
 	var v uint32
 	var nb int
 	for i, b := range src {
@@ -246,17 +246,16 @@ func Decode(dst, src []byte, flush bool) (ndst, nsrc int, err os.Error) {
 func NewDecoder(r io.Reader) io.Reader { return &decoder{r: r} }
 
 type decoder struct {
-	err     os.Error
-	readErr os.Error
+	err     error
+	readErr error
 	r       io.Reader
-	end     bool       // saw end of message
 	buf     [1024]byte // leftover input
 	nbuf    int
 	out     []byte // leftover decoded output
 	outbuf  [1024]byte
 }
 
-func (d *decoder) Read(p []byte) (n int, err os.Error) {
+func (d *decoder) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -281,9 +280,21 @@ func (d *decoder) Read(p []byte) (n int, err os.Error) {
 				d.nbuf = copy(d.buf[0:], d.buf[nsrc:d.nbuf])
 				continue // copy out and return
 			}
+			if ndst == 0 && d.err == nil {
+				// Special case: input buffer is mostly filled with non-data bytes.
+				// Filter out such bytes to make room for more input.
+				off := 0
+				for i := 0; i < d.nbuf; i++ {
+					if d.buf[i] > ' ' {
+						d.buf[off] = d.buf[i]
+						off++
+					}
+				}
+				d.nbuf = off
+			}
 		}
 
-		// Out of input, out of decoded output.  Check errors.
+		// Out of input, out of decoded output. Check errors.
 		if d.err != nil {
 			return 0, d.err
 		}
@@ -296,5 +307,4 @@ func (d *decoder) Read(p []byte) (n int, err os.Error) {
 		nn, d.readErr = d.r.Read(d.buf[d.nbuf:])
 		d.nbuf += nn
 	}
-	panic("unreachable")
 }

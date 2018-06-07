@@ -1,5 +1,5 @@
 ;;  Machine Description for Renesas RX processors
-;;  Copyright (C) 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+;;  Copyright (C) 2008-2017 Free Software Foundation, Inc.
 ;;  Contributed by Red Hat.
 
 ;; This file is part of GCC.
@@ -22,12 +22,15 @@
 ;; This code iterator is used for sign- and zero- extensions.
 (define_mode_iterator small_int_modes [(HI "") (QI "")])
 
+;; This code iterator is used for max and min operations.
+(define_mode_iterator int_modes [(SI "") (HI "") (QI "")])
+
 ;; We do not handle DFmode here because it is either
 ;; the same as SFmode, or if -m64bit-doubles is active
 ;; then all operations on doubles have to be handled by
 ;; library functions.
 (define_mode_iterator register_modes
-  [(SF "ALLOW_RX_FPU_INSNS") (SI "") (HI "") (QI "")])
+  [(SF "") (SI "") (HI "") (QI "")])
 
 (define_constants
   [
@@ -70,6 +73,18 @@
    (UNSPEC_BUILTIN_SAT     49)
    (UNSPEC_BUILTIN_SETPSW  50)
    (UNSPEC_BUILTIN_WAIT	   51)
+
+   (UNSPEC_PID_ADDR	   52)
+
+   (CTRLREG_PSW		    0)
+   (CTRLREG_USP		    2)
+   (CTRLREG_FPSW	    3)
+   (CTRLREG_CPEN	    4)
+   (CTRLREG_BPSW	    8)
+   (CTRLREG_BPC		    9)
+   (CTRLREG_ISP		   10)
+   (CTRLREG_FINTV	   11)
+   (CTRLREG_INTB	   12)
   ]
 )
 
@@ -327,16 +342,22 @@
 	(match_operand:SI          0 "register_operand" "r"))
    (use (label_ref (match_operand  1 "" "")))]
   ""
-  { return flag_pic ? (TARGET_AS100_SYNTAX ? "\n?:\tbra\t%0"
-					   : "\n1:\tbra\t%0")
-	                                   : "jmp\t%0";
+  { return TARGET_PID ? (TARGET_AS100_SYNTAX ? "\n?:\tbra\t%0"
+					     : "\n1:\tbra\t%0")
+	                                     : "\n1:jmp\t%0";
   }
   [(set_attr "timings" "33")
    (set_attr "length" "2")]
 )
 
-(define_insn "simple_return"
+(define_expand "return"
   [(return)]
+  "rx_can_use_simple_return ()"
+  "rx_expand_epilogue (false); DONE;"
+)
+
+(define_insn "simple_return"
+  [(simple_return)]
   ""
   "rts"
   [(set_attr "length" "1")
@@ -396,8 +417,8 @@
 
 ;; Note - the following set of patterns do not use the "memory_operand"
 ;; predicate or an "m" constraint because we do not allow symbol_refs
-;; or label_refs as legitmate memory addresses.  This matches the
-;; behaviour of most of the RX instructions.  Only the call/branch
+;; or label_refs as legitimate memory addresses.  This matches the
+;; behavior of most of the RX instructions.  Only the call/branch
 ;; instructions are allowed to refer to symbols/labels directly.
 ;; The call operands are in QImode because that is the value of
 ;; FUNCTION_MODE
@@ -553,23 +574,33 @@
 	(match_operand:register_modes 1 "general_operand"))]
   ""
   {
-    if (MEM_P (operand0) && MEM_P (operand1))
-      operands[1] = copy_to_mode_reg (<register_modes:MODE>mode, operand1);
+    if (MEM_P (operands[0]) && MEM_P (operands[1]))
+      operands[1] = copy_to_mode_reg (<register_modes:MODE>mode, operands[1]);
+    operands[0] = rx_maybe_pidify_operand (operands[0], 0);
+    operands[1] = rx_maybe_pidify_operand (operands[1], 0);
+    if (GET_CODE (operands[0]) != REG
+	&& GET_CODE (operands[1]) == PLUS)
+      operands[1] = copy_to_mode_reg (<register_modes:MODE>mode, operands[1]);
+    if (GET_CODE (operands[1]) == PLUS && GET_MODE (operands[1]) == SImode)
+      {
+        emit_insn (gen_addsi3 (operands[0], XEXP (operands[1], 0), XEXP (operands[1], 1)));
+        DONE;
+      }
     if (CONST_INT_P (operand1)
-        && ! rx_is_legitimate_constant (operand1))
+        && ! rx_is_legitimate_constant (<register_modes:MODE>mode, operand1))
       FAIL;
   }
 )
 
 (define_insn "*mov<register_modes:mode>_internal"
   [(set (match_operand:register_modes
-	 0 "nonimmediate_operand" "=r,r,r,r,r,r,m,Q,Q,Q,Q")
+	 0 "nonimmediate_operand" "=r,r,r,r,r,r,m,Q,Q,Q,Q,r")
 	(match_operand:register_modes
-	 1 "general_operand" "Int08,Sint16,Sint24,i,r,m,r,Int08,Sint16,Sint24,i"))]
+	 1 "general_operand" "Int08,Sint16,Sint24,i,r,m,r,Int08,Sint16,Sint24,i,RpdaRpid"))]
   ""
   { return rx_gen_move_template (operands, false); }
-  [(set_attr "length" "3,4,5,6,2,4,6,5,6,7,8")
-   (set_attr "timings" "11,11,11,11,11,12,11,11,11,11,11")]
+  [(set_attr "length" "3,4,5,6,2,4,6,5,6,7,8,8")
+   (set_attr "timings" "11,11,11,11,11,12,11,11,11,11,11,11")]
 )
 
 (define_insn "extend<small_int_modes:mode>si2"
@@ -596,7 +627,7 @@
   [(set (reg:SI SP_REG)
 	(minus:SI (reg:SI SP_REG)
 		  (const_int 4)))
-   (set (mem:SI (reg:SI SP_REG))
+   (set (mem:SI (minus:SI (reg:SI SP_REG) (const_int 4)))
 	(match_operand:SI 0 "register_operand" "r"))]
   ""
   "push.l\t%0"
@@ -658,11 +689,11 @@
 
   flags = gen_rtx_REG (CCmode, CC_REG);
   x = gen_rtx_COMPARE (CCmode, operands[2], operands[3]);
-  x = gen_rtx_SET (VOIDmode, flags, x);
+  x = gen_rtx_SET (flags, x);
   emit_insn (x);
 
   x = gen_rtx_fmt_ee (GET_CODE (operands[1]), SImode, flags, const0_rtx);
-  x = gen_rtx_SET (VOIDmode, operands[0], x);
+  x = gen_rtx_SET (operands[0], x);
   emit_insn (x);
   DONE;
 })
@@ -690,11 +721,11 @@
 
   flags = gen_rtx_REG (CC_Fmode, CC_REG);
   x = gen_rtx_COMPARE (CC_Fmode, operands[2], operands[3]);
-  x = gen_rtx_SET (VOIDmode, flags, x);
+  x = gen_rtx_SET (flags, x);
   emit_insn (x);
 
   x = gen_rtx_fmt_ee (GET_CODE (operands[1]), SImode, flags, const0_rtx);
-  x = gen_rtx_SET (VOIDmode, operands[0], x);
+  x = gen_rtx_SET (operands[0], x);
   emit_insn (x);
   DONE;
 })
@@ -708,24 +739,24 @@
      (clobber (reg:CC CC_REG))])]
   ""
 {
-  /* ??? Support other conditions via cstore into a temporary?  */
-  if (GET_CODE (operands[1]) != EQ && GET_CODE (operands[1]) != NE)
-    FAIL;
-  /* One operand must be a constant.  */
-  if (!CONSTANT_P (operands[2]) && !CONSTANT_P (operands[3]))
+  /* One operand must be a constant or a register, the other must be a register.  */
+  if (   ! CONSTANT_P (operands[2])
+      && ! CONSTANT_P (operands[3])
+      && ! (REG_P (operands[2]) && REG_P (operands[3])))
     FAIL;
 })
 
 (define_insn_and_split "*movsicc"
-  [(set (match_operand:SI     0 "register_operand" "=r,r")
+  [(set (match_operand:SI     0 "register_operand" "=r,r,r")
 	(if_then_else:SI
-	  (match_operator 5 "rx_z_comparison_operator"
-	   [(match_operand:SI 3 "register_operand"  "r,r")
-	    (match_operand:SI 4 "rx_source_operand" "riQ,riQ")])
-	  (match_operand:SI   1 "nonmemory_operand" "i,ri")
-	  (match_operand:SI   2 "nonmemory_operand" "ri,i")))
+	  (match_operator     5 "comparison_operator"
+	   [(match_operand:SI 3 "register_operand"  "r,r,r")
+	    (match_operand:SI 4 "rx_source_operand" "riQ,riQ,riQ")])
+	  (match_operand:SI   1 "nonmemory_operand" "i,ri,r")
+	  (match_operand:SI   2 "nonmemory_operand" "ri,i,r")))
    (clobber (reg:CC CC_REG))]
-  "CONSTANT_P (operands[1]) || CONSTANT_P (operands[2])"
+  "(CONSTANT_P (operands[1]) || CONSTANT_P (operands[2]))
+    || (REG_P (operands[1]) && REG_P (operands[2]))"
   "#"
   "&& reload_completed"
   [(const_int 0)]
@@ -735,15 +766,18 @@
 
   flags = gen_rtx_REG (CCmode, CC_REG);
   x = gen_rtx_COMPARE (CCmode, operands[3], operands[4]);
-  emit_insn (gen_rtx_SET (VOIDmode, flags, x));
+  emit_insn (gen_rtx_SET (flags, x));
 
   cmp_code = GET_CODE (operands[5]);
   op0 = operands[0];
   op1 = operands[1];
   op2 = operands[2];
 
-  /* If OP2 is the constant, reverse the sense of the move.  */
-  if (!CONSTANT_P (operands[1]))
+  /* If OP2 is the constant, reverse the sense of the move.
+     Likewise if both operands are registers but OP1 == OP0.  */
+  if ((! CONSTANT_P (operands[1]) && CONSTANT_P (operands[2]))
+      || (REG_P (operands[1]) && REG_P (operands[2])
+          && rtx_equal_p (op0, op1)))
     {
       x = op1, op1 = op2, op2 = x;
       cmp_code = reverse_condition (cmp_code);
@@ -752,12 +786,12 @@
   /* If OP2 does not match the output, copy it into place.  We have allowed
      these alternatives so that the destination can legitimately be one of
      the comparison operands without increasing register pressure.  */
-  if (!rtx_equal_p (op0, op2))
+  if (! rtx_equal_p (op0, op2))
     emit_move_insn (op0, op2);
 
   x = gen_rtx_fmt_ee (cmp_code, VOIDmode, flags, const0_rtx);
   x = gen_rtx_IF_THEN_ELSE (SImode, x, op1, op0);
-  emit_insn (gen_rtx_SET (VOIDmode, op0, x));
+  emit_insn (gen_rtx_SET (op0, x));
   DONE;
 })
 
@@ -768,14 +802,31 @@
 	    [(reg CC_REG) (const_int 0)])
 	  (match_operand:SI 1 "immediate_operand" "Sint08,Sint16,Sint24,i")
 	  (match_dup 0)))]
-  "reload_completed"
-{
-  if (GET_CODE (operands[2]) == EQ)
-    return "stz\t%1, %0";
-  else
-    return "stnz\t%1, %0";
-}
+  "reload_completed
+   && ((GET_CODE (operands[2]) == EQ) || (GET_CODE (operands[2]) == NE))"
+  {
+    if (GET_CODE (operands[2]) == EQ)
+      return "stz\t%1, %0";
+    else
+     return "stnz\t%1, %0";
+  }
   [(set_attr "length" "4,5,6,7")]
+)
+
+(define_insn "*stcc_reg"
+  [(set (match_operand:SI 0 "register_operand" "+r,r,r,r,r,r")
+	(if_then_else:SI
+	  (match_operator 2 "comparison_operator"
+	    [(reg CC_REG) (const_int 0)])
+	  (match_operand:SI 1 "nonmemory_operand"
+		              "r,Uint04,Sint08,Sint16,Sint24,i")
+	  (match_dup 0)))]
+  "reload_completed"
+  {
+    PUT_CODE (operands[2], reverse_condition (GET_CODE (operands[2])));
+    return "b%B2 1f\n\tmov %1, %0\n1:";
+  }
+  [(set_attr "length" "3,3,4,5,6,7")]
 )
 
 ;; Arithmetic Instructions
@@ -807,7 +858,20 @@
   [(set_attr "length" "2,3")]
 )
 
-(define_insn "addsi3"
+(define_expand "addsi3"
+  [(parallel [(set (match_operand:SI          0 "register_operand"  "")
+	(plus:SI (match_operand:SI 1 "register_operand"  "")
+		 (match_operand:SI 2 "rx_source_operand" "")))
+    (clobber (reg:CC CC_REG))])]
+  ""
+  "
+      operands[0] = rx_maybe_pidify_operand (operands[0], 1);
+      operands[1] = rx_maybe_pidify_operand (operands[1], 1);
+      operands[2] = rx_maybe_pidify_operand (operands[2], 1);
+  "
+)
+
+(define_insn "addsi3_internal"
   [(set (match_operand:SI          0 "register_operand"  "=r,r,r,r,r,r,r,r,r,r,r,r,r,r")
 	(plus:SI (match_operand:SI 1 "register_operand"  "%0,0,0,0,0,0,0,r,r,r,r,r,r,0")
 		 (match_operand:SI 2 "rx_source_operand" "r,Uint04,NEGint4,Sint08,Sint16,Sint24,i,0,r,Sint08,Sint16,Sint24,i,Q")))
@@ -878,7 +942,7 @@
 	  (match_operand:SI   2 "rx_source_operand" "r,Sint08,Sint16,Sint24,i,Q")))
     (clobber (reg:CC CC_REG))]
   "reload_completed"
-  "adc %2,%0"
+  "adc\t%2, %0"
   [(set_attr "timings" "11,11,11,11,11,33")
    (set_attr "length"   "3,4,5,6,7,6")]
 )
@@ -899,9 +963,42 @@
 	    (match_dup 2))
 	  (const_int 0)))]
   "reload_completed && rx_match_ccmode (insn, CC_ZSCmode)"
-  "adc %2,%0"
+  "adc\t%2, %0"
   [(set_attr "timings" "11,11,11,11,11,33")
    (set_attr "length"   "3,4,5,6,7,6")]
+)
+
+;; Peepholes to match:
+;;   (set (reg A) (reg B))
+;;   (set (CC) (compare:CC (reg A/reg B) (const_int 0)))
+;; and replace them with the addsi3_flags pattern, using an add
+;; of zero to copy the register and set the condition code bits.
+(define_peephole2
+  [(set (match_operand:SI 0 "register_operand")
+        (match_operand:SI 1 "register_operand"))
+   (set (reg:CC CC_REG)
+        (compare:CC (match_dup 0)
+                    (const_int 0)))]
+  ""
+  [(parallel [(set (match_dup 0)
+		   (plus:SI (match_dup 1) (const_int 0)))
+	      (set (reg:CC_ZSC CC_REG)
+		   (compare:CC_ZSC (plus:SI (match_dup 1) (const_int 0))
+				   (const_int 0)))])]
+)
+
+(define_peephole2
+  [(set (match_operand:SI 0 "register_operand")
+        (match_operand:SI 1 "register_operand"))
+   (set (reg:CC CC_REG)
+        (compare:CC (match_dup 1)
+                    (const_int 0)))]
+  ""
+  [(parallel [(set (match_dup 0)
+		   (plus:SI (match_dup 1) (const_int 0)))
+	      (set (reg:CC_ZSC CC_REG)
+		   (compare:CC_ZSC (plus:SI (match_dup 1) (const_int 0))
+				   (const_int 0)))])]
 )
 
 (define_expand "adddi3"
@@ -924,7 +1021,7 @@
 })
 
 (define_insn_and_split "adddi3_internal"
-  [(set (match_operand:SI          0 "register_operand"  "=r")
+  [(set (match_operand:SI          0 "register_operand"  "=&r")
 	(plus:SI (match_operand:SI 2 "register_operand"  "r")
 		 (match_operand:SI 3 "rx_source_operand" "riQ")))
    (set (match_operand:SI          1 "register_operand"  "=r")
@@ -1127,6 +1224,87 @@
   "min\t%Q2, %0"
   [(set_attr "length"  "3,4,5,6,7,6")
    (set_attr "timings" "11,11,11,11,11,33")]
+)
+
+(define_insn "umax<small_int_modes:mode>3_u"
+  [(set (match_operand:SI          0 "register_operand" "=r,r,r,r,r,r")
+	(smax:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0,0")
+		 (zero_extend:SI (match_operand:small_int_modes 2 "rx_minmaxex_operand"
+								"r,Sint08,Sint16,Sint24,i,Q"))))]
+  ""
+  "max\t%R2, %0"
+  [(set_attr "length"  "3,4,5,6,7,6")
+   (set_attr "timings" "11,11,11,11,11,33")]
+)
+
+(define_insn "umin<small_int_modes:mode>3_ur"
+  [(set (match_operand:SI          0 "register_operand" "=r,r,r,r,r,r")
+	(smin:SI (zero_extend:SI (match_operand:small_int_modes 2 "rx_minmaxex_operand"
+								"r,Sint08,Sint16,Sint24,i,Q"))
+		 (match_operand:SI 1 "register_operand" "%0,0,0,0,0,0")))]
+  ""
+  "min\t%R2, %0"
+  [(set_attr "length"  "3,4,5,6,7,6")
+   (set_attr "timings" "11,11,11,11,11,33")]
+)
+
+(define_insn "umax<small_int_modes:mode>3_ur"
+  [(set (match_operand:SI          0 "register_operand" "=r,r,r,r,r,r")
+	(smax:SI (zero_extend:SI (match_operand:small_int_modes 2 "rx_minmaxex_operand"
+								"r,Sint08,Sint16,Sint24,i,Q"))
+		 (match_operand:SI 1 "register_operand" "%0,0,0,0,0,0")))]
+  ""
+  "max\t%R2, %0"
+  [(set_attr "length"  "3,4,5,6,7,6")
+   (set_attr "timings" "11,11,11,11,11,33")]
+)
+
+(define_expand "umax<small_int_modes:mode>3"
+  [(set (match_dup 4)
+	(zero_extend:SI (match_operand:small_int_modes 1 "register_operand" "%0,0,0,0,0,0")))
+   (set (match_dup 3)
+	(smax:SI (match_dup 4)
+		 (match_operand:small_int_modes 2 "rx_source_operand"
+						"r,Sint08,Sint16,Sint24,i,Q")))
+   (set (match_operand:small_int_modes          0 "register_operand" "=r,r,r,r,r,r")
+	(match_dup 6))
+   ]
+  ""
+  "operands[3] = gen_reg_rtx (SImode);
+   operands[4] = gen_reg_rtx (SImode);
+   operands[5] = gen_reg_rtx (SImode);
+   operands[6] = gen_rtx_SUBREG (GET_MODE (operands[0]), operands[3],
+     TARGET_BIG_ENDIAN_DATA ? (GET_MODE (operands[0]) == HImode ? 2 : 3) : 0);
+   if (GET_CODE (operands[2]) != CONST_INT)
+     {
+       emit_move_insn (operands[5], gen_rtx_ZERO_EXTEND (SImode, operands[2]));
+       operands[2] = operands[5];
+     }
+  "
+)
+
+(define_expand "umin<small_int_modes:mode>3"
+  [(set (match_dup 4)
+	(zero_extend:SI (match_operand:small_int_modes 1 "register_operand" "%0,0,0,0,0,0")))
+   (set (match_dup 3)
+	(smin:SI (match_dup 4)
+		 (match_operand:small_int_modes 2 "rx_source_operand"
+						"r,Sint08,Sint16,Sint24,i,Q")))
+   (set (match_operand:small_int_modes          0 "register_operand" "=r,r,r,r,r,r")
+	(match_dup 6))
+   ]
+  ""
+  "operands[3] = gen_reg_rtx (SImode);
+   operands[4] = gen_reg_rtx (SImode);
+   operands[5] = gen_reg_rtx (SImode);
+   operands[6] = gen_rtx_SUBREG (GET_MODE (operands[0]), operands[3],
+     TARGET_BIG_ENDIAN_DATA ? (GET_MODE (operands[0]) == HImode ? 2 : 3) : 0);
+   if (GET_CODE (operands[2]) != CONST_INT)
+     {
+       emit_move_insn (operands[5], gen_rtx_ZERO_EXTEND (SImode, operands[2]));
+       operands[2] = operands[5];
+     }
+   "
 )
 
 (define_insn "mulsi3"
@@ -1482,7 +1660,7 @@
 (define_expand "subdi3"
   [(set (match_operand:DI           0 "register_operand")
 	(minus:DI (match_operand:DI 1 "register_operand")
-		  (match_operand:DI 2 "rx_compare_operand")))]
+		  (match_operand:DI 2 "register_operand")))]
   ""
 {
   rtx op0l, op0h, op1l, op1h, op2l, op2h;
@@ -1543,6 +1721,168 @@
   "xor\t%Q2, %0"
   [(set_attr "timings" "11,11,11,11,11,33")
    (set_attr "length" "3,4,5,6,7,6")]
+)
+
+;; A set of peepholes to catch extending loads followed by arithmetic operations.
+;; We use iterators where possible to reduce the amount of typing and hence the
+;; possibilities for typos.
+
+(define_code_iterator extend_types [(zero_extend "") (sign_extend "")])
+(define_code_attr     letter       [(zero_extend "R") (sign_extend "Q")])
+
+(define_code_iterator memex_commutative [(plus "") (and "") (ior "") (xor "")])
+(define_code_iterator memex_noncomm     [(div "") (udiv "") (minus "")])
+(define_code_iterator memex_nocc        [(smax "") (smin "") (mult "")])
+
+(define_code_attr     op                [(plus "add") (and "and") (div "div") (udiv "divu") (smax "max") (smin "min") (mult "mul") (ior "or") (minus "sub") (xor "xor")])
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (parallel [(set (match_operand:SI                    2 "register_operand")
+		   (memex_commutative:SI (match_dup 0)
+					 (match_dup 2)))
+	      (clobber (reg:CC CC_REG))])]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(parallel [(set (match_dup 2)
+		   (memex_commutative:SI (match_dup 2)
+					 (extend_types:SI (match_dup 1))))
+	      (clobber (reg:CC CC_REG))])]
+)
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (parallel [(set (match_operand:SI                    2 "register_operand")
+		   (memex_commutative:SI (match_dup 2)
+					 (match_dup 0)))
+	      (clobber (reg:CC CC_REG))])]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(parallel [(set (match_dup 2)
+		   (memex_commutative:SI (match_dup 2)
+					 (extend_types:SI (match_dup 1))))
+	      (clobber (reg:CC CC_REG))])]
+)
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (parallel [(set (match_operand:SI                    2 "register_operand")
+		   (memex_noncomm:SI (match_dup 2)
+				     (match_dup 0)))
+	      (clobber (reg:CC CC_REG))])]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(parallel [(set (match_dup 2)
+		   (memex_noncomm:SI (match_dup 2)
+				     (extend_types:SI (match_dup 1))))
+	      (clobber (reg:CC CC_REG))])]
+)
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (set (match_operand:SI                               2 "register_operand")
+	(memex_nocc:SI (match_dup 0)
+		       (match_dup 2)))]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(set (match_dup 2)
+	(memex_nocc:SI (match_dup 2)
+		       (extend_types:SI (match_dup 1))))]
+)
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (set (match_operand:SI                               2 "register_operand")
+	(memex_nocc:SI (match_dup 2)
+		       (match_dup 0)))]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(set (match_dup 2)
+	(memex_nocc:SI (match_dup 2)
+		       (extend_types:SI (match_dup 1))))]
+)
+
+(define_insn "<memex_commutative:code>si3_<extend_types:code><small_int_modes:mode>"
+  [(set (match_operand:SI                                                     0 "register_operand" "=r")
+	(memex_commutative:SI (match_operand:SI                               1 "register_operand" "%0")
+ 		              (extend_types:SI (match_operand:small_int_modes 2 "rx_restricted_mem_operand" "Q"))))
+   (clobber (reg:CC CC_REG))]
+  "(optimize < 3 || optimize_size)"
+  "<memex_commutative:op>\t%<extend_types:letter>2, %0"
+  [(set_attr "timings" "33")
+   (set_attr "length"  "5")] ;; This length is corrected in rx_adjust_insn_length
+)
+
+(define_insn "<memex_noncomm:code>si3_<extend_types:code><small_int_modes:mode>"
+  [(set (match_operand:SI                                                 0 "register_operand" "=r")
+	(memex_noncomm:SI (match_operand:SI                               1 "register_operand" "0")
+                          (extend_types:SI (match_operand:small_int_modes 2 "rx_restricted_mem_operand" "Q"))))
+   (clobber (reg:CC CC_REG))]
+  "(optimize < 3 || optimize_size)"
+  "<memex_noncomm:op>\t%<extend_types:letter>2, %0"
+  [(set_attr "timings" "33")
+   (set_attr "length"  "5")] ;; This length is corrected in rx_adjust_insn_length
+)
+
+(define_insn "<memex_nocc:code>si3_<extend_types:code><small_int_modes:mode>"
+  [(set (match_operand:SI                                              0 "register_operand" "=r")
+	(memex_nocc:SI (match_operand:SI                               1 "register_operand" "%0")
+		       (extend_types:SI (match_operand:small_int_modes 2 "rx_restricted_mem_operand" "Q"))))]
+  "(optimize < 3 || optimize_size)"
+  "<memex_nocc:op>\t%<extend_types:letter>2, %0"
+  [(set_attr "timings" "33")
+   (set_attr "length"  "5")] ;; This length is corrected in rx_adjust_insn_length
+)
+
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand")))
+   (set (reg:CC CC_REG)
+	(compare:CC (match_operand:SI                   2 "register_operand")
+		    (match_dup 0)))]
+  "peep2_regno_dead_p (2, REGNO (operands[0])) && (optimize < 3 || optimize_size)"
+  [(set (reg:CC CC_REG)
+	(compare:CC (match_dup 2)
+		    (extend_types:SI (match_dup 1))))]
+)
+
+;; Convert:
+;;   (set (reg1) (sign_extend (mem))
+;;   (set (reg2) (zero_extend (reg1))
+;; into
+;;   (set (reg2) (zero_extend (mem)))
+(define_peephole2
+  [(set (match_operand:SI                              0 "register_operand")
+	(sign_extend:SI (match_operand:small_int_modes 1 "memory_operand")))
+   (set (match_operand:SI                              2 "register_operand")
+	(zero_extend:SI (match_operand:small_int_modes 3 "register_operand")))]
+  "REGNO (operands[0]) == REGNO (operands[3])
+   && (REGNO (operands[0]) == REGNO (operands[2])
+       || peep2_regno_dead_p (2, REGNO (operands[0])))"
+  [(set (match_dup 2)
+	(zero_extend:SI (match_dup 1)))]
+)
+
+;; Remove the redundant sign extension from:
+;;   (set (reg) (extend (mem)))
+;;   (set (reg) (extend (reg)))
+(define_peephole2
+  [(set (match_operand:SI                               0 "register_operand")
+	(extend_types:SI (match_operand:small_int_modes 1 "memory_operand")))
+   (set (match_dup 0)
+	(extend_types:SI (match_operand:small_int_modes 2 "register_operand")))]
+  "REGNO (operands[0]) == REGNO (operands[2])"
+  [(set (match_dup 0) (extend_types:SI (match_dup 1)))]
+)
+
+(define_insn "comparesi3_<extend_types:code><small_int_modes:mode>"
+  [(set (reg:CC CC_REG)
+	(compare:CC (match_operand:SI                               0 "register_operand" "r")
+		    (extend_types:SI (match_operand:small_int_modes 1 "rx_restricted_mem_operand" "Q"))))]
+  "(optimize < 3 || optimize_size)"
+  "cmp\t%<extend_types:letter>1, %0"
+  [(set_attr "timings" "33")
+   (set_attr "length"  "5")] ;; This length is corrected in rx_adjust_insn_length
 )
 
 ;; Floating Point Instructions
@@ -1636,7 +1976,7 @@
 )
 
 (define_insn "*bitset_in_memory"
-  [(set (match_operand:QI                    0 "memory_operand" "+Q")
+  [(set (match_operand:QI                    0 "rx_restricted_mem_operand" "+Q")
 	(ior:QI (ashift:QI (const_int 1)
 			   (match_operand:QI 1 "nonmemory_operand" "ri"))
 		(match_dup 0)))]
@@ -1657,7 +1997,7 @@
 )
 
 (define_insn "*bitinvert_in_memory"
-  [(set (match_operand:QI 0 "memory_operand" "+Q")
+  [(set (match_operand:QI 0 "rx_restricted_mem_operand" "+Q")
 	(xor:QI (ashift:QI (const_int 1)
 			   (match_operand:QI 1 "nonmemory_operand" "ri"))
 		(match_dup 0)))]
@@ -1680,7 +2020,7 @@
 )
 
 (define_insn "*bitclr_in_memory"
-  [(set (match_operand:QI 0 "memory_operand" "+Q")
+  [(set (match_operand:QI 0 "rx_restricted_mem_operand" "+Q")
 	(and:QI (not:QI
 		  (ashift:QI
 		    (const_int 1)
@@ -1727,7 +2067,7 @@
   flags = gen_rtx_REG (CC_ZSmode, CC_REG);
   x = gen_rtx_AND (SImode, operands[2], const1_rtx);
   x = gen_rtx_COMPARE (CC_ZSmode, x, const0_rtx);
-  x = gen_rtx_SET (VOIDmode, flags, x);
+  x = gen_rtx_SET (flags, x);
   emit_insn (x);
 
   /* Emit bmne.  */
@@ -1753,7 +2093,7 @@
 
   flags = gen_rtx_REG (CCmode, CC_REG);
   x = gen_rtx_COMPARE (CCmode, operands[2], operands[3]);
-  x = gen_rtx_SET (VOIDmode, flags, x);
+  x = gen_rtx_SET (flags, x);
   emit_insn (x);
 
   operands[4] = gen_rtx_fmt_ee (GET_CODE (operands[4]), SImode,
@@ -1815,7 +2155,19 @@
     FAIL;
 })
 
-;; Atomic exchange operation.
+;; Atomic operations.
+
+(define_code_iterator FETCHOP [plus minus ior xor and])
+(define_code_iterator FETCHOP_NO_MINUS [plus ior xor and])
+
+(define_code_attr fetchop_name
+  [(plus "add") (minus "sub") (ior "or") (xor "xor") (and "and")])
+
+(define_code_attr fetchop_name2
+  [(plus "add") (minus "sub") (ior "ior") (xor "xor") (and "and")])
+
+(define_mode_iterator QIHI [QI HI])
+(define_mode_attr BW [(QI "B") (HI "W")])
 
 (define_insn "sync_lock_test_and_setsi"
   [(set (match_operand:SI 0 "register_operand"   "=r,r")
@@ -1827,6 +2179,147 @@
   [(set_attr "length" "3,6")
    (set_attr "timings" "22")]
 )
+
+(define_expand "atomic_exchange<mode>"
+  [(match_operand:QIHI 0 "register_operand")		;; oldval output
+   (match_operand:QIHI 1 "rx_restricted_mem_operand")	;; memory
+   (match_operand:QIHI 2 "register_operand")		;; newval input
+   (match_operand:QIHI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  emit_insn (gen_xchg_mem<mode> (operands[0], operands[1], operands[2]));
+  DONE;
+})
+
+(define_expand "atomic_exchangesi"
+  [(match_operand:SI 0 "register_operand")		;; oldval output
+   (match_operand:SI 1 "rx_restricted_mem_operand")	;; memory
+   (match_operand:SI 2 "register_operand")		;; newval input
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  emit_insn (gen_sync_lock_test_and_setsi (operands[0], operands[1],
+					   operands[2]));
+  DONE;
+})
+
+(define_insn "xchg_mem<mode>"
+  [(set (match_operand:QIHI 0 "register_operand"   "=r")
+	(match_operand:QIHI 1 "rx_compare_operand" "=Q"))
+   (set (match_dup 1)
+	(match_operand:QIHI 2 "register_operand"    "0"))]
+  ""
+  "xchg\t%1.<BW>, %0"
+  [(set_attr "length" "6")
+   (set_attr "timings" "22")]
+)
+
+;; read - modify - write - return old value
+(define_expand "atomic_fetch_<fetchop_name>si"
+  [(set (match_operand:SI 0 "register_operand")
+	(match_operand:SI 1 "memory_operand"))
+   (set (match_dup 1)
+	(FETCHOP:SI (match_dup 1) (match_operand:SI 2 "rx_source_operand")))
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  {
+    rx_atomic_sequence seq (current_function_decl);
+
+    emit_move_insn (operands[0], operands[1]);
+
+    rtx tmp = gen_reg_rtx (SImode);
+    emit_insn (gen_<fetchop_name2>si3 (tmp, operands[0], operands[2]));
+
+    emit_move_insn (operands[1], tmp);
+  }
+  DONE;
+})
+
+(define_expand "atomic_fetch_nandsi"
+  [(set (match_operand:SI 0 "register_operand")
+	(match_operand:SI 1 "memory_operand"))
+   (set (match_dup 1)
+	(not:SI (and:SI (match_dup 1)
+			(match_operand:SI 2 "rx_source_operand"))))
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  {
+    rx_atomic_sequence seq (current_function_decl);
+
+    emit_move_insn (operands[0], operands[1]);
+
+    rtx tmp = gen_reg_rtx (SImode);
+    emit_insn (gen_andsi3 (tmp, operands[0], operands[2]));
+    emit_insn (gen_one_cmplsi2 (tmp, tmp));
+
+    emit_move_insn (operands[1], tmp);
+  }
+  DONE;
+})
+
+;; read - modify - write - return new value
+;; Because subtraction is not commutative we need to specify a different
+;; set of patterns for it.
+(define_expand "atomic_<fetchop_name>_fetchsi"
+  [(set (match_operand:SI 0 "register_operand")
+	(FETCHOP_NO_MINUS:SI (match_operand:SI 1 "rx_restricted_mem_operand")
+			     (match_operand:SI 2 "register_operand")))
+   (set (match_dup 1)
+	(FETCHOP_NO_MINUS:SI (match_dup 1) (match_dup 2)))
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  {
+    rx_atomic_sequence seq (current_function_decl);
+
+    emit_move_insn (operands[0], operands[2]);
+    emit_insn (gen_<fetchop_name2>si3 (operands[0], operands[0], operands[1]));
+    emit_move_insn (operands[1], operands[0]);
+  }
+  DONE;
+})
+
+(define_expand "atomic_sub_fetchsi"
+  [(set (match_operand:SI 0 "register_operand")
+	(minus:SI (match_operand:SI 1 "rx_restricted_mem_operand")
+		  (match_operand:SI 2 "rx_source_operand")))
+   (set (match_dup 1)
+	(minus:SI (match_dup 1) (match_dup 2)))
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  {
+    rx_atomic_sequence seq (current_function_decl);
+
+    emit_move_insn (operands[0], operands[1]);
+    emit_insn (gen_subsi3 (operands[0], operands[0], operands[2]));
+    emit_move_insn (operands[1], operands[0]);
+  }
+  DONE;
+})
+
+(define_expand "atomic_nand_fetchsi"
+  [(set (match_operand:SI 0 "register_operand")
+	(not:SI (and:SI (match_operand:SI 1 "rx_restricted_mem_operand")
+			(match_operand:SI 2 "register_operand"))))
+   (set (match_dup 1)
+	(not:SI (and:SI (match_dup 1) (match_dup 2))))
+   (match_operand:SI 3 "const_int_operand")]		;; memory model
+  ""
+{
+  {
+    rx_atomic_sequence seq (current_function_decl);
+
+    emit_move_insn (operands[0], operands[2]);
+    emit_insn (gen_andsi3 (operands[0], operands[0], operands[1]));
+    emit_insn (gen_one_cmplsi2 (operands[0], operands[0]));
+    emit_move_insn (operands[1], operands[0]);
+  }
+  DONE;
+});
+
 
 ;; Block move functions.
 
@@ -1835,7 +2328,7 @@
 	(match_operand:BLK 2 "memory_operand"))   ;; Source
    (use (match_operand:SI  0 "register_operand")) ;; Updated Dest
   ]
-  ""
+  "rx_allow_string_insns"
   {
     rtx addr1 = gen_rtx_REG (SImode, 1);
     rtx addr2 = gen_rtx_REG (SImode, 2);
@@ -1862,7 +2355,7 @@
    (clobber (reg:SI 1))
    (clobber (reg:SI 2))
    (clobber (reg:SI 3))]
-  ""
+  "rx_allow_string_insns"
   "smovu"
   [(set_attr "length" "2")
    (set_attr "timings" "1111")] ;; The timing is a guesstimate.
@@ -1877,7 +2370,7 @@
    (clobber (reg:SI 3))
    (clobber (reg:CC CC_REG))
    ]
-  ""
+  "rx_allow_string_insns"
   "mov\t%1, r1\n\tmov\t#0, r2\n\tsuntil.b\n\tmov\tr1, %0\n\tsub\t#1, %0"
   [(set_attr "length" "10")
    (set_attr "timings" "1111")] ;; The timing is a guesstimate.
@@ -1891,7 +2384,7 @@
      (match_operand          3 "immediate_operand") ;; Align
      (unspec_volatile:BLK [(reg:SI 1) (reg:SI 2) (reg:SI 3)] UNSPEC_MOVMEM)]
     )]
-  ""
+  "rx_allow_string_insns"
   {
     rtx addr1 = gen_rtx_REG (SImode, 1);
     rtx addr2 = gen_rtx_REG (SImode, 2);
@@ -1933,7 +2426,7 @@
    (clobber (reg:SI 1))
    (clobber (reg:SI 2))
    (clobber (reg:SI 3))]
-  ""
+  "rx_allow_string_insns"
   "smovf"
   [(set_attr "length" "2")
    (set_attr "timings" "1111")] ;; The timing is a guesstimate.
@@ -1977,7 +2470,7 @@
 			    UNSPEC_CMPSTRN))
    (use (match_operand:SI                       3 "register_operand"))  ;; Max Length
    (match_operand:SI                            4 "immediate_operand")] ;; Known Align
-  ""
+  "rx_allow_string_insns"
   {
     rtx str1 = gen_rtx_REG (SImode, 1);
     rtx str2 = gen_rtx_REG (SImode, 2);
@@ -1985,7 +2478,7 @@
   
     emit_move_insn (str1, force_operand (XEXP (operands[1], 0), NULL_RTX));
     emit_move_insn (str2, force_operand (XEXP (operands[2], 0), NULL_RTX));
-    emit_move_insn (len, force_operand (operands[3], NULL_RTX));
+    emit_move_insn (len, operands[3]);
 
     emit_insn (gen_rx_cmpstrn (operands[0], operands[1], operands[2]));
     DONE;
@@ -1998,7 +2491,7 @@
 			     (match_operand:BLK 2 "memory_operand")]    ;; String2
 			    UNSPEC_CMPSTRN))
    (match_operand:SI                            3 "immediate_operand")] ;; Known Align
-  ""
+  "rx_allow_string_insns"
   {
     rtx str1 = gen_rtx_REG (SImode, 1);
     rtx str2 = gen_rtx_REG (SImode, 2);
@@ -2023,7 +2516,7 @@
    (clobber (reg:SI 2))
    (clobber (reg:SI 3))
    (clobber (reg:CC CC_REG))]
-  ""
+  "rx_allow_string_insns"
   "scmpu		; Perform the string comparison
    mov     #-1, %0      ; Set up -1 result (which cannot be created
                         ; by the SC insn)
@@ -2141,7 +2634,7 @@
   (clobber (reg:SI 1))
   (clobber (reg:SI 2))
   (clobber (reg:SI 3))]
-  ""
+  "rx_allow_string_insns"
   "rmpa"
   [(set_attr "length" "2")
    (set_attr "timings" "1010")]
@@ -2204,18 +2697,16 @@
 )
 
 ;; Move to control register
+;; This insn can be used in atomic sequences to restore the previous PSW
+;; and re-enable interrupts.  Because of that it always clobbers the CC_REG.
 (define_insn "mvtc"
   [(unspec_volatile:SI [(match_operand:SI 0 "immediate_operand" "i,i")
 	       (match_operand:SI 1 "nonmemory_operand" "r,i")]
-	      UNSPEC_BUILTIN_MVTC)]
+	      UNSPEC_BUILTIN_MVTC)
+   (clobber (reg:CC CC_REG))]
   ""
   "mvtc\t%1, %C0"
   [(set_attr "length" "3,7")]
-  ;; Ignore possible clobbering of the comparison flags in the
-  ;; PSW register.  This is a cc0 target so any cc0 setting
-  ;; instruction will always be paired with a cc0 user, without
-  ;; the possibility of this instruction being placed in between
-  ;; them.
 )
 
 ;; Move to interrupt priority level
@@ -2283,4 +2774,29 @@
   ""
   "nop"
   [(set_attr "length" "1")]
+)
+
+(define_expand "pid_addr"
+  [(plus:SI (match_operand:SI 0)
+	    (const:SI (unspec:SI [(match_operand:SI 1)] UNSPEC_PID_ADDR)))]
+  ""
+  ""
+)
+
+(define_insn "movdi"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "=rm")
+        (match_operand:DI 1 "general_operand"      "rmi"))]
+  "TARGET_ENABLE_LRA"
+  { return rx_gen_move_template (operands, false); }
+  [(set_attr "length" "16")
+   (set_attr "timings" "22")]
+)
+
+(define_insn "movdf"
+  [(set (match_operand:DF 0 "nonimmediate_operand" "=rm")
+        (match_operand:DF 1 "general_operand"      "rmi"))]
+  "TARGET_ENABLE_LRA"
+  { return rx_gen_move_template (operands, false); }
+  [(set_attr "length" "16")
+   (set_attr "timings" "22")]
 )

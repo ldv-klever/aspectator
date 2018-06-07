@@ -5,6 +5,9 @@
 /* { dg-require-weak "" } */
 /* { dg-require-alias "" } */
 /* { dg-options "-O2" } */
+/* Using -mshort-calls avoids loading the function addresses in
+   registers and thus getting the counts wrong.  */
+/* { dg-additional-options "-mshort-calls" { target epiphany-*-* } } */
 
 extern int foo1 (int x) __asm ("baz1");
 int bar1 (int x) { return x; }
@@ -30,7 +33,7 @@ int bar3 (int x)
 // { dg-final { scan-assembler "baz2" } }
 // { dg-final { scan-assembler-not "baz2.*baz2.*baz2.*baz2.*baz2.*baz2" } }
 // { dg-final { scan-assembler-not "foo3" } }
-// SH targets put the funtion address into a constant pool and / or register,
+// SH targets put the function address into a constant pool and / or register,
 // so it does not appear repeated (as much as expected) in the assembler.
 // { dg-final { global target_triplet } }
 // { dg-final { if [string match sh-*-* $target_triplet ] {return} } }
@@ -45,4 +48,6 @@ int bar3 (int x)
 // { dg-final { if [string match m68k-*-* $target_triplet ] {return} } }
 // Likewise for moxie targets.
 // { dg-final { if [string match moxie-*-* $target_triplet ] {return} } }
+// Likewise for Visium targets.
+// { dg-final { if [string match visium-*-* $target_triplet ] {return} } }
 // { dg-final { scan-assembler "baz3.*baz3.*baz3.*baz3.*baz3.*baz3" } }

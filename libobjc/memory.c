@@ -1,6 +1,5 @@
 /* GNU Objective C Runtime Memory allocation functions
-   Copyright (C) 1993, 1994, 1995, 1996, 1997, 2002, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1993-2017 Free Software Foundation, Inc.
    Contributed by Kresten Krab Thorup
 
 This file is part of GCC.
@@ -42,7 +41,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include "objc/runtime.h"
 
 #if OBJC_WITH_GC
-#include <gc.h>
+#include <gc/gc.h>
 
 void *
 objc_malloc (size_t size)
@@ -133,38 +132,3 @@ objc_free (void *mem)
 }
 
 #endif	/* !OBJC_WITH_GC */
-
-/* The rest of the file contains deprecated code.  */
-
-#if OBJC_WITH_GC
-
-void *
-objc_valloc (size_t size)
-{
-  void *res = (void *)(GC_malloc (size));
-  if (! res)
-    _objc_abort ("Virtual memory exhausted\n");
-  return res;
-}
-
-#else
-
-void *
-objc_valloc (size_t size)
-{
-  void *res = (void *)(malloc (size));
-  if (! res)
-    _objc_abort ("Virtual memory exhausted\n");
-  return res;
-}
-
-#endif	/* !OBJC_WITH_GC */
-
-/* Hook functions for memory allocation and disposal.  Deprecated and
-   currently unused.  */
-void *(*_objc_malloc) (size_t) = malloc;
-void *(*_objc_atomic_malloc) (size_t) = malloc;
-void *(*_objc_valloc) (size_t) = malloc;
-void *(*_objc_realloc) (void *, size_t) = realloc;
-void *(*_objc_calloc) (size_t, size_t) = calloc;
-void (*_objc_free) (void *) = free;

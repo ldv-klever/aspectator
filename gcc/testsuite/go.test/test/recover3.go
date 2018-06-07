@@ -1,16 +1,16 @@
-// [ $GOOS != nacl ] || exit 0  # NaCl cannot recover from signals
-// $G $D/$F.go && $L $F.$A && ./$A.out
+// run
 
 // Copyright 2010 The Go Authors.  All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+// Test recovering from runtime errors.
 
 package main
 
 import (
 	"runtime"
 	"strings"
-	"syscall"
 )
 
 var didbug bool
@@ -37,14 +37,14 @@ func check(name string, f func(), err string) {
 			println(name, "panicked but not with runtime.Error")
 			return
 		}
-		s := runt.String()
+		s := runt.Error()
 		if strings.Index(s, err) < 0 {
 			bug()
 			println(name, "panicked with", s, "not", err)
 			return
 		}
 	}()
-	
+
 	f()
 }
 
@@ -55,11 +55,8 @@ func main() {
 	var q *[10000]int
 	var i int
 
-	// not catching divide by zero on the arm.  is that even possible?
-	if syscall.ARCH != "arm" {
-		check("int-div-zero", func() { println(1/x) }, "integer divide by zero")
-		check("int64-div-zero", func() { println(1/x64) }, "integer divide by zero")
-	}
+	check("int-div-zero", func() { println(1 / x) }, "integer divide by zero")
+	check("int64-div-zero", func() { println(1 / x64) }, "integer divide by zero")
 
 	check("nil-deref", func() { println(p[0]) }, "nil pointer dereference")
 	check("nil-deref-1", func() { println(p[1]) }, "nil pointer dereference")
@@ -67,13 +64,20 @@ func main() {
 
 	i = 99999
 	var sl []int
-	check("array-bounds", func() { println(p[i]) }, "index out of range")
+	p1 := new([10]int)
+	check("array-bounds", func() { println(p1[i]) }, "index out of range")
 	check("slice-bounds", func() { println(sl[i]) }, "index out of range")
-	
+
 	var inter interface{}
 	inter = 1
 	check("type-concrete", func() { println(inter.(string)) }, "int, not string")
 	check("type-interface", func() { println(inter.(m)) }, "missing method m")
+
+	if didbug {
+		panic("recover3")
+	}
 }
 
-type m interface{ m() }
+type m interface {
+	m()
+}

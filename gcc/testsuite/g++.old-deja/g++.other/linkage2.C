@@ -1,4 +1,4 @@
-// { dg-do assemble  }
+// { dg-do assemble { target { ! c++11 } } }
 // From: Klaus-Georg Adams <Klaus-Georg.Adams@chemie.uni-karlsruhe.de>    
 extern "C" 
 {

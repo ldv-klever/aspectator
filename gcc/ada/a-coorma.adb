@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,13 +29,21 @@
 
 with Ada.Unchecked_Deallocation;
 
+with Ada.Containers.Helpers; use Ada.Containers.Helpers;
+
 with Ada.Containers.Red_Black_Trees.Generic_Operations;
 pragma Elaborate_All (Ada.Containers.Red_Black_Trees.Generic_Operations);
 
 with Ada.Containers.Red_Black_Trees.Generic_Keys;
 pragma Elaborate_All (Ada.Containers.Red_Black_Trees.Generic_Keys);
 
+with System; use type System.Address;
+
 package body Ada.Containers.Ordered_Maps is
+
+   pragma Warnings (Off, "variable ""Busy*"" is not referenced");
+   pragma Warnings (Off, "variable ""Lock*"" is not referenced");
+   --  See comment in Ada.Containers.Helpers
 
    -----------------------------
    -- Node Access Subprograms --
@@ -121,11 +129,11 @@ package body Ada.Containers.Ordered_Maps is
 
    function "<" (Left, Right : Cursor) return Boolean is
    begin
-      if Left.Node = null then
+      if Checks and then Left.Node = null then
          raise Constraint_Error with "Left cursor of ""<"" equals No_Element";
       end if;
 
-      if Right.Node = null then
+      if Checks and then Right.Node = null then
          raise Constraint_Error with "Right cursor of ""<"" equals No_Element";
       end if;
 
@@ -140,7 +148,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function "<" (Left : Cursor; Right : Key_Type) return Boolean is
    begin
-      if Left.Node = null then
+      if Checks and then Left.Node = null then
          raise Constraint_Error with "Left cursor of ""<"" equals No_Element";
       end if;
 
@@ -152,7 +160,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function "<" (Left : Key_Type; Right : Cursor) return Boolean is
    begin
-      if Right.Node = null then
+      if Checks and then Right.Node = null then
          raise Constraint_Error with "Right cursor of ""<"" equals No_Element";
       end if;
 
@@ -177,11 +185,11 @@ package body Ada.Containers.Ordered_Maps is
 
    function ">" (Left, Right : Cursor) return Boolean is
    begin
-      if Left.Node = null then
+      if Checks and then Left.Node = null then
          raise Constraint_Error with "Left cursor of "">"" equals No_Element";
       end if;
 
-      if Right.Node = null then
+      if Checks and then Right.Node = null then
          raise Constraint_Error with "Right cursor of "">"" equals No_Element";
       end if;
 
@@ -196,7 +204,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function ">" (Left : Cursor; Right : Key_Type) return Boolean is
    begin
-      if Left.Node = null then
+      if Checks and then Left.Node = null then
          raise Constraint_Error with "Left cursor of "">"" equals No_Element";
       end if;
 
@@ -208,7 +216,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function ">" (Left : Key_Type; Right : Cursor) return Boolean is
    begin
-      if Right.Node = null then
+      if Checks and then Right.Node = null then
          raise Constraint_Error with "Right cursor of "">"" equals No_Element";
       end if;
 
@@ -230,6 +238,37 @@ package body Ada.Containers.Ordered_Maps is
       Adjust (Container.Tree);
    end Adjust;
 
+   ------------
+   -- Assign --
+   ------------
+
+   procedure Assign (Target : in out Map; Source : Map) is
+      procedure Insert_Item (Node : Node_Access);
+      pragma Inline (Insert_Item);
+
+      procedure Insert_Items is
+         new Tree_Operations.Generic_Iteration (Insert_Item);
+
+      -----------------
+      -- Insert_Item --
+      -----------------
+
+      procedure Insert_Item (Node : Node_Access) is
+      begin
+         Target.Insert (Key => Node.Key, New_Item => Node.Element);
+      end Insert_Item;
+
+   --  Start of processing for Assign
+
+   begin
+      if Target'Address = Source'Address then
+         return;
+      end if;
+
+      Target.Clear;
+      Insert_Items (Source.Tree);
+   end Assign;
+
    -------------
    -- Ceiling --
    -------------
@@ -249,8 +288,7 @@ package body Ada.Containers.Ordered_Maps is
    -- Clear --
    -----------
 
-   procedure Clear is
-      new Tree_Operations.Generic_Clear (Delete_Tree);
+   procedure Clear is new Tree_Operations.Generic_Clear (Delete_Tree);
 
    procedure Clear (Container : in out Map) is
    begin
@@ -266,6 +304,68 @@ package body Ada.Containers.Ordered_Maps is
       return Node.Color;
    end Color;
 
+   ------------------------
+   -- Constant_Reference --
+   ------------------------
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Position  : Cursor) return Constant_Reference_Type
+   is
+   begin
+      if Checks and then Position.Container = null then
+         raise Constraint_Error with
+           "Position cursor has no element";
+      end if;
+
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
+         raise Program_Error with
+           "Position cursor designates wrong map";
+      end if;
+
+      pragma Assert (Vet (Container.Tree, Position.Node),
+                     "Position cursor in Constant_Reference is bad");
+
+      declare
+         T : Tree_Type renames Position.Container.all.Tree;
+         TC : constant Tamper_Counts_Access :=
+           T.TC'Unrestricted_Access;
+      begin
+         return R : constant Constant_Reference_Type :=
+           (Element => Position.Node.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Constant_Reference;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Key       : Key_Type) return Constant_Reference_Type
+   is
+      Node : constant Node_Access := Key_Ops.Find (Container.Tree, Key);
+
+   begin
+      if Checks and then Node = null then
+         raise Constraint_Error with "key not in map";
+      end if;
+
+      declare
+         T : Tree_Type renames Container'Unrestricted_Access.all.Tree;
+         TC : constant Tamper_Counts_Access :=
+           T.TC'Unrestricted_Access;
+      begin
+         return R : constant Constant_Reference_Type :=
+           (Element => Node.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Constant_Reference;
+
    --------------
    -- Contains --
    --------------
@@ -275,18 +375,29 @@ package body Ada.Containers.Ordered_Maps is
       return Find (Container, Key) /= No_Element;
    end Contains;
 
+   ----------
+   -- Copy --
+   ----------
+
+   function Copy (Source : Map) return Map is
+   begin
+      return Target : Map do
+         Target.Assign (Source);
+      end return;
+   end Copy;
+
    ---------------
    -- Copy_Node --
    ---------------
 
    function Copy_Node (Source : Node_Access) return Node_Access is
       Target : constant Node_Access :=
-                 new Node_Type'(Color   => Source.Color,
-                                Key     => Source.Key,
-                                Element => Source.Element,
-                                Parent  => null,
-                                Left    => null,
-                                Right   => null);
+        new Node_Type'(Color   => Source.Color,
+                       Key     => Source.Key,
+                       Element => Source.Element,
+                       Parent  => null,
+                       Left    => null,
+                       Right   => null);
    begin
       return Target;
    end Copy_Node;
@@ -299,12 +410,13 @@ package body Ada.Containers.Ordered_Maps is
       Tree : Tree_Type renames Container.Tree;
 
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of Delete equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Delete designates wrong map";
       end if;
@@ -322,7 +434,7 @@ package body Ada.Containers.Ordered_Maps is
       X : Node_Access := Key_Ops.Find (Container.Tree, Key);
 
    begin
-      if X = null then
+      if Checks and then X = null then
          raise Constraint_Error with "key not in map";
       end if;
 
@@ -364,7 +476,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function Element (Position : Cursor) return Element_Type is
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of function Element equals No_Element";
       end if;
@@ -379,7 +491,7 @@ package body Ada.Containers.Ordered_Maps is
       Node : constant Node_Access := Key_Ops.Find (Container.Tree, Key);
 
    begin
-      if Node = null then
+      if Checks and then Node = null then
          raise Constraint_Error with "key not in map";
       end if;
 
@@ -415,19 +527,26 @@ package body Ada.Containers.Ordered_Maps is
       end if;
    end Exclude;
 
+   --------------
+   -- Finalize --
+   --------------
+
+   procedure Finalize (Object : in out Iterator) is
+   begin
+      if Object.Container /= null then
+         Unbusy (Object.Container.Tree.TC);
+      end if;
+   end Finalize;
+
    ----------
    -- Find --
    ----------
 
    function Find (Container : Map; Key : Key_Type) return Cursor is
       Node : constant Node_Access := Key_Ops.Find (Container.Tree, Key);
-
    begin
-      if Node = null then
-         return No_Element;
-      end if;
-
-      return Cursor'(Container'Unrestricted_Access, Node);
+      return (if Node = null then No_Element
+                else Cursor'(Container'Unrestricted_Access, Node));
    end Find;
 
    -----------
@@ -436,13 +555,34 @@ package body Ada.Containers.Ordered_Maps is
 
    function First (Container : Map) return Cursor is
       T : Tree_Type renames Container.Tree;
-
    begin
       if T.First = null then
          return No_Element;
+      else
+         return Cursor'(Container'Unrestricted_Access, T.First);
       end if;
+   end First;
 
-      return Cursor'(Container'Unrestricted_Access, T.First);
+   function First (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Node component influences the
+      --  behavior of the First (and Last) selector function.
+
+      --  When the Node component is null, this means the iterator object was
+      --  constructed without a start expression, in which case the (forward)
+      --  iteration starts from the (logical) beginning of the entire sequence
+      --  of items (corresponding to Container.First, for a forward iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items. When
+      --  the Node component is non-null, the iterator object was constructed
+      --  with a start expression, that specifies the position from which the
+      --  (forward) partial iteration begins.
+
+      if Object.Node = null then
+         return Object.Container.First;
+      else
+         return Cursor'(Object.Container, Object.Node);
+      end if;
    end First;
 
    -------------------
@@ -451,9 +591,8 @@ package body Ada.Containers.Ordered_Maps is
 
    function First_Element (Container : Map) return Element_Type is
       T : Tree_Type renames Container.Tree;
-
    begin
-      if T.First = null then
+      if Checks and then T.First = null then
          raise Constraint_Error with "map is empty";
       end if;
 
@@ -466,9 +605,8 @@ package body Ada.Containers.Ordered_Maps is
 
    function First_Key (Container : Map) return Key_Type is
       T : Tree_Type renames Container.Tree;
-
    begin
-      if T.First = null then
+      if Checks and then T.First = null then
          raise Constraint_Error with "map is empty";
       end if;
 
@@ -481,13 +619,12 @@ package body Ada.Containers.Ordered_Maps is
 
    function Floor (Container : Map; Key : Key_Type) return Cursor is
       Node : constant Node_Access := Key_Ops.Floor (Container.Tree, Key);
-
    begin
       if Node = null then
          return No_Element;
+      else
+         return Cursor'(Container'Unrestricted_Access, Node);
       end if;
-
-      return Cursor'(Container'Unrestricted_Access, Node);
    end Floor;
 
    ----------
@@ -509,6 +646,16 @@ package body Ada.Containers.Ordered_Maps is
 
       Deallocate (X);
    end Free;
+
+   ------------------------
+   -- Get_Element_Access --
+   ------------------------
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access is
+   begin
+      return Position.Node.Element'Access;
+   end Get_Element_Access;
 
    -----------------
    -- Has_Element --
@@ -535,10 +682,7 @@ package body Ada.Containers.Ordered_Maps is
       Insert (Container, Key, New_Item, Position, Inserted);
 
       if not Inserted then
-         if Container.Tree.Lock > 0 then
-            raise Program_Error with
-              "attempt to tamper with elements (map is locked)";
-         end if;
+         TE_Check (Container.Tree.TC);
 
          Position.Node.Key := Key;
          Position.Node.Element := New_Item;
@@ -604,7 +748,7 @@ package body Ada.Containers.Ordered_Maps is
    begin
       Insert (Container, Key, New_Item, Position, Inserted);
 
-      if not Inserted then
+      if Checks and then not Inserted then
          raise Constraint_Error with "key already in map";
       end if;
    end Insert;
@@ -664,14 +808,13 @@ package body Ada.Containers.Ordered_Maps is
    ------------------------
 
    function Is_Equal_Node_Node
-     (L, R : Node_Access) return Boolean is
+     (L, R : Node_Access) return Boolean
+   is
    begin
       if L.Key < R.Key then
          return False;
-
       elsif R.Key < L.Key then
          return False;
-
       else
          return L.Element = R.Element;
       end if;
@@ -686,7 +829,7 @@ package body Ada.Containers.Ordered_Maps is
       Right : Node_Access) return Boolean
    is
    begin
-      --  k > node same as node < k
+      --  Left > Right same as Right < Left
 
       return Right.Key < Left;
    end Is_Greater_Key_Node;
@@ -726,22 +869,81 @@ package body Ada.Containers.Ordered_Maps is
          Process (Cursor'(Container'Unrestricted_Access, Node));
       end Process_Node;
 
-      B : Natural renames Container.Tree'Unrestricted_Access.all.Busy;
+      Busy : With_Busy (Container.Tree.TC'Unrestricted_Access);
 
    --  Start of processing for Iterate
 
    begin
-      B := B + 1;
+      Local_Iterate (Container.Tree);
+   end Iterate;
 
-      begin
-         Local_Iterate (Container.Tree);
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
+   function Iterate
+     (Container : Map) return Map_Iterator_Interfaces.Reversible_Iterator'Class
+   is
+   begin
+      --  The value of the Node component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Node
+      --  component is null (as is the case here), this means the iterator
+      --  object was constructed without a start expression. This is a
+      --  complete iterator, meaning that the iteration starts from the
+      --  (logical) beginning of the sequence of items.
 
-      B := B - 1;
+      --  Note: For a forward iterator, Container.First is the beginning, and
+      --  for a reverse iterator, Container.Last is the beginning.
+
+      return It : constant Iterator :=
+        (Limited_Controlled with
+           Container => Container'Unrestricted_Access,
+           Node      => null)
+      do
+         Busy (Container.Tree.TC'Unrestricted_Access.all);
+      end return;
+   end Iterate;
+
+   function Iterate (Container : Map; Start : Cursor)
+      return Map_Iterator_Interfaces.Reversible_Iterator'Class
+   is
+   begin
+      --  It was formerly the case that when Start = No_Element, the partial
+      --  iterator was defined to behave the same as for a complete iterator,
+      --  and iterate over the entire sequence of items. However, those
+      --  semantics were unintuitive and arguably error-prone (it is too easy
+      --  to accidentally create an endless loop), and so they were changed,
+      --  per the ARG meeting in Denver on 2011/11. However, there was no
+      --  consensus about what positive meaning this corner case should have,
+      --  and so it was decided to simply raise an exception. This does imply,
+      --  however, that it is not possible to use a partial iterator to specify
+      --  an empty sequence of items.
+
+      if Checks and then Start = No_Element then
+         raise Constraint_Error with
+           "Start position for iterator equals No_Element";
+      end if;
+
+      if Checks and then Start.Container /= Container'Unrestricted_Access then
+         raise Program_Error with
+           "Start cursor of Iterate designates wrong map";
+      end if;
+
+      pragma Assert (Vet (Container.Tree, Start.Node),
+                     "Start cursor of Iterate is bad");
+
+      --  The value of the Node component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Node
+      --  component is non-null (as is the case here), it means that this
+      --  is a partial iteration, over a subset of the complete sequence of
+      --  items. The iterator object was constructed with a start expression,
+      --  indicating the position from which the iteration begins. Note that
+      --  the start position has the same value irrespective of whether this
+      --  is a forward or reverse iteration.
+
+      return It : constant Iterator :=
+        (Limited_Controlled with
+           Container => Container'Unrestricted_Access,
+           Node      => Start.Node)
+      do
+         Busy (Container.Tree.TC'Unrestricted_Access.all);
+      end return;
    end Iterate;
 
    ---------
@@ -750,7 +952,7 @@ package body Ada.Containers.Ordered_Maps is
 
    function Key (Position : Cursor) return Key_Type is
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of function Key equals No_Element";
       end if;
@@ -767,13 +969,34 @@ package body Ada.Containers.Ordered_Maps is
 
    function Last (Container : Map) return Cursor is
       T : Tree_Type renames Container.Tree;
-
    begin
       if T.Last = null then
          return No_Element;
+      else
+         return Cursor'(Container'Unrestricted_Access, T.Last);
       end if;
+   end Last;
 
-      return Cursor'(Container'Unrestricted_Access, T.Last);
+   function Last (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Node component influences the
+      --  behavior of the Last (and First) selector function.
+
+      --  When the Node component is null, this means the iterator object was
+      --  constructed without a start expression, in which case the (reverse)
+      --  iteration starts from the (logical) beginning of the entire sequence
+      --  (corresponding to Container.Last, for a reverse iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items. When
+      --  the Node component is non-null, the iterator object was constructed
+      --  with a start expression, that specifies the position from which the
+      --  (reverse) partial iteration begins.
+
+      if Object.Node = null then
+         return Object.Container.Last;
+      else
+         return Cursor'(Object.Container, Object.Node);
+      end if;
    end Last;
 
    ------------------
@@ -782,9 +1005,8 @@ package body Ada.Containers.Ordered_Maps is
 
    function Last_Element (Container : Map) return Element_Type is
       T : Tree_Type renames Container.Tree;
-
    begin
-      if T.Last = null then
+      if Checks and then T.Last = null then
          raise Constraint_Error with "map is empty";
       end if;
 
@@ -797,9 +1019,8 @@ package body Ada.Containers.Ordered_Maps is
 
    function Last_Key (Container : Map) return Key_Type is
       T : Tree_Type renames Container.Tree;
-
    begin
-      if T.Last = null then
+      if Checks and then T.Last = null then
          raise Constraint_Error with "map is empty";
       end if;
 
@@ -855,8 +1076,7 @@ package body Ada.Containers.Ordered_Maps is
                      "Position cursor of Next is bad");
 
       declare
-         Node : constant Node_Access :=
-                  Tree_Operations.Next (Position.Node);
+         Node : constant Node_Access := Tree_Operations.Next (Position.Node);
 
       begin
          if Node = null then
@@ -865,6 +1085,23 @@ package body Ada.Containers.Ordered_Maps is
 
          return Cursor'(Position.Container, Node);
       end;
+   end Next;
+
+   function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor
+   is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Checks and then Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Next designates wrong map";
+      end if;
+
+      return Next (Position);
    end Next;
 
    ------------
@@ -896,7 +1133,7 @@ package body Ada.Containers.Ordered_Maps is
 
       declare
          Node : constant Node_Access :=
-                  Tree_Operations.Previous (Position.Node);
+           Tree_Operations.Previous (Position.Node);
 
       begin
          if Node = null then
@@ -906,6 +1143,38 @@ package body Ada.Containers.Ordered_Maps is
          return Cursor'(Position.Container, Node);
       end;
    end Previous;
+
+   function Previous
+     (Object   : Iterator;
+      Position : Cursor) return Cursor
+   is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Checks and then Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Previous designates wrong map";
+      end if;
+
+      return Previous (Position);
+   end Previous;
+
+   ----------------------
+   -- Pseudo_Reference --
+   ----------------------
+
+   function Pseudo_Reference
+     (Container : aliased Map'Class) return Reference_Control_Type
+   is
+      TC : constant Tamper_Counts_Access :=
+        Container.Tree.TC'Unrestricted_Access;
+   begin
+      return R : constant Reference_Control_Type := (Controlled with TC) do
+         Lock (TC.all);
+      end return;
+   end Pseudo_Reference;
 
    -------------------
    -- Query_Element --
@@ -917,7 +1186,7 @@ package body Ada.Containers.Ordered_Maps is
                                             Element : Element_Type))
    is
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of Query_Element equals No_Element";
       end if;
@@ -927,29 +1196,11 @@ package body Ada.Containers.Ordered_Maps is
 
       declare
          T : Tree_Type renames Position.Container.Tree;
-
-         B : Natural renames T.Busy;
-         L : Natural renames T.Lock;
-
+         Lock : With_Lock (T.TC'Unrestricted_Access);
+         K : Key_Type renames Position.Node.Key;
+         E : Element_Type renames Position.Node.Element;
       begin
-         B := B + 1;
-         L := L + 1;
-
-         declare
-            K : Key_Type renames Position.Node.Key;
-            E : Element_Type renames Position.Node.Element;
-
-         begin
-            Process (K, E);
-         exception
-            when others =>
-               L := L - 1;
-               B := B - 1;
-               raise;
-         end;
-
-         L := L - 1;
-         B := B - 1;
+         Process (K, E);
       end;
    end Query_Element;
 
@@ -1000,6 +1251,84 @@ package body Ada.Containers.Ordered_Maps is
       raise Program_Error with "attempt to stream map cursor";
    end Read;
 
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   ---------------
+   -- Reference --
+   ---------------
+
+   function Reference
+     (Container : aliased in out Map;
+      Position  : Cursor) return Reference_Type
+   is
+   begin
+      if Checks and then Position.Container = null then
+         raise Constraint_Error with
+           "Position cursor has no element";
+      end if;
+
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
+         raise Program_Error with
+           "Position cursor designates wrong map";
+      end if;
+
+      pragma Assert (Vet (Container.Tree, Position.Node),
+                     "Position cursor in function Reference is bad");
+
+      declare
+         T : Tree_Type renames Position.Container.all.Tree;
+         TC : constant Tamper_Counts_Access :=
+           T.TC'Unrestricted_Access;
+      begin
+         return R : constant Reference_Type :=
+           (Element => Position.Node.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Reference;
+
+   function Reference
+     (Container : aliased in out Map;
+      Key       : Key_Type) return Reference_Type
+   is
+      Node : constant Node_Access := Key_Ops.Find (Container.Tree, Key);
+
+   begin
+      if Checks and then Node = null then
+         raise Constraint_Error with "key not in map";
+      end if;
+
+      declare
+         T : Tree_Type renames Container'Unrestricted_Access.all.Tree;
+         TC : constant Tamper_Counts_Access :=
+           T.TC'Unrestricted_Access;
+      begin
+         return R : constant Reference_Type :=
+           (Element => Node.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Reference;
+
    -------------
    -- Replace --
    -------------
@@ -1012,14 +1341,11 @@ package body Ada.Containers.Ordered_Maps is
       Node : constant Node_Access := Key_Ops.Find (Container.Tree, Key);
 
    begin
-      if Node = null then
+      if Checks and then Node = null then
          raise Constraint_Error with "key not in map";
       end if;
 
-      if Container.Tree.Lock > 0 then
-         raise Program_Error with
-           "attempt to tamper with elements (map is locked)";
-      end if;
+      TE_Check (Container.Tree.TC);
 
       Node.Key := Key;
       Node.Element := New_Item;
@@ -1035,20 +1361,18 @@ package body Ada.Containers.Ordered_Maps is
       New_Item  : Element_Type)
    is
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of Replace_Element equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Replace_Element designates wrong map";
       end if;
 
-      if Container.Tree.Lock > 0 then
-         raise Program_Error with
-           "attempt to tamper with elements (map is locked)";
-      end if;
+      TE_Check (Container.Tree.TC);
 
       pragma Assert (Vet (Container.Tree, Position.Node),
                      "Position cursor of Replace_Element is bad");
@@ -1079,22 +1403,12 @@ package body Ada.Containers.Ordered_Maps is
          Process (Cursor'(Container'Unrestricted_Access, Node));
       end Process_Node;
 
-      B : Natural renames Container.Tree'Unrestricted_Access.all.Busy;
+      Busy : With_Busy (Container.Tree.TC'Unrestricted_Access);
 
-      --  Start of processing for Reverse_Iterate
+   --  Start of processing for Reverse_Iterate
 
    begin
-      B := B + 1;
-
-      begin
-         Local_Reverse_Iterate (Container.Tree);
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
-
-      B := B - 1;
+      Local_Reverse_Iterate (Container.Tree);
    end Reverse_Iterate;
 
    -----------
@@ -1156,12 +1470,13 @@ package body Ada.Containers.Ordered_Maps is
                                              Element : in out Element_Type))
    is
    begin
-      if Position.Node = null then
+      if Checks and then Position.Node = null then
          raise Constraint_Error with
            "Position cursor of Update_Element equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Update_Element designates wrong map";
       end if;
@@ -1171,30 +1486,11 @@ package body Ada.Containers.Ordered_Maps is
 
       declare
          T : Tree_Type renames Container.Tree;
-
-         B : Natural renames T.Busy;
-         L : Natural renames T.Lock;
-
+         Lock : With_Lock (T.TC'Unrestricted_Access);
+         K : Key_Type renames Position.Node.Key;
+         E : Element_Type renames Position.Node.Element;
       begin
-         B := B + 1;
-         L := L + 1;
-
-         declare
-            K : Key_Type renames Position.Node.Key;
-            E : Element_Type renames Position.Node.Element;
-
-         begin
-            Process (K, E);
-
-         exception
-            when others =>
-               L := L - 1;
-               B := B - 1;
-               raise;
-         end;
-
-         L := L - 1;
-         B := B - 1;
+         Process (K, E);
       end;
    end Update_Element;
 
@@ -1239,6 +1535,22 @@ package body Ada.Containers.Ordered_Maps is
    is
    begin
       raise Program_Error with "attempt to stream map cursor";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
    end Write;
 
 end Ada.Containers.Ordered_Maps;

@@ -1,6 +1,6 @@
 // Stream iterators
 
-// Copyright (C) 2001, 2004, 2005, 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2001-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -66,7 +66,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       ///  Construct start of input stream iterator.
       istream_iterator(istream_type& __s)
-      : _M_stream(&__s)
+      : _M_stream(std::__addressof(__s))
       { _M_read(); }
 
       istream_iterator(const istream_iterator& __obj)
@@ -84,7 +84,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       }
 
       const _Tp*
-      operator->() const { return &(operator*()); }
+      operator->() const { return std::__addressof((operator*())); }
 
       istream_iterator&
       operator++()
@@ -145,9 +145,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  the only type written by this iterator and there must be an
    *  operator<<(Tp) defined.
    *
-   *  @param  Tp  The type to write to the ostream.
-   *  @param  CharT  The ostream char_type.
-   *  @param  Traits  The ostream char_traits.
+   *  @tparam  _Tp  The type to write to the ostream.
+   *  @tparam  _CharT  The ostream char_type.
+   *  @tparam  _Traits  The ostream char_traits.
   */
   template<typename _Tp, typename _CharT = char,
            typename _Traits = char_traits<_CharT> >
@@ -168,7 +168,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     public:
       /// Construct from an ostream.
-      ostream_iterator(ostream_type& __s) : _M_stream(&__s), _M_string(0) {}
+      ostream_iterator(ostream_type& __s)
+      : _M_stream(std::__addressof(__s)), _M_string(0) {}
 
       /**
        *  Construct from an ostream.
@@ -177,8 +178,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  written to the stream.  The delimiter is not copied, and thus must
        *  not be destroyed while this iterator is in use.
        *
-       *  @param  s  Underlying ostream to write to.
-       *  @param  c  CharT delimiter string to insert.
+       *  @param  __s  Underlying ostream to write to.
+       *  @param  __c  CharT delimiter string to insert.
       */
       ostream_iterator(ostream_type& __s, const _CharT* __c)
       : _M_stream(&__s), _M_string(__c)  { }

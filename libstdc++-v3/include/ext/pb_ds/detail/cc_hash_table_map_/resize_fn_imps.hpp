@@ -1,7 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -35,7 +34,7 @@
 // warranty.
 
 /**
- * @file resize_fn_imps.hpp
+ * @file cc_hash_table_map_/resize_fn_imps.hpp
  * Contains implementations of cc_ht_map_'s resize related functions.
  */
 
@@ -71,7 +70,7 @@ do_resize_if_needed_no_throw()
   __catch(...)
     { }
 
-  _GLIBCXX_DEBUG_ONLY(assert_valid();)
+  PB_DS_ASSERT_VALID((*this))
 }
 
 PB_DS_CLASS_T_DEC
@@ -79,7 +78,7 @@ void
 PB_DS_CLASS_C_DEC::
 resize_imp(size_type new_size)
 {
-  _GLIBCXX_DEBUG_ONLY(assert_valid();)
+  PB_DS_ASSERT_VALID((*this))
   if (new_size == m_num_e)
     return;
 
@@ -104,7 +103,7 @@ resize_imp(size_type new_size)
   // At this point no exceptions can be thrown.
   resize_imp_no_exceptions(new_size, a_p_entries_resized, old_size);
   Resize_Policy::notify_resized(new_size);
-  _GLIBCXX_DEBUG_ONLY(assert_valid();)
+  PB_DS_ASSERT_VALID((*this))
 }
 
 PB_DS_CLASS_T_DEC
@@ -123,10 +122,11 @@ resize_imp_no_exceptions(size_type new_size, entry_pointer_array a_p_entries_res
     }
 
   m_num_e = new_size;
-  _GLIBCXX_DEBUG_ONLY(assert_entry_pointer_array_valid(a_p_entries_resized);)
+  _GLIBCXX_DEBUG_ONLY(assert_entry_pointer_array_valid(a_p_entries_resized,
+						       __FILE__, __LINE__);)
   s_entry_pointer_allocator.deallocate(m_entries, old_size);
   m_entries = a_p_entries_resized;
-  _GLIBCXX_DEBUG_ONLY(assert_valid();)
+  PB_DS_ASSERT_VALID((*this))
 }
 
 #include <ext/pb_ds/detail/cc_hash_table_map_/resize_no_store_hash_fn_imps.hpp>

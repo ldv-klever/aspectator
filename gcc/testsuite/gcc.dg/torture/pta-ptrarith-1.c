@@ -1,6 +1,6 @@
 /* { dg-do run } */
 /* { dg-options "-fdump-tree-alias" } */
-/* { dg-skip-if "" { *-*-* } { "-O0" } { "" } } */
+/* { dg-skip-if "" { *-*-* } { "-O0" "-fno-fat-lto-objects" } { "" } } */
 
 struct Foo {
   int *p;
@@ -30,4 +30,3 @@ int main()
 }
 
 /* { dg-final { scan-tree-dump "ESCAPED = {\[^\n\}\]* i f \[^\n\}\]*}" "alias" } } */
-/* { dg-final { cleanup-tree-dump "alias" } } */

@@ -40,8 +40,7 @@ int main ()
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 2 "vect" { target vect_strided_wide } } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 2 "vect" { target { vect_strided4 && vect_strided2 } } } } */
 
 
 

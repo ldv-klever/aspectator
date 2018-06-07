@@ -6,8 +6,9 @@ package ascii85
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
-	"os"
+	"strings"
 	"testing"
 )
 
@@ -16,6 +17,11 @@ type testpair struct {
 }
 
 var pairs = []testpair{
+	// Encode returns 0 when len(src) is 0
+	{
+		"",
+		"",
+	},
 	// Wikipedia example
 	{
 		"Man is distinguished, not only by his reason, but by this singular passion from " +
@@ -27,6 +33,11 @@ var pairs = []testpair{
 			"i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa\n" +
 			"l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G\n" +
 			">uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c\n",
+	},
+	// Special case when shortening !!!!! to z.
+	{
+		"\000\000\000\000",
+		"z",
 	},
 }
 
@@ -83,11 +94,11 @@ func TestEncoderBuffering(t *testing.T) {
 				end = len(input)
 			}
 			n, err := encoder.Write(input[pos:end])
-			testEqual(t, "Write(%q) gave error %v, want %v", input[pos:end], err, os.Error(nil))
+			testEqual(t, "Write(%q) gave error %v, want %v", input[pos:end], err, error(nil))
 			testEqual(t, "Write(%q) gave length %v, want %v", input[pos:end], n, end-pos)
 		}
 		err := encoder.Close()
-		testEqual(t, "Close gave error %v, want %v", err, os.Error(nil))
+		testEqual(t, "Close gave error %v, want %v", err, error(nil))
 		testEqual(t, "Encoding/%d of %q = %q, want %q", bs, bigtest.decoded, strip85(bb.String()), strip85(bigtest.encoded))
 	}
 }
@@ -96,7 +107,7 @@ func TestDecode(t *testing.T) {
 	for _, p := range pairs {
 		dbuf := make([]byte, 4*len(p.encoded))
 		ndst, nsrc, err := Decode(dbuf, []byte(p.encoded), true)
-		testEqual(t, "Decode(%q) = error %v, want %v", p.encoded, err, os.Error(nil))
+		testEqual(t, "Decode(%q) = error %v, want %v", p.encoded, err, error(nil))
 		testEqual(t, "Decode(%q) = nsrc %v, want %v", p.encoded, nsrc, len(p.encoded))
 		testEqual(t, "Decode(%q) = ndst %v, want %v", p.encoded, ndst, len(p.decoded))
 		testEqual(t, "Decode(%q) = %q, want %q", p.encoded, string(dbuf[0:ndst]), p.decoded)
@@ -105,7 +116,7 @@ func TestDecode(t *testing.T) {
 
 func TestDecoder(t *testing.T) {
 	for _, p := range pairs {
-		decoder := NewDecoder(bytes.NewBufferString(p.encoded))
+		decoder := NewDecoder(strings.NewReader(p.encoded))
 		dbuf, err := ioutil.ReadAll(decoder)
 		if err != nil {
 			t.Fatal("Read failed", err)
@@ -113,19 +124,19 @@ func TestDecoder(t *testing.T) {
 		testEqual(t, "Read from %q = length %v, want %v", p.encoded, len(dbuf), len(p.decoded))
 		testEqual(t, "Decoding of %q = %q, want %q", p.encoded, string(dbuf), p.decoded)
 		if err != nil {
-			testEqual(t, "Read from %q = %v, want %v", p.encoded, err, os.EOF)
+			testEqual(t, "Read from %q = %v, want %v", p.encoded, err, io.EOF)
 		}
 	}
 }
 
 func TestDecoderBuffering(t *testing.T) {
 	for bs := 1; bs <= 12; bs++ {
-		decoder := NewDecoder(bytes.NewBufferString(bigtest.encoded))
+		decoder := NewDecoder(strings.NewReader(bigtest.encoded))
 		buf := make([]byte, len(bigtest.decoded)+12)
 		var total int
 		for total = 0; total < len(bigtest.decoded); {
 			n, err := decoder.Read(buf[total : total+bs])
-			testEqual(t, "Read from %q at pos %d = %d, %v, want _, %v", bigtest.encoded, total, n, err, os.Error(nil))
+			testEqual(t, "Read from %q at pos %d = %d, %v, want _, %v", bigtest.encoded, total, n, err, error(nil))
 			total += n
 		}
 		testEqual(t, "Decoding/%d of %q = %q, want %q", bs, bigtest.encoded, string(buf[0:total]), bigtest.decoded)
@@ -184,5 +195,16 @@ func TestBig(t *testing.T) {
 			}
 		}
 		t.Errorf("Decode(Encode(%d-byte string)) failed at offset %d", n, i)
+	}
+}
+
+func TestDecoderInternalWhitespace(t *testing.T) {
+	s := strings.Repeat(" ", 2048) + "z"
+	decoded, err := ioutil.ReadAll(NewDecoder(strings.NewReader(s)))
+	if err != nil {
+		t.Errorf("Decode gave error %v", err)
+	}
+	if want := []byte("\000\000\000\000"); !bytes.Equal(want, decoded) {
+		t.Errorf("Decode failed: got %v, want %v", decoded, want)
 	}
 }

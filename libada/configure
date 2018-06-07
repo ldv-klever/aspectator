@@ -553,11 +553,12 @@ PACKAGE_URL=
 ac_unique_file="Makefile.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
-warn_cflags
+get_gcc_base_ver
 have_getipinfo
 default_gnatlib_target
 LN_S
 AWK
+PICFLAG
 enable_shared
 OBJEXT
 EXEEXT
@@ -633,6 +634,7 @@ enable_maintainer_mode
 enable_multilib
 enable_shared
 with_system_libunwind
+with_gcc_major_version_only
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1261,6 +1263,8 @@ Optional Packages:
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-build-libsubdir=DIR  Directory where to find libraries for build system
   --with-system-libunwind use installed libunwind
+  --with-gcc-major-version-only
+                          use only GCC major number in filesystem paths
 
 Some influential environment variables:
   CC          C compiler command
@@ -2817,6 +2821,89 @@ fi
 
 
 
+
+
+
+
+case "${host}" in
+    # PIC is the default on some targets or must not be used.
+    *-*-darwin*)
+	# For darwin, common symbols are not allowed in MH_DYLIB files
+	case "${CFLAGS}" in
+	  # If we are using a compiler supporting mdynamic-no-pic
+	  # and the option has been tested as safe to add, then cancel
+	  # it here, since the code generated is incompatible with shared
+	  # libs.
+	  *-mdynamic-no-pic*) PICFLAG='-fno-common -mno-dynamic-no-pic' ;;
+	  *) PICFLAG=-fno-common ;;
+	esac
+	;;
+    alpha*-dec-osf5*)
+	# PIC is the default.
+	;;
+    hppa*64*-*-hpux*)
+	# PIC is the default for 64-bit PA HP-UX.
+	;;
+    i[34567]86-*-cygwin* | x86_64-*-cygwin*)
+	;;
+    i[34567]86-*-mingw* | x86_64-*-mingw*)
+	;;
+    i[34567]86-*-interix[3-9]*)
+	# Interix 3.x gcc -fpic/-fPIC options generate broken code.
+	# Instead, we relocate shared libraries at runtime.
+	;;
+    i[34567]86-*-nto-qnx*)
+	# QNX uses GNU C++, but need to define -shared option too, otherwise
+	# it will coredump.
+	PICFLAG='-fPIC -shared'
+	;;
+    i[34567]86-pc-msdosdjgpp*)
+	# DJGPP does not support shared libraries at all.
+	;;
+    ia64*-*-hpux*)
+	# On IA64 HP-UX, PIC is the default but the pic flag
+	# sets the default TLS model and affects inlining.
+	PICFLAG=-fPIC
+	;;
+    mips-sgi-irix6*)
+	# PIC is the default.
+	;;
+    rs6000-ibm-aix* | powerpc-ibm-aix*)
+	# All AIX code is PIC.
+	;;
+
+    # Some targets support both -fPIC and -fpic, but prefer the latter.
+    # FIXME: Why?
+    i[34567]86-*-* | x86_64-*-*)
+	PICFLAG=-fpic
+	;;
+    # FIXME: Override -fPIC default in libgcc only?
+    sh-*-linux* | sh[2346lbe]*-*-linux*)
+	PICFLAG=-fpic
+	;;
+    # FIXME: Simplify to sh*-*-netbsd*?
+    sh-*-netbsdelf* | shl*-*-netbsdelf* | sh5-*-netbsd* | sh5l*-*-netbsd* | \
+      sh64-*-netbsd* | sh64l*-*-netbsd*)
+	PICFLAG=-fpic
+	;;
+    # Default to -fPIC unless specified otherwise.
+    *)
+	PICFLAG=-fPIC
+	;;
+esac
+
+# If the user explicitly uses -fpic/-fPIC, keep that.
+case "${CFLAGS}" in
+    *-fpic*)
+	PICFLAG=-fpic
+	;;
+    *-fPIC*)
+	PICFLAG=-fPIC
+	;;
+esac
+
+
+
 # These must be passed down, or are needed by gcc/libgcc.mvars
 for ac_prog in gawk mawk nawk awk
 do
@@ -2873,9 +2960,7 @@ fi
 
 
 # Determine what to build for 'gnatlib'
-if test $build = $target \
-   && test ${enable_shared} = yes ; then
-  # Note that build=target is almost certainly the wrong test; FIXME
+if test ${enable_shared} = yes; then
   default_gnatlib_target="gnatlib-shared"
 else
   default_gnatlib_target="gnatlib-plain"
@@ -2919,16 +3004,26 @@ $as_echo "#define HAVE_GETIPINFO 1" >>confdefs.h
 
   fi
 
-have_getipinfo=
 if test x$have_unwind_getipinfo = xyes; then
   have_getipinfo=-DHAVE_GETIPINFO
+else
+  have_getipinfo=
 fi
 
 
-warn_cflags=
-if test "x$GCC" = "xyes"; then
-  warn_cflags='$(GCC_WARN_CFLAGS)'
+# Determine what GCC version number to use in filesystem paths.
+
+  get_gcc_base_ver="cat"
+
+# Check whether --with-gcc-major-version-only was given.
+if test "${with_gcc_major_version_only+set}" = set; then :
+  withval=$with_gcc_major_version_only; if test x$with_gcc_major_version_only = xyes ; then
+        get_gcc_base_ver="sed -e 's/^\([0-9]*\).*\$\$/\1/'"
+      fi
+
 fi
+
+
 
 
 # Output: create a Makefile.
@@ -3642,7 +3737,6 @@ CONFIG_SHELL=${CONFIG_SHELL-/bin/sh}
 CC="$CC"
 CXX="$CXX"
 GFORTRAN="$GFORTRAN"
-GCJ="$GCJ"
 
 _ACEOF
 

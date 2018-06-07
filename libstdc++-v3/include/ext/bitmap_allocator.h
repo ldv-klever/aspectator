@@ -1,7 +1,6 @@
 // Bitmap Allocator. -*- C++ -*-
 
-// Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
-// Free Software Foundation, Inc.
+// Copyright (C) 2004-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -59,7 +58,6 @@ namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
      *  It is to be used only for built-in types or PODs. Notable
      *  differences are:
      * 
-     *  @detail
      *  1. Not all accessor functions are present.
      *  2. Used ONLY for PODs.
      *  3. No Allocator template argument. Uses ::operator new() to get
@@ -238,8 +236,6 @@ namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
       __lower_bound(_ForwardIterator __first, _ForwardIterator __last,
 		    const _Tp& __val, _Compare __comp)
       {
-	typedef typename __mv_iter_traits<_ForwardIterator>::value_type
-	  _ValueType;
 	typedef typename __mv_iter_traits<_ForwardIterator>::difference_type
 	  _DistanceType;
 
@@ -560,7 +556,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
      *  @param  __addr The pointer to the memory block to be
      *  validated.
      *
-     *  @detail  Validates the memory block passed to this function and
+     *  Validates the memory block passed to this function and
      *  appropriately performs the action of managing the free list of
      *  blocks by adding this block to the free list or deleting this
      *  or larger blocks from the free list.
@@ -652,7 +648,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
      *  equal to that requested.
      */
     size_t*
-    _M_get(size_t __sz) throw(std::bad_alloc);
+    _M_get(size_t __sz) _GLIBCXX_THROW(std::bad_alloc);
 
     /** @brief  This function just clears the internal Free List, and
      *  gives back all the memory to the OS.
@@ -706,6 +702,12 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  typedef bitmap_allocator<_Tp1> other;
 	};
 
+#if __cplusplus >= 201103L
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 2103. propagate_on_container_move_assignment
+      typedef std::true_type propagate_on_container_move_assignment;
+#endif
+
     private:
       template<size_t _BSize, size_t _AlignSize>
         struct aligned_size
@@ -757,14 +759,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *
        *  @throw  std::bad_alloc. If memory can not be allocated.
        *
-       *  @detail  Complexity: O(1), but internally depends upon the
+       *  Complexity: O(1), but internally depends upon the
        *  complexity of the function free_list::_M_get. The part where
        *  the bitmap headers are written has complexity: O(X),where X
        *  is the number of blocks of size sizeof(value_type) within
        *  the newly acquired block. Having a tight bound.
        */
       void 
-      _S_refill_pool() throw(std::bad_alloc)
+      _S_refill_pool() _GLIBCXX_THROW(std::bad_alloc)
       {
 #if defined _GLIBCXX_DEBUG
 	_S_check_for_free_blocks();
@@ -813,7 +815,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *
        *  @throw  std::bad_alloc. If memory can not be allocated.
        *
-       *  @detail  Complexity: Worst case complexity is O(N), but that
+       *  Complexity: Worst case complexity is O(N), but that
        *  is hardly ever hit. If and when this particular case is
        *  encountered, the next few cases are guaranteed to have a
        *  worst case complexity of O(1)!  That's why this function
@@ -822,7 +824,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Amortized Constant time.
        */
       pointer 
-      _M_allocate_single_object() throw(std::bad_alloc)
+      _M_allocate_single_object() _GLIBCXX_THROW(std::bad_alloc)
       {
 #if defined __GTHREADS
 	__scoped_lock __bit_lock(_S_mut);
@@ -906,7 +908,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       /** @brief  Deallocates memory that belongs to a single object of
        *  size sizeof(_Tp).
        *
-       *  @detail  Complexity: O(lg(N)), but the worst case is not hit
+       *  Complexity: O(lg(N)), but the worst case is not hit
        *  often!  This is because containers usually deallocate memory
        *  close to each other and this case is handled in O(1) time by
        *  the deallocate function.
@@ -997,17 +999,17 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       }
 
     public:
-      bitmap_allocator() throw()
+      bitmap_allocator() _GLIBCXX_USE_NOEXCEPT
       { }
 
-      bitmap_allocator(const bitmap_allocator&)
+      bitmap_allocator(const bitmap_allocator&) _GLIBCXX_USE_NOEXCEPT
       { }
 
       template<typename _Tp1>
-        bitmap_allocator(const bitmap_allocator<_Tp1>&) throw()
+        bitmap_allocator(const bitmap_allocator<_Tp1>&) _GLIBCXX_USE_NOEXCEPT
         { }
 
-      ~bitmap_allocator() throw()
+      ~bitmap_allocator() _GLIBCXX_USE_NOEXCEPT
       { }
 
       pointer 
@@ -1015,6 +1017,15 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       {
 	if (__n > this->max_size())
 	  std::__throw_bad_alloc();
+
+#if __cpp_aligned_new
+	if (alignof(value_type) > __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+	  {
+	    const size_type __b = __n * sizeof(value_type);
+	    std::align_val_t __al = std::align_val_t(alignof(value_type));
+	    return static_cast<pointer>(::operator new(__b, __al));
+	  }
+#endif
 
 	if (__builtin_expect(__n == 1, true))
 	  return this->_M_allocate_single_object();
@@ -1034,6 +1045,15 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       {
 	if (__builtin_expect(__p != 0, true))
 	  {
+#if __cpp_aligned_new
+	    // Types with extended alignment are handled by operator delete.
+	    if (alignof(value_type) > __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+	      {
+		::operator delete(__p, std::align_val_t(alignof(value_type)));
+		return;
+	      }
+#endif
+
 	    if (__builtin_expect(__n == 1, true))
 	      this->_M_deallocate_single_object(__p);
 	    else
@@ -1042,31 +1062,36 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       }
 
       pointer 
-      address(reference __r) const
+      address(reference __r) const _GLIBCXX_NOEXCEPT
       { return std::__addressof(__r); }
 
       const_pointer 
-      address(const_reference __r) const
+      address(const_reference __r) const _GLIBCXX_NOEXCEPT
       { return std::__addressof(__r); }
 
       size_type 
-      max_size() const throw()
+      max_size() const _GLIBCXX_USE_NOEXCEPT
       { return size_type(-1) / sizeof(value_type); }
 
+#if __cplusplus >= 201103L
+      template<typename _Up, typename... _Args>
+        void
+        construct(_Up* __p, _Args&&... __args)
+	{ ::new((void *)__p) _Up(std::forward<_Args>(__args)...); }
+
+      template<typename _Up>
+        void 
+        destroy(_Up* __p)
+        { __p->~_Up(); }
+#else
       void 
       construct(pointer __p, const_reference __data)
       { ::new((void *)__p) value_type(__data); }
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
-      template<typename... _Args>
-        void
-        construct(pointer __p, _Args&&... __args)
-	{ ::new((void *)__p) _Tp(std::forward<_Args>(__args)...); }
-#endif
-
       void 
       destroy(pointer __p)
       { __p->~value_type(); }
+#endif
     };
 
   template<typename _Tp1, typename _Tp2>

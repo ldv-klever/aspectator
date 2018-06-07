@@ -1,11 +1,12 @@
 /* { dg-do compile } */
-/* { dg-require-effective-target ilp32 } */
+/* { dg-require-effective-target ia32 } */
 /* { dg-options "-O2 -march=pentiumpro" } */
 
 typedef struct t_anim_info {
    char        *new_filename;
    long         first_frame_nr; 
 } t_anim_info;
+void gimp_image_delete(int);
 static int
 p_frames_to_multilayer(t_anim_info *ainfo_ptr,
                       long range_from, long range_to)

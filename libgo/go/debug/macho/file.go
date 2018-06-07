@@ -1,9 +1,8 @@
-// Copyright 2009 The Go Authors.  All rights reserved.
+// Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package macho implements access to Mach-O object files, as defined by
-// http://developer.apple.com/mac/library/documentation/DeveloperTools/Conceptual/MachORuntime/Reference/reference.html.
+// Package macho implements access to Mach-O object files.
 package macho
 
 // High level access to low level data structures.
@@ -71,9 +70,12 @@ type Segment struct {
 }
 
 // Data reads and returns the contents of the segment.
-func (s *Segment) Data() ([]byte, os.Error) {
+func (s *Segment) Data() ([]byte, error) {
 	dat := make([]byte, s.sr.Size())
 	n, err := s.sr.ReadAt(dat, 0)
+	if n == len(dat) {
+		err = nil
+	}
 	return dat[0:n], err
 }
 
@@ -106,9 +108,12 @@ type Section struct {
 }
 
 // Data reads and returns the contents of the Mach-O section.
-func (s *Section) Data() ([]byte, os.Error) {
+func (s *Section) Data() ([]byte, error) {
 	dat := make([]byte, s.sr.Size())
 	n, err := s.sr.ReadAt(dat, 0)
+	if n == len(dat) {
+		err = nil
+	}
 	return dat[0:n], err
 }
 
@@ -142,13 +147,15 @@ type Dysymtab struct {
  * Mach-O reader
  */
 
+// FormatError is returned by some operations if the data does
+// not have the correct format for an object file.
 type FormatError struct {
 	off int64
 	msg string
 	val interface{}
 }
 
-func (e *FormatError) String() string {
+func (e *FormatError) Error() string {
 	msg := e.msg
 	if e.val != nil {
 		msg += fmt.Sprintf(" '%v'", e.val)
@@ -158,8 +165,8 @@ func (e *FormatError) String() string {
 }
 
 // Open opens the named file using os.Open and prepares it for use as a Mach-O binary.
-func Open(name string) (*File, os.Error) {
-	f, err := os.Open(name, os.O_RDONLY, 0)
+func Open(name string) (*File, error) {
+	f, err := os.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +182,8 @@ func Open(name string) (*File, os.Error) {
 // Close closes the File.
 // If the File was created using NewFile directly instead of Open,
 // Close has no effect.
-func (f *File) Close() os.Error {
-	var err os.Error
+func (f *File) Close() error {
+	var err error
 	if f.closer != nil {
 		err = f.closer.Close()
 		f.closer = nil
@@ -184,9 +191,9 @@ func (f *File) Close() os.Error {
 	return err
 }
 
-// NewFile creates a new File for acecssing a Mach-O binary in an underlying reader.
+// NewFile creates a new File for accessing a Mach-O binary in an underlying reader.
 // The Mach-O binary is expected to start at position 0 in the ReaderAt.
-func NewFile(r io.ReaderAt) (*File, os.Error) {
+func NewFile(r io.ReaderAt) (*File, error) {
 	f := new(File)
 	sr := io.NewSectionReader(r, 0, 1<<63-1)
 
@@ -244,7 +251,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 
 		case LoadCmdDylib:
 			var hdr DylibCmd
-			b := bytes.NewBuffer(cmddat)
+			b := bytes.NewReader(cmddat)
 			if err := binary.Read(b, bo, &hdr); err != nil {
 				return nil, err
 			}
@@ -261,7 +268,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 
 		case LoadCmdSymtab:
 			var hdr SymtabCmd
-			b := bytes.NewBuffer(cmddat)
+			b := bytes.NewReader(cmddat)
 			if err := binary.Read(b, bo, &hdr); err != nil {
 				return nil, err
 			}
@@ -288,7 +295,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 
 		case LoadCmdDysymtab:
 			var hdr DysymtabCmd
-			b := bytes.NewBuffer(cmddat)
+			b := bytes.NewReader(cmddat)
 			if err := binary.Read(b, bo, &hdr); err != nil {
 				return nil, err
 			}
@@ -297,7 +304,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 				return nil, err
 			}
 			x := make([]uint32, hdr.Nindirectsyms)
-			if err := binary.Read(bytes.NewBuffer(dat), bo, x); err != nil {
+			if err := binary.Read(bytes.NewReader(dat), bo, x); err != nil {
 				return nil, err
 			}
 			st := new(Dysymtab)
@@ -309,7 +316,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 
 		case LoadCmdSegment:
 			var seg32 Segment32
-			b := bytes.NewBuffer(cmddat)
+			b := bytes.NewReader(cmddat)
 			if err := binary.Read(b, bo, &seg32); err != nil {
 				return nil, err
 			}
@@ -347,7 +354,7 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 
 		case LoadCmdSegment64:
 			var seg64 Segment64
-			b := bytes.NewBuffer(cmddat)
+			b := bytes.NewReader(cmddat)
 			if err := binary.Read(b, bo, &seg64); err != nil {
 				return nil, err
 			}
@@ -391,10 +398,10 @@ func NewFile(r io.ReaderAt) (*File, os.Error) {
 	return f, nil
 }
 
-func (f *File) parseSymtab(symdat, strtab, cmddat []byte, hdr *SymtabCmd, offset int64) (*Symtab, os.Error) {
+func (f *File) parseSymtab(symdat, strtab, cmddat []byte, hdr *SymtabCmd, offset int64) (*Symtab, error) {
 	bo := f.ByteOrder
 	symtab := make([]Symbol, hdr.Nsyms)
-	b := bytes.NewBuffer(symdat)
+	b := bytes.NewReader(symdat)
 	for i := range symtab {
 		var n Nlist64
 		if f.Magic == Magic64 {
@@ -463,17 +470,17 @@ func (f *File) Section(name string) *Section {
 }
 
 // DWARF returns the DWARF debug information for the Mach-O file.
-func (f *File) DWARF() (*dwarf.Data, os.Error) {
+func (f *File) DWARF() (*dwarf.Data, error) {
 	// There are many other DWARF sections, but these
-	// are the required ones, and the debug/dwarf package
-	// does not use the others, so don't bother loading them.
-	var names = [...]string{"abbrev", "info", "str"}
+	// are the ones the debug/dwarf package uses.
+	// Don't bother loading others.
+	var names = [...]string{"abbrev", "info", "line", "ranges", "str"}
 	var dat [len(names)][]byte
 	for i, name := range names {
 		name = "__debug_" + name
 		s := f.Section(name)
 		if s == nil {
-			return nil, os.NewError("missing Mach-O section " + name)
+			continue
 		}
 		b, err := s.Data()
 		if err != nil && uint64(len(b)) < s.Size {
@@ -482,14 +489,14 @@ func (f *File) DWARF() (*dwarf.Data, os.Error) {
 		dat[i] = b
 	}
 
-	abbrev, info, str := dat[0], dat[1], dat[2]
-	return dwarf.New(abbrev, nil, nil, info, nil, nil, nil, str)
+	abbrev, info, line, ranges, str := dat[0], dat[1], dat[2], dat[3], dat[4]
+	return dwarf.New(abbrev, nil, nil, info, line, nil, ranges, str)
 }
 
 // ImportedSymbols returns the names of all symbols
 // referred to by the binary f that are expected to be
 // satisfied by other libraries at dynamic load time.
-func (f *File) ImportedSymbols() ([]string, os.Error) {
+func (f *File) ImportedSymbols() ([]string, error) {
 	if f.Dysymtab == nil || f.Symtab == nil {
 		return nil, &FormatError{0, "missing symbol table", nil}
 	}
@@ -506,7 +513,7 @@ func (f *File) ImportedSymbols() ([]string, os.Error) {
 // ImportedLibraries returns the paths of all libraries
 // referred to by the binary f that are expected to be
 // linked with the binary at dynamic link time.
-func (f *File) ImportedLibraries() ([]string, os.Error) {
+func (f *File) ImportedLibraries() ([]string, error) {
 	var all []string
 	for _, l := range f.Loads {
 		if lib, ok := l.(*Dylib); ok {

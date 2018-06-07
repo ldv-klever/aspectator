@@ -12,7 +12,7 @@ double u[1782225];
 static void __attribute__((noinline))
 foo (int N, int *res)
 {
-  unsigned int i, j;
+  int i, j;
   double sum = 0;
   for (i = 0; i < N; i++)
     {
@@ -47,5 +47,4 @@ main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "will be interchanged" 1 "graphite" } } */
-/* { dg-final { cleanup-tree-dump "graphite" } } */
+/* { dg-final { scan-tree-dump "tiled" "graphite" } } */

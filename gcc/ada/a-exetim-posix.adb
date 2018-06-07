@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---         Copyright (C) 2007-2010, Free Software Foundation, Inc.          --
+--         Copyright (C) 2007-2015, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,7 +34,9 @@
 with Ada.Task_Identification;  use Ada.Task_Identification;
 with Ada.Unchecked_Conversion;
 
+with System.Tasking;
 with System.OS_Interface; use System.OS_Interface;
+with System.Task_Primitives.Operations; use System.Task_Primitives.Operations;
 
 with Interfaces.C; use Interfaces.C;
 
@@ -94,16 +96,19 @@ package body Ada.Execution_Time is
 
    function Clock
      (T : Ada.Task_Identification.Task_Id :=
-            Ada.Task_Identification.Current_Task)
-      return CPU_Time
+        Ada.Task_Identification.Current_Task) return CPU_Time
    is
-      TS     : aliased timespec;
-      Result : Interfaces.C.int;
+      TS       : aliased timespec;
+      Clock_Id : aliased Interfaces.C.int;
+      Result   : Interfaces.C.int;
 
       function To_CPU_Time is
         new Ada.Unchecked_Conversion (Duration, CPU_Time);
       --  Time is equal to Duration (although it is a private type) and
       --  CPU_Time is equal to Time.
+
+      function Convert_Ids is new
+        Ada.Unchecked_Conversion (Task_Id, System.Tasking.Task_Id);
 
       function clock_gettime
         (clock_id : Interfaces.C.int;
@@ -112,20 +117,43 @@ package body Ada.Execution_Time is
       pragma Import (C, clock_gettime, "clock_gettime");
       --  Function from the POSIX.1b Realtime Extensions library
 
-      CLOCK_THREAD_CPUTIME_ID : constant := 3;
-      --  Identifier for the clock returning per-task CPU time
+      function pthread_getcpuclockid
+        (tid       : Thread_Id;
+         clock_id  : access Interfaces.C.int)
+         return int;
+      pragma Import (C, pthread_getcpuclockid, "pthread_getcpuclockid");
+      --  Function from the Thread CPU-Time Clocks option
 
    begin
       if T = Ada.Task_Identification.Null_Task_Id then
          raise Program_Error;
+      else
+         --  Get the CPU clock for the task passed as parameter
+
+         Result := pthread_getcpuclockid
+           (Get_Thread_Id (Convert_Ids (T)), Clock_Id'Access);
+         pragma Assert (Result = 0);
       end if;
 
       Result := clock_gettime
-        (clock_id => CLOCK_THREAD_CPUTIME_ID, tp => TS'Unchecked_Access);
+        (clock_id => Clock_Id, tp => TS'Unchecked_Access);
       pragma Assert (Result = 0);
 
       return To_CPU_Time (To_Duration (TS));
    end Clock;
+
+   --------------------------
+   -- Clock_For_Interrupts --
+   --------------------------
+
+   function Clock_For_Interrupts return CPU_Time is
+   begin
+      --  According to AI 0170-1, D.14(18.1/3), if Interrupt_Clocks_Supported
+      --  is set to False the function raises Program_Error.
+
+      raise Program_Error;
+      return CPU_Time_First;
+   end Clock_For_Interrupts;
 
    -----------
    -- Split --

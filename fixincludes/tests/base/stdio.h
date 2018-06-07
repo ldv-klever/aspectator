@@ -19,6 +19,16 @@
 #endif  /* AAB_AIX_STDIO_CHECK */
 
 
+#if defined( AIX_STDIO_INLINE_CHECK )
+#ifdef __cplusplus
+}
+#endif
+
+#if (defined(__cplusplus) && defined(__IBMCPP__))
+#ifdef ferror
+#endif  /* AIX_STDIO_INLINE_CHECK */
+
+
 #if defined( ALPHA_GETOPT_CHECK )
 extern int getopt(int, char *const[], const char *);
 #endif  /* ALPHA_GETOPT_CHECK */
@@ -49,6 +59,11 @@ extern int vsnprintf(char *, _hpux_size_t, const char *, __gnuc_va_list);
 #endif  /* HPUX11_VSNPRINTF_CHECK */
 
 
+#if defined( HPUX_VSSCANF_CHECK )
+extern int vsscanf(const char *, const char *, __gnuc_va_list);
+#endif  /* HPUX_VSSCANF_CHECK */
+
+
 #if defined( IRIX_STDIO_DUMMY_VA_LIST_CHECK )
 extern int printf( const char *, __gnuc_va_list );
 #endif  /* IRIX_STDIO_DUMMY_VA_LIST_CHECK */
@@ -63,6 +78,23 @@ extern int	fclose(), fflush(), foo();
 #if defined( RS6000_PARAM_CHECK )
 extern int rename(const char *_old, const char *_new);
 #endif  /* RS6000_PARAM_CHECK */
+
+
+#if defined( SOLARIS_STD___FILBUF_CHECK )
+using std::perror;
+#ifndef _LP64
+using std::__filbuf;
+using std::__flsbuf;
+#endif
+#endif
+#endif  /* SOLARIS_STD___FILBUF_CHECK */
+
+
+#if defined( SOLARIS_STD_GETS_CXX14_CHECK )
+#if __cplusplus < 201402L
+using std::gets;
+#endif
+#endif  /* SOLARIS_STD_GETS_CXX14_CHECK */
 
 
 #if defined( STDIO_STDARG_H_CHECK )

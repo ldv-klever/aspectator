@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -fdump-tree-vrp1" } */
+/* { dg-options "-O2 -fdump-tree-vrp1 -fno-tree-ccp" } */
 
 int
 f1 (int x)
@@ -21,4 +21,3 @@ f2 (int x)
 
 /* { dg-final { scan-tree-dump-not "\& (2047|0x7ff)" "vrp1" } } */
 /* { dg-final { scan-tree-dump-not "\\| (17408|0x4400)" "vrp1" } } */
-/* { dg-final { cleanup-tree-dump "vrp1" } } */

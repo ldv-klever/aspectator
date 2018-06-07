@@ -6,8 +6,8 @@
    Copyright (C) 2002 Free Software Foundation Inc.
    Contributed by Andreas Bauer <baueran@in.tum.de>  */
 
-/* { dg-do run { target i?86-*-* x86_64-*-* s390*-*-* } } */
-/* { dg-skip-if "" { { i?86-*-* x86_64-*-* } && { ilp32 && { ! nonpic } } } { "*" } { "" } } */
+/* { dg-do run { target epiphany-*-* i?86-*-* x86_64-*-* s390*-*-* } } */
+/* { dg-skip-if "" { { i?86-*-* x86_64-*-* } && { ia32 && { ! nonpic } } } { "*" } { "" } } */
 /* { dg-options "-O2 -foptimize-sibling-calls -fno-ipa-cp" } */
 
 extern void abort (void);

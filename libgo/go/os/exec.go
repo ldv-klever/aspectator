@@ -5,146 +5,65 @@
 package os
 
 import (
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
 )
 
-// ForkExec forks the current process and invokes Exec with the program, arguments,
-// and environment specified by name, argv, and envv.  It returns the process
-// id of the forked process and an Error, if any.  The fd array specifies the
-// file descriptors to be set up in the new process: fd[0] will be Unix file
-// descriptor 0 (standard input), fd[1] descriptor 1, and so on.  A nil entry
-// will cause the child to have no open file descriptor with that index.
-// If dir is not empty, the child chdirs into the directory before execing the program.
-func ForkExec(name string, argv []string, envv []string, dir string, fd []*File) (pid int, err Error) {
-	if envv == nil {
-		envv = Environ()
-	}
-	// Create array of integer (system) fds.
-	intfd := make([]int, len(fd))
-	for i, f := range fd {
-		if f == nil {
-			intfd[i] = -1
-		} else {
-			intfd[i] = f.Fd()
-		}
-	}
-
-	p, e := syscall.ForkExec(name, argv, envv, dir, intfd)
-	if e != 0 {
-		return 0, &PathError{"fork/exec", name, Errno(e)}
-	}
-	return p, nil
+// Process stores the information about a process created by StartProcess.
+type Process struct {
+	Pid    int
+	handle uintptr      // handle is accessed atomically on Windows
+	isdone uint32       // process has been successfully waited on, non zero if true
+	sigMu  sync.RWMutex // avoid race between wait and signal
 }
 
-// Exec replaces the current process with an execution of the
-// named binary, with arguments argv and environment envv.
-// If successful, Exec never returns.  If it fails, it returns an Error.
-// ForkExec is almost always a better way to execute a program.
-func Exec(name string, argv []string, envv []string) Error {
-	if envv == nil {
-		envv = Environ()
-	}
-	e := syscall.Exec(name, argv, envv)
-	if e != 0 {
-		return &PathError{"exec", name, Errno(e)}
-	}
-	return nil
+func newProcess(pid int, handle uintptr) *Process {
+	p := &Process{Pid: pid, handle: handle}
+	runtime.SetFinalizer(p, (*Process).Release)
+	return p
 }
 
-// TODO(rsc): Should os implement its own syscall.WaitStatus
-// wrapper with the methods, or is exposing the underlying one enough?
-//
-// TODO(rsc): Certainly need to have Rusage struct,
-// since syscall one might have different field types across
-// different OS.
-
-// Waitmsg stores the information about an exited process as reported by Wait.
-type Waitmsg struct {
-	Pid                int             // The process's id.
-	syscall.WaitStatus                 // System-dependent status info.
-	Rusage             *syscall.Rusage // System-dependent resource usage info.
+func (p *Process) setDone() {
+	atomic.StoreUint32(&p.isdone, 1)
 }
 
-// Options for Wait.
-const (
-	WNOHANG   = syscall.WNOHANG   // Don't wait if no process has exited.
-	WSTOPPED  = syscall.WSTOPPED  // If set, status of stopped subprocesses is also reported.
-	WUNTRACED = syscall.WUNTRACED // Usually an alias for WSTOPPED.
-	WRUSAGE   = 1 << 20           // Record resource usage.
-)
-
-// WRUSAGE must not be too high a bit, to avoid clashing with Linux's
-// WCLONE, WALL, and WNOTHREAD flags, which sit in the top few bits of
-// the options
-
-// Wait waits for process pid to exit or stop, and then returns a
-// Waitmsg describing its status and an Error, if any. The options
-// (WNOHANG etc.) affect the behavior of the Wait call.
-func Wait(pid int, options int) (w *Waitmsg, err Error) {
-	var status syscall.WaitStatus
-	var rusage *syscall.Rusage
-	if options&WRUSAGE != 0 {
-		rusage = new(syscall.Rusage)
-		options ^= WRUSAGE
-	}
-	pid1, e := syscall.Wait4(pid, &status, options, rusage)
-	if e != 0 {
-		return nil, NewSyscallError("wait", e)
-	}
-	w = new(Waitmsg)
-	w.Pid = pid1
-	w.WaitStatus = status
-	w.Rusage = rusage
-	return w, nil
+func (p *Process) done() bool {
+	return atomic.LoadUint32(&p.isdone) > 0
 }
 
-// Convert i to decimal string.
-func itod(i int) string {
-	if i == 0 {
-		return "0"
-	}
+// ProcAttr holds the attributes that will be applied to a new process
+// started by StartProcess.
+type ProcAttr struct {
+	// If Dir is non-empty, the child changes into the directory before
+	// creating the process.
+	Dir string
+	// If Env is non-nil, it gives the environment variables for the
+	// new process in the form returned by Environ.
+	// If it is nil, the result of Environ will be used.
+	Env []string
+	// Files specifies the open files inherited by the new process. The
+	// first three entries correspond to standard input, standard output, and
+	// standard error. An implementation may support additional entries,
+	// depending on the underlying operating system. A nil entry corresponds
+	// to that file being closed when the process starts.
+	Files []*File
 
-	u := uint64(i)
-	if i < 0 {
-		u = -u
-	}
-
-	// Assemble decimal in reverse order.
-	var b [32]byte
-	bp := len(b)
-	for ; u > 0; u /= 10 {
-		bp--
-		b[bp] = byte(u%10) + '0'
-	}
-
-	if i < 0 {
-		bp--
-		b[bp] = '-'
-	}
-
-	return string(b[bp:])
+	// Operating system-specific process creation attributes.
+	// Note that setting this field means that your program
+	// may not execute properly or even compile on some
+	// operating systems.
+	Sys *syscall.SysProcAttr
 }
 
-func (w Waitmsg) String() string {
-	// TODO(austin) Use signal names when possible?
-	res := ""
-	switch {
-	case w.Exited():
-		res = "exit status " + itod(w.ExitStatus())
-	case w.Signaled():
-		res = "signal " + itod(w.Signal())
-	case w.Stopped():
-		res = "stop signal " + itod(w.StopSignal())
-		if w.StopSignal() == syscall.SIGTRAP && w.TrapCause() != 0 {
-			res += " (trap " + itod(w.TrapCause()) + ")"
-		}
-	case w.Continued():
-		res = "continued"
-	}
-	if w.CoreDump() {
-		res += " (core dumped)"
-	}
-	return res
+// A Signal represents an operating system signal.
+// The usual underlying implementation is operating system-dependent:
+// on Unix it is syscall.Signal.
+type Signal interface {
+	String() string
+	Signal() // to distinguish from other Stringers
 }
 
 // Getpid returns the process id of the caller.
@@ -152,3 +71,89 @@ func Getpid() int { return syscall.Getpid() }
 
 // Getppid returns the process id of the caller's parent.
 func Getppid() int { return syscall.Getppid() }
+
+// FindProcess looks for a running process by its pid.
+//
+// The Process it returns can be used to obtain information
+// about the underlying operating system process.
+//
+// On Unix systems, FindProcess always succeeds and returns a Process
+// for the given pid, regardless of whether the process exists.
+func FindProcess(pid int) (*Process, error) {
+	return findProcess(pid)
+}
+
+// StartProcess starts a new process with the program, arguments and attributes
+// specified by name, argv and attr.
+//
+// StartProcess is a low-level interface. The os/exec package provides
+// higher-level interfaces.
+//
+// If there is an error, it will be of type *PathError.
+func StartProcess(name string, argv []string, attr *ProcAttr) (*Process, error) {
+	return startProcess(name, argv, attr)
+}
+
+// Release releases any resources associated with the Process p,
+// rendering it unusable in the future.
+// Release only needs to be called if Wait is not.
+func (p *Process) Release() error {
+	return p.release()
+}
+
+// Kill causes the Process to exit immediately.
+func (p *Process) Kill() error {
+	return p.kill()
+}
+
+// Wait waits for the Process to exit, and then returns a
+// ProcessState describing its status and an error, if any.
+// Wait releases any resources associated with the Process.
+// On most operating systems, the Process must be a child
+// of the current process or an error will be returned.
+func (p *Process) Wait() (*ProcessState, error) {
+	return p.wait()
+}
+
+// Signal sends a signal to the Process.
+// Sending Interrupt on Windows is not implemented.
+func (p *Process) Signal(sig Signal) error {
+	return p.signal(sig)
+}
+
+// UserTime returns the user CPU time of the exited process and its children.
+func (p *ProcessState) UserTime() time.Duration {
+	return p.userTime()
+}
+
+// SystemTime returns the system CPU time of the exited process and its children.
+func (p *ProcessState) SystemTime() time.Duration {
+	return p.systemTime()
+}
+
+// Exited reports whether the program has exited.
+func (p *ProcessState) Exited() bool {
+	return p.exited()
+}
+
+// Success reports whether the program exited successfully,
+// such as with exit status 0 on Unix.
+func (p *ProcessState) Success() bool {
+	return p.success()
+}
+
+// Sys returns system-dependent exit information about
+// the process. Convert it to the appropriate underlying
+// type, such as syscall.WaitStatus on Unix, to access its contents.
+func (p *ProcessState) Sys() interface{} {
+	return p.sys()
+}
+
+// SysUsage returns system-dependent resource usage information about
+// the exited process. Convert it to the appropriate underlying
+// type, such as *syscall.Rusage on Unix, to access its contents.
+// (On Unix, *syscall.Rusage matches struct rusage as defined in the
+// getrusage(2) manual page.)
+func (p *ProcessState) SysUsage() interface{} {
+	return p.sysUsage()
+}

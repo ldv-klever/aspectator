@@ -2,13 +2,12 @@
 // Test the loop with a custom iterator
 // with begin/end in an associated namespace
 
-// { dg-do compile }
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
 
 struct iterator
 {
     int x;
-    iterator(int v) :x(v) {}
+    explicit iterator(int v) :x(v) {}
     iterator &operator ++() { ++x; return *this; }
     int operator *() { return x; }
     bool operator != (const iterator &o) { return x != o.x; }
@@ -36,6 +35,6 @@ namespace foo
 int main()
 {
     foo::container c(1,4);
-    for (iterator it : c)
+    for (int it : c)
         ;
 }

@@ -1,5 +1,4 @@
-// { dg-options "--std=c++0x" }
-// { dg-do link }
+// { dg-do link { target c++11 } }
 
 template<typename _Tp>
 inline _Tp&&
@@ -13,6 +12,7 @@ struct T
   S && get() { return movel(s); }
   operator S&&() { return movel(s); }
   S && s;
+  S s2;
 };
 
 void named(S const &) {}
@@ -33,6 +33,7 @@ void f(S && p)
   unnamed(t.get());                  // function return
   unnamed(t);                        // implicit conversion
   unnamed(static_cast<S&&>(s));      // cast to rvalue
+  unnamed(static_cast<T&&>(t).s2);   // cast to rvalue
 }
 
 int main()

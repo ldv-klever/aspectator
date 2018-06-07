@@ -4,24 +4,26 @@ integer :: i
 character(30) :: aname = "noname"
 logical :: is_named
 
-open(25, file="testfile", status="replace", access="stream", form="unformatted")
+open(25, file="testfile_inquire_size", status="replace", access="stream", form="unformatted")
 do i=1,100
   write(25) i, "abcdefghijklmnopqrstuvwxyz"
 enddo
-flush(25)
+! Gfortran implicitly flushes the buffer when doing a file size
+! inquire on an open file.
+! flush(25)
 
 inquire(unit=25, named=is_named, name=aname, size=i)
 if (.not.is_named) call abort
-if (aname /= "testfile") call abort
+if (aname /= "testfile_inquire_size") call abort
 if (i /= 3000) call abort
 
-inquire(file="testfile", size=i)
+inquire(file="testfile_inquire_size", size=i)
 if (.not.is_named) call abort
-if (aname /= "testfile") call abort
+if (aname /= "testfile_inquire_size") call abort
 if (i /= 3000) call abort
 
 close(25, status="delete")
-inquire(file="testfile", size=i)
+inquire(file="testfile_inquire_size", size=i)
 if (i /= -1)  call abort
 end
 

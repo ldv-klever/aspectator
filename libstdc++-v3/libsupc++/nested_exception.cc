@@ -1,4 +1,4 @@
-// Copyright (C) 2011 Free Software Foundation
+// Copyright (C) 2011-2017 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -25,7 +25,5 @@
 
 namespace std 
 {
-#ifdef _GLIBCXX_ATOMIC_BUILTINS_4
-  nested_exception::~nested_exception() = default;
-#endif
+  nested_exception::~nested_exception() noexcept = default;
 } // namespace std

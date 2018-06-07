@@ -7,10 +7,10 @@
 #ifndef GO_LEX_H
 #define GO_LEX_H
 
-#include <gmp.h>
 #include <mpfr.h>
 
 #include "operator.h"
+#include "go-linemap.h"
 
 struct Unicode_range;
 
@@ -49,6 +49,24 @@ enum Keyword
   KEYWORD_VAR
 };
 
+// Pragmas built from magic comments and recorded for functions.
+// These are used as bits in a bitmask.
+// The set of values is intended to be the same as the gc compiler.
+
+enum GoPragma
+{
+  GOPRAGMA_NOINTERFACE = 1 << 0,	// Method not in type descriptor.
+  GOPRAGMA_NOESCAPE = 1 << 1,		// Args do not escape.
+  GOPRAGMA_NORACE = 1 << 2,		// No race detector.
+  GOPRAGMA_NOSPLIT = 1 << 3,		// Do not split stack.
+  GOPRAGMA_NOINLINE = 1 << 4,		// Do not inline.
+  GOPRAGMA_SYSTEMSTACK = 1 << 5,	// Must run on system stack.
+  GOPRAGMA_NOWRITEBARRIER = 1 << 6,	// No write barriers.
+  GOPRAGMA_NOWRITEBARRIERREC = 1 << 7,	// No write barriers here or callees.
+  GOPRAGMA_CGOUNSAFEARGS = 1 << 8,	// Pointer to arg is pointer to all.
+  GOPRAGMA_UINTPTRESCAPES = 1 << 9	// uintptr(p) escapes.
+};
+
 // A token returned from the lexer.
 
 class Token
@@ -69,6 +87,8 @@ class Token
     TOKEN_STRING,
     // Token is an operator.
     TOKEN_OPERATOR,
+    // Token is a character constant.
+    TOKEN_CHARACTER,
     // Token is an integer.
     TOKEN_INTEGER,
     // Token is a floating point number.
@@ -88,17 +108,17 @@ class Token
 
   // Make a token for an invalid value.
   static Token
-  make_invalid_token(source_location location)
+  make_invalid_token(Location location)
   { return Token(TOKEN_INVALID, location); }
 
   // Make a token representing end of file.
   static Token
-  make_eof_token(source_location location)
+  make_eof_token(Location location)
   { return Token(TOKEN_EOF, location); }
 
   // Make a keyword token.
   static Token
-  make_keyword_token(Keyword keyword, source_location location)
+  make_keyword_token(Keyword keyword, Location location)
   {
     Token tok(TOKEN_KEYWORD, location);
     tok.u_.keyword = keyword;
@@ -108,7 +128,7 @@ class Token
   // Make an identifier token.
   static Token
   make_identifier_token(const std::string& value, bool is_exported,
-			source_location location)
+			Location location)
   {
     Token tok(TOKEN_IDENTIFIER, location);
     tok.u_.identifier_value.name = new std::string(value);
@@ -118,7 +138,7 @@ class Token
 
   // Make a quoted string token.
   static Token
-  make_string_token(const std::string& value, source_location location)
+  make_string_token(const std::string& value, Location location)
   {
     Token tok(TOKEN_STRING, location);
     tok.u_.string_value = new std::string(value);
@@ -127,16 +147,26 @@ class Token
 
   // Make an operator token.
   static Token
-  make_operator_token(Operator op, source_location location)
+  make_operator_token(Operator op, Location location)
   {
     Token tok(TOKEN_OPERATOR, location);
     tok.u_.op = op;
     return tok;
   }
 
+  // Make a character constant token.
+  static Token
+  make_character_token(mpz_t val, Location location)
+  {
+    Token tok(TOKEN_CHARACTER, location);
+    mpz_init(tok.u_.integer_value);
+    mpz_swap(tok.u_.integer_value, val);
+    return tok;
+  }
+
   // Make an integer token.
   static Token
-  make_integer_token(mpz_t val, source_location location)
+  make_integer_token(mpz_t val, Location location)
   {
     Token tok(TOKEN_INTEGER, location);
     mpz_init(tok.u_.integer_value);
@@ -146,7 +176,7 @@ class Token
 
   // Make a float token.
   static Token
-  make_float_token(mpfr_t val, source_location location)
+  make_float_token(mpfr_t val, Location location)
   {
     Token tok(TOKEN_FLOAT, location);
     mpfr_init(tok.u_.float_value);
@@ -156,7 +186,7 @@ class Token
 
   // Make a token for an imaginary number.
   static Token
-  make_imaginary_token(mpfr_t val, source_location location)
+  make_imaginary_token(mpfr_t val, Location location)
   {
     Token tok(TOKEN_IMAGINARY, location);
     mpfr_init(tok.u_.float_value);
@@ -165,7 +195,7 @@ class Token
   }
 
   // Get the location of the token.
-  source_location
+  Location
   location() const
   { return this->location_; }
 
@@ -183,7 +213,7 @@ class Token
   Keyword
   keyword() const
   {
-    gcc_assert(this->classification_ == TOKEN_KEYWORD);
+    go_assert(this->classification_ == TOKEN_KEYWORD);
     return this->u_.keyword;
   }
 
@@ -196,7 +226,7 @@ class Token
   const std::string&
   identifier() const
   {
-    gcc_assert(this->classification_ == TOKEN_IDENTIFIER);
+    go_assert(this->classification_ == TOKEN_IDENTIFIER);
     return *this->u_.identifier_value.name;
   }
 
@@ -204,7 +234,7 @@ class Token
   bool
   is_identifier_exported() const
   {
-    gcc_assert(this->classification_ == TOKEN_IDENTIFIER);
+    go_assert(this->classification_ == TOKEN_IDENTIFIER);
     return this->u_.identifier_value.is_exported;
   }
 
@@ -220,15 +250,23 @@ class Token
   std::string
   string_value() const
   {
-    gcc_assert(this->classification_ == TOKEN_STRING);
+    go_assert(this->classification_ == TOKEN_STRING);
     return *this->u_.string_value;
+  }
+
+  // Return the value of a character constant.
+  const mpz_t*
+  character_value() const
+  {
+    go_assert(this->classification_ == TOKEN_CHARACTER);
+    return &this->u_.integer_value;
   }
 
   // Return the value of an integer.
   const mpz_t*
   integer_value() const
   {
-    gcc_assert(this->classification_ == TOKEN_INTEGER);
+    go_assert(this->classification_ == TOKEN_INTEGER);
     return &this->u_.integer_value;
   }
 
@@ -236,7 +274,7 @@ class Token
   const mpfr_t*
   float_value() const
   {
-    gcc_assert(this->classification_ == TOKEN_FLOAT);
+    go_assert(this->classification_ == TOKEN_FLOAT);
     return &this->u_.float_value;
   }
 
@@ -244,7 +282,7 @@ class Token
   const mpfr_t*
   imaginary_value() const
   {
-    gcc_assert(this->classification_ == TOKEN_IMAGINARY);
+    go_assert(this->classification_ == TOKEN_IMAGINARY);
     return &this->u_.float_value;
   }
 
@@ -252,7 +290,7 @@ class Token
   Operator
   op() const
   {
-    gcc_assert(this->classification_ == TOKEN_OPERATOR);
+    go_assert(this->classification_ == TOKEN_OPERATOR);
     return this->u_.op;
   }
 
@@ -275,7 +313,7 @@ class Token
 
  private:
   // Private constructor used by make_..._token functions above.
-  Token(Classification, source_location);
+  Token(Classification, Location);
 
   // Clear the token.
   void
@@ -299,7 +337,7 @@ class Token
     } identifier_value;
     // The string value for TOKEN_STRING.
     std::string* string_value;
-    // The token value for TOKEN_INTEGER.
+    // The token value for TOKEN_CHARACTER or TOKEN_INTEGER.
     mpz_t integer_value;
     // The token value for TOKEN_FLOAT or TOKEN_IMAGINARY.
     mpfr_t float_value;
@@ -307,7 +345,7 @@ class Token
     Operator op;
   } u_;
   // The source location.
-  source_location location_;
+  Location location_;
 };
 
 // The lexer itself.
@@ -315,7 +353,7 @@ class Token
 class Lex
 {
  public:
-  Lex(const char* input_file_name, FILE* input_file);
+  Lex(const char* input_file_name, FILE* input_file, Linemap *linemap);
 
   ~Lex();
 
@@ -323,10 +361,58 @@ class Lex
   Token
   next_token();
 
+  // Return the contents of any current //extern comment.
+  const std::string&
+  extern_name() const
+  { return this->extern_; }
+
+  // Return the current set of pragmas, and clear them.
+  unsigned int
+  get_and_clear_pragmas()
+  {
+    unsigned int ret = this->pragmas_;
+    this->pragmas_ = 0;
+    return ret;
+  }
+
+  struct Linkname
+  {
+    std::string ext_name;	// External name.
+    bool is_exported;		// Whether the internal name is exported.
+    Location loc;		// Location of go:linkname directive.
+
+    Linkname()
+      : ext_name(), is_exported(false), loc()
+    { }
+
+    Linkname(const std::string& ext_name_a, bool is_exported_a, Location loc_a)
+      : ext_name(ext_name_a), is_exported(is_exported_a), loc(loc_a)
+    { }
+  };
+
+  typedef std::map<std::string, Linkname> Linknames;
+
+  // Return the linknames seen so far, or NULL if none, and clear the
+  // set.  These are from go:linkname compiler directives.
+  Linknames*
+  get_and_clear_linknames()
+  {
+    Linknames* ret = this->linknames_;
+    this->linknames_ = NULL;
+    return ret;
+  }
+
   // Return whether the identifier NAME should be exported.  NAME is a
   // mangled name which includes only ASCII characters.
   static bool
   is_exported_name(const std::string& name);
+
+  // Return whether the identifier NAME is invalid.  When we see an
+  // invalid character we still build an identifier, but we use a
+  // magic string to indicate that the identifier is invalid.  We then
+  // use this to avoid knockon errors.
+  static bool
+  is_invalid_identifier(const std::string& name);
 
   // A helper function.  Append V to STR.  IS_CHARACTER is true if V
   // is a Unicode character which should be converted into UTF-8,
@@ -334,13 +420,17 @@ class Lex
   // location is used to warn about an out of range character.
   static void
   append_char(unsigned int v, bool is_charater, std::string* str,
-	      source_location);
+	      Location);
 
   // A helper function.  Fetch a UTF-8 character from STR and store it
   // in *VALUE.  Return the number of bytes read from STR.  Return 0
   // if STR does not point to a valid UTF-8 character.
   static int
   fetch_char(const char* str, unsigned int *value);
+
+  // Return whether C is a Unicode or "C" locale space character.
+  static bool
+  is_unicode_space(unsigned int c);
 
  private:
   ssize_t
@@ -350,11 +440,11 @@ class Lex
   require_line();
 
   // The current location.
-  source_location
+  Location
   location() const;
 
   // A position CHARS column positions before the current location.
-  source_location
+  Location
   earlier_location(int chars) const;
 
   static bool
@@ -363,6 +453,9 @@ class Lex
   static unsigned char
   octal_value(char c)
   { return c - '0'; }
+
+  static unsigned
+  hex_val(char c);
 
   Token
   make_invalid_token()
@@ -423,7 +516,7 @@ class Lex
   one_character_operator(char);
 
   bool
-  skip_c_comment();
+  skip_c_comment(bool* found_newline);
 
   void
   skip_cpp_comment();
@@ -432,6 +525,8 @@ class Lex
   const char* input_file_name_;
   // The input file.
   FILE* input_file_;
+  // The object used to keep track of file names and line numbers.
+  Linemap* linemap_;
   // The line buffer.  This holds the current line.
   char* linebuf_;
   // The size of the line buffer.
@@ -444,6 +539,13 @@ class Lex
   size_t lineno_;
   // Whether to add a semicolon if we see a newline now.
   bool add_semi_at_eol_;
+  // Pragmas for the next function, from magic comments.
+  unsigned int pragmas_;
+  // The external name to use for a function declaration, from a magic
+  // //extern comment.
+  std::string extern_;
+  // The list of //go:linkname comments, if any.
+  Linknames* linknames_;
 };
 
 #endif // !defined(GO_LEX_H)

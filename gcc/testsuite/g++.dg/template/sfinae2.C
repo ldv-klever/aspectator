@@ -8,11 +8,10 @@ template<int T> struct cl {
   const static int value = T;
 };
 
-template<int I> void fn (char (*) [cl<I>::value] = 0 ); // { dg-message "note" }
+template<int I> void fn (char (*) [cl<I>::value] = 0 ); // { dg-error "zero-size array" }
 
 void foo (void)
 {
   fn<0> ();  // { dg-error "no matching function" }
-  // { dg-message "candidate" "candidate note" { target *-*-* } 15 }
 }
 

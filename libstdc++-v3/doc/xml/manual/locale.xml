@@ -3,12 +3,8 @@
 
 <info><title>locale</title>
   <keywordset>
-    <keyword>
-      ISO C++
-    </keyword>
-    <keyword>
-      locale
-    </keyword>
+    <keyword>ISO C++</keyword>
+    <keyword>locale</keyword>
   </keywordset>
 </info>
 
@@ -115,7 +111,7 @@ portability is an issue.
 <itemizedlist>
    <listitem>
      <para>
-       <code>`locale -a`</code> displays available locales.
+       <code>locale -a</code> displays available locales.
      </para>
 <blockquote>
 <programlisting>
@@ -562,11 +558,12 @@ global locale" (emphasis Paolo), that is:
   </biblioentry>
 
   <biblioentry>
-    <biblioid xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://www.opengroup.org/austin/" class="uri">
-    </biblioid>
-    <citetitle>
+      <title>
+	<link xmlns:xlink="http://www.w3.org/1999/xlink"
+	      xlink:href="http://pubs.opengroup.org/onlinepubs/9699919799/">
       System Interface Definitions, Issue 7 (IEEE Std. 1003.1-2008)
-    </citetitle>
+	</link>
+      </title>
     <copyright>
       <year>2008</year>
       <holder>

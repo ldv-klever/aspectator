@@ -1,4 +1,5 @@
 /* { dg-require-effective-target vect_int } */
+/* { dg-require-effective-target vect_pack_trunc } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
@@ -48,7 +49,5 @@ int main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "basic block vectorized using SLP" 0 "slp" } } */
-/* { dg-final { scan-tree-dump-times "SLP with multiple types" 1 "slp" } } */
-/* { dg-final { cleanup-tree-dump "slp" } } */
+/* { dg-final { scan-tree-dump-times "basic block vectorized" 1 "slp2" { target vect64 } } } */
   

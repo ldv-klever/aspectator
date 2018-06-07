@@ -6,25 +6,23 @@
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---                     Copyright (C) 1999-2008, AdaCore                     --
+--                     Copyright (C) 1999-2013, AdaCore                     --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -32,15 +30,16 @@
 ------------------------------------------------------------------------------
 
 --  This package provides a limited binding to the VxWorks API
+
 --  In particular, it interfaces with the VxWorks hardware interrupt
---  facilities, allowing the use of low-latency direct-vectored
---  interrupt handlers. Note that such handlers have a variety of
---  restrictions regarding system calls and language constructs. In particular,
---  the use of exception handlers and functions returning variable-length
---  objects cannot be used. Less restrictive, but higher-latency handlers can
---  be written using Ada protected procedures, Ada 83 style interrupt entries,
---  or by signalling an Ada task from within an interrupt handler using a
---  binary semaphore as described in the VxWorks Programmer's Manual.
+--  facilities, allowing the use of low-latency direct-vectored interrupt
+--  handlers. Note that such handlers have a variety of restrictions regarding
+--  system calls and language constructs. In particular, the use of exception
+--  handlers and functions returning variable-length objects cannot be used.
+--  Less restrictive, but higher-latency handlers can be written using Ada
+--  protected procedures, Ada 83 style interrupt entries, or by signalling
+--  an Ada task from within an interrupt handler using a binary semaphore
+--  as described in the VxWorks Programmer's Manual.
 --
 --  For complete documentation of the operations in this package, please
 --  consult the VxWorks Programmer's Manual and VxWorks Reference Manual.
@@ -83,6 +82,7 @@ package Interfaces.VxWorks is
    --        logMsg ("received an interrupt" & ASCII.LF & ASCII.NUL);
    --
    --        --  Acknowledge VME interrupt
+   --
    --        S := sysBusIntAck (intLevel => Level);
    --     end Handler;
    --  end P;
@@ -92,9 +92,10 @@ package Interfaces.VxWorks is
    --
    --  with P; use P;
    --  procedure Useint is
-   --     --  Be sure to use a reasonable interrupt number for the target
-   --     --  board!
+   --
+   --     --  Be sure to use a reasonable interrupt number for  board.
    --     --  This one is the unused VME graphics interrupt on the PPC MV2604
+   --
    --     Interrupt : constant := 16#14#;
    --
    --     task T;
@@ -108,6 +109,7 @@ package Interfaces.VxWorks is
    --           delay 1.0;
    --
    --           --  Generate VME interrupt, using interrupt number
+   --
    --           S := sysBusIntGen (1, Interrupt);
    --        end loop;
    --     end T;
@@ -139,24 +141,24 @@ package Interfaces.VxWorks is
      (vector    : Interrupt_Vector;
       handler   : VOIDFUNCPTR;
       parameter : System.Address := System.Null_Address) return STATUS;
-   --  Binding to the C routine intConnect. Use this to set up an
-   --  user handler. The routine generates a wrapper around the user
-   --  handler to save and restore context
+   --  Binding to the C routine intConnect. Use this to set up an user handler.
+   --  The routine generates a wrapper around the user handler to save and
+   --  restore context
 
    function intContext return int;
-   --  Binding to the C routine intContext. This function returns 1 only
-   --  if the current execution state is in interrupt context.
+   --  Binding to the C routine intContext. This function returns 1 only if the
+   --  current execution state is in interrupt context.
 
    function intVecGet
      (Vector : Interrupt_Vector) return VOIDFUNCPTR;
-   --  Binding to the C routine intVecGet. Use this to get the
-   --  existing handler for later restoral
+   --  Binding to the C routine intVecGet. Use this to get the existing handler
+   --  for later restoral
 
    procedure intVecSet
      (Vector  : Interrupt_Vector;
       Handler : VOIDFUNCPTR);
-   --  Binding to the C routine intVecSet. Use this to restore a
-   --  handler obtained using intVecGet
+   --  Binding to the C routine intVecSet. Use this to restore a handler
+   --  obtained using intVecGet
 
    function INUM_TO_IVEC (intNum : int) return Interrupt_Vector;
    --  Equivalent to the C macro INUM_TO_IVEC used to convert an interrupt
@@ -172,10 +174,10 @@ package Interfaces.VxWorks is
    --  Binding to the C routine sysBusIntAck
 
    function sysBusIntGen (intLevel : int; Intnum : int) return STATUS;
-   --  Binding to the C routine sysBusIntGen. Note that the T2
-   --  documentation implies that a vector address is the proper
-   --  argument - it's not. The interrupt number in the range
-   --  0 .. 255 (for 68K and PPC) is the correct argument.
+   --  Binding to the C routine sysBusIntGen. Note that the T2 documentation
+   --  implies that a vector address is the proper argument - it's not. The
+   --  interrupt number in the range 0 .. 255 (for 68K and PPC) is the correct
+   --  argument.
 
    procedure logMsg
      (fmt : String; arg1, arg2, arg3, arg4, arg5, arg6 : int := 0);
@@ -184,10 +186,9 @@ package Interfaces.VxWorks is
    --  (e.g logMsg ("Interrupt" & ASCII.NUL))
 
    type FP_CONTEXT is private;
-   --  Floating point context save and restore. Handlers using floating
-   --  point must be bracketed with these calls. The pFpContext parameter
-   --  should be an object of type FP_CONTEXT that is
-   --  declared local to the handler.
+   --  Floating point context save and restore. Handlers using floating point
+   --  must be bracketed with these calls. The pFpContext parameter should be
+   --  an object of type FP_CONTEXT that is declared local to the handler.
 
    procedure fppRestore (pFpContext : in out FP_CONTEXT);
    --  Restore floating point context

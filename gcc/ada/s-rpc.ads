@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -41,10 +41,7 @@ with Ada.Streams;
 
 package System.RPC is
 
-   type Partition_ID is range 0 .. 63;
-   --  This type must not be modified without checking the code in
-   --  a-except.adb, since it expects a Partition_ID whose string
-   --  representation fits on two characters.
+   type Partition_ID is range 0 .. Integer'Last;
 
    Communication_Error : exception;
 
@@ -52,12 +49,12 @@ package System.RPC is
      (Initial_Size : Ada.Streams.Stream_Element_Count) is new
        Ada.Streams.Root_Stream_Type with private;
 
-   procedure Read
+   overriding procedure Read
      (Stream : in out Params_Stream_Type;
       Item   : out Ada.Streams.Stream_Element_Array;
       Last   : out Ada.Streams.Stream_Element_Offset);
 
-   procedure Write
+   overriding procedure Write
      (Stream : in out Params_Stream_Type;
       Item   : Ada.Streams.Stream_Element_Array);
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -31,6 +31,8 @@
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+with Ada.Iterator_Interfaces;
+
 private with Ada.Containers.Red_Black_Trees;
 private with Ada.Finalization;
 private with Ada.Streams;
@@ -43,12 +45,18 @@ generic
    with function "=" (Left, Right : Element_Type) return Boolean is <>;
 
 package Ada.Containers.Indefinite_Ordered_Maps is
+   pragma Annotate (CodePeer, Skip_Analysis);
    pragma Preelaborate;
    pragma Remote_Types;
 
    function Equivalent_Keys (Left, Right : Key_Type) return Boolean;
 
-   type Map is tagged private;
+   type Map is tagged private
+   with Constant_Indexing => Constant_Reference,
+        Variable_Indexing => Reference,
+        Default_Iterator  => Iterate,
+        Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (Map);
 
    type Cursor is private;
@@ -57,6 +65,10 @@ package Ada.Containers.Indefinite_Ordered_Maps is
    Empty_Map : constant Map;
 
    No_Element : constant Cursor;
+   function Has_Element (Position : Cursor) return Boolean;
+
+   package Map_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    function "=" (Left, Right : Map) return Boolean;
 
@@ -85,6 +97,39 @@ package Ada.Containers.Indefinite_Ordered_Maps is
       Position  : Cursor;
       Process   : not null access procedure (Key     : Key_Type;
                                              Element : in out Element_Type));
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   type Reference_Type (Element : not null access Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Position  : Cursor) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   function Reference
+     (Container : aliased in out Map;
+      Position  : Cursor) return Reference_Type;
+   pragma Inline (Reference);
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Key       : Key_Type) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   function Reference
+     (Container : aliased in out Map;
+      Key       : Key_Type) return Reference_Type;
+   pragma Inline (Reference);
+
+   procedure Assign (Target : in out Map; Source : Map);
+
+   function Copy (Source : Map) return Map;
 
    procedure Move (Target : in out Map; Source : in out Map);
 
@@ -150,8 +195,6 @@ package Ada.Containers.Indefinite_Ordered_Maps is
 
    function Contains (Container : Map; Key : Key_Type) return Boolean;
 
-   function Has_Element (Position : Cursor) return Boolean;
-
    function "<" (Left, Right : Cursor) return Boolean;
 
    function ">" (Left, Right : Cursor) return Boolean;
@@ -172,6 +215,19 @@ package Ada.Containers.Indefinite_Ordered_Maps is
      (Container : Map;
       Process   : not null access procedure (Position : Cursor));
 
+   --  The map container supports iteration in both the forward and reverse
+   --  directions, hence these constructor functions return an object that
+   --  supports the Reversible_Iterator interface.
+
+   function Iterate
+     (Container : Map)
+      return Map_Iterator_Interfaces.Reversible_Iterator'Class;
+
+   function Iterate
+     (Container : Map;
+      Start     : Cursor)
+      return Map_Iterator_Interfaces.Reversible_Iterator'Class;
+
 private
 
    pragma Inline (Next);
@@ -181,7 +237,7 @@ private
    type Node_Access is access Node_Type;
 
    type Key_Access is access Key_Type;
-   type Element_Access is access Element_Type;
+   type Element_Access is access all Element_Type;
 
    type Node_Type is limited record
       Parent  : Node_Access;
@@ -200,16 +256,26 @@ private
       Tree : Tree_Types.Tree_Type;
    end record;
 
-   overriding
-   procedure Adjust (Container : in out Map);
+   overriding procedure Adjust (Container : in out Map);
 
-   overriding
-   procedure Finalize (Container : in out Map) renames Clear;
+   overriding procedure Finalize (Container : in out Map) renames Clear;
 
    use Red_Black_Trees;
-   use Tree_Types;
+   use Tree_Types, Tree_Types.Implementation;
    use Ada.Finalization;
    use Ada.Streams;
+
+   procedure Write
+     (Stream    : not null access Root_Stream_Type'Class;
+      Container : Map);
+
+   for Map'Write use Write;
+
+   procedure Read
+     (Stream    : not null access Root_Stream_Type'Class;
+      Container : out Map);
+
+   for Map'Read use Read;
 
    type Map_Access is access all Map;
    for Map_Access'Storage_Size use 0;
@@ -231,26 +297,92 @@ private
 
    for Cursor'Read use Read;
 
-   No_Element : constant Cursor := Cursor'(null, null);
+   subtype Reference_Control_Type is Implementation.Reference_Control_Type;
+   --  It is necessary to rename this here, so that the compiler can find it
 
-   procedure Write
-     (Stream    : not null access Root_Stream_Type'Class;
-      Container : Map);
-
-   for Map'Write use Write;
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
 
    procedure Read
-     (Stream    : not null access Root_Stream_Type'Class;
-      Container : out Map);
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
 
-   for Map'Read use Read;
+   for Constant_Reference_Type'Read use Read;
 
-   Empty_Map : constant Map :=
-                 (Controlled with Tree => (First  => null,
-                                           Last   => null,
-                                           Root   => null,
-                                           Length => 0,
-                                           Busy   => 0,
-                                           Lock   => 0));
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   type Reference_Type
+     (Element : not null access Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type);
+
+   for Reference_Type'Read use Read;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type);
+
+   for Reference_Type'Write use Write;
+
+   --  Three operations are used to optimize in the expansion of "for ... of"
+   --  loops: the Next(Cursor) procedure in the visible part, and the following
+   --  Pseudo_Reference and Get_Element_Access functions.  See Sem_Ch5 for
+   --  details.
+
+   function Pseudo_Reference
+     (Container : aliased Map'Class) return Reference_Control_Type;
+   pragma Inline (Pseudo_Reference);
+   --  Creates an object of type Reference_Control_Type pointing to the
+   --  container, and increments the Lock. Finalization of this object will
+   --  decrement the Lock.
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access;
+   --  Returns a pointer to the element designated by Position.
+
+   Empty_Map : constant Map := (Controlled with others => <>);
+
+   No_Element : constant Cursor := Cursor'(null, null);
+
+   type Iterator is new Limited_Controlled and
+     Map_Iterator_Interfaces.Reversible_Iterator with
+   record
+      Container : Map_Access;
+      Node      : Node_Access;
+   end record
+     with Disable_Controlled => not T_Check;
+
+   overriding procedure Finalize (Object : in out Iterator);
+
+   overriding function First (Object : Iterator) return Cursor;
+   overriding function Last  (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
+
+   overriding function Previous
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
 
 end Ada.Containers.Indefinite_Ordered_Maps;

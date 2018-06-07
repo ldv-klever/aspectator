@@ -1,7 +1,8 @@
-// { dg-options "-std=gnu++0x -fno-inline" }
+// { dg-options "-fno-inline" }
+// { dg-do run { target c++11 } }
 // { dg-require-string-conversions "" }
 
-// Copyright (C) 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2011-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -31,12 +32,11 @@ class twstring : public std::basic_string<wchar_t>
 public:
   twstring() : std::basic_string<wchar_t>() {}
   twstring(twstring&& s) : std::basic_string<wchar_t>(std::move(s)) {}
+  twstring& operator=(twstring&&) = default;
 };
 
 void test01()
 {
-  bool test __attribute__((unused)) = true;
-
   twstring a, b;
   a.push_back(L'1');
   b = std::move(a);

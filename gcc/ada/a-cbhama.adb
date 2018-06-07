@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,10 +33,17 @@ pragma Elaborate_All (Ada.Containers.Hash_Tables.Generic_Bounded_Operations);
 with Ada.Containers.Hash_Tables.Generic_Bounded_Keys;
 pragma Elaborate_All (Ada.Containers.Hash_Tables.Generic_Bounded_Keys);
 
-with Ada.Containers.Prime_Numbers;  use Ada.Containers.Prime_Numbers;
-with System;  use type System.Address;
+with Ada.Containers.Helpers; use Ada.Containers.Helpers;
+
+with Ada.Containers.Prime_Numbers; use Ada.Containers.Prime_Numbers;
+
+with System; use type System.Address;
 
 package body Ada.Containers.Bounded_Hashed_Maps is
+
+   pragma Warnings (Off, "variable ""Busy*"" is not referenced");
+   pragma Warnings (Off, "variable ""Lock*"" is not referenced");
+   --  See comment in Ada.Containers.Helpers
 
    -----------------------
    -- Local Subprograms --
@@ -147,7 +154,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
          return;
       end if;
 
-      if Target.Capacity < Source.Length then
+      if Checks and then Target.Capacity < Source.Length then
          raise Capacity_Error
            with "Target capacity is less than Source length";
       end if;
@@ -173,6 +180,69 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    begin
       HT_Ops.Clear (Container);
    end Clear;
+
+   ------------------------
+   -- Constant_Reference --
+   ------------------------
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Position  : Cursor) return Constant_Reference_Type
+   is
+   begin
+      if Checks and then Position.Container = null then
+         raise Constraint_Error with
+           "Position cursor has no element";
+      end if;
+
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
+         raise Program_Error with
+           "Position cursor designates wrong map";
+      end if;
+
+      pragma Assert (Vet (Position),
+                     "Position cursor in Constant_Reference is bad");
+
+      declare
+         N : Node_Type renames Container.Nodes (Position.Node);
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
+      begin
+         return R : constant Constant_Reference_Type :=
+           (Element => N.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Constant_Reference;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Key       : Key_Type) return Constant_Reference_Type
+   is
+      Node : constant Count_Type :=
+               Key_Ops.Find (Container'Unrestricted_Access.all, Key);
+
+   begin
+      if Checks and then Node = 0 then
+         raise Constraint_Error with "key not in map";
+      end if;
+
+      declare
+         N : Node_Type renames Container.Nodes (Node);
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
+      begin
+         return R : constant Constant_Reference_Type :=
+           (Element => N.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Constant_Reference;
 
    --------------
    -- Contains --
@@ -202,7 +272,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       elsif Capacity >= Source.Length then
          C := Capacity;
 
-      else
+      elsif Checks then
          raise Capacity_Error with "Capacity value too small";
       end if;
 
@@ -236,7 +306,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    begin
       Key_Ops.Delete_Key_Sans_Free (Container, Key, X);
 
-      if X = 0 then
+      if Checks and then X = 0 then
          raise Constraint_Error with "attempt to delete key not in map";
       end if;
 
@@ -245,20 +315,18 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    procedure Delete (Container : in out Map; Position : in out Cursor) is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of Delete equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Delete designates wrong map";
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error with
-           "Delete attempted to tamper with cursors (map is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       pragma Assert (Vet (Position), "bad cursor in Delete");
 
@@ -273,10 +341,11 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    -------------
 
    function Element (Container : Map; Key : Key_Type) return Element_Type is
-      Node : constant Count_Type := Key_Ops.Find (Container, Key);
+      Node : constant Count_Type :=
+               Key_Ops.Find (Container'Unrestricted_Access.all, Key);
 
    begin
-      if Node = 0 then
+      if Checks and then Node = 0 then
          raise Constraint_Error with
            "no element available because key not in map";
       end if;
@@ -286,7 +355,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    function Element (Position : Cursor) return Element_Type is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of function Element equals No_Element";
       end if;
@@ -314,12 +383,12 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    function Equivalent_Keys (Left, Right : Cursor)
      return Boolean is
    begin
-      if Left.Node = 0 then
+      if Checks and then Left.Node = 0 then
          raise Constraint_Error with
            "Left cursor of Equivalent_Keys equals No_Element";
       end if;
 
-      if Right.Node = 0 then
+      if Checks and then Right.Node = 0 then
          raise Constraint_Error with
            "Right cursor of Equivalent_Keys equals No_Element";
       end if;
@@ -338,7 +407,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    function Equivalent_Keys (Left : Cursor; Right : Key_Type) return Boolean is
    begin
-      if Left.Node = 0 then
+      if Checks and then Left.Node = 0 then
          raise Constraint_Error with
            "Left cursor of Equivalent_Keys equals No_Element";
       end if;
@@ -355,7 +424,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    function Equivalent_Keys (Left : Key_Type; Right : Cursor) return Boolean is
    begin
-      if Right.Node = 0 then
+      if Checks and then Right.Node = 0 then
          raise Constraint_Error with
            "Right cursor of Equivalent_Keys equals No_Element";
       end if;
@@ -381,19 +450,30 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       HT_Ops.Free (Container, X);
    end Exclude;
 
+   --------------
+   -- Finalize --
+   --------------
+
+   procedure Finalize (Object : in out Iterator) is
+   begin
+      if Object.Container /= null then
+         Unbusy (Object.Container.TC);
+      end if;
+   end Finalize;
+
    ----------
    -- Find --
    ----------
 
    function Find (Container : Map; Key : Key_Type) return Cursor is
-      Node : constant Count_Type := Key_Ops.Find (Container, Key);
-
+      Node : constant Count_Type :=
+               Key_Ops.Find (Container'Unrestricted_Access.all, Key);
    begin
       if Node = 0 then
          return No_Element;
+      else
+         return Cursor'(Container'Unrestricted_Access, Node);
       end if;
-
-      return Cursor'(Container'Unrestricted_Access, Node);
    end Find;
 
    -----------
@@ -402,14 +482,28 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    function First (Container : Map) return Cursor is
       Node : constant Count_Type := HT_Ops.First (Container);
-
    begin
       if Node = 0 then
          return No_Element;
+      else
+         return Cursor'(Container'Unrestricted_Access, Node);
       end if;
-
-      return Cursor'(Container'Unrestricted_Access, Node);
    end First;
+
+   function First (Object : Iterator) return Cursor is
+   begin
+      return Object.Container.First;
+   end First;
+
+   ------------------------
+   -- Get_Element_Access --
+   ------------------------
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access is
+   begin
+      return Position.Container.Nodes (Position.Node).Element'Access;
+   end Get_Element_Access;
 
    -----------------
    -- Has_Element --
@@ -446,14 +540,10 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       Insert (Container, Key, New_Item, Position, Inserted);
 
       if not Inserted then
-         if Container.Lock > 0 then
-            raise Program_Error with
-              "Include attempted to tamper with elements (map is locked)";
-         end if;
+         TE_Check (Container.TC);
 
          declare
             N : Node_Type renames Container.Nodes (Position.Node);
-
          begin
             N.Key := Key;
             N.Element := New_Item;
@@ -488,9 +578,20 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       -----------------
 
       procedure Assign_Key (Node : in out Node_Type) is
+         New_Item : Element_Type;
+         pragma Unmodified (New_Item);
+         --  Default-initialized element (ok to reference, see below)
+
       begin
          Node.Key := Key;
-         --  Node.Element := New_Item;
+
+         --  There is no explicit element provided, but in an instance the
+         --  element type may be a scalar with a Default_Value aspect, or a
+         --  composite type with such a scalar component, or components with
+         --  default initialization, so insert a possibly initialized element
+         --  under the given key.
+
+         Node.Element := New_Item;
       end Assign_Key;
 
       --------------
@@ -507,20 +608,17 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    --  Start of processing for Insert
 
    begin
-      --  ???
-      --  if HT_Ops.Capacity (HT) = 0 then
-      --     HT_Ops.Reserve_Capacity (HT, 1);
-      --  end if;
+      --  The buckets array length is specified by the user as a discriminant
+      --  of the container type, so it is possible for the buckets array to
+      --  have a length of zero. We must check for this case specifically, in
+      --  order to prevent divide-by-zero errors later, when we compute the
+      --  buckets array index value for a key, given its hash value.
+
+      if Checks and then Container.Buckets'Length = 0 then
+         raise Capacity_Error with "No capacity for insertion";
+      end if;
 
       Local_Insert (Container, Key, Position.Node, Inserted);
-
-      --  ???
-      --  if Inserted
-      --    and then HT.Length > HT_Ops.Capacity (HT)
-      --  then
-      --     HT_Ops.Reserve_Capacity (HT, HT.Length);
-      --  end if;
-
       Position.Container := Container'Unchecked_Access;
    end Insert;
 
@@ -567,20 +665,17 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    --  Start of processing for Insert
 
    begin
-      --  ??
-      --  if HT_Ops.Capacity (HT) = 0 then
-      --     HT_Ops.Reserve_Capacity (HT, 1);
-      --  end if;
+      --  The buckets array length is specified by the user as a discriminant
+      --  of the container type, so it is possible for the buckets array to
+      --  have a length of zero. We must check for this case specifically, in
+      --  order to prevent divide-by-zero errors later, when we compute the
+      --  buckets array index value for a key, given its hash value.
+
+      if Checks and then Container.Buckets'Length = 0 then
+         raise Capacity_Error with "No capacity for insertion";
+      end if;
 
       Local_Insert (Container, Key, Position.Node, Inserted);
-
-      --  ???
-      --  if Inserted
-      --    and then HT.Length > HT_Ops.Capacity (HT)
-      --  then
-      --     HT_Ops.Reserve_Capacity (HT, HT.Length);
-      --  end if;
-
       Position.Container := Container'Unchecked_Access;
    end Insert;
 
@@ -597,7 +692,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    begin
       Insert (Container, Key, New_Item, Position, Inserted);
 
-      if not Inserted then
+      if Checks and then not Inserted then
          raise Constraint_Error with
            "attempt to insert key already in map";
       end if;
@@ -634,22 +729,24 @@ package body Ada.Containers.Bounded_Hashed_Maps is
          Process (Cursor'(Container'Unrestricted_Access, Node));
       end Process_Node;
 
-      B : Natural renames Container'Unrestricted_Access.Busy;
+      Busy : With_Busy (Container.TC'Unrestricted_Access);
 
    --  Start of processing for Iterate
 
    begin
-      B := B + 1;
+      Local_Iterate (Container);
+   end Iterate;
 
-      begin
-         Local_Iterate (Container);
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
-
-      B := B - 1;
+   function Iterate
+     (Container : Map) return Map_Iterator_Interfaces.Forward_Iterator'Class
+   is
+   begin
+      return It : constant Iterator :=
+        (Limited_Controlled with
+           Container => Container'Unrestricted_Access)
+      do
+         Busy (Container.TC'Unrestricted_Access.all);
+      end return;
    end Iterate;
 
    ---------
@@ -658,7 +755,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
    function Key (Position : Cursor) return Key_Type is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of function Key equals No_Element";
       end if;
@@ -690,12 +787,10 @@ package body Ada.Containers.Bounded_Hashed_Maps is
          return;
       end if;
 
-      if Source.Busy > 0 then
-         raise Program_Error with
-           "attempt to tamper with cursors (container is busy)";
-      end if;
+      TC_Check (Source.TC);
 
-      Assign (Target => Target, Source => Source);
+      Target.Assign (Source);
+      Source.Clear;
    end Move;
 
    ----------
@@ -718,13 +813,12 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       declare
          M    : Map renames Position.Container.all;
          Node : constant Count_Type := HT_Ops.Next (M, Position.Node);
-
       begin
          if Node = 0 then
             return No_Element;
+         else
+            return Cursor'(Position.Container, Node);
          end if;
-
-         return Cursor'(Position.Container, Node);
       end;
    end Next;
 
@@ -732,6 +826,38 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    begin
       Position := Next (Position);
    end Next;
+
+   function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor
+   is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Checks and then Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Next designates wrong map";
+      end if;
+
+      return Next (Position);
+   end Next;
+
+   ----------------------
+   -- Pseudo_Reference --
+   ----------------------
+
+   function Pseudo_Reference
+     (Container : aliased Map'Class) return Reference_Control_Type
+   is
+      TC : constant Tamper_Counts_Access :=
+        Container.TC'Unrestricted_Access;
+   begin
+      return R : constant Reference_Control_Type := (Controlled with TC) do
+         Lock (TC.all);
+      end return;
+   end Pseudo_Reference;
 
    -------------------
    -- Query_Element --
@@ -743,7 +869,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
                    procedure (Key : Key_Type; Element : Element_Type))
    is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of Query_Element equals No_Element";
       end if;
@@ -753,26 +879,9 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       declare
          M : Map renames Position.Container.all;
          N : Node_Type renames M.Nodes (Position.Node);
-         B : Natural renames M.Busy;
-         L : Natural renames M.Lock;
-
+         Lock : With_Lock (M.TC'Unrestricted_Access);
       begin
-         B := B + 1;
-         L := L + 1;
-
-         declare
-
-         begin
-            Process (N.Key, N.Element);
-         exception
-            when others =>
-               L := L - 1;
-               B := B - 1;
-               raise;
-         end;
-
-         L := L - 1;
-         B := B - 1;
+         Process (N.Key, N.Element);
       end;
    end Query_Element;
 
@@ -832,6 +941,84 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       raise Program_Error with "attempt to stream map cursor";
    end Read;
 
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   ---------------
+   -- Reference --
+   ---------------
+
+   function Reference
+     (Container : aliased in out Map;
+      Position  : Cursor) return Reference_Type
+   is
+   begin
+      if Checks and then Position.Container = null then
+         raise Constraint_Error with
+           "Position cursor has no element";
+      end if;
+
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
+         raise Program_Error with
+           "Position cursor designates wrong map";
+      end if;
+
+      pragma Assert (Vet (Position),
+                     "Position cursor in function Reference is bad");
+
+      declare
+         N : Node_Type renames Container.Nodes (Position.Node);
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
+      begin
+         return R : constant Reference_Type :=
+           (Element => N.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Reference;
+
+   function Reference
+     (Container : aliased in out Map;
+      Key       : Key_Type) return Reference_Type
+   is
+      Node : constant Count_Type := Key_Ops.Find (Container, Key);
+
+   begin
+      if Checks and then Node = 0 then
+         raise Constraint_Error with "key not in map";
+      end if;
+
+      declare
+         N : Node_Type renames Container.Nodes (Node);
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
+      begin
+         return R : constant Reference_Type :=
+           (Element => N.Element'Access,
+            Control => (Controlled with TC))
+         do
+            Lock (TC.all);
+         end return;
+      end;
+   end Reference;
+
    -------------
    -- Replace --
    -------------
@@ -844,19 +1031,15 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       Node : constant Count_Type := Key_Ops.Find (Container, Key);
 
    begin
-      if Node = 0 then
+      if Checks and then Node = 0 then
          raise Constraint_Error with
            "attempt to replace key not in map";
       end if;
 
-      if Container.Lock > 0 then
-         raise Program_Error with
-           "Replace attempted to tamper with elements (map is locked)";
-      end if;
+      TE_Check (Container.TC);
 
       declare
          N : Node_Type renames Container.Nodes (Node);
-
       begin
          N.Key := Key;
          N.Element := New_Item;
@@ -873,20 +1056,18 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       New_Item  : Element_Type)
    is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of Replace_Element equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Replace_Element designates wrong map";
       end if;
 
-      if Position.Container.Lock > 0 then
-         raise Program_Error with
-           "Replace_Element attempted to tamper with elements (map is locked)";
-      end if;
+      TE_Check (Position.Container.TC);
 
       pragma Assert (Vet (Position), "bad cursor in Replace_Element");
 
@@ -902,7 +1083,7 @@ package body Ada.Containers.Bounded_Hashed_Maps is
       Capacity  : Count_Type)
    is
    begin
-      if Capacity > Container.Capacity then
+      if Checks and then Capacity > Container.Capacity then
          raise Capacity_Error with "requested capacity is too large";
       end if;
    end Reserve_Capacity;
@@ -927,12 +1108,13 @@ package body Ada.Containers.Bounded_Hashed_Maps is
                                              Element : in out Element_Type))
    is
    begin
-      if Position.Node = 0 then
+      if Checks and then Position.Node = 0 then
          raise Constraint_Error with
            "Position cursor of Update_Element equals No_Element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor of Update_Element designates wrong map";
       end if;
@@ -941,24 +1123,9 @@ package body Ada.Containers.Bounded_Hashed_Maps is
 
       declare
          N : Node_Type renames Container.Nodes (Position.Node);
-         B : Natural renames Container.Busy;
-         L : Natural renames Container.Lock;
-
+         Lock : With_Lock (Container.TC'Unrestricted_Access);
       begin
-         B := B + 1;
-         L := L + 1;
-
-         begin
-            Process (N.Key, N.Element);
-         exception
-            when others =>
-               L := L - 1;
-               B := B - 1;
-               raise;
-         end;
-
-         L := L - 1;
-         B := B - 1;
+         Process (N.Key, N.Element);
       end;
    end Update_Element;
 
@@ -1001,7 +1168,8 @@ package body Ada.Containers.Bounded_Hashed_Maps is
             return False;
          end if;
 
-         X := M.Buckets (Key_Ops.Index (M, M.Nodes (Position.Node).Key));
+         X := M.Buckets (Key_Ops.Checked_Index
+                          (M, M.Nodes (Position.Node).Key));
 
          for J in 1 .. M.Length loop
             if X = Position.Node then
@@ -1063,6 +1231,22 @@ package body Ada.Containers.Bounded_Hashed_Maps is
    is
    begin
       raise Program_Error with "attempt to stream map cursor";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
    end Write;
 
 end Ada.Containers.Bounded_Hashed_Maps;

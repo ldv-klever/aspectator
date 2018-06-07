@@ -1,5 +1,5 @@
 # Makefile.rtl for GNU Ada Compiler (GNAT).
-#   Copyright (C) 2003-2010, Free Software Foundation, Inc.
+#   Copyright (C) 2003-2012, Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -18,7 +18,7 @@
 #<http://www.gnu.org/licenses/>.
 
 # This makefile fragment is included in the ada Makefile (both Unix
-# and NT and VMS versions).
+# and Windows).
 
 # Its purpose is to allow the separate maintainence of the list of
 # GNATRTL objects, which frequently changes.
@@ -28,11 +28,11 @@ GNATRTL_TASKING_OBJS= \
   a-dispat$(objext) \
   a-dynpri$(objext) \
   a-interr$(objext) \
-  a-intsig$(objext) \
   a-intnam$(objext) \
   a-reatim$(objext) \
   a-retide$(objext) \
   a-rttiev$(objext) \
+  a-synbar$(objext) \
   a-sytaco$(objext) \
   a-tasatt$(objext) \
   a-taside$(objext) \
@@ -43,11 +43,10 @@ GNATRTL_TASKING_OBJS= \
   g-signal$(objext) \
   g-tastus$(objext) \
   g-thread$(objext) \
-  s-asthan$(objext) \
   s-inmaop$(objext) \
   s-interr$(objext) \
   s-intman$(objext) \
-  s-oscons$(objext) \
+  s-mudido$(objext) \
   s-osinte$(objext) \
   s-proinf$(objext) \
   s-solita$(objext) \
@@ -74,7 +73,19 @@ GNATRTL_TASKING_OBJS= \
   s-tpoben$(objext) \
   s-tpobop$(objext) \
   s-tposen$(objext) \
-  s-tratas$(objext) $(EXTRA_GNATRTL_TASKING_OBJS)
+  s-tratas$(objext) \
+  thread$(objext) \
+  $(EXTRA_GNATRTL_TASKING_OBJS)
+
+# Objects the require IEEE Float
+GNATRTL_ALTIVEC_OBJS= \
+  g-allein$(objext) \
+  g-alleve$(objext) \
+  g-altcon$(objext) \
+  g-altive$(objext) \
+  g-alveop$(objext) \
+  g-alvety$(objext) \
+  g-alvevi$(objext)
 
 # Objects needed for non-tasking.
 GNATRTL_NONTASKING_OBJS= \
@@ -86,12 +97,21 @@ GNATRTL_NONTASKING_OBJS= \
   a-calend$(objext) \
   a-calfor$(objext) \
   a-catizo$(objext) \
+  a-cbdlli$(objext) \
   a-cbhama$(objext) \
   a-cbhase$(objext) \
-  a-cborse$(objext) \
-  a-cbdlli$(objext) \
+  a-cbmutr$(objext) \
   a-cborma$(objext) \
+  a-cborse$(objext) \
+  a-cbprqu$(objext) \
+  a-cbsyqu$(objext) \
   a-cdlili$(objext) \
+  a-cfdlli$(objext) \
+  a-cfhama$(objext) \
+  a-cfhase$(objext) \
+  a-cfinve$(objext) \
+  a-cforma$(objext) \
+  a-cforse$(objext) \
   a-cgaaso$(objext) \
   a-cgarso$(objext) \
   a-cgcaso$(objext) \
@@ -100,8 +120,8 @@ GNATRTL_NONTASKING_OBJS= \
   a-charac$(objext) \
   a-chlat1$(objext) \
   a-chlat9$(objext) \
-  a-chtgbo$(objext) \
   a-chtgbk$(objext) \
+  a-chtgbo$(objext) \
   a-chtgke$(objext) \
   a-chtgop$(objext) \
   a-chzla1$(objext) \
@@ -109,20 +129,27 @@ GNATRTL_NONTASKING_OBJS= \
   a-cidlli$(objext) \
   a-cihama$(objext) \
   a-cihase$(objext) \
+  a-cimutr$(objext) \
   a-ciorma$(objext) \
   a-ciormu$(objext) \
   a-ciorse$(objext) \
   a-clrefi$(objext) \
+  a-coboho$(objext) \
+  a-cobove$(objext) \
+  a-cofove$(objext) \
+  a-cogeso$(objext) \
   a-cohama$(objext) \
   a-cohase$(objext) \
   a-cohata$(objext) \
+  a-coinho$(objext) \
   a-coinve$(objext) \
   a-colien$(objext) \
   a-colire$(objext) \
   a-comlin$(objext) \
+  a-comutr$(objext) \
+  a-conhel$(objext) \
   a-contai$(objext) \
   a-convec$(objext) \
-  a-cobove$(objext) \
   a-coorma$(objext) \
   a-coormu$(objext) \
   a-coorse$(objext) \
@@ -132,6 +159,9 @@ GNATRTL_NONTASKING_OBJS= \
   a-crbtgk$(objext) \
   a-crbtgo$(objext) \
   a-crdlli$(objext) \
+  a-csquin$(objext) \
+  a-cuprqu$(objext) \
+  a-cusyqu$(objext) \
   a-cwila1$(objext) \
   a-cwila9$(objext) \
   a-decima$(objext) \
@@ -144,13 +174,13 @@ GNATRTL_NONTASKING_OBJS= \
   a-envvar$(objext) \
   a-except$(objext) \
   a-exctra$(objext) \
-  a-filico$(objext) \
   a-finali$(objext) \
   a-flteio$(objext) \
   a-fwteio$(objext) \
   a-fzteio$(objext) \
   a-inteio$(objext) \
   a-ioexce$(objext) \
+  a-iteint$(objext) \
   a-iwteio$(objext) \
   a-izteio$(objext) \
   a-lcteio$(objext) \
@@ -170,30 +200,43 @@ GNATRTL_NONTASKING_OBJS= \
   a-locale$(objext) \
   a-ncelfu$(objext) \
   a-ngcefu$(objext) \
+  a-ngcoar$(objext) \
   a-ngcoty$(objext) \
   a-ngelfu$(objext) \
   a-ngrear$(objext) \
   a-nlcefu$(objext) \
+  a-nlcoar$(objext) \
   a-nlcoty$(objext) \
   a-nlelfu$(objext) \
+  a-nllcar$(objext) \
   a-nllcef$(objext) \
   a-nllcty$(objext) \
   a-nllefu$(objext) \
+  a-nllrar$(objext) \
+  a-nlrear$(objext) \
   a-nscefu$(objext) \
   a-nscoty$(objext) \
   a-nselfu$(objext) \
+  a-nucoar$(objext) \
   a-nucoty$(objext) \
   a-nudira$(objext) \
   a-nuelfu$(objext) \
   a-nuflra$(objext) \
   a-numaux$(objext) \
   a-numeri$(objext) \
-  a-rbtgbo$(objext) \
+  a-nurear$(objext) \
   a-rbtgbk$(objext) \
+  a-rbtgbo$(objext) \
   a-rbtgso$(objext) \
+  a-sbecin$(objext) \
+  a-sbhcin$(objext) \
+  a-sblcin$(objext) \
   a-scteio$(objext) \
   a-secain$(objext) \
   a-sequio$(objext) \
+  a-sfecin$(objext) \
+  a-sfhcin$(objext) \
+  a-sflcin$(objext) \
   a-sfteio$(objext) \
   a-sfwtio$(objext) \
   a-sfztio$(objext) \
@@ -238,10 +281,13 @@ GNATRTL_NONTASKING_OBJS= \
   a-stzsea$(objext) \
   a-stzsup$(objext) \
   a-stzunb$(objext) \
+  a-suecin$(objext) \
   a-suenco$(objext) \
   a-suenst$(objext) \
   a-suewst$(objext) \
   a-suezst$(objext) \
+  a-suhcin$(objext) \
+  a-sulcin$(objext) \
   a-suteio$(objext) \
   a-swbwha$(objext) \
   a-swfwha$(objext) \
@@ -280,6 +326,7 @@ GNATRTL_NONTASKING_OBJS= \
   a-tiunio$(objext) \
   a-unccon$(objext) \
   a-uncdea$(objext) \
+  a-undesu$(objext) \
   a-wichha$(objext) \
   a-wichun$(objext) \
   a-widcha$(objext) \
@@ -331,15 +378,9 @@ GNATRTL_NONTASKING_OBJS= \
   ada$(objext) \
   calendar$(objext) \
   directio$(objext) \
-  g-allein$(objext) \
-  g-alleve$(objext) \
-  g-altcon$(objext) \
-  g-altive$(objext) \
-  g-alveop$(objext) \
-  g-alvety$(objext) \
-  g-alvevi$(objext) \
   g-arrspl$(objext) \
   g-awk$(objext) \
+  g-binenv$(objext) \
   g-bubsor$(objext) \
   g-busora$(objext) \
   g-busorg$(objext) \
@@ -369,8 +410,11 @@ GNATRTL_NONTASKING_OBJS= \
   g-excact$(objext) \
   g-except$(objext) \
   g-exctra$(objext) \
+  s-exctra$(objext) \
   g-expect$(objext) \
+  g-exptty$(objext) \
   g-flocon$(objext) \
+  g-forstr$(objext) \
   g-heasor$(objext) \
   g-hesora$(objext) \
   g-hesorg$(objext) \
@@ -388,6 +432,7 @@ GNATRTL_NONTASKING_OBJS= \
   g-rannum$(objext) \
   g-regexp$(objext) \
   g-regpat$(objext) \
+  g-rewdat$(objext) \
   g-sechas$(objext) \
   g-sehamd$(objext) \
   g-sehash$(objext) \
@@ -409,12 +454,16 @@ GNATRTL_NONTASKING_OBJS= \
   g-sptabo$(objext) \
   g-sptain$(objext) \
   g-sptavs$(objext) \
+  g-strhas$(objext) \
   g-string$(objext) \
   g-strspl$(objext) \
   g-table$(objext) \
   g-tasloc$(objext) \
   g-timsta$(objext) \
   g-traceb$(objext) \
+  g-trasym$(objext) \
+  s-trasym$(objext) \
+  g-tty$(objext) \
   g-u3spch$(objext) \
   g-utf_32$(objext) \
   g-wispch$(objext) \
@@ -426,7 +475,6 @@ GNATRTL_NONTASKING_OBJS= \
   i-cexten$(objext) \
   i-cobol$(objext) \
   i-cpoint$(objext) \
-  i-cpp$(objext) \
   i-cstrea$(objext) \
   i-cstrin$(objext) \
   i-fortra$(objext) \
@@ -439,9 +487,14 @@ GNATRTL_NONTASKING_OBJS= \
   s-arit64$(objext) \
   s-assert$(objext) \
   s-atacco$(objext) \
+  s-atocou$(objext) \
+  s-atopri$(objext) \
   s-auxdec$(objext) \
+  s-bignum$(objext) \
   s-bitops$(objext) \
   s-boarop$(objext) \
+  s-boustr$(objext) \
+  s-bytswa$(objext) \
   s-carsi8$(objext) \
   s-carun8$(objext) \
   s-casi16$(objext) \
@@ -463,9 +516,16 @@ GNATRTL_NONTASKING_OBJS= \
   s-conca9$(objext) \
   s-crc32$(objext)  \
   s-crtl$(objext)   \
-  s-crtrun$(objext) \
+  s-diflio$(objext) \
+  s-diinio$(objext) \
+  s-dim$(objext)    \
+  s-dimkio$(objext) \
+  s-dimmks$(objext) \
   s-direio$(objext) \
+  s-dmotpr$(objext) \
   s-dsaser$(objext) \
+  s-elaall$(objext) \
+  s-excdeb$(objext) \
   s-except$(objext) \
   s-exctab$(objext) \
   s-exnint$(objext) \
@@ -482,15 +542,13 @@ GNATRTL_NONTASKING_OBJS= \
   s-fatllf$(objext) \
   s-fatsfl$(objext) \
   s-ficobl$(objext) \
+  s-filatt$(objext) \
   s-fileio$(objext) \
-  s-filofl$(objext) \
-  s-finimp$(objext) \
+  s-finmas$(objext) \
   s-finroo$(objext) \
-  s-fishfl$(objext) \
+  s-flocon$(objext) \
   s-fore$(objext)   \
-  s-fvadfl$(objext) \
-  s-fvaffl$(objext) \
-  s-fvagfl$(objext) \
+  s-gearop$(objext) \
   s-geveop$(objext) \
   s-gloloc$(objext) \
   s-htable$(objext) \
@@ -511,6 +569,7 @@ GNATRTL_NONTASKING_OBJS= \
   s-imgwch$(objext) \
   s-imgwiu$(objext) \
   s-io$(objext)     \
+  s-llflex$(objext) \
   s-maccod$(objext) \
   s-mantis$(objext) \
   s-mastop$(objext) \
@@ -518,6 +577,7 @@ GNATRTL_NONTASKING_OBJS= \
   s-memory$(objext) \
   s-multip$(objext) \
   s-os_lib$(objext) \
+  s-oscons$(objext) \
   s-osprim$(objext) \
   s-pack03$(objext) \
   s-pack05$(objext) \
@@ -584,6 +644,7 @@ GNATRTL_NONTASKING_OBJS= \
   s-powtab$(objext) \
   s-purexc$(objext) \
   s-rannum$(objext) \
+  s-ransee$(objext) \
   s-regexp$(objext) \
   s-regpat$(objext) \
   s-restri$(objext) \
@@ -594,12 +655,13 @@ GNATRTL_NONTASKING_OBJS= \
   s-sequio$(objext) \
   s-shasto$(objext) \
   s-soflin$(objext) \
+  s-spsufi$(objext) \
   s-stache$(objext) \
   s-stalib$(objext) \
   s-stausa$(objext) \
-  s-stchop$(objext) \
   s-stoele$(objext) \
   s-stopoo$(objext) \
+  s-stposu$(objext) \
   s-stratt$(objext) \
   s-strhas$(objext) \
   s-string$(objext) \
@@ -610,7 +672,6 @@ GNATRTL_NONTASKING_OBJS= \
   s-traent$(objext) \
   s-unstyp$(objext) \
   s-utf_32$(objext) \
-  s-vaflop$(objext) \
   s-valboo$(objext) \
   s-valcha$(objext) \
   s-valdec$(objext) \
@@ -626,7 +687,6 @@ GNATRTL_NONTASKING_OBJS= \
   s-veboop$(objext) \
   s-vector$(objext) \
   s-vercon$(objext) \
-  s-vmexta$(objext) \
   s-wchcnv$(objext) \
   s-wchcon$(objext) \
   s-wchjis$(objext) \
@@ -646,5 +706,6 @@ GNATRTL_NONTASKING_OBJS= \
   text_io$(objext) \
   unchconv$(objext) \
   unchdeal$(objext) \
+  $(GNATRTL_ALTIVEC_OBJS) \
   $(GNATRTL_SOCKETS_OBJS) \
   $(EXTRA_GNATRTL_NONTASKING_OBJS)

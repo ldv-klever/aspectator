@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -82,6 +82,7 @@ package Exp_Tss is
    TSS_Deep_Finalize      : constant TNT := "DF";  -- Deep Finalize
    TSS_Deep_Initialize    : constant TNT := "DI";  -- Deep Initialize
    TSS_Composite_Equality : constant TNT := "EQ";  -- Composite Equality
+   TSS_Finalize_Address   : constant TNT := "FD";  -- Finalize Address
    TSS_From_Any           : constant TNT := "FA";  -- PolyORB/DSA From_Any
    TSS_Init_Proc          : constant TNT := "IP";  -- Initialization Procedure
    TSS_CPP_Init_Proc      : constant TNT := "IC";  -- Init C++ dispatch tables
@@ -103,6 +104,7 @@ package Exp_Tss is
       TSS_Deep_Finalize,
       TSS_Deep_Initialize,
       TSS_Composite_Equality,
+      TSS_Finalize_Address,
       TSS_From_Any,
       TSS_Init_Proc,
       TSS_CPP_Init_Proc,
@@ -211,7 +213,7 @@ package Exp_Tss is
    --  case arises for concurrent types. Such types do not themselves have an
    --  init proc TSS, but initialization is required. The init proc used is
    --  the one for the corresponding record type (see Base_Init_Proc). If
-   --  Ref is present it is call to a subprogram whose profile matches the
+   --  Ref is present it is a call to a subprogram whose profile matches the
    --  profile of the required constructor (this argument is used to handle
    --  non-default CPP constructors).
 

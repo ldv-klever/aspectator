@@ -1,17 +1,16 @@
 /* PR c++/43081 */
-/* { dg-do compile } */
-/* { dg-options "-std=c++0x" } */
+/* { dg-do compile { target c++11 } } */
 
 struct A
 {
   typedef void (F)();
-  F f = []{}; /* { dg-error "invalid initializer" } */
+  F f = []{}; /* { dg-error "invalid pure" } */
 };
 
 struct B
 {
   typedef void (F)();
-  F f = 1; /* { dg-error "invalid initializer" } */
-  virtual F f2 = 2; /* { dg-error "invalid initializer" } */
-  F f3 = 3; /* { dg-error "invalid initializer" } */
+  F f = 1; /* { dg-error "invalid pure" } */
+  virtual F f2 = 2; /* { dg-error "invalid pure" } */
+  F f3 = 3; /* { dg-error "invalid pure" } */
 };

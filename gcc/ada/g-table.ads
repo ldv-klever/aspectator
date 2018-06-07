@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 1998-2009, AdaCore                     --
+--                     Copyright (C) 1998-2015, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -59,7 +57,7 @@ package GNAT.Table is
    pragma Elaborate_Body;
 
    --  Table_Component_Type and Table_Index_Type specify the type of the
-   --  array, Table_Low_Bound is the lower bound. Index_type must be an
+   --  array, Table_Low_Bound is the lower bound. Table_Index_Type must be an
    --  integer type. The effect is roughly to declare:
 
    --    Table : array (Table_Index_Type range Table_Low_Bound .. <>)
@@ -202,5 +200,26 @@ package GNAT.Table is
    --  this function has the possible side effect of reallocating the table.
    --  This means that a reference X.Table (X.Allocate) is incorrect, since
    --  the call to X.Allocate may modify the results of calling X.Table.
+
+   generic
+     with procedure Action
+       (Index : Table_Index_Type;
+        Item  : Table_Component_Type;
+        Quit  : in out Boolean) is <>;
+   procedure For_Each;
+   --  Calls procedure Action for each component of the table, or until
+   --  one of these calls set Quit to True.
+
+   generic
+     with function Lt (Comp1, Comp2 : Table_Component_Type) return Boolean;
+   procedure Sort_Table;
+   --  This procedure sorts the components of the table into ascending
+   --  order making calls to Lt to do required comparisons, and using
+   --  assignments to move components around. The Lt function returns True
+   --  if Comp1 is less than Comp2 (in the sense of the desired sort), and
+   --  False if Comp1 is greater than Comp2. For equal objects it does not
+   --  matter if True or False is returned (it is slightly more efficient
+   --  to return False). The sort is not stable (the order of equal items
+   --  in the table is not preserved).
 
 end GNAT.Table;

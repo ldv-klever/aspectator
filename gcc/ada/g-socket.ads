@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 2001-2010, AdaCore                     --
+--                     Copyright (C) 2001-2016, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -40,9 +38,6 @@
 --       Multicast is available only on systems which provide support for this
 --       feature, so it is not available if Multicast is not supported, or not
 --       installed.
-
---       The VMS implementation was implemented using the DECC RTL Socket API,
---       and is thus subject to limitations in the implementation of this API.
 
 --     VxWorks cross ports fully implement this package
 
@@ -109,8 +104,6 @@ package GNAT.Sockets is
    --        Channel  : Stream_Access;
 
    --     begin
-   --        accept Start;
-   --
    --        --  Get an Internet address of a host (here the local host name).
    --        --  Note that a host can have several addresses. Here we get
    --        --  the first one which is supposed to be the official one.
@@ -146,6 +139,8 @@ package GNAT.Sockets is
    --        --  can be accepted. The returned Socket is a new socket that
    --        --  represents the server side of the connection. Server remains
    --        --  available to receive further connections.
+
+   --        accept Start;
 
    --        Accept_Socket (Server, Socket, Address);
 
@@ -280,7 +275,7 @@ package GNAT.Sockets is
    --           Socket_Level,
    --           (Reuse_Address, True));
 
-   --        --  Force Pong to block
+   --        --  Force Ping to block
 
    --        delay 0.2;
 
@@ -378,6 +373,9 @@ package GNAT.Sockets is
    --  entities declared therein are not meant for direct access by users,
    --  including through this renaming.
 
+   use type Interfaces.C.int;
+   --  Need visibility on "-" operator so that we can write -1
+
    procedure Initialize;
    pragma Obsolescent
      (Entity  => Initialize,
@@ -429,14 +427,14 @@ package GNAT.Sockets is
 
    --  Timeval_Duration is a subtype of Standard.Duration because the full
    --  range of Standard.Duration cannot be represented in the equivalent C
-   --  structure. Moreover, negative values are not allowed to avoid system
-   --  incompatibilities.
+   --  structure (struct timeval). Moreover, negative values are not allowed
+   --  to avoid system incompatibilities.
 
    Immediate : constant Duration := 0.0;
 
-   Timeval_Forever : constant := 2.0 ** (SOSC.SIZEOF_tv_sec * 8 - 1) - 1.0;
-   Forever         : constant Duration :=
-                       Duration'Min (Duration'Last, Timeval_Forever);
+   Forever : constant Duration :=
+               Duration'Min (Duration'Last, 1.0 * SOSC.MAX_tv_sec);
+   --  Largest possible Duration that is also a valid value for struct timeval
 
    subtype Timeval_Duration is Duration range Immediate .. Forever;
 
@@ -681,7 +679,8 @@ package GNAT.Sockets is
    --  a boolean to enable or disable this option.
 
    type Option_Name is
-     (Keep_Alive,          -- Enable sending of keep-alive messages
+     (Generic_Option,
+      Keep_Alive,          -- Enable sending of keep-alive messages
       Reuse_Address,       -- Allow bind to reuse local address
       Broadcast,           -- Enable datagram sockets to recv/send broadcasts
       Send_Buffer,         -- Set/get the maximum socket send buffer in bytes
@@ -696,10 +695,17 @@ package GNAT.Sockets is
       Multicast_Loop,      -- Sent multicast packets are looped to local socket
       Receive_Packet_Info, -- Receive low level packet info as ancillary data
       Send_Timeout,        -- Set timeout value for output
-      Receive_Timeout);    -- Set timeout value for input
+      Receive_Timeout,     -- Set timeout value for input
+      Busy_Polling);       -- Set busy polling mode
+   subtype Specific_Option_Name is
+     Option_Name range Keep_Alive .. Option_Name'Last;
 
    type Option_Type (Name : Option_Name := Keep_Alive) is record
       case Name is
+         when Generic_Option =>
+            Optname : Interfaces.C.int := -1;
+            Optval  : Interfaces.C.int;
+
          when Keep_Alive          |
               Reuse_Address       |
               Broadcast           |
@@ -715,6 +721,9 @@ package GNAT.Sockets is
                when others    =>
                   null;
             end case;
+
+         when Busy_Polling    =>
+            Microseconds : Natural;
 
          when Send_Buffer     |
               Receive_Buffer  =>
@@ -761,8 +770,8 @@ package GNAT.Sockets is
       end case;
    end record;
 
-   --  A request flag allows to specify the type of message transmissions or
-   --  receptions. A request flag can be combination of zero or more
+   --  A request flag allows specification of the type of message transmissions
+   --  or receptions. A request flag can be combination of zero or more
    --  predefined request flags.
 
    type Request_Flag_Type is private;
@@ -799,7 +808,7 @@ package GNAT.Sockets is
 
    type Vector_Element is record
       Base   : Stream_Element_Reference;
-      Length : Ada.Streams.Stream_Element_Count;
+      Length : Interfaces.C.size_t;
    end record;
 
    type Vector_Type is array (Integer range <>) of Vector_Element;
@@ -818,7 +827,8 @@ package GNAT.Sockets is
    --  connections, creates a new connected socket with mostly the same
    --  properties as Server, and allocates a new socket. The returned Address
    --  is filled in with the address of the connection. Raises Socket_Error on
-   --  error.
+   --  error. Note: if Server is a non-blocking socket, whether or not this
+   --  aspect is inherited by Socket is platform-dependent.
 
    procedure Accept_Socket
      (Server   : Socket_Type;
@@ -860,7 +870,9 @@ package GNAT.Sockets is
    --  whether the operation completed successfully, timed out, or was aborted.
    --  If Selector is not null, the designated selector is used to wait for the
    --  socket to become available, else a private selector object is created
-   --  by this procedure and destroyed before it returns.
+   --  by this procedure and destroyed before it returns. If Timeout is 0.0,
+   --  no attempt is made to detect whether the connection has succeeded; it
+   --  is up to the user to determine this using Check_Selector later on.
 
    procedure Control_Socket
      (Socket  : Socket_Type;
@@ -878,10 +890,12 @@ package GNAT.Sockets is
    --  No_Sock_Addr on error (e.g. socket closed or not locally bound).
 
    function Get_Socket_Option
-     (Socket : Socket_Type;
-      Level  : Level_Type := Socket_Level;
-      Name   : Option_Name) return Option_Type;
-   --  Get the options associated with a socket. Raises Socket_Error on error
+     (Socket  : Socket_Type;
+      Level   : Level_Type := Socket_Level;
+      Name    : Option_Name;
+      Optname : Interfaces.C.int := -1) return Option_Type;
+   --  Get the options associated with a socket. Raises Socket_Error on error.
+   --  Optname identifies specific option when Name is Generic_Option.
 
    procedure Listen_Socket
      (Socket : Socket_Type;
@@ -903,7 +917,7 @@ package GNAT.Sockets is
    --  Item'First - 1 when the socket has been closed by peer. This is not
    --  an error, and no exception is raised in this case unless Item'First
    --  is Stream_Element_Offset'First, in which case Constraint_Error is
-   --  raised. Flags allows to control the reception. Raise Socket_Error on
+   --  raised. Flags allows control of the reception. Raise Socket_Error on
    --  error.
 
    procedure Receive_Socket
@@ -915,7 +929,7 @@ package GNAT.Sockets is
    --  Receive message from Socket. If Socket is not connection-oriented, the
    --  source address From of the message is filled in. Last is the index
    --  value such that Item (Last) is the last character assigned. Flags
-   --  allows to control the reception. Raises Socket_Error on error.
+   --  allows control of the reception. Raises Socket_Error on error.
 
    procedure Receive_Vector
      (Socket : Socket_Type;
@@ -957,7 +971,7 @@ package GNAT.Sockets is
       Last   : out Ada.Streams.Stream_Element_Offset;
       Flags  : Request_Flag_Type := No_Request_Flag);
    --  Transmit a message over a socket. Upon return, Last is set to the index
-   --  within Item of the last element transmitted. Flags allows to control
+   --  within Item of the last element transmitted. Flags allows control of
    --  the transmission. Raises Socket_Error on any detected error condition.
 
    procedure Send_Socket
@@ -967,7 +981,7 @@ package GNAT.Sockets is
       To     : Sock_Addr_Type;
       Flags  : Request_Flag_Type := No_Request_Flag);
    --  Transmit a message over a datagram socket. The destination address is
-   --  To. Flags allows to control the transmission. Raises Socket_Error on
+   --  To. Flags allows control of the transmission. Raises Socket_Error on
    --  error.
 
    procedure Send_Vector
@@ -978,6 +992,17 @@ package GNAT.Sockets is
    --  Transmit data gathered from the set of vector elements Vector to a
    --  socket. Count is set to the count of transmitted stream elements. Flags
    --  allow control over transmission.
+
+   procedure Set_Close_On_Exec
+     (Socket        : Socket_Type;
+      Close_On_Exec : Boolean;
+      Status        : out Boolean);
+   --  When Close_On_Exec is True, mark Socket to be closed automatically when
+   --  a new program is executed by the calling process (i.e. prevent Socket
+   --  from being inherited by child processes). When Close_On_Exec is False,
+   --  mark Socket to not be closed on exec (i.e. allow it to be inherited).
+   --  Status is False if the operation could not be performed, or is not
+   --  supported on the target platform.
 
    procedure Set_Socket_Option
      (Socket : Socket_Type;
@@ -996,7 +1021,11 @@ package GNAT.Sockets is
    --  Same interface as Ada.Streams.Stream_IO
 
    function Stream (Socket : Socket_Type) return Stream_Access;
-   --  Create a stream associated with an already connected stream-based socket
+   --  Create a stream associated with a connected stream-based socket.
+   --  Note: keep in mind that the default stream attributes for composite
+   --  types perform separate Read/Write operations for each component,
+   --  recursively. If performance is an issue, you may want to consider
+   --  introducing a buffering stage.
 
    function Stream
      (Socket  : Socket_Type;
@@ -1015,8 +1044,8 @@ package GNAT.Sockets is
    --  subprogram when the stream is not needed anymore.
 
    type Socket_Set_Type is limited private;
-   --  This type allows to manipulate sets of sockets. It allows to wait for
-   --  events on multiple endpoints at one time. This type has default
+   --  This type allows manipulation of sets of sockets. It allows waiting
+   --  for events on multiple endpoints at one time. This type has default
    --  initialization, and the default value is the empty set.
    --
    --  Note: This type used to contain a pointer to dynamically allocated
@@ -1057,11 +1086,11 @@ package GNAT.Sockets is
    --  blocks until an event occurs. On some platforms, the select(2) system
    --  can block the full process (not just the calling thread).
    --
-   --  Check_Selector provides the very same behaviour. The only difference is
+   --  Check_Selector provides the very same behavior. The only difference is
    --  that it does not watch for exception events. Note that on some platforms
    --  it is kept process blocking on purpose. The timeout parameter allows the
-   --  user to have the behaviour he wants. Abort_Selector allows to safely
-   --  abort a blocked Check_Selector call. A special socket is opened by
+   --  user to have the behavior he wants. Abort_Selector allows the safe
+   --  abort of a blocked Check_Selector call. A special socket is opened by
    --  Create_Selector and included in each call to Check_Selector.
    --
    --  Abort_Selector causes an event to occur on this descriptor in order to
@@ -1098,7 +1127,10 @@ package GNAT.Sockets is
    --
    --  Note that two different Socket_Set_Type objects must be passed as
    --  R_Socket_Set and W_Socket_Set (even if they denote the same set of
-   --  Sockets), or some event may be lost.
+   --  Sockets), or some event may be lost. Also keep in mind that this
+   --  procedure modifies the passed socket sets to indicate which sockets
+   --  actually had events upon return. The socket set therefore has to
+   --  be reset by the caller for further calls.
    --
    --  Socket_Error is raised when the select(2) system call returns an error
    --  condition, or when a read error occurs on the signalling socket used for
@@ -1148,7 +1180,6 @@ private
             R_Sig_Socket : Socket_Type := No_Socket;
             W_Sig_Socket : Socket_Type := No_Socket;
             --  Signalling sockets used to abort a select operation
-
       end case;
    end record;
 
@@ -1236,10 +1267,10 @@ private
    end record;
 
    type Service_Entry_Type (Aliases_Length : Natural) is record
-      Official  : Name_Type;
-      Aliases   : Name_Array (1 .. Aliases_Length);
-      Port      : Port_Type;
-      Protocol  : Name_Type;
+      Official : Name_Type;
+      Aliases  : Name_Array (1 .. Aliases_Length);
+      Port     : Port_Type;
+      Protocol : Name_Type;
    end record;
 
    type Request_Flag_Type is mod 2 ** 8;

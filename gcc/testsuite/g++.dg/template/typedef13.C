@@ -4,7 +4,7 @@
 
 class A
 {
-  typedef int mytype; // { dg-error "typedef int A::mytype' is private" }
+  typedef int mytype; // { dg-message "private" }
 };
 
 template <class T> class B : public A
@@ -12,5 +12,5 @@ template <class T> class B : public A
   mytype mem; // { dg-error "within this context"  }
 };
 
-B<int> b; // { dg-message "instantiated from here" }
+B<int> b; // { dg-message "required from here" }
 

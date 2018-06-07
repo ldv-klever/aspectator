@@ -5,21 +5,25 @@
 package os_test
 
 import (
+	"internal/testenv"
+	"io/ioutil"
 	. "os"
-	"testing"
+	"path/filepath"
 	"runtime"
 	"syscall"
+	"testing"
 )
 
+var isReadonlyError = func(error) bool { return false }
+
 func TestMkdirAll(t *testing.T) {
-	// Create new dir, in _test so it will get
-	// cleaned up by make if not by us.
-	path := "_test/_TestMkdirAll_/dir/./dir2"
+	tmpDir := TempDir()
+	path := tmpDir + "/_TestMkdirAll_/dir/./dir2"
 	err := MkdirAll(path, 0777)
 	if err != nil {
 		t.Fatalf("MkdirAll %q: %s", path, err)
 	}
-	defer RemoveAll("_test/_TestMkdirAll_")
+	defer RemoveAll(tmpDir + "/_TestMkdirAll_")
 
 	// Already exists, should succeed.
 	err = MkdirAll(path, 0777)
@@ -29,10 +33,11 @@ func TestMkdirAll(t *testing.T) {
 
 	// Make file.
 	fpath := path + "/file"
-	_, err = Open(fpath, O_WRONLY|O_CREAT, 0666)
+	f, err := Create(fpath)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
+	defer f.Close()
 
 	// Can't make directory named after file.
 	err = MkdirAll(fpath, 0777)
@@ -43,8 +48,8 @@ func TestMkdirAll(t *testing.T) {
 	if !ok {
 		t.Fatalf("MkdirAll %q returned %T, not *PathError", fpath, err)
 	}
-	if perr.Path != fpath {
-		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", fpath, perr.Path, fpath)
+	if filepath.Clean(perr.Path) != filepath.Clean(fpath) {
+		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", fpath, filepath.Clean(perr.Path), filepath.Clean(fpath))
 	}
 
 	// Can't make subdirectory of file.
@@ -57,14 +62,23 @@ func TestMkdirAll(t *testing.T) {
 	if !ok {
 		t.Fatalf("MkdirAll %q returned %T, not *PathError", ffpath, err)
 	}
-	if perr.Path != fpath {
-		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", ffpath, perr.Path, fpath)
+	if filepath.Clean(perr.Path) != filepath.Clean(fpath) {
+		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", ffpath, filepath.Clean(perr.Path), filepath.Clean(fpath))
+	}
+
+	if runtime.GOOS == "windows" {
+		path := tmpDir + `\_TestMkdirAll_\dir\.\dir2\`
+		err := MkdirAll(path, 0777)
+		if err != nil {
+			t.Fatalf("MkdirAll %q: %s", path, err)
+		}
 	}
 }
 
 func TestRemoveAll(t *testing.T) {
+	tmpDir := TempDir()
 	// Work directory.
-	path := "_test/_TestRemoveAll_"
+	path := tmpDir + "/_TestRemoveAll_"
 	fpath := path + "/file"
 	dpath := path + "/dir"
 
@@ -72,7 +86,7 @@ func TestRemoveAll(t *testing.T) {
 	if err := MkdirAll(path, 0777); err != nil {
 		t.Fatalf("MkdirAll %q: %s", path, err)
 	}
-	fd, err := Open(fpath, O_WRONLY|O_CREAT, 0666)
+	fd, err := Create(fpath)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
@@ -80,7 +94,7 @@ func TestRemoveAll(t *testing.T) {
 	if err = RemoveAll(path); err != nil {
 		t.Fatalf("RemoveAll %q (first): %s", path, err)
 	}
-	if _, err := Lstat(path); err == nil {
+	if _, err = Lstat(path); err == nil {
 		t.Fatalf("Lstat %q succeeded after RemoveAll (first)", path)
 	}
 
@@ -88,12 +102,12 @@ func TestRemoveAll(t *testing.T) {
 	if err = MkdirAll(dpath, 0777); err != nil {
 		t.Fatalf("MkdirAll %q: %s", dpath, err)
 	}
-	fd, err = Open(fpath, O_WRONLY|O_CREAT, 0666)
+	fd, err = Create(fpath)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
 	fd.Close()
-	fd, err = Open(dpath+"/file", O_WRONLY|O_CREAT, 0666)
+	fd, err = Create(dpath + "/file")
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
@@ -107,7 +121,7 @@ func TestRemoveAll(t *testing.T) {
 
 	// Determine if we should run the following test.
 	testit := true
-	if syscall.OS == "windows" {
+	if runtime.GOOS == "windows" {
 		// Chmod is not supported under windows.
 		testit = false
 	} else {
@@ -121,7 +135,7 @@ func TestRemoveAll(t *testing.T) {
 		}
 
 		for _, s := range []string{fpath, dpath + "/file1", path + "/zzz"} {
-			fd, err = Open(s, O_WRONLY|O_CREAT, 0666)
+			fd, err = Create(s)
 			if err != nil {
 				t.Fatalf("create %q: %s", s, err)
 			}
@@ -134,7 +148,7 @@ func TestRemoveAll(t *testing.T) {
 		// No error checking here: either RemoveAll
 		// will or won't be able to remove dpath;
 		// either way we want to see if it removes fpath
-		// and path/zzz.  Reasons why RemoveAll might
+		// and path/zzz. Reasons why RemoveAll might
 		// succeed in removing dpath as well include:
 		//	* running as root
 		//	* running on a file system without permissions (FAT)
@@ -142,7 +156,7 @@ func TestRemoveAll(t *testing.T) {
 		Chmod(dpath, 0777)
 
 		for _, s := range []string{fpath, path + "/zzz"} {
-			if _, err := Lstat(s); err == nil {
+			if _, err = Lstat(s); err == nil {
 				t.Fatalf("Lstat %q succeeded after partial RemoveAll", s)
 			}
 		}
@@ -150,32 +164,59 @@ func TestRemoveAll(t *testing.T) {
 	if err = RemoveAll(path); err != nil {
 		t.Fatalf("RemoveAll %q after partial RemoveAll: %s", path, err)
 	}
-	if _, err := Lstat(path); err == nil {
+	if _, err = Lstat(path); err == nil {
 		t.Fatalf("Lstat %q succeeded after RemoveAll (final)", path)
 	}
 }
 
 func TestMkdirAllWithSymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Log("Skipping test: symlinks don't exist under Windows")
-		return
-	}
+	testenv.MustHaveSymlink(t)
 
-	err := Mkdir("_test/dir", 0755)
+	tmpDir, err := ioutil.TempDir("", "TestMkdirAllWithSymlink-")
 	if err != nil {
-		t.Fatal(`Mkdir "_test/dir":`, err)
+		t.Fatal(err)
 	}
-	defer RemoveAll("_test/dir")
+	defer RemoveAll(tmpDir)
 
-	err = Symlink("dir", "_test/link")
+	dir := tmpDir + "/dir"
+	err = Mkdir(dir, 0755)
 	if err != nil {
-		t.Fatal(`Symlink "dir", "_test/link":`, err)
+		t.Fatalf("Mkdir %s: %s", dir, err)
 	}
-	defer RemoveAll("_test/link")
 
-	path := "_test/link/foo"
+	link := tmpDir + "/link"
+	err = Symlink("dir", link)
+	if err != nil {
+		t.Fatalf("Symlink %s: %s", link, err)
+	}
+
+	path := link + "/foo"
 	err = MkdirAll(path, 0755)
 	if err != nil {
 		t.Errorf("MkdirAll %q: %s", path, err)
 	}
+}
+
+func TestMkdirAllAtSlash(t *testing.T) {
+	switch runtime.GOOS {
+	case "android", "plan9", "windows":
+		t.Skipf("skipping on %s", runtime.GOOS)
+	case "darwin":
+		switch runtime.GOARCH {
+		case "arm", "arm64":
+			t.Skipf("skipping on darwin/%s, mkdir returns EPERM", runtime.GOARCH)
+		}
+	}
+	RemoveAll("/_go_os_test")
+	const dir = "/_go_os_test/dir"
+	err := MkdirAll(dir, 0777)
+	if err != nil {
+		pathErr, ok := err.(*PathError)
+		// common for users not to be able to write to /
+		if ok && (pathErr.Err == syscall.EACCES || isReadonlyError(pathErr.Err)) {
+			t.Skipf("could not create %v: %v", dir, err)
+		}
+		t.Fatalf(`MkdirAll "/_go_os_test/dir": %v, %s`, err, pathErr.Err)
+	}
+	RemoveAll("/_go_os_test")
 }

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -86,8 +86,10 @@ package System.Tasking is
 
    --  Sometimes we need to hold two ATCB locks at the same time. To allow us
    --  to order the locking, each ATCB is given a unique serial number. If one
-   --  needs to hold locks on several ATCBs at once, the locks with lower
-   --  serial numbers must be locked first.
+   --  needs to hold locks on two ATCBs at once, the lock with lower serial
+   --  number must be locked first. We avoid holding three or more ATCB locks,
+   --  because that can easily lead to complications that cause race conditions
+   --  and deadlocks.
 
    --  We don't always need to check the serial numbers, since the serial
    --  numbers are assigned sequentially, and so:
@@ -252,14 +254,6 @@ package System.Tasking is
 
    type String_Access is access all String;
 
-   type Entry_Names_Array is
-     array (Entry_Index range <>) of String_Access;
-
-   type Entry_Names_Array_Access is access all Entry_Names_Array;
-
-   procedure Free_Entry_Names_Array (Obj : in out Entry_Names_Array);
-   --  Deallocate all string names contained in an entry names array
-
    ----------------------------------
    -- Entry_Call_Record definition --
    ----------------------------------
@@ -375,6 +369,66 @@ package System.Tasking is
    --  terminates.
 
    ------------------------------------
+   -- Dispatching domain definitions --
+   ------------------------------------
+
+   --  We need to redefine here these types (already defined in
+   --  System.Multiprocessor.Dispatching_Domains) for avoiding circular
+   --  dependencies.
+
+   type Dispatching_Domain is
+     array (System.Multiprocessors.CPU range <>) of Boolean;
+   --  A dispatching domain needs to contain the set of processors belonging
+   --  to it. This is a processor mask where a True indicates that the
+   --  processor belongs to the dispatching domain.
+   --  Do not use the full range of CPU_Range because it would create a very
+   --  long array. This way we can use the exact range of processors available
+   --  in the system.
+
+   type Dispatching_Domain_Access is access Dispatching_Domain;
+
+   System_Domain : Dispatching_Domain_Access;
+   --  All processors belong to default system dispatching domain at start up.
+   --  We use a pointer which creates the actual variable for the reasons
+   --  explained bellow in Dispatching_Domain_Tasks.
+
+   Dispatching_Domains_Frozen : Boolean := False;
+   --  True when the main procedure has been called. Hence, no new dispatching
+   --  domains can be created when this flag is True.
+
+   type Array_Allocated_Tasks is
+     array (System.Multiprocessors.CPU range <>) of Natural;
+   --  At start-up time, we need to store the number of tasks attached to
+   --  concrete processors within the system domain (we can only create
+   --  dispatching domains with processors belonging to the system domain and
+   --  without tasks allocated).
+
+   type Array_Allocated_Tasks_Access is access Array_Allocated_Tasks;
+
+   Dispatching_Domain_Tasks : Array_Allocated_Tasks_Access;
+   --  We need to store whether there are tasks allocated to concrete
+   --  processors in the default system dispatching domain because we need to
+   --  check it before creating a new dispatching domain. Two comments about
+   --  why we use a pointer here and not in package Dispatching_Domains:
+   --
+   --    1) We use an array created dynamically in procedure Initialize which
+   --    is called at the beginning of the initialization of the run-time
+   --    library. Declaring a static array here in the spec would not work
+   --    across different installations because it would get the value of
+   --    Number_Of_CPUs from the machine where the run-time library is built,
+   --    and not from the machine where the application is executed. That is
+   --    the reason why we create the array (CPU'First .. Number_Of_CPUs) at
+   --    execution time in the procedure body, ensuring that the function
+   --    Number_Of_CPUs is executed at execution time (the same trick as we
+   --    use for System_Domain).
+   --
+   --    2) We have moved this declaration from package Dispatching_Domains
+   --    because when we use a pragma CPU, the affinity is passed through the
+   --    call to Create_Task. Hence, at this point, we may need to update the
+   --    number of tasks associated to the processor, but we do not want to
+   --    force a dependency from this package on Dispatching_Domains.
+
+   ------------------------------------
    -- Task related other definitions --
    ------------------------------------
 
@@ -396,9 +450,8 @@ package System.Tasking is
 
    function Storage_Size (T : Task_Id) return System.Parameters.Size_Type;
    --  Retrieve from the TCB of the task the allocated size of its stack,
-   --  either the system default or the size specified by a pragma. This
-   --  is in general a non-static value that can depend on discriminants
-   --  of the task.
+   --  either the system default or the size specified by a pragma. This is in
+   --  general a non-static value that can depend on discriminants of the task.
 
    type Bit_Array is array (Integer range <>) of Boolean;
    pragma Pack (Bit_Array);
@@ -406,8 +459,8 @@ package System.Tasking is
    subtype Debug_Event_Array is Bit_Array (1 .. 16);
 
    Global_Task_Debug_Event_Set : Boolean := False;
-   --  Set True when running under debugger control and a task debug
-   --  event signal has been requested.
+   --  Set True when running under debugger control and a task debug event
+   --  signal has been requested.
 
    ----------------------------------------------
    -- Ada_Task_Control_Block (ATCB) definition --
@@ -446,7 +499,7 @@ package System.Tasking is
 
    --  Section used by all GNARL implementations (regular and restricted)
 
-   type Common_ATCB is record
+   type Common_ATCB is limited record
       State : Task_States;
       pragma Atomic (State);
       --  Encodes some basic information about the state of a task,
@@ -559,14 +612,16 @@ package System.Tasking is
       --  Protection: Only used by Activator
 
       Activator : Task_Id;
+      pragma Atomic (Activator);
       --  The task that created this task, either by declaring it as a task
       --  object or by executing a task allocator. The value is null iff Self
       --  has completed activation.
       --
-      --  Protection: Set by Activator before Self is activated, and only read
-      --  and modified by Self after that.
+      --  Protection: Set by Activator before Self is activated, and
+      --  only modified by Self after that. Can be read by any task via
+      --  Ada.Task_Identification.Activation_Is_Complete; hence Atomic.
 
-      Wait_Count : Integer;
+      Wait_Count : Natural;
       --  This count is used by a task that is waiting for other tasks. At all
       --  other times, the value should be zero. It is used differently in
       --  several different states. Since a task cannot be in more than one of
@@ -585,8 +640,8 @@ package System.Tasking is
       --  Master_Completion_Sleep (phase 1)
 
       --  This is the number dependent tasks of a master being completed by
-      --  Self that are not activated, not terminated, and not waiting on a
-      --  terminate alternative.
+      --  Self that are activated, but have not yet terminated, and are not
+      --  waiting on a terminate alternative.
 
       --  Master_Completion_2_Sleep (phase 2)
 
@@ -610,8 +665,8 @@ package System.Tasking is
       --  System-specific attributes of the task as specified by the
       --  Task_Info pragma.
 
-      Analyzer  : System.Stack_Usage.Stack_Analyzer;
-      --  For storing informations used to measure the stack usage
+      Analyzer : System.Stack_Usage.Stack_Analyzer;
+      --  For storing information used to measure the stack usage
 
       Global_Task_Lock_Nesting : Natural;
       --  This is the current nesting level of calls to
@@ -637,6 +692,23 @@ package System.Tasking is
       Debug_Events : Debug_Event_Array;
       --  Word length array of per task debug events, of which 11 kinds are
       --  currently defined in System.Tasking.Debugging package.
+
+      Domain : Dispatching_Domain_Access;
+      --  Domain is the dispatching domain to which the task belongs. It is
+      --  only changed via dispatching domains package. This field is made
+      --  part of the Common_ATCB, even when restricted run-times (namely
+      --  Ravenscar) do not use it, because this way the field is always
+      --  available to the underlying layers to set the affinity and we do not
+      --  need to do different things depending on the situation.
+      --
+      --  Protection: Self.L
+
+      Secondary_Stack_Size : System.Parameters.Size_Type;
+      --  Secondary_Stack_Size is the size of the secondary stack for the
+      --  task. Defined here since it is the responsibility of the task to
+      --  creates its own secondary stack.
+      --
+      --  Protected: Only accessed by Self
    end record;
 
    ---------------------------------------
@@ -651,7 +723,7 @@ package System.Tasking is
    --  present in the Restricted_Ada_Task_Control_Block structure.
 
    type Restricted_Ada_Task_Control_Block (Entry_Num : Task_Entry_Index) is
-   record
+   limited record
       Common : Common_ATCB;
       --  The common part between various tasking implementations
 
@@ -686,7 +758,7 @@ package System.Tasking is
    subtype Master_ID is Master_Level;
 
    --  Normally, a task starts out with internal master nesting level one
-   --  larger than external master nesting level. It is incremented to one by
+   --  larger than external master nesting level. It is incremented by one by
    --  Enter_Master, which is called in the task body only if the compiler
    --  thinks the task may have dependent tasks. It is set to 1 for the
    --  environment task, the level 2 is reserved for server tasks of the
@@ -868,27 +940,23 @@ package System.Tasking is
    type Entry_Call_Array is array (ATC_Level_Index) of
      aliased Entry_Call_Record;
 
-   type Direct_Index is range 0 .. Parameters.Default_Attribute_Count;
-   subtype Direct_Index_Range is Direct_Index range 1 .. Direct_Index'Last;
-   --  Attributes with indexes in this range are stored directly in the task
-   --  control block. Such attributes must be Address-sized. Other attributes
-   --  will be held in dynamically allocated records chained off of the task
-   --  control block.
+   type Atomic_Address is mod Memory_Size;
+   pragma Atomic (Atomic_Address);
+   type Attribute_Array is
+     array (1 .. Parameters.Max_Attribute_Count) of Atomic_Address;
+   --  Array of task attributes. The value (Atomic_Address) will either be
+   --  converted to a task attribute if it fits, or to a pointer to a record
+   --  by Ada.Task_Attributes.
 
-   type Direct_Attribute_Element is mod Memory_Size;
-   pragma Atomic (Direct_Attribute_Element);
+   type Task_Serial_Number is mod 2 ** Long_Long_Integer'Size;
+   --  Used to give each task a unique serial number. We want 64-bits for this
+   --  type to get as much uniqueness as possible (2**64 is operationally
+   --  infinite in this context, but 2**32 perhaps could recycle). We use
+   --  Long_Long_Integer (which in the normal case is always 64-bits) rather
+   --  than 64-bits explicitly to allow codepeer to analyze this unit when
+   --  a target configuration file forces the maximum integer size to 32.
 
-   type Direct_Attribute_Array is
-     array (Direct_Index_Range) of aliased Direct_Attribute_Element;
-
-   type Direct_Index_Vector is mod 2 ** Parameters.Default_Attribute_Count;
-   --  This is a bit-vector type, used to store information about
-   --  the usage of the direct attribute fields.
-
-   type Task_Serial_Number is mod 2 ** 64;
-   --  Used to give each task a unique serial number
-
-   type Ada_Task_Control_Block (Entry_Num : Task_Entry_Index) is record
+   type Ada_Task_Control_Block (Entry_Num : Task_Entry_Index) is limited record
       Common : Common_ATCB;
       --  The common part between various tasking implementations
 
@@ -898,11 +966,6 @@ package System.Tasking is
       --  Protection: The elements of this array are on entry call queues
       --  associated with protected objects or task entries, and are protected
       --  by the protected object lock or Acceptor.L, respectively.
-
-      Entry_Names : Entry_Names_Array_Access := null;
-      --  An array of string names which denotes entry [family member] names.
-      --  The structure is indexed by task entry index and contains Entry_Num
-      --  components.
 
       New_Base_Priority : System.Any_Priority;
       --  New value for Base_Priority (for dynamic priorities package)
@@ -942,13 +1005,13 @@ package System.Tasking is
       --  not write this field until the master is complete, the
       --  synchronization should be adequate to prevent races.
 
-      Alive_Count : Integer := 0;
+      Alive_Count : Natural := 0;
       --  Number of tasks directly dependent on this task (including itself)
       --  that are still "alive", i.e. not terminated.
       --
       --  Protection: Self.L
 
-      Awake_Count : Integer := 0;
+      Awake_Count : Natural := 0;
       --  Number of tasks directly dependent on this task (including itself)
       --  still "awake", i.e., are not terminated and not waiting on a
       --  terminate alternative.
@@ -1057,7 +1120,7 @@ package System.Tasking is
       --  Protection: Self.L
 
       Serial_Number : Task_Serial_Number;
-      --  A growing number to provide some way to check locking  rules/ordering
+      --  Monotonic counter to provide some way to check locking rules/ordering
 
       Known_Tasks_Index : Integer := -1;
       --  Index in the System.Tasking.Debug.Known_Tasks array
@@ -1066,15 +1129,17 @@ package System.Tasking is
       --  User-writeable location, for use in debugging tasks; also provides a
       --  simple task specific data.
 
-      Direct_Attributes : Direct_Attribute_Array;
-      --  For task attributes that have same size as Address
+      Free_On_Termination : Boolean := False;
+      --  Deallocate the ATCB when the task terminates. This flag is normally
+      --  False, and is set True when Unchecked_Deallocation is called on a
+      --  non-terminated task so that the associated storage is automatically
+      --  reclaimed when the task terminates.
 
-      Is_Defined : Direct_Index_Vector := 0;
-      --  Bit I is 1 iff Direct_Attributes (I) is defined
+      Attributes : Attribute_Array := (others => 0);
+      --  Task attributes
 
-      Indirect_Attributes : Access_Address;
-      --  A pointer to chain of records for other attributes that are not
-      --  address-sized, including all tagged types.
+      --  IMPORTANT Note: the Entry_Queues field is last for efficiency of
+      --  access to other fields, do not put new fields after this one.
 
       Entry_Queues : Task_Entry_Queue_Array (1 .. Entry_Num);
       --  An array of task entry queues
@@ -1098,20 +1163,23 @@ package System.Tasking is
    --  System.Tasking.Initialization being present, as was done before.
 
    procedure Initialize_ATCB
-     (Self_ID          : Task_Id;
-      Task_Entry_Point : Task_Procedure_Access;
-      Task_Arg         : System.Address;
-      Parent           : Task_Id;
-      Elaborated       : Access_Boolean;
-      Base_Priority    : System.Any_Priority;
-      Base_CPU         : System.Multiprocessors.CPU_Range;
-      Task_Info        : System.Task_Info.Task_Info_Type;
-      Stack_Size       : System.Parameters.Size_Type;
-      T                : Task_Id;
-      Success          : out Boolean);
-   --  Initialize fields of a TCB and link into global TCB structures Call
-   --  this only with abort deferred and holding RTS_Lock. Need more
-   --  documentation, mention T, and describe Success ???
+     (Self_ID              : Task_Id;
+      Task_Entry_Point     : Task_Procedure_Access;
+      Task_Arg             : System.Address;
+      Parent               : Task_Id;
+      Elaborated           : Access_Boolean;
+      Base_Priority        : System.Any_Priority;
+      Base_CPU             : System.Multiprocessors.CPU_Range;
+      Domain               : Dispatching_Domain_Access;
+      Task_Info            : System.Task_Info.Task_Info_Type;
+      Stack_Size           : System.Parameters.Size_Type;
+      Secondary_Stack_Size : System.Parameters.Size_Type;
+      T                    : Task_Id;
+      Success              : out Boolean);
+   --  Initialize fields of the TCB for task T, and link into global TCB
+   --  structures. Call this only with abort deferred and holding RTS_Lock.
+   --  Self_ID is the calling task (normally the activator of T). Success is
+   --  set to indicate whether the TCB was successfully initialized.
 
 private
 
@@ -1127,4 +1195,6 @@ private
    --  registered for removal (Expunge_Unactivated_Tasks). The "limited" forces
    --  Activation_Chain to be a by-reference type; see RM-6.2(4).
 
+   function Number_Of_Entries (Self_Id : Task_Id) return Entry_Index;
+   --  Given a task, return the number of entries it contains
 end System.Tasking;

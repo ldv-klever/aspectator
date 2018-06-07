@@ -1,6 +1,5 @@
 /* Relative (relocatable) prefix support.
-   Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2006 Free Software Foundation, Inc.
+   Copyright (C) 1987-2017 Free Software Foundation, Inc.
 
 This file is part of libiberty.
 
@@ -57,6 +56,9 @@ relative prefix can be found, return @code{NULL}.
 #endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
 #endif
 
 #include <string.h>
@@ -230,6 +232,7 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
   int i, n, common;
   int needed_len;
   char *ret = NULL, *ptr, *full_progname;
+  char *alloc_ptr = NULL;
 
   if (progname == NULL || bin_prefix == NULL || prefix == NULL)
     return NULL;
@@ -245,10 +248,18 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
 	{
 	  char *startp, *endp, *nstore;
 	  size_t prefixlen = strlen (temp) + 1;
+	  size_t len;
 	  if (prefixlen < 2)
 	    prefixlen = 2;
 
-	  nstore = (char *) alloca (prefixlen + strlen (progname) + 1);
+	  len = prefixlen + strlen (progname) + 1;
+#ifdef HAVE_HOST_EXECUTABLE_SUFFIX
+	  len += strlen (HOST_EXECUTABLE_SUFFIX);
+#endif
+	  if (len < MAX_ALLOCA_SIZE)
+	    nstore = (char *) alloca (len);
+	  else
+	    alloc_ptr = nstore = (char *) malloc (len);
 
 	  startp = endp = temp;
 	  while (1)
@@ -263,7 +274,7 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
 		    }
 		  else
 		    {
-		      strncpy (nstore, startp, endp - startp);
+		      memcpy (nstore, startp, endp - startp);
 		      if (! IS_DIR_SEPARATOR (endp[-1]))
 			{
 			  nstore[endp - startp] = DIR_SEPARATOR;
@@ -279,8 +290,14 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
 #endif
 		      )
 		    {
-		      progname = nstore;
-		      break;
+#if defined (HAVE_SYS_STAT_H) && defined (S_ISREG)
+		      struct stat st;
+		      if (stat (nstore, &st) >= 0 && S_ISREG (st.st_mode))
+#endif
+			{
+			  progname = nstore;
+			  break;
+			}
 		    }
 
 		  if (*endp == 0)
@@ -298,12 +315,12 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
   else
     full_progname = strdup (progname);
   if (full_progname == NULL)
-    return NULL;
+    goto bailout;
 
   prog_dirs = split_directories (full_progname, &prog_num);
   free (full_progname);
   if (prog_dirs == NULL)
-    return NULL;
+    goto bailout;
 
   bin_dirs = split_directories (bin_prefix, &bin_num);
   if (bin_dirs == NULL)
@@ -381,6 +398,7 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
   free_split_directories (prog_dirs);
   free_split_directories (bin_dirs);
   free_split_directories (prefix_dirs);
+  free (alloc_ptr);
 
   return ret;
 }

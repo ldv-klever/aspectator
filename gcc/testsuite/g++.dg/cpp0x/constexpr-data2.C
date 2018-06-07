@@ -1,5 +1,4 @@
-// { dg-do compile }
-// { dg-options "-std=gnu++0x" }
+// { dg-do compile { target c++11 } }
 
 template<typename _Tp, _Tp v>
   struct A3
@@ -13,7 +12,7 @@ template<typename _Tp, _Tp v>
   };
 
 // Partial specialization.
-template<typename _Tp, _Tp v>
+template<typename _Tp, _Tp* v>
   struct A3<_Tp*, v>
   {
     typedef _Tp* value_type;
@@ -44,5 +43,4 @@ extern template struct A3<int, 510>;
 
 // Use.
 A3<int, 1111> a31;
-// FIXME should this be an error?
 A3<char, 9999> a32;		// { dg-warning "overflow" }

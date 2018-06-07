@@ -1,6 +1,5 @@
 /* Base configuration file for all NetBSD targets.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2007, 2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 1997-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -97,6 +96,7 @@ along with GCC; see the file COPYING3.  If not see
        %{!pg:-lposix}}		\
      %{p:-lposix_p}		\
      %{pg:-lposix_p}}		\
+   %{shared:-lc}		\
    %{!shared:			\
      %{!symbolic:		\
        %{!p:			\
@@ -110,6 +110,7 @@ along with GCC; see the file COPYING3.  If not see
        %{!pg:-lposix}}		\
      %{p:-lposix_p}		\
      %{pg:-lposix_p}}		\
+   %{shared:-lc}		\
    %{!shared:			\
      %{!symbolic:		\
        %{!p:			\
@@ -121,8 +122,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef LIB_SPEC
 #define LIB_SPEC NETBSD_LIB_SPEC
 
-/* Provide a LIBGCC_SPEC appropriate for NetBSD.  We also want to exclude
-   libgcc with -symbolic.  */
+/* Provide a LIBGCC_SPEC appropriate for NetBSD.  */
 
 #ifdef NETBSD_NATIVE
 #define NETBSD_LIBGCC_SPEC	\
@@ -134,11 +134,18 @@ along with GCC; see the file COPYING3.  If not see
      %{p: -lgcc_p}		\
      %{pg: -lgcc_p}}"
 #else
-#define NETBSD_LIBGCC_SPEC "%{!shared:%{!symbolic: -lgcc}}"
+#define NETBSD_LIBGCC_SPEC "-lgcc"
 #endif
 
 #undef LIBGCC_SPEC
 #define LIBGCC_SPEC NETBSD_LIBGCC_SPEC
+
+#if defined(HAVE_LD_EH_FRAME_HDR)
+#define LINK_EH_SPEC "%{!static:--eh-frame-hdr} "
+#endif
+
+#undef TARGET_LIBC_HAS_FUNCTION
+#define TARGET_LIBC_HAS_FUNCTION no_c99_libc_has_function
 
 /* When building shared libraries, the initialization and finalization 
    functions for the library are .init and .fini respectively.  */
@@ -173,50 +180,9 @@ along with GCC; see the file COPYING3.  If not see
 
 #undef WINT_TYPE
 #define WINT_TYPE "int"
-
 
-/* Attempt to turn on execute permission for the stack.  This may be
-   used by TARGET_TRAMPOLINE_INIT if the target needs it (that is,
-   if the target machine can change execute permissions on a page).
-
-   There is no way to query the execute permission of the stack, so
-   we always issue the mprotect() call.
-
-   Note that we go out of our way to use namespace-non-invasive calls
-   here.  Unfortunately, there is no libc-internal name for mprotect().
-
-   Also note that no errors should be emitted by this code; it is considered
-   dangerous for library calls to send messages to stdout/stderr.  */
-
-#define NETBSD_ENABLE_EXECUTE_STACK					\
-extern void __enable_execute_stack (void *);				\
-void									\
-__enable_execute_stack (void *addr)					\
-{									\
-  extern int mprotect (void *, size_t, int);				\
-  extern int __sysctl (int *, unsigned int, void *, size_t *,		\
-		       void *, size_t);					\
-									\
-  static int size;							\
-  static long mask;							\
-									\
-  char *page, *end;							\
-									\
-  if (size == 0)							\
-    {									\
-      int mib[2];							\
-      size_t len;							\
-									\
-      mib[0] = 6; /* CTL_HW */						\
-      mib[1] = 7; /* HW_PAGESIZE */					\
-      len = sizeof (size);						\
-      (void) __sysctl (mib, 2, &size, &len, NULL, 0);			\
-      mask = ~((long) size - 1);					\
-    }									\
-									\
-  page = (char *) (((long) addr) & mask);				\
-  end  = (char *) ((((long) (addr + TRAMPOLINE_SIZE)) & mask) + size);	\
-									\
-  /* 7 == PROT_READ | PROT_WRITE | PROT_EXEC */				\
-  (void) mprotect (page, end - page, 7);				\
-}
+#undef  SUBTARGET_INIT_BUILTINS
+#define SUBTARGET_INIT_BUILTINS						\
+  do {									\
+    netbsd_patch_builtins ();						\
+  } while(0)

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---          Copyright (C) 1997-2009 Free Software Foundation, Inc.          --
+--          Copyright (C) 1997-2016 Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -51,6 +51,8 @@
 --  It is designed to be a bottom-level (leaf) package.
 
 with Interfaces.C;
+with System.OS_Constants;
+
 package System.OS_Interface is
    pragma Preelaborate;
 
@@ -60,6 +62,7 @@ package System.OS_Interface is
    subtype rtems_id       is Interfaces.C.unsigned;
 
    subtype int            is Interfaces.C.int;
+   subtype char           is Interfaces.C.char;
    subtype short          is Interfaces.C.short;
    subtype long           is Interfaces.C.long;
    subtype unsigned       is Interfaces.C.unsigned;
@@ -68,7 +71,6 @@ package System.OS_Interface is
    subtype unsigned_char  is Interfaces.C.unsigned_char;
    subtype plain_char     is Interfaces.C.plain_char;
    subtype size_t         is Interfaces.C.size_t;
-
    -----------
    -- Errno --
    -----------
@@ -76,11 +78,11 @@ package System.OS_Interface is
    function errno return int;
    pragma Import (C, errno, "__get_errno");
 
-   EAGAIN    : constant := 11;
-   EINTR     : constant := 4;
-   EINVAL    : constant := 22;
-   ENOMEM    : constant := 12;
-   ETIMEDOUT : constant := 116;
+   EAGAIN    : constant := System.OS_Constants.EAGAIN;
+   EINTR     : constant := System.OS_Constants.EINTR;
+   EINVAL    : constant := System.OS_Constants.EINVAL;
+   ENOMEM    : constant := System.OS_Constants.ENOMEM;
+   ETIMEDOUT : constant := System.OS_Constants.ETIMEDOUT;
 
    -------------
    -- Signals --
@@ -176,14 +178,20 @@ package System.OS_Interface is
 
    type timespec is private;
 
-   type clockid_t is private;
+   type clockid_t is new int;
 
-   CLOCK_REALTIME : constant clockid_t;
+   CLOCK_REALTIME  : constant clockid_t;
+   CLOCK_MONOTONIC : constant clockid_t;
 
    function clock_gettime
      (clock_id : clockid_t;
       tp       : access timespec) return int;
    pragma Import (C, clock_gettime, "clock_gettime");
+
+   function clock_getres
+     (clock_id : clockid_t;
+      res      : access timespec) return int;
+   pragma Import (C, clock_getres, "clock_getres");
 
    function To_Duration (TS : timespec) return Duration;
    pragma Inline (To_Duration);
@@ -236,12 +244,14 @@ package System.OS_Interface is
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
 
-   type pthread_mutex_t     is limited private;
-   type pthread_cond_t      is limited private;
-   type pthread_attr_t      is limited private;
-   type pthread_mutexattr_t is limited private;
-   type pthread_condattr_t  is limited private;
-   type pthread_key_t       is private;
+   type pthread_mutex_t      is limited private;
+   type pthread_rwlock_t     is limited private;
+   type pthread_cond_t       is limited private;
+   type pthread_attr_t       is limited private;
+   type pthread_mutexattr_t  is limited private;
+   type pthread_rwlockattr_t is limited private;
+   type pthread_condattr_t   is limited private;
+   type pthread_key_t        is private;
 
    No_Key : constant pthread_key_t;
 
@@ -286,8 +296,7 @@ package System.OS_Interface is
    --  These two functions are only needed to share s-taprop.adb with
    --  FSU threads.
 
-   function Get_Page_Size return size_t;
-   function Get_Page_Size return Address;
+   function Get_Page_Size return int;
    pragma Import (C, Get_Page_Size, "getpagesize");
    --  Returns the size of a page
 
@@ -353,6 +362,40 @@ package System.OS_Interface is
    function pthread_mutex_unlock (mutex : access pthread_mutex_t) return int;
    pragma Import (C, pthread_mutex_unlock, "pthread_mutex_unlock");
 
+   function pthread_rwlockattr_init
+     (attr : access pthread_rwlockattr_t) return int;
+   pragma Import (C, pthread_rwlockattr_init, "pthread_rwlockattr_init");
+
+   function pthread_rwlockattr_destroy
+     (attr : access pthread_rwlockattr_t) return int;
+   pragma Import (C, pthread_rwlockattr_destroy, "pthread_rwlockattr_destroy");
+
+   PTHREAD_RWLOCK_PREFER_READER_NP              : constant := 0;
+   PTHREAD_RWLOCK_PREFER_WRITER_NP              : constant := 1;
+   PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP : constant := 2;
+
+   function pthread_rwlockattr_setkind_np
+     (attr : access pthread_rwlockattr_t;
+      pref : int) return int;
+
+   function pthread_rwlock_init
+     (mutex : access pthread_rwlock_t;
+      attr  : access pthread_rwlockattr_t) return int;
+   pragma Import (C, pthread_rwlock_init, "pthread_rwlock_init");
+
+   function pthread_rwlock_destroy
+     (mutex : access pthread_rwlock_t) return int;
+   pragma Import (C, pthread_rwlock_destroy, "pthread_rwlock_destroy");
+
+   function pthread_rwlock_rdlock (mutex : access pthread_rwlock_t) return int;
+   pragma Import (C, pthread_rwlock_rdlock, "pthread_rwlock_rdlock");
+
+   function pthread_rwlock_wrlock (mutex : access pthread_rwlock_t) return int;
+   pragma Import (C, pthread_rwlock_wrlock, "pthread_rwlock_wrlock");
+
+   function pthread_rwlock_unlock (mutex : access pthread_rwlock_t) return int;
+   pragma Import (C, pthread_rwlock_unlock, "pthread_rwlock_unlock");
+
    function pthread_condattr_init
      (attr : access pthread_condattr_t) return int;
    pragma Import (C, pthread_condattr_init, "pthread_condattr_init");
@@ -411,6 +454,7 @@ package System.OS_Interface is
       ss_low_priority     : int;
       ss_replenish_period : timespec;
       ss_initial_budget   : timespec;
+      sched_ss_max_repl   : int;
    end record;
    pragma Convention (C, struct_sched_param);
 
@@ -576,7 +620,7 @@ private
 
    type pid_t is new int;
 
-   type time_t is new long;
+   type time_t is new Long_Long_Integer;
 
    type timespec is record
       tv_sec  : time_t;
@@ -584,43 +628,54 @@ private
    end record;
    pragma Convention (C, timespec);
 
-   type clockid_t is new rtems_id;
-   CLOCK_REALTIME : constant clockid_t := 1;
+   CLOCK_REALTIME :  constant clockid_t := System.OS_Constants.CLOCK_REALTIME;
+   CLOCK_MONOTONIC : constant clockid_t := System.OS_Constants.CLOCK_MONOTONIC;
+
+   subtype char_array is Interfaces.C.char_array;
 
    type pthread_attr_t is record
-      is_initialized  : int;
-      stackaddr       : System.Address;
-      stacksize       : int;
-      contentionscope : int;
-      inheritsched    : int;
-      schedpolicy     : int;
-      schedparam      : struct_sched_param;
-      cputime_clocked_allowed : int;
-      detatchstate    : int;
+      Data : char_array (1 .. OS_Constants.PTHREAD_ATTR_SIZE);
    end record;
    pragma Convention (C, pthread_attr_t);
+   for pthread_attr_t'Alignment use Interfaces.C.double'Alignment;
 
    type pthread_condattr_t is record
-      flags           : int;
-      process_shared  : int;
+      Data : char_array (1 .. OS_Constants.PTHREAD_CONDATTR_SIZE);
    end record;
    pragma Convention (C, pthread_condattr_t);
+   for pthread_condattr_t'Alignment use Interfaces.C.double'Alignment;
 
    type pthread_mutexattr_t is record
-      is_initialized  : int;
-      process_shared  : int;
-      prio_ceiling    : int;
-      protocol        : int;
-      mutex_type      : int;
-      recursive       : int;
-   end record;
+      Data : char_array (1 .. OS_Constants.PTHREAD_MUTEXATTR_SIZE);
+   end  record;
    pragma Convention (C, pthread_mutexattr_t);
+   for pthread_mutexattr_t'Alignment use Interfaces.C.int'Alignment;
+
+   type pthread_rwlockattr_t is record
+      Data : char_array (1 .. OS_Constants.PTHREAD_RWLOCKATTR_SIZE);
+   end record;
+   pragma Convention (C, pthread_rwlockattr_t);
+   for pthread_rwlockattr_t'Alignment use Interfaces.C.int'Alignment;
 
    type pthread_t is new rtems_id;
 
-   type pthread_mutex_t is new rtems_id;
+   type pthread_mutex_t is record
+      Data : char_array (1 .. OS_Constants.PTHREAD_MUTEX_SIZE);
+   end record;
+   pragma Convention (C, pthread_mutex_t);
+   for pthread_mutex_t'Alignment use Interfaces.C.double'Alignment;
 
-   type pthread_cond_t is new rtems_id;
+   type pthread_rwlock_t is record
+      Data : char_array (1 .. OS_Constants.PTHREAD_RWLOCK_SIZE);
+   end record;
+   pragma Convention (C, pthread_rwlock_t);
+   for pthread_rwlock_t'Alignment use Interfaces.C.size_t'Alignment;
+
+   type pthread_cond_t is record
+      Data : char_array (1 .. OS_Constants.PTHREAD_COND_SIZE);
+   end record;
+   pragma Convention (C, pthread_cond_t);
+   for pthread_cond_t'Alignment use Interfaces.C.size_t'Alignment;
 
    type pthread_key_t is new rtems_id;
 

@@ -1,17 +1,16 @@
 // PR c++/46497
-// { dg-options -std=c++0x }
+// { dg-do compile { target c++11 } }
 
 struct A {
-  A(A&&) = default;		// { dg-message "A::A|no known conversion" }
+  A(A&&) = default;
 };
 struct B {
   const A a;
   B(const B&) = default;
-  B(B&&) = default;		// { dg-error "implicitly deleted|no match" }
-  // { dg-message "candidate" "candidate note" { target *-*-* } 10 }
+  B(B&&) = default;	// { dg-error "implicitly deleted|use of deleted" }
 };
 
-void g(B);			// { dg-error "argument 1" }
+void g(B);			// { dg-message "argument 1" }
 B&& f();
 
 int main()

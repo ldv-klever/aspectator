@@ -1,7 +1,8 @@
-/* Copyright (C) 2005, 2008, 2009 Free Software Foundation, Inc.
+/* Copyright (C) 2005-2017 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
-   This file is part of the GNU OpenMP Library (libgomp).
+   This file is part of the GNU Offloading and Multi Processing Library
+   (libgomp).
 
    Libgomp is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -31,92 +32,8 @@
 #include <sys/syscall.h>
 #include "wait.h"
 
-
-/* The internal gomp_mutex_t and the external non-recursive omp_lock_t
-   have the same form.  Re-use it.  */
-
-void
-gomp_init_lock_30 (omp_lock_t *lock)
-{
-  gomp_mutex_init (lock);
-}
-
-void
-gomp_destroy_lock_30 (omp_lock_t *lock)
-{
-  gomp_mutex_destroy (lock);
-}
-
-void
-gomp_set_lock_30 (omp_lock_t *lock)
-{
-  gomp_mutex_lock (lock);
-}
-
-void
-gomp_unset_lock_30 (omp_lock_t *lock)
-{
-  gomp_mutex_unlock (lock);
-}
-
-int
-gomp_test_lock_30 (omp_lock_t *lock)
-{
-  return __sync_bool_compare_and_swap (lock, 0, 1);
-}
-
-void
-gomp_init_nest_lock_30 (omp_nest_lock_t *lock)
-{
-  memset (lock, '\0', sizeof (*lock));
-}
-
-void
-gomp_destroy_nest_lock_30 (omp_nest_lock_t *lock)
-{
-}
-
-void
-gomp_set_nest_lock_30 (omp_nest_lock_t *lock)
-{
-  void *me = gomp_icv (true);
-
-  if (lock->owner != me)
-    {
-      gomp_mutex_lock (&lock->lock);
-      lock->owner = me;
-    }
-
-  lock->count++;
-}
-
-void
-gomp_unset_nest_lock_30 (omp_nest_lock_t *lock)
-{
-  if (--lock->count == 0)
-    {
-      lock->owner = NULL;
-      gomp_mutex_unlock (&lock->lock);
-    }
-}
-
-int
-gomp_test_nest_lock_30 (omp_nest_lock_t *lock)
-{
-  void *me = gomp_icv (true);
-
-  if (lock->owner == me)
-    return ++lock->count;
-
-  if (__sync_bool_compare_and_swap (&lock->lock, 0, 1))
-    {
-      lock->owner = me;
-      lock->count = 1;
-      return 1;
-    }
-
-  return 0;
-}
+/* Reuse the generic implementation in terms of gomp_mutex_t.  */
+#include "../../lock.c"
 
 #ifdef LIBGOMP_GNU_SYMBOL_VERSIONING
 /* gomp_mutex_* can be safely locked in one thread and
@@ -169,7 +86,7 @@ static inline int gomp_tid (void)
 void
 gomp_init_nest_lock_25 (omp_nest_lock_25_t *lock)
 {
-  memset (lock, 0, sizeof (lock));
+  memset (lock, 0, sizeof (*lock));
 }
 
 void
@@ -184,8 +101,9 @@ gomp_set_nest_lock_25 (omp_nest_lock_25_t *lock)
 
   while (1)
     {
-      otid = __sync_val_compare_and_swap (&lock->owner, 0, tid);
-      if (otid == 0)
+      otid = 0;
+      if (__atomic_compare_exchange_n (&lock->owner, &otid, tid, false,
+				       MEMMODEL_ACQUIRE, MEMMODEL_RELAXED))
 	{
 	  lock->count = 1;
 	  return;
@@ -207,7 +125,7 @@ gomp_unset_nest_lock_25 (omp_nest_lock_25_t *lock)
 
   if (--lock->count == 0)
     {
-      __sync_lock_release (&lock->owner);
+      __atomic_store_n (&lock->owner, 0, MEMMODEL_RELEASE);
       futex_wake (&lock->owner, 1);
     }
 }
@@ -217,8 +135,9 @@ gomp_test_nest_lock_25 (omp_nest_lock_25_t *lock)
 {
   int otid, tid = gomp_tid ();
 
-  otid = __sync_val_compare_and_swap (&lock->owner, 0, tid);
-  if (otid == 0)
+  otid = 0;
+  if (__atomic_compare_exchange_n (&lock->owner, &otid, tid, false,
+				   MEMMODEL_ACQUIRE, MEMMODEL_RELAXED))
     {
       lock->count = 1;
       return 1;

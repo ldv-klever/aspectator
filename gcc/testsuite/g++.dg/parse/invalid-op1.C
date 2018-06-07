@@ -7,8 +7,8 @@ template <int I> struct A
     template <int> struct B
     {
         enum { e = I * A<I-1>::B }; // { dg-error "dependent-name" "depname" }
-         // { dg-message "note" "note" { target *-*-* } 9 }
+         // { dg-message "note" "note" { target *-*-* } .-1 }
     };
 };
 
-A<0>::B<0> a; // { dg-message "instantiated" }
+A<0>::B<0> a; // { dg-message "required" }

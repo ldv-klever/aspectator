@@ -11,14 +11,21 @@ package math
 //	Ldexp(±0, exp) = ±0
 //	Ldexp(±Inf, exp) = ±Inf
 //	Ldexp(NaN, exp) = NaN
+
+//extern ldexp
+func libc_ldexp(float64, int) float64
+
 func Ldexp(frac float64, exp int) float64 {
-	// TODO(rsc): Remove manual inlining of IsNaN, IsInf
-	// when compiler does it for us
+	r := libc_ldexp(frac, exp)
+	return r
+}
+
+func ldexp(frac float64, exp int) float64 {
 	// special cases
 	switch {
 	case frac == 0:
 		return frac // correctly return -0
-	case frac < -MaxFloat64 || frac > MaxFloat64 || frac != frac: // IsInf(frac, 0) || IsNaN(frac):
+	case IsInf(frac, 0) || IsNaN(frac):
 		return frac
 	}
 	frac, e := normalize(frac)

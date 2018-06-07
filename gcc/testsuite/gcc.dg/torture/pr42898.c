@@ -1,5 +1,6 @@
 /* { dg-do compile } */
 /* { dg-options "-fdump-tree-optimized" } */
+/* { dg-skip-if "" { *-*-* } { "-fno-fat-lto-objects" } { "" } } */
 
 struct hardware {
   int parm1:8;
@@ -20,4 +21,3 @@ void f1(volatile struct hardware *ptr)
 }
 
 /* { dg-final { scan-tree-dump-times "\\*ptr" 1 "optimized" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

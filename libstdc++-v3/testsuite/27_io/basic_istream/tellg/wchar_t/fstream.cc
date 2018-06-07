@@ -1,4 +1,4 @@
-// Copyright (C) 2004, 2009 Free Software Foundation
+// Copyright (C) 2004-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,6 +15,8 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
+// { dg-require-fileio "" }
+
 // 27.6.1.3 unformatted input functions
 // NB: ostream has a particular "seeks" category. Adopt this for istreams too.
 // @require@ %-*.tst %-*.txt
@@ -30,7 +32,6 @@ void test04(void)
 {
   typedef std::wistream::off_type off_type;
 
-  bool test __attribute__((unused)) = true;
   std::wistream::pos_type pos01, pos02, pos03, pos04, pos05, pos06;
   std::ios_base::iostate state01, state02;
   const char str_lit01[] = "wistream_seeks-1.txt";

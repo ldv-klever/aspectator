@@ -7,7 +7,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2003-2008, Free Software Foundation, Inc.         --
+--          Copyright (C) 2003-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -132,9 +132,9 @@ package body MLib.Tgt.Specific is
       return "";
    end Dynamic_Option;
 
-   -----------------------------
+   -----------------------
    -- Get_Target_Suffix --
-   -----------------------------
+   -----------------------
 
    function Get_Target_Suffix return String is
       Target_Name : constant String := Sdefault.Target_Name.all;
@@ -157,7 +157,7 @@ package body MLib.Tgt.Specific is
          return "sparc";
       elsif Target_Name (Target_Name'First .. Index) = "sparc64" then
          return "sparc64";
-      elsif Target_Name (Target_Name'First .. Index) = "xscale" then
+      elsif Target_Name (Target_Name'First .. Index) = "arm" then
          return "arm";
       elsif Target_Name (Target_Name'First .. Index) = "i586" then
          return "pentium";

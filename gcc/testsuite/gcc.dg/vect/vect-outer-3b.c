@@ -49,5 +49,4 @@ int main (void)
 }
 
 /* { dg-final { scan-tree-dump-times "OUTER LOOP VECTORIZED" 1 "vect" { xfail *-*-* } } } */
-/* { dg-final { scan-tree-dump-times "strided access in outer loop" 2 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
+/* { dg-final { scan-tree-dump-times "grouped access in outer loop" 2 "vect" } } */

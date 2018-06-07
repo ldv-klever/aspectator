@@ -3,7 +3,10 @@ void foo (int);
 int test ()
 {
   int a[N+6];
-  unsigned i;
+  int i;
+
+  for (i = 0; i < N; i++)
+    a[i] += 32;
 
   for (i = 0; i < N; i++)
     {
@@ -28,4 +31,3 @@ int test ()
   return a[20];
 }
 /* { dg-final { scan-tree-dump-times "number of SCoPs: 1" 1 "graphite"} } */
-/* { dg-final { cleanup-tree-dump "graphite" } } */

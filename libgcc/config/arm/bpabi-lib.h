@@ -1,6 +1,5 @@
 /* Configuration file for ARM BPABI targets, library renames.
-   Copyright (C) 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 2010-2017 Free Software Foundation, Inc.
    Contributed by CodeSourcery, LLC   
 
    This file is part of GCC.
@@ -15,22 +14,19 @@
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
    License for more details.
 
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
    You should have received a copy of the GNU General Public License and
    a copy of the GCC Runtime Library Exception along with this program;
    see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    <http://www.gnu.org/licenses/>.  */
 
-#if defined (__thumb__)
-#define RENAME_LIBRARY_SET ".thumb_set"
-#else
-#define RENAME_LIBRARY_SET ".set"
-#endif
-
 /* Make __aeabi_AEABI_NAME an alias for __GCC_NAME.  */
 #define RENAME_LIBRARY(GCC_NAME, AEABI_NAME)		\
-  __asm__ (".globl\t__aeabi_" #AEABI_NAME "\n"		\
-	   RENAME_LIBRARY_SET "\t__aeabi_" #AEABI_NAME 	\
-	     ", __" #GCC_NAME "\n");
+  typeof (__##GCC_NAME) __aeabi_##AEABI_NAME \
+    __attribute__((alias ("__" #GCC_NAME)));
 
 /* Give some libgcc functions an additional __aeabi name.  */
 #ifdef L_muldi3
@@ -77,4 +73,13 @@
 #endif
 #ifdef L_floatundisf
 #define DECLARE_LIBRARY_RENAMES RENAME_LIBRARY (floatundisf, ul2f)
+#endif
+
+/* For ARM bpabi, we only want to use a "__gnu_" prefix for the fixed-point
+   helper functions - not everything in libgcc - in the interests of
+   maintaining backward compatibility.  */
+#define LIBGCC2_FIXEDBIT_GNU_PREFIX
+
+#if (!defined(__ARM_ARCH_EXT_IDIV__))
+# define TARGET_HAS_NO_HW_DIVIDE
 #endif

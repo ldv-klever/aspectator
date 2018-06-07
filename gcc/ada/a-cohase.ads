@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -31,9 +31,12 @@
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+with Ada.Iterator_Interfaces;
+
 private with Ada.Containers.Hash_Tables;
-private with Ada.Streams;
+with Ada.Containers.Helpers;
 private with Ada.Finalization;
+private with Ada.Streams;
 
 generic
    type Element_Type is private;
@@ -46,10 +49,16 @@ generic
    with function "=" (Left, Right : Element_Type) return Boolean is <>;
 
 package Ada.Containers.Hashed_Sets is
+   pragma Annotate (CodePeer, Skip_Analysis);
    pragma Preelaborate;
    pragma Remote_Types;
 
-   type Set is tagged private;
+   type Set is tagged private
+   with
+      Constant_Indexing => Constant_Reference,
+      Default_Iterator  => Iterate,
+      Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (Set);
 
    type Cursor is private;
@@ -62,6 +71,12 @@ package Ada.Containers.Hashed_Sets is
    No_Element : constant Cursor;
    --  Cursor objects declared without an initialization expression are
    --  initialized to the value No_Element.
+
+   function Has_Element (Position : Cursor) return Boolean;
+   --  Equivalent to Position /= No_Element
+
+   package Set_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    function "=" (Left, Right : Set) return Boolean;
    --  For each element in Left, set equality attempts to find the equal
@@ -132,6 +147,19 @@ package Ada.Containers.Hashed_Sets is
       Process  : not null access procedure (Element : Element_Type));
    --  Calls Process with the element (having only a constant view) of the node
    --  designed by the cursor.
+
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is private
+        with Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased Set;
+      Position  : Cursor) return Constant_Reference_Type;
+   pragma Inline (Constant_Reference);
+
+   procedure Assign (Target : in out Set; Source : Set);
+
+   function Copy (Source : Set; Capacity : Count_Type := 0) return Set;
 
    procedure Move (Target : in out Set; Source : in out Set);
    --  Clears Target (if it's not empty), and then moves (not copies) the
@@ -299,9 +327,6 @@ package Ada.Containers.Hashed_Sets is
    function Contains (Container : Set; Item : Element_Type) return Boolean;
    --  Equivalent to Find (Container, Item) /= No_Element
 
-   function Has_Element (Position : Cursor) return Boolean;
-   --  Equivalent to Position /= No_Element
-
    function Equivalent_Elements (Left, Right : Cursor) return Boolean;
    --  Returns the result of calling Equivalent_Elements with the elements of
    --  the nodes designated by cursors Left and Right.
@@ -322,6 +347,9 @@ package Ada.Containers.Hashed_Sets is
      (Container : Set;
       Process   : not null access procedure (Position : Cursor));
    --  Calls Process for each node in the set
+
+   function Iterate
+     (Container : Set) return Set_Iterator_Interfaces.Forward_Iterator'Class;
 
    generic
       type Key_Type (<>) is private;
@@ -388,20 +416,82 @@ package Ada.Containers.Hashed_Sets is
       --  Equivalent_Keys to compare the saved key-value to the value returned
       --  by applying generic formal operation Key to the post-Process value of
       --  element. If the key values compare equal then the operation
-      --  completes. Otherwise, the node is removed from the map and
+      --  completes. Otherwise, the node is removed from the set and
       --  Program_Error is raised.
 
+      type Reference_Type (Element : not null access Element_Type) is private
+        with Implicit_Dereference => Element;
+
+      function Reference_Preserving_Key
+        (Container : aliased in out Set;
+         Position  : Cursor) return Reference_Type;
+
+      function Constant_Reference
+        (Container : aliased Set;
+         Key       : Key_Type) return Constant_Reference_Type;
+
+      function Reference_Preserving_Key
+        (Container : aliased in out Set;
+         Key       : Key_Type) return Reference_Type;
+
+   private
+      use Ada.Streams;
+      type Set_Access is access all Set;
+      for Set_Access'Storage_Size use 0;
+
+      --  Key_Preserving references must carry information to allow removal
+      --  of elements whose value may have been altered improperly, i.e. have
+      --  been given values incompatible with the hash-code of the previous
+      --  value, and are thus in the wrong bucket. (RM 18.7 (96.6/3))
+
+      --  We cannot store the key directly because it is an unconstrained type.
+      --  To avoid using additional dynamic allocation we store the old cursor
+      --  which simplifies possible removal. This is not possible for some
+      --  other set types.
+
+      --  The mechanism is different for Update_Element_Preserving_Key, as
+      --  in that case the check that buckets have not changed is performed
+      --  at the time of the update, not when the reference is finalized.
+
+      package Impl is new Helpers.Generic_Implementation;
+
+      type Reference_Control_Type is
+         new Impl.Reference_Control_Type with
+      record
+         Container : Set_Access;
+         Index     : Hash_Type;
+         Old_Pos   : Cursor;
+         Old_Hash  : Hash_Type;
+      end record;
+
+      overriding procedure Finalize (Control : in out Reference_Control_Type);
+      pragma Inline (Finalize);
+
+      type Reference_Type (Element : not null access Element_Type) is record
+         Control  : Reference_Control_Type;
+      end record;
+
+      procedure Read
+        (Stream : not null access Root_Stream_Type'Class;
+         Item   : out Reference_Type);
+
+      for Reference_Type'Read use Read;
+
+      procedure Write
+        (Stream : not null access Root_Stream_Type'Class;
+         Item   : Reference_Type);
+
+      for Reference_Type'Write use Write;
    end Generic_Keys;
 
 private
-
    pragma Inline (Next);
 
    type Node_Type;
    type Node_Access is access Node_Type;
 
    type Node_Type is limited record
-      Element : Element_Type;
+      Element : aliased Element_Type;
       Next    : Node_Access;
    end record;
 
@@ -412,15 +502,25 @@ private
       HT : HT_Types.Hash_Table_Type;
    end record;
 
-   overriding
-   procedure Adjust (Container : in out Set);
+   overriding procedure Adjust (Container : in out Set);
 
-   overriding
-   procedure Finalize (Container : in out Set);
+   overriding procedure Finalize (Container : in out Set);
 
-   use HT_Types;
+   use HT_Types, HT_Types.Implementation;
    use Ada.Finalization;
    use Ada.Streams;
+
+   procedure Write
+     (Stream    : not null access Root_Stream_Type'Class;
+      Container : Set);
+
+   for Set'Write use Write;
+
+   procedure Read
+     (Stream    : not null access Root_Stream_Type'Class;
+      Container : out Set);
+
+   for Set'Read use Read;
 
    type Set_Access is access all Set;
    for Set_Access'Storage_Size use 0;
@@ -442,20 +542,66 @@ private
 
    for Cursor'Read use Read;
 
-   No_Element : constant Cursor := (Container => null, Node => null);
+   subtype Reference_Control_Type is Implementation.Reference_Control_Type;
+   --  It is necessary to rename this here, so that the compiler can find it
 
-   procedure Write
-     (Stream    : not null access Root_Stream_Type'Class;
-      Container : Set);
-
-   for Set'Write use Write;
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
 
    procedure Read
-     (Stream    : not null access Root_Stream_Type'Class;
-      Container : out Set);
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
 
-   for Set'Read use Read;
+   for Constant_Reference_Type'Read use Read;
 
-   Empty_Set : constant Set := (Controlled with HT => (null, 0, 0, 0));
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   --  Three operations are used to optimize in the expansion of "for ... of"
+   --  loops: the Next(Cursor) procedure in the visible part, and the following
+   --  Pseudo_Reference and Get_Element_Access functions. See Sem_Ch5 for
+   --  details.
+
+   function Pseudo_Reference
+     (Container : aliased Set'Class) return Reference_Control_Type;
+   pragma Inline (Pseudo_Reference);
+   --  Creates an object of type Reference_Control_Type pointing to the
+   --  container, and increments the Lock. Finalization of this object will
+   --  decrement the Lock.
+
+   type Element_Access is access all Element_Type with
+     Storage_Size => 0;
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access;
+   --  Returns a pointer to the element designated by Position.
+
+   Empty_Set : constant Set := (Controlled with others => <>);
+
+   No_Element : constant Cursor := (Container => null, Node => null);
+
+   type Iterator is new Limited_Controlled and
+     Set_Iterator_Interfaces.Forward_Iterator with
+   record
+      Container : Set_Access;
+   end record
+     with Disable_Controlled => not T_Check;
+
+   overriding function First (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
+   overriding procedure Finalize (Object : in out Iterator);
 
 end Ada.Containers.Hashed_Sets;

@@ -1,7 +1,6 @@
 /* Get common system includes and various definitions and declarations based
    on autoconf macros.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1998-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -44,6 +43,14 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 /* Use the unlocked open routines from libiberty.  */
+
+/* Some of these are #define on some systems, e.g. on AIX to redirect
+   the names to 64bit capable functions for LARGE_FILES support. These
+   redefs are pointless here so we can override them.  */
+    
+#undef fopen 
+#undef freopen 
+
 #define fopen(PATH,MODE) fopen_unlocked(PATH,MODE)
 #define fdopen(FILDES,MODE) fdopen_unlocked(FILDES,MODE)
 #define freopen(PATH,MODE,STREAM) freopen_unlocked(PATH,MODE,STREAM)
@@ -83,6 +90,10 @@ along with GCC; see the file COPYING3.  If not see
 #  undef fputc
 #  define fputc(C, Stream) fputc_unlocked (C, Stream)
 # endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 # ifdef HAVE_CLEARERR_UNLOCKED
 #  undef clearerr
@@ -164,6 +175,10 @@ extern int fprintf_unlocked (FILE *, const char *, ...);
 #  endif
 # endif
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif
 
 /* ??? Glibc's fwrite/fread_unlocked macros cause
@@ -215,7 +230,7 @@ extern int errno;
 /* The outer cast is needed to work around a bug in Cray C 5.0.3.0.
    It is necessary at least when t == time_t.  */
 #define INTTYPE_MINIMUM(t) ((t) (INTTYPE_SIGNED (t) \
-                             ? ~ (t) 0 << (sizeof(t) * CHAR_BIT - 1) : (t) 0))
+			    ? (t) 1 << (sizeof (t) * CHAR_BIT - 1) : (t) 0))
 #define INTTYPE_MAXIMUM(t) ((t) (~ (t) 0 - INTTYPE_MINIMUM (t)))
 
 /* Use that infrastructure to provide a few constants.  */
@@ -286,8 +301,16 @@ extern int errno;
    here.  These checks will be in the undefined state while configure
    is running so be careful to test "defined (HAVE_DECL_*)".  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if defined (HAVE_DECL_ABORT) && !HAVE_DECL_ABORT
 extern void abort (void);
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #if HAVE_SYS_STAT_H
@@ -352,18 +375,12 @@ extern void abort (void);
    ??? C99 designated initializers are not supported by most C++
    compilers, including G++.  -- gdr, 2005-05-18  */
 #if !defined(HAVE_DESIGNATED_INITIALIZERS)
-#define HAVE_DESIGNATED_INITIALIZERS \
-  ((!defined(__cplusplus) && (GCC_VERSION >= 2007)) \
-   || (__STDC_VERSION__ >= 199901L))
-#endif
-
-/* Be conservative and only use enum bitfields with GCC.
-   FIXME: provide a complete autoconf test for buggy enum bitfields.  */
-
-#if (GCC_VERSION > 2000)
-#define ENUM_BITFIELD(TYPE) __extension__ enum TYPE
+#ifdef __cplusplus
+#define HAVE_DESIGNATED_INITIALIZERS 0
 #else
-#define ENUM_BITFIELD(TYPE) unsigned int
+#define HAVE_DESIGNATED_INITIALIZERS \
+   ((GCC_VERSION >= 2007) || (__STDC_VERSION__ >= 199901L))
+#endif
 #endif
 
 #ifndef offsetof
@@ -375,6 +392,30 @@ extern void abort (void);
    between 2.95 and 3.0.  Let's use 3.0 as the lower bound for now.  */
 #if (GCC_VERSION < 3000)
 #define __builtin_expect(a, b) (a)
+#endif
+
+/* Redefine abort to report an internal error w/o coredump, and
+   reporting the location of the error in the source file.  */
+extern void fancy_abort (const char *, int, const char *) ATTRIBUTE_NORETURN;
+#define abort() fancy_abort (__FILE__, __LINE__, __FUNCTION__)
+
+/* Use gcc_assert(EXPR) to test invariants.  */
+#if ENABLE_ASSERT_CHECKING
+#define gcc_assert(EXPR) 						\
+   ((void)(!(EXPR) ? fancy_abort (__FILE__, __LINE__, __FUNCTION__), 0 : 0))
+#elif (GCC_VERSION >= 4005)
+#define gcc_assert(EXPR) 						\
+  ((void)(__builtin_expect (!(EXPR), 0) ? __builtin_unreachable (), 0 : 0))
+#else
+/* Include EXPR, so that unused variable warnings do not occur.  */
+#define gcc_assert(EXPR) ((void)(0 && (EXPR)))
+#endif
+
+#if CHECKING_P
+#define gcc_checking_assert(EXPR) gcc_assert (EXPR)
+#else
+/* N.B.: in release build EXPR is not evaluated.  */
+#define gcc_checking_assert(EXPR) ((void)(0 && (EXPR)))
 #endif
 
 /* Provide a fake boolean type.  We make no attempt to use the

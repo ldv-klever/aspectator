@@ -5,199 +5,384 @@
 package net
 
 import (
-	"flag"
-	"io"
 	"os"
-	"strings"
-	"syscall"
 	"testing"
-	"runtime"
 )
 
-// Do not test empty datagrams by default.
-// It causes unexplained timeouts on some systems,
-// including Snow Leopard.  I think that the kernel
-// doesn't quite expect them.
-var testUDP = flag.Bool("udp", false, "whether to test UDP datagrams")
+var tcpServerTests = []struct {
+	snet, saddr string // server endpoint
+	tnet, taddr string // target endpoint for client
+}{
+	{snet: "tcp", saddr: ":0", tnet: "tcp", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "0.0.0.0:0", tnet: "tcp", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::ffff:0.0.0.0]:0", tnet: "tcp", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::]:0", tnet: "tcp", taddr: "::1"},
 
-func runEcho(fd io.ReadWriter, done chan<- int) {
-	var buf [1024]byte
+	{snet: "tcp", saddr: ":0", tnet: "tcp", taddr: "::1"},
+	{snet: "tcp", saddr: "0.0.0.0:0", tnet: "tcp", taddr: "::1"},
+	{snet: "tcp", saddr: "[::ffff:0.0.0.0]:0", tnet: "tcp", taddr: "::1"},
+	{snet: "tcp", saddr: "[::]:0", tnet: "tcp", taddr: "127.0.0.1"},
 
-	for {
-		n, err := fd.Read(buf[0:])
-		if err != nil || n == 0 {
-			break
-		}
-		fd.Write(buf[0:n])
-	}
-	done <- 1
+	{snet: "tcp", saddr: ":0", tnet: "tcp4", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "0.0.0.0:0", tnet: "tcp4", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::ffff:0.0.0.0]:0", tnet: "tcp4", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::]:0", tnet: "tcp6", taddr: "::1"},
+
+	{snet: "tcp", saddr: ":0", tnet: "tcp6", taddr: "::1"},
+	{snet: "tcp", saddr: "0.0.0.0:0", tnet: "tcp6", taddr: "::1"},
+	{snet: "tcp", saddr: "[::ffff:0.0.0.0]:0", tnet: "tcp6", taddr: "::1"},
+	{snet: "tcp", saddr: "[::]:0", tnet: "tcp4", taddr: "127.0.0.1"},
+
+	{snet: "tcp", saddr: "127.0.0.1:0", tnet: "tcp", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::ffff:127.0.0.1]:0", tnet: "tcp", taddr: "127.0.0.1"},
+	{snet: "tcp", saddr: "[::1]:0", tnet: "tcp", taddr: "::1"},
+
+	{snet: "tcp4", saddr: ":0", tnet: "tcp4", taddr: "127.0.0.1"},
+	{snet: "tcp4", saddr: "0.0.0.0:0", tnet: "tcp4", taddr: "127.0.0.1"},
+	{snet: "tcp4", saddr: "[::ffff:0.0.0.0]:0", tnet: "tcp4", taddr: "127.0.0.1"},
+
+	{snet: "tcp4", saddr: "127.0.0.1:0", tnet: "tcp4", taddr: "127.0.0.1"},
+
+	{snet: "tcp6", saddr: ":0", tnet: "tcp6", taddr: "::1"},
+	{snet: "tcp6", saddr: "[::]:0", tnet: "tcp6", taddr: "::1"},
+
+	{snet: "tcp6", saddr: "[::1]:0", tnet: "tcp6", taddr: "::1"},
 }
 
-func runServe(t *testing.T, network, addr string, listening chan<- string, done chan<- int) {
-	l, err := Listen(network, addr)
-	if err != nil {
-		t.Fatalf("net.Listen(%q, %q) = _, %v", network, addr, err)
-	}
-	listening <- l.Addr().String()
-
-	for {
-		fd, err := l.Accept()
-		if err != nil {
-			break
-		}
-		echodone := make(chan int)
-		go runEcho(fd, echodone)
-		<-echodone // make sure Echo stops
-		l.Close()
-	}
-	done <- 1
-}
-
-func connect(t *testing.T, network, addr string, isEmpty bool) {
-	var laddr string
-	if network == "unixgram" {
-		laddr = addr + ".local"
-	}
-	fd, err := Dial(network, laddr, addr)
-	if err != nil {
-		t.Fatalf("net.Dial(%q, %q, %q) = _, %v", network, laddr, addr, err)
-	}
-	fd.SetReadTimeout(1e9) // 1s
-
-	var b []byte
-	if !isEmpty {
-		b = []byte("hello, world\n")
-	}
-	var b1 [100]byte
-
-	n, err1 := fd.Write(b)
-	if n != len(b) {
-		t.Fatalf("fd.Write(%q) = %d, %v", b, n, err1)
-	}
-
-	n, err1 = fd.Read(b1[0:])
-	if n != len(b) || err1 != nil {
-		t.Fatalf("fd.Read() = %d, %v (want %d, nil)", n, err1, len(b))
-	}
-	fd.Close()
-}
-
-func doTest(t *testing.T, network, listenaddr, dialaddr string) {
-	t.Logf("Test %s %s %s\n", network, listenaddr, dialaddr)
-	listening := make(chan string)
-	done := make(chan int)
-	if network == "tcp" {
-		listenaddr += ":0" // any available port
-	}
-	go runServe(t, network, listenaddr, listening, done)
-	addr := <-listening // wait for server to start
-	if network == "tcp" {
-		dialaddr += addr[strings.LastIndex(addr, ":"):]
-	}
-	connect(t, network, dialaddr, false)
-	<-done // make sure server stopped
-}
-
+// TestTCPServer tests concurrent accept-read-write servers.
 func TestTCPServer(t *testing.T) {
-	doTest(t, "tcp", "0.0.0.0", "127.0.0.1")
-	doTest(t, "tcp", "", "127.0.0.1")
-	if kernelSupportsIPv6() {
-		doTest(t, "tcp", "[::]", "[::ffff:127.0.0.1]")
-		doTest(t, "tcp", "[::]", "127.0.0.1")
-		doTest(t, "tcp", "0.0.0.0", "[::ffff:127.0.0.1]")
-	}
-}
+	const N = 3
 
-func TestUnixServer(t *testing.T) {
-	// "unix" sockets are not supported on windows.
-	if runtime.GOOS == "windows" {
-		return
-	}
-	os.Remove("/tmp/gotest.net")
-	doTest(t, "unix", "/tmp/gotest.net", "/tmp/gotest.net")
-	os.Remove("/tmp/gotest.net")
-	if syscall.OS == "linux" {
-		doTest(t, "unixpacket", "/tmp/gotest.net", "/tmp/gotest.net")
-		os.Remove("/tmp/gotest.net")
-		// Test abstract unix domain socket, a Linux-ism
-		doTest(t, "unix", "@gotest/net", "@gotest/net")
-		doTest(t, "unixpacket", "@gotest/net", "@gotest/net")
-	}
-}
-
-func runPacket(t *testing.T, network, addr string, listening chan<- string, done chan<- int) {
-	c, err := ListenPacket(network, addr)
-	if err != nil {
-		t.Fatalf("net.ListenPacket(%q, %q) = _, %v", network, addr, err)
-	}
-	listening <- c.LocalAddr().String()
-	c.SetReadTimeout(10e6) // 10ms
-	var buf [1000]byte
-	for {
-		n, addr, err := c.ReadFrom(buf[0:])
-		if e, ok := err.(Error); ok && e.Timeout() {
-			if done <- 1 {
-				break
-			}
+	for i, tt := range tcpServerTests {
+		if !testableListenArgs(tt.snet, tt.saddr, tt.taddr) {
+			t.Logf("skipping %s test", tt.snet+" "+tt.saddr+"<-"+tt.taddr)
 			continue
 		}
+
+		ln, err := Listen(tt.snet, tt.saddr)
 		if err != nil {
-			break
+			if perr := parseDialError(err); perr != nil {
+				t.Error(perr)
+			}
+			t.Fatal(err)
 		}
-		if _, err = c.WriteTo(buf[0:n], addr); err != nil {
-			t.Fatalf("WriteTo %v: %v", addr, err)
+
+		var lss []*localServer
+		var tpchs []chan error
+		defer func() {
+			for _, ls := range lss {
+				ls.teardown()
+			}
+		}()
+		for i := 0; i < N; i++ {
+			ls, err := (&streamListener{Listener: ln}).newLocalServer()
+			if err != nil {
+				t.Fatal(err)
+			}
+			lss = append(lss, ls)
+			tpchs = append(tpchs, make(chan error, 1))
+		}
+		for i := 0; i < N; i++ {
+			ch := tpchs[i]
+			handler := func(ls *localServer, ln Listener) { transponder(ln, ch) }
+			if err := lss[i].buildup(handler); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		var trchs []chan error
+		for i := 0; i < N; i++ {
+			_, port, err := SplitHostPort(lss[i].Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := Dialer{Timeout: someTimeout}
+			c, err := d.Dial(tt.tnet, JoinHostPort(tt.taddr, port))
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer c.Close()
+			trchs = append(trchs, make(chan error, 1))
+			go transceiver(c, []byte("TCP SERVER TEST"), trchs[i])
+		}
+
+		for _, ch := range trchs {
+			for err := range ch {
+				t.Errorf("#%d: %v", i, err)
+			}
+		}
+		for _, ch := range tpchs {
+			for err := range ch {
+				t.Errorf("#%d: %v", i, err)
+			}
 		}
 	}
-	c.Close()
-	done <- 1
 }
 
-func doTestPacket(t *testing.T, network, listenaddr, dialaddr string, isEmpty bool) {
-	t.Logf("TestPacket %s %s %s\n", network, listenaddr, dialaddr)
-	listening := make(chan string)
-	done := make(chan int)
-	if network == "udp" {
-		listenaddr += ":0" // any available port
+var unixAndUnixpacketServerTests = []struct {
+	network, address string
+}{
+	{"unix", testUnixAddr()},
+	{"unix", "@nettest/go/unix"},
+
+	{"unixpacket", testUnixAddr()},
+	{"unixpacket", "@nettest/go/unixpacket"},
+}
+
+// TestUnixAndUnixpacketServer tests concurrent accept-read-write
+// servers
+func TestUnixAndUnixpacketServer(t *testing.T) {
+	const N = 3
+
+	for i, tt := range unixAndUnixpacketServerTests {
+		if !testableListenArgs(tt.network, tt.address, "") {
+			t.Logf("skipping %s test", tt.network+" "+tt.address)
+			continue
+		}
+
+		ln, err := Listen(tt.network, tt.address)
+		if err != nil {
+			if perr := parseDialError(err); perr != nil {
+				t.Error(perr)
+			}
+			t.Fatal(err)
+		}
+
+		var lss []*localServer
+		var tpchs []chan error
+		defer func() {
+			for _, ls := range lss {
+				ls.teardown()
+			}
+		}()
+		for i := 0; i < N; i++ {
+			ls, err := (&streamListener{Listener: ln}).newLocalServer()
+			if err != nil {
+				t.Fatal(err)
+			}
+			lss = append(lss, ls)
+			tpchs = append(tpchs, make(chan error, 1))
+		}
+		for i := 0; i < N; i++ {
+			ch := tpchs[i]
+			handler := func(ls *localServer, ln Listener) { transponder(ln, ch) }
+			if err := lss[i].buildup(handler); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		var trchs []chan error
+		for i := 0; i < N; i++ {
+			d := Dialer{Timeout: someTimeout}
+			c, err := d.Dial(lss[i].Listener.Addr().Network(), lss[i].Listener.Addr().String())
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer os.Remove(c.LocalAddr().String())
+			defer c.Close()
+			trchs = append(trchs, make(chan error, 1))
+			go transceiver(c, []byte("UNIX AND UNIXPACKET SERVER TEST"), trchs[i])
+		}
+
+		for _, ch := range trchs {
+			for err := range ch {
+				t.Errorf("#%d: %v", i, err)
+			}
+		}
+		for _, ch := range tpchs {
+			for err := range ch {
+				t.Errorf("#%d: %v", i, err)
+			}
+		}
 	}
-	go runPacket(t, network, listenaddr, listening, done)
-	addr := <-listening // wait for server to start
-	if network == "udp" {
-		dialaddr += addr[strings.LastIndex(addr, ":"):]
-	}
-	connect(t, network, dialaddr, isEmpty)
-	<-done // tell server to stop
-	<-done // wait for stop
+}
+
+var udpServerTests = []struct {
+	snet, saddr string // server endpoint
+	tnet, taddr string // target endpoint for client
+	dial        bool   // test with Dial
+}{
+	{snet: "udp", saddr: ":0", tnet: "udp", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "0.0.0.0:0", tnet: "udp", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::ffff:0.0.0.0]:0", tnet: "udp", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::]:0", tnet: "udp", taddr: "::1"},
+
+	{snet: "udp", saddr: ":0", tnet: "udp", taddr: "::1"},
+	{snet: "udp", saddr: "0.0.0.0:0", tnet: "udp", taddr: "::1"},
+	{snet: "udp", saddr: "[::ffff:0.0.0.0]:0", tnet: "udp", taddr: "::1"},
+	{snet: "udp", saddr: "[::]:0", tnet: "udp", taddr: "127.0.0.1"},
+
+	{snet: "udp", saddr: ":0", tnet: "udp4", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "0.0.0.0:0", tnet: "udp4", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::ffff:0.0.0.0]:0", tnet: "udp4", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::]:0", tnet: "udp6", taddr: "::1"},
+
+	{snet: "udp", saddr: ":0", tnet: "udp6", taddr: "::1"},
+	{snet: "udp", saddr: "0.0.0.0:0", tnet: "udp6", taddr: "::1"},
+	{snet: "udp", saddr: "[::ffff:0.0.0.0]:0", tnet: "udp6", taddr: "::1"},
+	{snet: "udp", saddr: "[::]:0", tnet: "udp4", taddr: "127.0.0.1"},
+
+	{snet: "udp", saddr: "127.0.0.1:0", tnet: "udp", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::ffff:127.0.0.1]:0", tnet: "udp", taddr: "127.0.0.1"},
+	{snet: "udp", saddr: "[::1]:0", tnet: "udp", taddr: "::1"},
+
+	{snet: "udp4", saddr: ":0", tnet: "udp4", taddr: "127.0.0.1"},
+	{snet: "udp4", saddr: "0.0.0.0:0", tnet: "udp4", taddr: "127.0.0.1"},
+	{snet: "udp4", saddr: "[::ffff:0.0.0.0]:0", tnet: "udp4", taddr: "127.0.0.1"},
+
+	{snet: "udp4", saddr: "127.0.0.1:0", tnet: "udp4", taddr: "127.0.0.1"},
+
+	{snet: "udp6", saddr: ":0", tnet: "udp6", taddr: "::1"},
+	{snet: "udp6", saddr: "[::]:0", tnet: "udp6", taddr: "::1"},
+
+	{snet: "udp6", saddr: "[::1]:0", tnet: "udp6", taddr: "::1"},
+
+	{snet: "udp", saddr: "127.0.0.1:0", tnet: "udp", taddr: "127.0.0.1", dial: true},
+
+	{snet: "udp", saddr: "[::1]:0", tnet: "udp", taddr: "::1", dial: true},
 }
 
 func TestUDPServer(t *testing.T) {
-	if !*testUDP {
-		return
-	}
-	for _, isEmpty := range []bool{false, true} {
-		doTestPacket(t, "udp", "0.0.0.0", "127.0.0.1", isEmpty)
-		doTestPacket(t, "udp", "", "127.0.0.1", isEmpty)
-		if kernelSupportsIPv6() {
-			doTestPacket(t, "udp", "[::]", "[::ffff:127.0.0.1]", isEmpty)
-			doTestPacket(t, "udp", "[::]", "127.0.0.1", isEmpty)
-			doTestPacket(t, "udp", "0.0.0.0", "[::ffff:127.0.0.1]", isEmpty)
+	for i, tt := range udpServerTests {
+		if !testableListenArgs(tt.snet, tt.saddr, tt.taddr) {
+			t.Logf("skipping %s test", tt.snet+" "+tt.saddr+"<-"+tt.taddr)
+			continue
+		}
+
+		c1, err := ListenPacket(tt.snet, tt.saddr)
+		if err != nil {
+			if perr := parseDialError(err); perr != nil {
+				t.Error(perr)
+			}
+			t.Fatal(err)
+		}
+
+		ls, err := (&packetListener{PacketConn: c1}).newLocalServer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ls.teardown()
+		tpch := make(chan error, 1)
+		handler := func(ls *localPacketServer, c PacketConn) { packetTransponder(c, tpch) }
+		if err := ls.buildup(handler); err != nil {
+			t.Fatal(err)
+		}
+
+		trch := make(chan error, 1)
+		_, port, err := SplitHostPort(ls.PacketConn.LocalAddr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tt.dial {
+			d := Dialer{Timeout: someTimeout}
+			c2, err := d.Dial(tt.tnet, JoinHostPort(tt.taddr, port))
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer c2.Close()
+			go transceiver(c2, []byte("UDP SERVER TEST"), trch)
+		} else {
+			c2, err := ListenPacket(tt.tnet, JoinHostPort(tt.taddr, "0"))
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer c2.Close()
+			dst, err := ResolveUDPAddr(tt.tnet, JoinHostPort(tt.taddr, port))
+			if err != nil {
+				t.Fatal(err)
+			}
+			go packetTransceiver(c2, []byte("UDP SERVER TEST"), dst, trch)
+		}
+
+		for err := range trch {
+			t.Errorf("#%d: %v", i, err)
+		}
+		for err := range tpch {
+			t.Errorf("#%d: %v", i, err)
 		}
 	}
 }
 
-func TestUnixDatagramServer(t *testing.T) {
-	// "unix" sockets are not supported on windows.
-	if runtime.GOOS == "windows" {
-		return
-	}
-	for _, isEmpty := range []bool{false} {
-		os.Remove("/tmp/gotest1.net")
-		os.Remove("/tmp/gotest1.net.local")
-		doTestPacket(t, "unixgram", "/tmp/gotest1.net", "/tmp/gotest1.net", isEmpty)
-		os.Remove("/tmp/gotest1.net")
-		os.Remove("/tmp/gotest1.net.local")
-		if syscall.OS == "linux" {
-			// Test abstract unix domain socket, a Linux-ism
-			doTestPacket(t, "unixgram", "@gotest1/net", "@gotest1/net", isEmpty)
+var unixgramServerTests = []struct {
+	saddr string // server endpoint
+	caddr string // client endpoint
+	dial  bool   // test with Dial
+}{
+	{saddr: testUnixAddr(), caddr: testUnixAddr()},
+	{saddr: testUnixAddr(), caddr: testUnixAddr(), dial: true},
+
+	{saddr: "@nettest/go/unixgram/server", caddr: "@nettest/go/unixgram/client"},
+}
+
+func TestUnixgramServer(t *testing.T) {
+	for i, tt := range unixgramServerTests {
+		if !testableListenArgs("unixgram", tt.saddr, "") {
+			t.Logf("skipping %s test", "unixgram "+tt.saddr+"<-"+tt.caddr)
+			continue
+		}
+
+		c1, err := ListenPacket("unixgram", tt.saddr)
+		if err != nil {
+			if perr := parseDialError(err); perr != nil {
+				t.Error(perr)
+			}
+			t.Fatal(err)
+		}
+
+		ls, err := (&packetListener{PacketConn: c1}).newLocalServer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ls.teardown()
+		tpch := make(chan error, 1)
+		handler := func(ls *localPacketServer, c PacketConn) { packetTransponder(c, tpch) }
+		if err := ls.buildup(handler); err != nil {
+			t.Fatal(err)
+		}
+
+		trch := make(chan error, 1)
+		if tt.dial {
+			d := Dialer{Timeout: someTimeout, LocalAddr: &UnixAddr{Net: "unixgram", Name: tt.caddr}}
+			c2, err := d.Dial("unixgram", ls.PacketConn.LocalAddr().String())
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer os.Remove(c2.LocalAddr().String())
+			defer c2.Close()
+			go transceiver(c2, []byte(c2.LocalAddr().String()), trch)
+		} else {
+			c2, err := ListenPacket("unixgram", tt.caddr)
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Error(perr)
+				}
+				t.Fatal(err)
+			}
+			defer os.Remove(c2.LocalAddr().String())
+			defer c2.Close()
+			go packetTransceiver(c2, []byte("UNIXGRAM SERVER TEST"), ls.PacketConn.LocalAddr(), trch)
+		}
+
+		for err := range trch {
+			t.Errorf("#%d: %v", i, err)
+		}
+		for err := range tpch {
+			t.Errorf("#%d: %v", i, err)
 		}
 	}
 }

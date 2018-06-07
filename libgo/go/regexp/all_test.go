@@ -5,12 +5,13 @@
 package regexp
 
 import (
-	"os"
+	"reflect"
+	"regexp/syntax"
 	"strings"
 	"testing"
 )
 
-var good_re = []string{
+var goodRe = []string{
 	``,
 	`.`,
 	`^.$`,
@@ -24,7 +25,6 @@ var good_re = []string{
 	`[a-z]`,
 	`[a-abc-c\-\]\[]`,
 	`[a-z]+`,
-	`[]`,
 	`[abc]`,
 	`[^1234]`,
 	`[^\n]`,
@@ -33,47 +33,50 @@ var good_re = []string{
 
 type stringError struct {
 	re  string
-	err os.Error
+	err string
 }
 
-var bad_re = []stringError{
-	{`*`, ErrBareClosure},
-	{`+`, ErrBareClosure},
-	{`?`, ErrBareClosure},
-	{`(abc`, ErrUnmatchedLpar},
-	{`abc)`, ErrUnmatchedRpar},
-	{`x[a-z`, ErrUnmatchedLbkt},
-	{`abc]`, ErrUnmatchedRbkt},
-	{`[z-a]`, ErrBadRange},
-	{`abc\`, ErrExtraneousBackslash},
-	{`a**`, ErrBadClosure},
-	{`a*+`, ErrBadClosure},
-	{`a??`, ErrBadClosure},
-	{`\x`, ErrBadBackslash},
+var badRe = []stringError{
+	{`*`, "missing argument to repetition operator: `*`"},
+	{`+`, "missing argument to repetition operator: `+`"},
+	{`?`, "missing argument to repetition operator: `?`"},
+	{`(abc`, "missing closing ): `(abc`"},
+	{`abc)`, "unexpected ): `abc)`"},
+	{`x[a-z`, "missing closing ]: `[a-z`"},
+	{`[z-a]`, "invalid character class range: `z-a`"},
+	{`abc\`, "trailing backslash at end of expression"},
+	{`a**`, "invalid nested repetition operator: `**`"},
+	{`a*+`, "invalid nested repetition operator: `*+`"},
+	{`\x`, "invalid escape sequence: `\\x`"},
 }
 
-func compileTest(t *testing.T, expr string, error os.Error) *Regexp {
+func compileTest(t *testing.T, expr string, error string) *Regexp {
 	re, err := Compile(expr)
-	if err != error {
-		t.Error("compiling `", expr, "`; unexpected error: ", err.String())
+	if error == "" && err != nil {
+		t.Error("compiling `", expr, "`; unexpected error: ", err.Error())
+	}
+	if error != "" && err == nil {
+		t.Error("compiling `", expr, "`; missing error")
+	} else if error != "" && !strings.Contains(err.Error(), error) {
+		t.Error("compiling `", expr, "`; wrong error: ", err.Error(), "; want ", error)
 	}
 	return re
 }
 
 func TestGoodCompile(t *testing.T) {
-	for i := 0; i < len(good_re); i++ {
-		compileTest(t, good_re[i], nil)
+	for i := 0; i < len(goodRe); i++ {
+		compileTest(t, goodRe[i], "")
 	}
 }
 
 func TestBadCompile(t *testing.T) {
-	for i := 0; i < len(bad_re); i++ {
-		compileTest(t, bad_re[i].re, bad_re[i].err)
+	for i := 0; i < len(badRe); i++ {
+		compileTest(t, badRe[i].re, badRe[i].err)
 	}
 }
 
 func matchTest(t *testing.T, test *FindTest) {
-	re := compileTest(t, test.pat, nil)
+	re := compileTest(t, test.pat, "")
 	if re == nil {
 		return
 	}
@@ -107,6 +110,25 @@ func matchFunctionTest(t *testing.T, test *FindTest) {
 func TestMatchFunction(t *testing.T) {
 	for _, test := range findTests {
 		matchFunctionTest(t, &test)
+	}
+}
+
+func copyMatchTest(t *testing.T, test *FindTest) {
+	re := compileTest(t, test.pat, "")
+	if re == nil {
+		return
+	}
+	m1 := re.MatchString(test.text)
+	m2 := re.Copy().MatchString(test.text)
+	if m1 != m2 {
+		t.Errorf("Copied Regexp match failure on %s: original gave %t; copy gave %t; should be %t",
+			test, m1, m2, len(test.matches) > 0)
+	}
+}
+
+func TestCopyMatch(t *testing.T) {
+	for _, test := range findTests {
+		copyMatchTest(t, &test)
 	}
 }
 
@@ -174,6 +196,55 @@ var replaceTests = []ReplaceTest{
 	{"[a-c]*", "x", "def", "xdxexfx"},
 	{"[a-c]+", "x", "abcbcdcdedef", "xdxdedef"},
 	{"[a-c]*", "x", "abcbcdcdedef", "xdxdxexdxexfx"},
+
+	// Substitutions
+	{"a+", "($0)", "banana", "b(a)n(a)n(a)"},
+	{"a+", "(${0})", "banana", "b(a)n(a)n(a)"},
+	{"a+", "(${0})$0", "banana", "b(a)an(a)an(a)a"},
+	{"a+", "(${0})$0", "banana", "b(a)an(a)an(a)a"},
+	{"hello, (.+)", "goodbye, ${1}", "hello, world", "goodbye, world"},
+	{"hello, (.+)", "goodbye, $1x", "hello, world", "goodbye, "},
+	{"hello, (.+)", "goodbye, ${1}x", "hello, world", "goodbye, worldx"},
+	{"hello, (.+)", "<$0><$1><$2><$3>", "hello, world", "<hello, world><world><><>"},
+	{"hello, (?P<noun>.+)", "goodbye, $noun!", "hello, world", "goodbye, world!"},
+	{"hello, (?P<noun>.+)", "goodbye, ${noun}", "hello, world", "goodbye, world"},
+	{"(?P<x>hi)|(?P<x>bye)", "$x$x$x", "hi", "hihihi"},
+	{"(?P<x>hi)|(?P<x>bye)", "$x$x$x", "bye", "byebyebye"},
+	{"(?P<x>hi)|(?P<x>bye)", "$xyz", "hi", ""},
+	{"(?P<x>hi)|(?P<x>bye)", "${x}yz", "hi", "hiyz"},
+	{"(?P<x>hi)|(?P<x>bye)", "hello $$x", "hi", "hello $x"},
+	{"a+", "${oops", "aaa", "${oops"},
+	{"a+", "$$", "aaa", "$"},
+	{"a+", "$", "aaa", "$"},
+
+	// Substitution when subexpression isn't found
+	{"(x)?", "$1", "123", "123"},
+	{"abc", "$1", "123", "123"},
+
+	// Substitutions involving a (x){0}
+	{"(a)(b){0}(c)", ".$1|$3.", "xacxacx", "x.a|c.x.a|c.x"},
+	{"(a)(((b))){0}c", ".$1.", "xacxacx", "x.a.x.a.x"},
+	{"((a(b){0}){3}){5}(h)", "y caramb$2", "say aaaaaaaaaaaaaaaah", "say ay caramba"},
+	{"((a(b){0}){3}){5}h", "y caramb$2", "say aaaaaaaaaaaaaaaah", "say ay caramba"},
+}
+
+var replaceLiteralTests = []ReplaceTest{
+	// Substitutions
+	{"a+", "($0)", "banana", "b($0)n($0)n($0)"},
+	{"a+", "(${0})", "banana", "b(${0})n(${0})n(${0})"},
+	{"a+", "(${0})$0", "banana", "b(${0})$0n(${0})$0n(${0})$0"},
+	{"a+", "(${0})$0", "banana", "b(${0})$0n(${0})$0n(${0})$0"},
+	{"hello, (.+)", "goodbye, ${1}", "hello, world", "goodbye, ${1}"},
+	{"hello, (?P<noun>.+)", "goodbye, $noun!", "hello, world", "goodbye, $noun!"},
+	{"hello, (?P<noun>.+)", "goodbye, ${noun}", "hello, world", "goodbye, ${noun}"},
+	{"(?P<x>hi)|(?P<x>bye)", "$x$x$x", "hi", "$x$x$x"},
+	{"(?P<x>hi)|(?P<x>bye)", "$x$x$x", "bye", "$x$x$x"},
+	{"(?P<x>hi)|(?P<x>bye)", "$xyz", "hi", "$xyz"},
+	{"(?P<x>hi)|(?P<x>bye)", "${x}yz", "hi", "${x}yz"},
+	{"(?P<x>hi)|(?P<x>bye)", "hello $$x", "hi", "hello $$x"},
+	{"a+", "${oops", "aaa", "${oops"},
+	{"a+", "$$", "aaa", "$$"},
+	{"a+", "$", "aaa", "$"},
 }
 
 type ReplaceFuncTest struct {
@@ -197,13 +268,58 @@ func TestReplaceAll(t *testing.T) {
 		}
 		actual := re.ReplaceAllString(tc.input, tc.replacement)
 		if actual != tc.output {
-			t.Errorf("%q.Replace(%q,%q) = %q; want %q",
+			t.Errorf("%q.ReplaceAllString(%q,%q) = %q; want %q",
 				tc.pattern, tc.input, tc.replacement, actual, tc.output)
 		}
 		// now try bytes
 		actual = string(re.ReplaceAll([]byte(tc.input), []byte(tc.replacement)))
 		if actual != tc.output {
-			t.Errorf("%q.Replace(%q,%q) = %q; want %q",
+			t.Errorf("%q.ReplaceAll(%q,%q) = %q; want %q",
+				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+		}
+	}
+}
+
+func TestReplaceAllLiteral(t *testing.T) {
+	// Run ReplaceAll tests that do not have $ expansions.
+	for _, tc := range replaceTests {
+		if strings.Contains(tc.replacement, "$") {
+			continue
+		}
+		re, err := Compile(tc.pattern)
+		if err != nil {
+			t.Errorf("Unexpected error compiling %q: %v", tc.pattern, err)
+			continue
+		}
+		actual := re.ReplaceAllLiteralString(tc.input, tc.replacement)
+		if actual != tc.output {
+			t.Errorf("%q.ReplaceAllLiteralString(%q,%q) = %q; want %q",
+				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+		}
+		// now try bytes
+		actual = string(re.ReplaceAllLiteral([]byte(tc.input), []byte(tc.replacement)))
+		if actual != tc.output {
+			t.Errorf("%q.ReplaceAllLiteral(%q,%q) = %q; want %q",
+				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+		}
+	}
+
+	// Run literal-specific tests.
+	for _, tc := range replaceLiteralTests {
+		re, err := Compile(tc.pattern)
+		if err != nil {
+			t.Errorf("Unexpected error compiling %q: %v", tc.pattern, err)
+			continue
+		}
+		actual := re.ReplaceAllLiteralString(tc.input, tc.replacement)
+		if actual != tc.output {
+			t.Errorf("%q.ReplaceAllLiteralString(%q,%q) = %q; want %q",
+				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+		}
+		// now try bytes
+		actual = string(re.ReplaceAllLiteral([]byte(tc.input), []byte(tc.replacement)))
+		if actual != tc.output {
+			t.Errorf("%q.ReplaceAllLiteral(%q,%q) = %q; want %q",
 				tc.pattern, tc.input, tc.replacement, actual, tc.output)
 		}
 	}
@@ -218,14 +334,14 @@ func TestReplaceAllFunc(t *testing.T) {
 		}
 		actual := re.ReplaceAllStringFunc(tc.input, tc.replacement)
 		if actual != tc.output {
-			t.Errorf("%q.ReplaceFunc(%q,%q) = %q; want %q",
-				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+			t.Errorf("%q.ReplaceFunc(%q,fn) = %q; want %q",
+				tc.pattern, tc.input, actual, tc.output)
 		}
 		// now try bytes
 		actual = string(re.ReplaceAllFunc([]byte(tc.input), func(s []byte) []byte { return []byte(tc.replacement(string(s))) }))
 		if actual != tc.output {
-			t.Errorf("%q.ReplaceFunc(%q,%q) = %q; want %q",
-				tc.pattern, tc.input, tc.replacement, actual, tc.output)
+			t.Errorf("%q.ReplaceFunc(%q,fn) = %q; want %q",
+				tc.pattern, tc.input, actual, tc.output)
 		}
 	}
 }
@@ -240,7 +356,20 @@ var metaTests = []MetaTest{
 	{`foo`, `foo`, `foo`, true},
 	{`foo\.\$`, `foo\\\.\\\$`, `foo.$`, true}, // has meta but no operator
 	{`foo.\$`, `foo\.\\\$`, `foo`, false},     // has escaped operators and real operators
-	{`!@#$%^&*()_+-=[{]}\|,<.>/?~`, `!@#\$%\^&\*\(\)_\+-=\[{\]}\\\|,<\.>/\?~`, `!@#`, false},
+	{`!@#$%^&*()_+-=[{]}\|,<.>/?~`, `!@#\$%\^&\*\(\)_\+-=\[\{\]\}\\\|,<\.>/\?~`, `!@#`, false},
+}
+
+var literalPrefixTests = []MetaTest{
+	// See golang.org/issue/11175.
+	// output is unused.
+	{`^0^0$`, ``, `0`, false},
+	{`^0^`, ``, ``, false},
+	{`^0$`, ``, `0`, true},
+	{`$0^`, ``, ``, false},
+	{`$0$`, ``, ``, false},
+	{`^^0$$`, ``, ``, false},
+	{`^$^$`, ``, ``, false},
+	{`$$0^^`, ``, ``, false},
 }
 
 func TestQuoteMeta(t *testing.T) {
@@ -274,7 +403,7 @@ func TestQuoteMeta(t *testing.T) {
 }
 
 func TestLiteralPrefix(t *testing.T) {
-	for _, tc := range metaTests {
+	for _, tc := range append(metaTests, literalPrefixTests...) {
 		// Literal method needs to scan the pattern.
 		re := MustCompile(tc.pattern)
 		str, complete := re.LiteralPrefix()
@@ -287,56 +416,240 @@ func TestLiteralPrefix(t *testing.T) {
 	}
 }
 
-type numSubexpCase struct {
-	input    string
-	expected int
+type subexpCase struct {
+	input string
+	num   int
+	names []string
 }
 
-var numSubexpCases = []numSubexpCase{
-	{``, 0},
-	{`.*`, 0},
-	{`abba`, 0},
-	{`ab(b)a`, 1},
-	{`ab(.*)a`, 1},
-	{`(.*)ab(.*)a`, 2},
-	{`(.*)(ab)(.*)a`, 3},
-	{`(.*)((a)b)(.*)a`, 4},
-	{`(.*)(\(ab)(.*)a`, 3},
-	{`(.*)(\(a\)b)(.*)a`, 3},
+var subexpCases = []subexpCase{
+	{``, 0, nil},
+	{`.*`, 0, nil},
+	{`abba`, 0, nil},
+	{`ab(b)a`, 1, []string{"", ""}},
+	{`ab(.*)a`, 1, []string{"", ""}},
+	{`(.*)ab(.*)a`, 2, []string{"", "", ""}},
+	{`(.*)(ab)(.*)a`, 3, []string{"", "", "", ""}},
+	{`(.*)((a)b)(.*)a`, 4, []string{"", "", "", "", ""}},
+	{`(.*)(\(ab)(.*)a`, 3, []string{"", "", "", ""}},
+	{`(.*)(\(a\)b)(.*)a`, 3, []string{"", "", "", ""}},
+	{`(?P<foo>.*)(?P<bar>(a)b)(?P<foo>.*)a`, 4, []string{"", "foo", "bar", "", "foo"}},
 }
 
-func TestNumSubexp(t *testing.T) {
-	for _, c := range numSubexpCases {
+func TestSubexp(t *testing.T) {
+	for _, c := range subexpCases {
 		re := MustCompile(c.input)
 		n := re.NumSubexp()
-		if n != c.expected {
-			t.Errorf("NumSubexp for %q returned %d, expected %d", c.input, n, c.expected)
+		if n != c.num {
+			t.Errorf("%q: NumSubexp = %d, want %d", c.input, n, c.num)
+			continue
+		}
+		names := re.SubexpNames()
+		if len(names) != 1+n {
+			t.Errorf("%q: len(SubexpNames) = %d, want %d", c.input, len(names), n)
+			continue
+		}
+		if c.names != nil {
+			for i := 0; i < 1+n; i++ {
+				if names[i] != c.names[i] {
+					t.Errorf("%q: SubexpNames[%d] = %q, want %q", c.input, i, names[i], c.names[i])
+				}
+			}
+		}
+	}
+}
+
+var splitTests = []struct {
+	s   string
+	r   string
+	n   int
+	out []string
+}{
+	{"foo:and:bar", ":", -1, []string{"foo", "and", "bar"}},
+	{"foo:and:bar", ":", 1, []string{"foo:and:bar"}},
+	{"foo:and:bar", ":", 2, []string{"foo", "and:bar"}},
+	{"foo:and:bar", "foo", -1, []string{"", ":and:bar"}},
+	{"foo:and:bar", "bar", -1, []string{"foo:and:", ""}},
+	{"foo:and:bar", "baz", -1, []string{"foo:and:bar"}},
+	{"baabaab", "a", -1, []string{"b", "", "b", "", "b"}},
+	{"baabaab", "a*", -1, []string{"b", "b", "b"}},
+	{"baabaab", "ba*", -1, []string{"", "", "", ""}},
+	{"foobar", "f*b*", -1, []string{"", "o", "o", "a", "r"}},
+	{"foobar", "f+.*b+", -1, []string{"", "ar"}},
+	{"foobooboar", "o{2}", -1, []string{"f", "b", "boar"}},
+	{"a,b,c,d,e,f", ",", 3, []string{"a", "b", "c,d,e,f"}},
+	{"a,b,c,d,e,f", ",", 0, nil},
+	{",", ",", -1, []string{"", ""}},
+	{",,,", ",", -1, []string{"", "", "", ""}},
+	{"", ",", -1, []string{""}},
+	{"", ".*", -1, []string{""}},
+	{"", ".+", -1, []string{""}},
+	{"", "", -1, []string{}},
+	{"foobar", "", -1, []string{"f", "o", "o", "b", "a", "r"}},
+	{"abaabaccadaaae", "a*", 5, []string{"", "b", "b", "c", "cadaaae"}},
+	{":x:y:z:", ":", -1, []string{"", "x", "y", "z", ""}},
+}
+
+func TestSplit(t *testing.T) {
+	for i, test := range splitTests {
+		re, err := Compile(test.r)
+		if err != nil {
+			t.Errorf("#%d: %q: compile error: %s", i, test.r, err.Error())
+			continue
+		}
+
+		split := re.Split(test.s, test.n)
+		if !reflect.DeepEqual(split, test.out) {
+			t.Errorf("#%d: %q: got %q; want %q", i, test.r, split, test.out)
+		}
+
+		if QuoteMeta(test.r) == test.r {
+			strsplit := strings.SplitN(test.s, test.r, test.n)
+			if !reflect.DeepEqual(split, strsplit) {
+				t.Errorf("#%d: Split(%q, %q, %d): regexp vs strings mismatch\nregexp=%q\nstrings=%q", i, test.s, test.r, test.n, split, strsplit)
+			}
+		}
+	}
+}
+
+// The following sequence of Match calls used to panic. See issue #12980.
+func TestParseAndCompile(t *testing.T) {
+	expr := "a$"
+	s := "a\nb"
+
+	for i, tc := range []struct {
+		reFlags  syntax.Flags
+		expMatch bool
+	}{
+		{syntax.Perl | syntax.OneLine, false},
+		{syntax.Perl &^ syntax.OneLine, true},
+	} {
+		parsed, err := syntax.Parse(expr, tc.reFlags)
+		if err != nil {
+			t.Fatalf("%d: parse: %v", i, err)
+		}
+		re, err := Compile(parsed.String())
+		if err != nil {
+			t.Fatalf("%d: compile: %v", i, err)
+		}
+		if match := re.MatchString(s); match != tc.expMatch {
+			t.Errorf("%d: %q.MatchString(%q)=%t; expected=%t", i, re, s, match, tc.expMatch)
+		}
+	}
+}
+
+// Check that one-pass cutoff does trigger.
+func TestOnePassCutoff(t *testing.T) {
+	re, err := syntax.Parse(`^x{1,1000}y{1,1000}$`, syntax.Perl)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	p, err := syntax.Compile(re.Simplify())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if compileOnePass(p) != notOnePass {
+		t.Fatalf("makeOnePass succeeded; wanted notOnePass")
+	}
+}
+
+// Check that the same machine can be used with the standard matcher
+// and then the backtracker when there are no captures.
+func TestSwitchBacktrack(t *testing.T) {
+	re := MustCompile(`a|b`)
+	long := make([]byte, maxBacktrackVector+1)
+
+	// The following sequence of Match calls used to panic. See issue #10319.
+	re.Match(long)     // triggers standard matcher
+	re.Match(long[:1]) // triggers backtracker
+}
+
+func BenchmarkFind(b *testing.B) {
+	b.StopTimer()
+	re := MustCompile("a+b+")
+	wantSubs := "aaabb"
+	s := []byte("acbb" + wantSubs + "dd")
+	b.StartTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		subs := re.Find(s)
+		if string(subs) != wantSubs {
+			b.Fatalf("Find(%q) = %q; want %q", s, subs, wantSubs)
+		}
+	}
+}
+
+func BenchmarkFindString(b *testing.B) {
+	b.StopTimer()
+	re := MustCompile("a+b+")
+	wantSubs := "aaabb"
+	s := "acbb" + wantSubs + "dd"
+	b.StartTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		subs := re.FindString(s)
+		if subs != wantSubs {
+			b.Fatalf("FindString(%q) = %q; want %q", s, subs, wantSubs)
+		}
+	}
+}
+
+func BenchmarkFindSubmatch(b *testing.B) {
+	b.StopTimer()
+	re := MustCompile("a(a+b+)b")
+	wantSubs := "aaabb"
+	s := []byte("acbb" + wantSubs + "dd")
+	b.StartTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		subs := re.FindSubmatch(s)
+		if string(subs[0]) != wantSubs {
+			b.Fatalf("FindSubmatch(%q)[0] = %q; want %q", s, subs[0], wantSubs)
+		}
+		if string(subs[1]) != "aab" {
+			b.Fatalf("FindSubmatch(%q)[1] = %q; want %q", s, subs[1], "aab")
+		}
+	}
+}
+
+func BenchmarkFindStringSubmatch(b *testing.B) {
+	b.StopTimer()
+	re := MustCompile("a(a+b+)b")
+	wantSubs := "aaabb"
+	s := "acbb" + wantSubs + "dd"
+	b.StartTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		subs := re.FindStringSubmatch(s)
+		if subs[0] != wantSubs {
+			b.Fatalf("FindStringSubmatch(%q)[0] = %q; want %q", s, subs[0], wantSubs)
+		}
+		if subs[1] != "aab" {
+			b.Fatalf("FindStringSubmatch(%q)[1] = %q; want %q", s, subs[1], "aab")
 		}
 	}
 }
 
 func BenchmarkLiteral(b *testing.B) {
-	x := strings.Repeat("x", 50)
+	x := strings.Repeat("x", 50) + "y"
 	b.StopTimer()
-	re := MustCompile(x)
+	re := MustCompile("y")
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
-			println("no match!")
-			break
+			b.Fatalf("no match!")
 		}
 	}
 }
 
 func BenchmarkNotLiteral(b *testing.B) {
-	x := strings.Repeat("x", 49)
+	x := strings.Repeat("x", 50) + "y"
 	b.StopTimer()
-	re := MustCompile("^" + x)
+	re := MustCompile(".y")
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
-			println("no match!")
-			break
+			b.Fatalf("no match!")
 		}
 	}
 }
@@ -348,23 +661,21 @@ func BenchmarkMatchClass(b *testing.B) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
-			println("no match!")
-			break
+			b.Fatalf("no match!")
 		}
 	}
 }
 
 func BenchmarkMatchClass_InRange(b *testing.B) {
 	b.StopTimer()
-	// 'b' is betwen 'a' and 'c', so the charclass
+	// 'b' is between 'a' and 'c', so the charclass
 	// range checking is no help here.
 	x := strings.Repeat("bbbb", 20) + "c"
 	re := MustCompile("[ac]")
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
-			println("no match!")
-			break
+			b.Fatalf("no match!")
 		}
 	}
 }
@@ -422,5 +733,108 @@ func BenchmarkAnchoredLongMatch(b *testing.B) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		re.Match(x)
+	}
+}
+
+func BenchmarkOnePassShortA(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcddddddeeeededd")
+	re := MustCompile("^.bc(d|e)*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkNotOnePassShortA(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcddddddeeeededd")
+	re := MustCompile(".bc(d|e)*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkOnePassShortB(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcddddddeeeededd")
+	re := MustCompile("^.bc(?:d|e)*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkNotOnePassShortB(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcddddddeeeededd")
+	re := MustCompile(".bc(?:d|e)*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkOnePassLongPrefix(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcdefghijklmnopqrstuvwxyz")
+	re := MustCompile("^abcdefghijklmnopqrstuvwxyz.*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkOnePassLongNotPrefix(b *testing.B) {
+	b.StopTimer()
+	x := []byte("abcdefghijklmnopqrstuvwxyz")
+	re := MustCompile("^.bcdefghijklmnopqrstuvwxyz.*$")
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		re.Match(x)
+	}
+}
+
+func BenchmarkMatchParallelShared(b *testing.B) {
+	x := []byte("this is a long line that contains foo bar baz")
+	re := MustCompile("foo (ba+r)? baz")
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			re.Match(x)
+		}
+	})
+}
+
+func BenchmarkMatchParallelCopied(b *testing.B) {
+	x := []byte("this is a long line that contains foo bar baz")
+	re := MustCompile("foo (ba+r)? baz")
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		re := re.Copy()
+		for pb.Next() {
+			re.Match(x)
+		}
+	})
+}
+
+var sink string
+
+func BenchmarkQuoteMetaAll(b *testing.B) {
+	s := string(specialBytes)
+	b.SetBytes(int64(len(s)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sink = QuoteMeta(s)
+	}
+}
+
+func BenchmarkQuoteMetaNone(b *testing.B) {
+	s := "abcdefghijklmnopqrstuvwxyz"
+	b.SetBytes(int64(len(s)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sink = QuoteMeta(s)
 	}
 }

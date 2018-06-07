@@ -1,5 +1,5 @@
 /* Some code common to C++ and ObjC++ front ends.
-   Copyright (C) 2004, 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 2004-2017 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
@@ -21,16 +21,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
 #include "cp-tree.h"
-#include "c-family/c-common.h"
-#include "langhooks.h"
-#include "langhooks-def.h"
-#include "diagnostic.h"
-#include "debug.h"
-#include "cxx-pretty-print.h"
 #include "cp-objcp-common.h"
+#include "dwarf2.h"
 
 /* Special routine to get the alias set for C++.  */
 
@@ -51,7 +44,7 @@ cxx_get_alias_set (tree t)
   return c_common_get_alias_set (t);
 }
 
-/* Called from check_global_declarations.  */
+/* Called from check_global_declaration.  */
 
 bool
 cxx_warn_unused_global_decl (const_tree decl)
@@ -59,10 +52,6 @@ cxx_warn_unused_global_decl (const_tree decl)
   if (TREE_CODE (decl) == FUNCTION_DECL && DECL_DECLARED_INLINE_P (decl))
     return false;
   if (DECL_IN_SYSTEM_HEADER (decl))
-    return false;
-
-  /* Const variables take the place of #defines in C++.  */
-  if (TREE_CODE (decl) == VAR_DECL && TREE_READONLY (decl))
     return false;
 
   return true;
@@ -78,6 +67,7 @@ cp_tree_size (enum tree_code code)
     case BASELINK:		return sizeof (struct tree_baselink);
     case TEMPLATE_PARM_INDEX:	return sizeof (template_parm_index);
     case DEFAULT_ARG:		return sizeof (struct tree_default_arg);
+    case DEFERRED_NOEXCEPT:	return sizeof (struct tree_deferred_noexcept);
     case OVERLOAD:		return sizeof (struct tree_overload);
     case STATIC_ASSERT:         return sizeof (struct tree_static_assert);
     case TYPE_ARGUMENT_PACK:
@@ -98,7 +88,15 @@ cp_tree_size (enum tree_code code)
 
     case TEMPLATE_INFO:         return sizeof (struct tree_template_info);
 
+    case CONSTRAINT_INFO:       return sizeof (struct tree_constraint_info);
+
+    case USERDEF_LITERAL:	return sizeof (struct tree_userdef_literal);
+
+    case TEMPLATE_DECL:		return sizeof (struct tree_template_decl);
+
     default:
+      if (TREE_CODE_CLASS (code) == tcc_declaration)
+	return sizeof (struct tree_decl_non_common);
       gcc_unreachable ();
     }
   /* NOTREACHED */
@@ -114,33 +112,13 @@ cp_var_mod_type_p (tree type, tree fn)
 {
   /* If TYPE is a pointer-to-member, it is variably modified if either
      the class or the member are variably modified.  */
-  if (TYPE_PTR_TO_MEMBER_P (type))
+  if (TYPE_PTRMEM_P (type))
     return (variably_modified_type_p (TYPE_PTRMEM_CLASS_TYPE (type), fn)
 	    || variably_modified_type_p (TYPE_PTRMEM_POINTED_TO_TYPE (type),
 					 fn));
 
   /* All other types are not variably modified.  */
   return false;
-}
-
-/* Construct a C++-aware pretty-printer for CONTEXT.  It is assumed
-   that CONTEXT->printer is an already constructed basic pretty_printer.  */
-void
-cxx_initialize_diagnostics (diagnostic_context *context)
-{
-  pretty_printer *base;
-  cxx_pretty_printer *pp;
-
-  c_common_initialize_diagnostics (context);
-
-  base = context->printer;
-  pp = XNEW (cxx_pretty_printer);
-  memcpy (pp_base (pp), base, sizeof (pretty_printer));
-  pp_cxx_pretty_printer_init (pp);
-  context->printer = (pretty_printer *) pp;
-
-  /* It is safe to free this object because it was previously malloc()'d.  */
-  free (base);
 }
 
 /* This compares two types for equivalence ("compatible" in C-based languages).
@@ -153,14 +131,176 @@ cxx_types_compatible_p (tree x, tree y)
   return same_type_ignoring_top_level_qualifiers_p (x, y);
 }
 
-/* Return true if DECL is explicit member function.  */
-
-bool
-cp_function_decl_explicit_p (tree decl)
+struct debug_type_hasher : ggc_cache_ptr_hash<tree_map>
 {
-  return (decl
-	  && FUNCTION_FIRST_USER_PARMTYPE (decl) != void_list_node
-	  && DECL_NONCONVERTING_P (decl));
+  static hashval_t hash (tree_map *m) { return tree_map_hash (m); }
+  static bool equal (tree_map *a, tree_map *b) { return tree_map_eq (a, b); }
+
+  static int
+  keep_cache_entry (tree_map *&e)
+  {
+    return ggc_marked_p (e->base.from);
+  }
+};
+
+static GTY((cache)) hash_table<debug_type_hasher> *debug_type_hash;
+
+/* Return a type to use in the debug info instead of TYPE, or NULL_TREE to
+   keep TYPE.  */
+
+tree
+cp_get_debug_type (const_tree type)
+{
+  if (TYPE_PTRMEMFUNC_P (type) && !typedef_variant_p (type))
+    {
+      if (debug_type_hash == NULL)
+	debug_type_hash = hash_table<debug_type_hasher>::create_ggc (512);
+
+      /* We cannot simply use build_offset_type here because the function uses
+	 the type canonicalization hashtable, which is GC-ed, so its behavior
+	 depends on the actual collection points.  Since we are building these
+	 types on the fly for the debug info only, they would not be attached
+	 to any GC root and always be swept, so we would make the contents of
+	 the debug info depend on the collection points.  */
+      struct tree_map in, *h, **slot;
+
+      in.base.from = CONST_CAST_TREE (type);
+      in.hash = htab_hash_pointer (type);
+      slot = debug_type_hash->find_slot_with_hash (&in, in.hash, INSERT);
+      if (*slot)
+	return (*slot)->to;
+
+      tree t = build_offset_type (TYPE_PTRMEMFUNC_OBJECT_TYPE (type),
+				  TREE_TYPE (TYPE_PTRMEMFUNC_FN_TYPE (type)));
+
+      h = ggc_alloc<tree_map> ();
+      h->base.from = CONST_CAST_TREE (type);
+      h->hash = htab_hash_pointer (type);
+      h->to = t;
+      *slot = h;
+
+      return t;
+    }
+
+  return NULL_TREE;
+}
+
+/* Return -1 if dwarf ATTR shouldn't be added for DECL, or the attribute
+   value otherwise.  */
+int
+cp_decl_dwarf_attribute (const_tree decl, int attr)
+{
+  if (decl == NULL_TREE)
+    return -1;
+
+  switch (attr)
+    {
+    case DW_AT_explicit:
+      if (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_LANG_SPECIFIC (STRIP_TEMPLATE (decl))
+	  && DECL_NONCONVERTING_P (decl))
+	return 1;
+      break;
+
+    case DW_AT_deleted:
+      if (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_LANG_SPECIFIC (STRIP_TEMPLATE (decl))
+	  && DECL_DELETED_FN (decl))
+	return 1;
+      break;
+
+    case DW_AT_defaulted:
+      if (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_LANG_SPECIFIC (STRIP_TEMPLATE (decl))
+	  && DECL_DEFAULTED_FN (decl))
+	{
+	  if (DECL_DEFAULTED_IN_CLASS_P (decl))
+	    return DW_DEFAULTED_in_class;
+
+	  if (DECL_DEFAULTED_OUTSIDE_CLASS_P (decl))
+	    return DW_DEFAULTED_out_of_class;
+	}
+      break;
+
+    case DW_AT_const_expr:
+      if (VAR_OR_FUNCTION_DECL_P (decl) && DECL_DECLARED_CONSTEXPR_P (decl))
+	return 1;
+      break;
+
+    case DW_AT_reference:
+      if (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_NONSTATIC_MEMBER_FUNCTION_P (decl)
+	  && FUNCTION_REF_QUALIFIED (TREE_TYPE (decl))
+	  && !FUNCTION_RVALUE_QUALIFIED (TREE_TYPE (decl)))
+	return 1;
+      break;
+
+    case DW_AT_rvalue_reference:
+      if (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_NONSTATIC_MEMBER_FUNCTION_P (decl)
+	  && FUNCTION_REF_QUALIFIED (TREE_TYPE (decl))
+	  && FUNCTION_RVALUE_QUALIFIED (TREE_TYPE (decl)))
+	return 1;
+      break;
+
+    case DW_AT_inline:
+      if (VAR_P (decl) && DECL_INLINE_VAR_P (decl))
+	{
+	  if (DECL_VAR_DECLARED_INLINE_P (decl))
+	    return DW_INL_declared_inlined;
+	  else
+	    return DW_INL_inlined;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return -1;
+}
+
+/* Return -1 if dwarf ATTR shouldn't be added for TYPE, or the attribute
+   value otherwise.  */
+int
+cp_type_dwarf_attribute (const_tree type, int attr)
+{
+  if (type == NULL_TREE)
+    return -1;
+
+  switch (attr)
+    {
+    case DW_AT_reference:
+      if ((TREE_CODE (type) == FUNCTION_TYPE
+	   || TREE_CODE (type) == METHOD_TYPE)
+	  && FUNCTION_REF_QUALIFIED (type)
+	  && !FUNCTION_RVALUE_QUALIFIED (type))
+	return 1;
+      break;
+
+    case DW_AT_rvalue_reference:
+      if ((TREE_CODE (type) == FUNCTION_TYPE
+	   || TREE_CODE (type) == METHOD_TYPE)
+	  && FUNCTION_REF_QUALIFIED (type)
+	  && FUNCTION_RVALUE_QUALIFIED (type))
+	return 1;
+      break;
+
+    default:
+      break;
+    }
+
+  return -1;
+}
+
+/* Return the unit size of TYPE without reusable tail padding.  */
+
+tree
+cp_unit_size_without_reusable_padding (tree type)
+{
+  if (CLASS_TYPE_P (type))
+    return CLASSTYPE_SIZE_UNIT (type);
+  return TYPE_SIZE_UNIT (type);
 }
 
 /* Stubs to keep c-opts.c happy.  */
@@ -181,8 +321,8 @@ has_c_linkage (const_tree decl)
   return DECL_EXTERN_C_P (decl);
 }
 
-static GTY ((if_marked ("tree_decl_map_marked_p"), param_is (struct tree_decl_map)))
-     htab_t shadowed_var_for_decl;
+static GTY ((cache))
+     hash_table<tree_decl_map_cache_hasher> *shadowed_var_for_decl;
 
 /* Lookup a shadowed var for FROM, and return it if we find one.  */
 
@@ -192,8 +332,7 @@ decl_shadowed_for_var_lookup (tree from)
   struct tree_decl_map *h, in;
   in.base.from = from;
 
-  h = (struct tree_decl_map *)
-      htab_find_with_hash (shadowed_var_for_decl, &in, DECL_UID (from));
+  h = shadowed_var_for_decl->find_with_hash (&in, DECL_UID (from));
   if (h)
     return h->to;
   return NULL_TREE;
@@ -205,22 +344,122 @@ void
 decl_shadowed_for_var_insert (tree from, tree to)
 {
   struct tree_decl_map *h;
-  void **loc;
 
-  h = ggc_alloc_tree_decl_map ();
+  h = ggc_alloc<tree_decl_map> ();
   h->base.from = from;
   h->to = to;
-  loc = htab_find_slot_with_hash (shadowed_var_for_decl, h, DECL_UID (from),
-				  INSERT);
-  *(struct tree_decl_map **) loc = h;
+  *shadowed_var_for_decl->find_slot_with_hash (h, DECL_UID (from), INSERT) = h;
 }
 
 void
 init_shadowed_var_for_decl (void)
 {
-  shadowed_var_for_decl = htab_create_ggc (512, tree_decl_map_hash,
-					   tree_decl_map_eq, 0);
+  shadowed_var_for_decl
+    = hash_table<tree_decl_map_cache_hasher>::create_ggc (512);
 }
 
+/* Return true if stmt can fall through.  Used by block_may_fallthru
+   default case.  */
+
+bool
+cxx_block_may_fallthru (const_tree stmt)
+{
+  switch (TREE_CODE (stmt))
+    {
+    case EXPR_STMT:
+      return block_may_fallthru (EXPR_STMT_EXPR (stmt));
+
+    case THROW_EXPR:
+      return false;
+
+    default:
+      return true;
+    }
+}
+
+void
+cp_common_init_ts (void)
+{
+  MARK_TS_DECL_NON_COMMON (USING_DECL);
+  MARK_TS_DECL_COMMON (TEMPLATE_DECL);
+  MARK_TS_DECL_COMMON (WILDCARD_DECL);
+
+  MARK_TS_COMMON (TEMPLATE_TEMPLATE_PARM);
+  MARK_TS_COMMON (TEMPLATE_TYPE_PARM);
+  MARK_TS_COMMON (TEMPLATE_PARM_INDEX);
+  MARK_TS_COMMON (OVERLOAD);
+  MARK_TS_COMMON (TEMPLATE_INFO);
+  MARK_TS_COMMON (TYPENAME_TYPE);
+  MARK_TS_COMMON (TYPEOF_TYPE);
+  MARK_TS_COMMON (UNDERLYING_TYPE);
+  MARK_TS_COMMON (BASELINK);
+  MARK_TS_COMMON (TYPE_PACK_EXPANSION);
+  MARK_TS_COMMON (TYPE_ARGUMENT_PACK);
+  MARK_TS_COMMON (DECLTYPE_TYPE);
+  MARK_TS_COMMON (BOUND_TEMPLATE_TEMPLATE_PARM);
+  MARK_TS_COMMON (UNBOUND_CLASS_TEMPLATE);
+
+  MARK_TS_TYPED (EXPR_PACK_EXPANSION);
+  MARK_TS_TYPED (SWITCH_STMT);
+  MARK_TS_TYPED (IF_STMT);
+  MARK_TS_TYPED (FOR_STMT);
+  MARK_TS_TYPED (RANGE_FOR_STMT);
+  MARK_TS_TYPED (AGGR_INIT_EXPR);
+  MARK_TS_TYPED (EXPR_STMT);
+  MARK_TS_TYPED (EH_SPEC_BLOCK);
+  MARK_TS_TYPED (CLEANUP_STMT);
+  MARK_TS_TYPED (SCOPE_REF);
+  MARK_TS_TYPED (CAST_EXPR);
+  MARK_TS_TYPED (NON_DEPENDENT_EXPR);
+  MARK_TS_TYPED (MODOP_EXPR);
+  MARK_TS_TYPED (TRY_BLOCK);
+  MARK_TS_TYPED (THROW_EXPR);
+  MARK_TS_TYPED (HANDLER);
+  MARK_TS_TYPED (REINTERPRET_CAST_EXPR);
+  MARK_TS_TYPED (CONST_CAST_EXPR);
+  MARK_TS_TYPED (STATIC_CAST_EXPR);
+  MARK_TS_TYPED (DYNAMIC_CAST_EXPR);
+  MARK_TS_TYPED (IMPLICIT_CONV_EXPR);
+  MARK_TS_TYPED (TEMPLATE_ID_EXPR);
+  MARK_TS_TYPED (ARROW_EXPR);
+  MARK_TS_TYPED (SIZEOF_EXPR);
+  MARK_TS_TYPED (ALIGNOF_EXPR);
+  MARK_TS_TYPED (AT_ENCODE_EXPR);
+  MARK_TS_TYPED (UNARY_PLUS_EXPR);
+  MARK_TS_TYPED (TRAIT_EXPR);
+  MARK_TS_TYPED (TYPE_ARGUMENT_PACK);
+  MARK_TS_TYPED (NOEXCEPT_EXPR);
+  MARK_TS_TYPED (NONTYPE_ARGUMENT_PACK);
+  MARK_TS_TYPED (WHILE_STMT);
+  MARK_TS_TYPED (NEW_EXPR);
+  MARK_TS_TYPED (VEC_NEW_EXPR);
+  MARK_TS_TYPED (BREAK_STMT);
+  MARK_TS_TYPED (MEMBER_REF);
+  MARK_TS_TYPED (DOTSTAR_EXPR);
+  MARK_TS_TYPED (DO_STMT);
+  MARK_TS_TYPED (DELETE_EXPR);
+  MARK_TS_TYPED (VEC_DELETE_EXPR);
+  MARK_TS_TYPED (CONTINUE_STMT);
+  MARK_TS_TYPED (TAG_DEFN);
+  MARK_TS_TYPED (PSEUDO_DTOR_EXPR);
+  MARK_TS_TYPED (TYPEID_EXPR);
+  MARK_TS_TYPED (MUST_NOT_THROW_EXPR);
+  MARK_TS_TYPED (STMT_EXPR);
+  MARK_TS_TYPED (OFFSET_REF);
+  MARK_TS_TYPED (OFFSETOF_EXPR);
+  MARK_TS_TYPED (ADDRESSOF_EXPR);
+  MARK_TS_TYPED (PTRMEM_CST);
+  MARK_TS_TYPED (EMPTY_CLASS_EXPR);
+  MARK_TS_TYPED (VEC_INIT_EXPR);
+  MARK_TS_TYPED (USING_STMT);
+  MARK_TS_TYPED (LAMBDA_EXPR);
+  MARK_TS_TYPED (CTOR_INITIALIZER);
+  MARK_TS_TYPED (ARRAY_NOTATION_REF);
+  MARK_TS_TYPED (REQUIRES_EXPR);
+  MARK_TS_TYPED (UNARY_LEFT_FOLD_EXPR);
+  MARK_TS_TYPED (UNARY_RIGHT_FOLD_EXPR);
+  MARK_TS_TYPED (BINARY_LEFT_FOLD_EXPR);
+  MARK_TS_TYPED (BINARY_RIGHT_FOLD_EXPR);
+}
 
 #include "gt-cp-cp-objcp-common.h"

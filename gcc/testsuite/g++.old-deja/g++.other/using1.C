@@ -3,7 +3,7 @@ class D2;
 
 class B {
 private:
-  int a; // { dg-error "" } B::a is private
+  int a; // { dg-message "" } B::a declared private
 protected:
   int b;
 
@@ -16,12 +16,12 @@ public:
   using B::b;
 };
 
-class D2 : public B { // { dg-error "" } conflicting access specifications
+class D2 : public B {
 public:
   using B::a;
-  using B::b;
+  using B::b; // { dg-message "" } conflicting declaration
 
 private:
-  using B::b; 
+  using B::b; // { dg-error "" } conflicts
 };
  

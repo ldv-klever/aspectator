@@ -1,8 +1,8 @@
 /* Fallback FPU-related code (for systems not otherwise supported).
-   Copyright 2005, 2007, 2009 Free Software Foundation, Inc.
+   Copyright (C) 2005-2017 Free Software Foundation, Inc.
    Contributed by Francois-Xavier Coudert <coudert@clipper.ens.fr>
 
-This file is part of the GNU Fortran 95 runtime library (libgfortran).
+This file is part of the GNU Fortran runtime library (libgfortran).
 
 Libgfortran is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
@@ -32,21 +32,67 @@ void
 set_fpu (void)
 {
   if (options.fpe & GFC_FPE_INVALID)
-    st_printf ("Fortran runtime warning: IEEE 'invalid operation' "
-	       "exception not supported.\n");
+    estr_write ("Fortran runtime warning: IEEE 'invalid operation' "
+	        "exception not supported.\n");
   if (options.fpe & GFC_FPE_DENORMAL)
-    st_printf ("Fortran runtime warning: IEEE 'denormal number' "
-	       "exception not supported.\n");
+    estr_write ("Fortran runtime warning: Floating point 'denormal operand' "
+	        "exception not supported.\n");
   if (options.fpe & GFC_FPE_ZERO)
-    st_printf ("Fortran runtime warning: IEEE 'division by zero' "
-	       "exception not supported.\n");
+    estr_write ("Fortran runtime warning: IEEE 'division by zero' "
+	        "exception not supported.\n");
   if (options.fpe & GFC_FPE_OVERFLOW)
-    st_printf ("Fortran runtime warning: IEEE 'overflow' "
-	       "exception not supported.\n");
+    estr_write ("Fortran runtime warning: IEEE 'overflow' "
+	        "exception not supported.\n");
   if (options.fpe & GFC_FPE_UNDERFLOW)
-    st_printf ("Fortran runtime warning: IEEE 'underflow' "
-	       "exception not supported.\n");
-  if (options.fpe & GFC_FPE_PRECISION)
-    st_printf ("Fortran runtime warning: IEEE 'loss of precision' "
-	       "exception not supported.\n");
+    estr_write ("Fortran runtime warning: IEEE 'underflow' "
+	        "exception not supported.\n");
+  if (options.fpe & GFC_FPE_INEXACT)
+    estr_write ("Fortran runtime warning: IEEE 'inexact' "
+	        "exception not supported.\n");
 }
+
+void
+set_fpu_trap_exceptions (int trap __attribute__((unused)),
+			 int notrap __attribute__((unused)))
+{
+}
+
+int
+get_fpu_except_flags (void)
+{
+  return 0;
+}
+
+
+int
+get_fpu_rounding_mode (void)
+{   
+  return 0;
+}               
+
+
+void
+set_fpu_rounding_mode (int round __attribute__((unused)))
+{
+}
+
+
+int
+support_fpu_underflow_control (int kind __attribute__((unused)))
+{
+  return 0;
+}
+
+
+int
+get_fpu_underflow_mode (void)
+{
+  return 0;
+}
+
+
+void
+set_fpu_underflow_mode (int gradual __attribute__((unused)))
+{
+}
+

@@ -5,7 +5,7 @@ void foo (int);
 int test ()
 {
   int a[N][N];
-  unsigned i, j;
+  int i, j;
 
   for (i = 0; i < N; i++) 
     for (j = 0; j < N; j++)
@@ -20,5 +20,4 @@ int test ()
       foo (a[i][j]); 
 }
 
-/* { dg-final { scan-tree-dump-times "number of SCoPs: 2" 1 "graphite"} } */
-/* { dg-final { cleanup-tree-dump "graphite" } } */
+/* { dg-final { scan-tree-dump-times "number of SCoPs: 1" 1 "graphite"} } */

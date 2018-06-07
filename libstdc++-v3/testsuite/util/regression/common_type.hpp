@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2008, 2009 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -64,13 +64,13 @@ namespace test
     }
   };
 
-  typedef __gnu_pbds::string_trie_e_access_traits<basic_type, 'a', 'a' + basic_type::distinct_chars - 1, false, alloc_type> e_access_traits_t;
+  typedef __gnu_pbds::trie_string_access_traits<basic_type, 'a', 'a' + basic_type::distinct_chars - 1, false, alloc_type> access_traits_t;
 
   template<typename Data_Type>
   struct tree_types
   {
   private:
-    typedef typename tree_common_types<basic_type, Data_Type, std::less<basic_type>, __gnu_pbds::null_tree_node_update, alloc_type>::regression_tl no_order_statistics_tl_t;
+    typedef typename tree_common_types<basic_type, Data_Type, std::less<basic_type>, __gnu_pbds::null_node_update, alloc_type>::regression_tl no_order_statistics_tl_t;
 
     typedef typename tree_common_types<basic_type, Data_Type, std::less<basic_type>, __gnu_pbds::tree_order_statistics_node_update, alloc_type>::regression_tl order_statistics_tl_t;
 
@@ -84,11 +84,11 @@ namespace test
   struct trie_types
   {
   private:
-    typedef typename trie_common_types<basic_type, Data_Type, e_access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::null_trie_node_update, alloc_type>::regression_tl no_updates_tl_t;
+    typedef typename trie_common_types<basic_type, Data_Type, access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::null_node_update, alloc_type>::regression_tl no_updates_tl_t;
 
-    typedef typename trie_common_types<basic_type, Data_Type, e_access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::trie_order_statistics_node_update, alloc_type>::regression_tl order_statistics_tl_t;
+    typedef typename trie_common_types<basic_type, Data_Type, access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::trie_order_statistics_node_update, alloc_type>::regression_tl order_statistics_tl_t;
 
-    typedef typename trie_common_types<basic_type, Data_Type, e_access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::trie_prefix_search_node_update, alloc_type>::regression_tl prefix_search_tl_t;
+    typedef typename trie_common_types<basic_type, Data_Type, access_traits_t, __gnu_pbds::pat_trie_tag, __gnu_pbds::trie_prefix_search_node_update, alloc_type>::regression_tl prefix_search_tl_t;
 
   public:
     typedef typename __gnu_cxx::typelist::append<no_updates_tl_t, typename __gnu_cxx::typelist::append<prefix_search_tl_t, order_statistics_tl_t>::type>::type tl_t;
@@ -111,10 +111,10 @@ namespace test
 
   typedef tl_t min_tl_t;
   };
- 
+
   // Sequence types.
   typedef pq_common_types<basic_type, std::less<basic_type>, alloc_type> pq_types;
- 
+
   typedef pq_types::regression_tl pq_tl_t;
   typedef pq_tl_t min_pq_tl_t;
 
@@ -126,14 +126,14 @@ namespace test
 
   public:
     typedef typename base_type::value_type		value_type;
-    typedef typename base_type::pointer 		pointer; 
-    typedef typename base_type::const_pointer 		const_pointer; 
-    typedef typename base_type::reference 		reference; 
-    typedef typename base_type::const_reference 	const_reference; 
-    typedef typename base_type::iterator 		iterator; 
-    typedef typename base_type::const_iterator 		const_iterator; 
-    typedef typename base_type::reverse_iterator	reverse_iterator; 
-    typedef typename base_type::const_reverse_iterator 	const_reverse_iterator; 
+    typedef typename base_type::pointer 		pointer;
+    typedef typename base_type::const_pointer 		const_pointer;
+    typedef typename base_type::reference 		reference;
+    typedef typename base_type::const_reference 	const_reference;
+    typedef typename base_type::iterator 		iterator;
+    typedef typename base_type::const_iterator 		const_iterator;
+    typedef typename base_type::reverse_iterator	reverse_iterator;
+    typedef typename base_type::const_reverse_iterator 	const_reverse_iterator;
     typedef typename base_type::size_type 		size_type;
     typedef typename base_type::difference_type 	difference_type;
     typedef typename base_type::allocator_type 		allocator_type;
@@ -141,7 +141,7 @@ namespace test
     typedef __gnu_pbds::sequence_tag 			container_category;
     typedef std::less<_Tp> 		   		cmp_fn;
 
-    const cmp_fn& 
+    const cmp_fn&
     get_cmp_fn() const
     { return _M_cmp; }
 
@@ -159,36 +159,31 @@ namespace test
     cmp_fn _M_cmp;
 
   };
- 
-  namespace detail
-  {
-
-  };
 
   typedef vector_adaptor<basic_type, alloc_type>	vector_type;
   typedef __gnu_cxx::typelist::create1<vector_type>::type vector_tl_t;
 
   // Associative types.
-  typedef tree_types<null_mapped_type>::tl_t 		tree_set_tl_t;
-  typedef tree_types<null_mapped_type>::min_tl_t	min_tree_set_tl_t;
+  typedef tree_types<null_type>::tl_t 		tree_set_tl_t;
+  typedef tree_types<null_type>::min_tl_t	min_tree_set_tl_t;
   typedef tree_types<basic_type>::tl_t 			tree_map_tl_t;
   typedef tree_types<basic_type>::min_tl_t 		min_tree_map_tl_t;
 
-  typedef hash_types<null_mapped_type>::tl_t 		hash_set_tl_t;
-  typedef hash_types<null_mapped_type>::min_tl_t 	min_hash_set_tl_t;
+  typedef hash_types<null_type>::tl_t 		hash_set_tl_t;
+  typedef hash_types<null_type>::min_tl_t 	min_hash_set_tl_t;
   typedef hash_types<basic_type>::tl_t 			hash_map_tl_t;
   typedef hash_types<basic_type>::min_tl_t 		min_hash_map_tl_t;
 
-  typedef lu_types<null_mapped_type>::tl_t 		lu_set_tl_t;
-  typedef lu_types<null_mapped_type>::min_tl_t 		min_lu_set_tl_t;
+  typedef lu_types<null_type>::tl_t 		lu_set_tl_t;
+  typedef lu_types<null_type>::min_tl_t 		min_lu_set_tl_t;
   typedef lu_types<basic_type>::tl_t 			lu_map_tl_t;
   typedef lu_types<basic_type>::min_tl_t 		min_lu_map_tl_t;
 
-  typedef trie_types<null_mapped_type>::tl_t 		trie_set_tl_t;
-  typedef trie_types<null_mapped_type>::min_tl_t 	min_trie_set_tl_t;
+  typedef trie_types<null_type>::tl_t 		trie_set_tl_t;
+  typedef trie_types<null_type>::min_tl_t 	min_trie_set_tl_t;
   typedef trie_types<basic_type>::tl_t 			trie_map_tl_t;
   typedef trie_types<basic_type>::min_tl_t 		min_trie_map_tl_t;
 } // namespace test
 } // namespace __gnu_pbds
 
-#endif 
+#endif

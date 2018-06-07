@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2002-2009, AdaCore                     --
+--                     Copyright (C) 2002-2014, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -41,18 +41,18 @@
 --    selects the target architecture. In the absence of this parameter the
 --    default variant is chosen based on the Detect_Arch result. Generally,
 --    this parameter will only be used if vxaddr2line is recompiled manually.
---    Otherwise, the command name will always be of the form
---    <target>-vxaddr2line where there is no ambiguity on the target's
---    architecture.
+--    Otherwise, the command name will always be of the form:
+--      <target>-vxaddr2line
+--    where there is no ambiguity on the target's architecture.
 
 --  <exe_file> :
 --    The name of the partially linked binary file for the application.
 
 --  <ref_address> :
---    Runtime address (on the target) of a reference symbol you choose,
---    which name shall match the value of the Ref_Symbol variable declared
---    below. A symbol with a small offset from the beginning of the text
---    segment is better, so "adainit" is a good choice.
+--    Runtime address (on the target) of a reference symbol you choose. This
+--    name must match the value of the Ref_Symbol variable declared below.
+--    A symbol with a small offset from the beginning of the text segment is
+--    better, so "adainit" is a good choice.
 
 --  <backtrace addresses> :
 --    The call chain addresses you obtained at run time on the target and
@@ -78,17 +78,22 @@ procedure VxAddr2Line is
    --  Instantiate Modular_IO to have Put
 
    Ref_Symbol : constant String := "adainit";
-   --  This is the name of the reference symbol which runtime address shall
+   --  This is the name of the reference symbol whose runtime address must
    --  be provided as the <ref_address> argument.
 
    --  All supported architectures
    type Architecture is
-     (SOLARIS_I586,
-      WINDOWS_POWERPC,
+     (DEC_ALPHA,
+      LINUX_E500V2,
+      LINUX_I586,
+      LINUX_POWERPC,
+      WINDOWS_E500V2,
       WINDOWS_I586,
       WINDOWS_M68K,
-      SOLARIS_POWERPC,
-      DEC_ALPHA);
+      WINDOWS_POWERPC,
+      SOLARIS_E500V2,
+      SOLARIS_I586,
+      SOLARIS_POWERPC);
 
    type Arch_Record is record
       Addr2line_Binary : String_Access;
@@ -114,12 +119,42 @@ procedure VxAddr2Line is
 
    --  Configuration for each of the architectures
    Arch_List : array (Architecture'Range) of Arch_Record :=
-     (WINDOWS_POWERPC =>
+     (DEC_ALPHA =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 8,
+         Bt_Offset_From_Call => 0),
+      LINUX_E500V2 =>
         (Addr2line_Binary    => null,
          Nm_Binary           => null,
          Addr_Digits_To_Skip => 0,
          Bt_Offset_From_Call => -4),
-      WINDOWS_M68K =>
+      LINUX_I586 =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 0,
+         Bt_Offset_From_Call => -2),
+      LINUX_POWERPC =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 0,
+         Bt_Offset_From_Call => -4),
+      SOLARIS_E500V2 =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 0,
+         Bt_Offset_From_Call => -4),
+      SOLARIS_I586 =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 0,
+         Bt_Offset_From_Call => -2),
+      SOLARIS_POWERPC =>
+        (Addr2line_Binary    => null,
+         Nm_Binary           => null,
+         Addr_Digits_To_Skip => 0,
+         Bt_Offset_From_Call => -4),
+      WINDOWS_E500V2 =>
         (Addr2line_Binary    => null,
          Nm_Binary           => null,
          Addr_Digits_To_Skip => 0,
@@ -129,21 +164,16 @@ procedure VxAddr2Line is
          Nm_Binary           => null,
          Addr_Digits_To_Skip => 0,
          Bt_Offset_From_Call => -2),
-      SOLARIS_POWERPC =>
+      WINDOWS_M68K =>
         (Addr2line_Binary    => null,
          Nm_Binary           => null,
          Addr_Digits_To_Skip => 0,
-         Bt_Offset_From_Call => 0),
-      SOLARIS_I586 =>
+         Bt_Offset_From_Call => -4),
+      WINDOWS_POWERPC =>
         (Addr2line_Binary    => null,
          Nm_Binary           => null,
          Addr_Digits_To_Skip => 0,
-         Bt_Offset_From_Call => -2),
-      DEC_ALPHA =>
-        (Addr2line_Binary    => null,
-         Nm_Binary           => null,
-         Addr_Digits_To_Skip => 8,
-         Bt_Offset_From_Call => 0)
+         Bt_Offset_From_Call => -4)
      );
 
    --  Current architecture
@@ -395,7 +425,7 @@ begin
       Usage;
    end if;
 
-   --  ??? HARD LIMIT! There should be at most 501 arguments
+   --  Enforce HARD LIMIT There should be at most 501 arguments. Why 501???
 
    if Argument_Count > 501 then
       Error ("Too many backtrace frames");

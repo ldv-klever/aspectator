@@ -1,6 +1,5 @@
 // PR c++/47416
-// { dg-do compile }
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
 
 namespace std
 {
@@ -210,16 +209,16 @@ namespace boost
   private:table table_;
   public: unordered_map (size_type n = boost::unordered_detail::default_bucket_count,
 			 hasher hf = hasher (), key_equal eql = key_equal (),
-			 allocator_type a = allocator_type ()):table_ (n, hf, eql, a)	// { dg-message "instantiated" }
+			 allocator_type a = allocator_type ()):table_ (n, hf, eql, a)	// { dg-message "required" }
     {
     }
   };
-};
+}
 
 void
 foo (const int &a)
 {
   typedef boost::unordered_map < std::string, int >Name2Port;
-  Name2Port b;			// { dg-message "instantiated" }
+  Name2Port b;			// { dg-message "required" }
   std::make_pair (a, b);
 }

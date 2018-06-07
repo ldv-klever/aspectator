@@ -4,42 +4,58 @@
 
 package io
 
-import "os"
+type eofReader struct{}
+
+func (eofReader) Read([]byte) (int, error) {
+	return 0, EOF
+}
 
 type multiReader struct {
 	readers []Reader
 }
 
-func (mr *multiReader) Read(p []byte) (n int, err os.Error) {
+func (mr *multiReader) Read(p []byte) (n int, err error) {
 	for len(mr.readers) > 0 {
+		// Optimization to flatten nested multiReaders (Issue 13558).
+		if len(mr.readers) == 1 {
+			if r, ok := mr.readers[0].(*multiReader); ok {
+				mr.readers = r.readers
+				continue
+			}
+		}
 		n, err = mr.readers[0].Read(p)
-		if n > 0 || err != os.EOF {
-			if err == os.EOF {
-				// This shouldn't happen.
-				// Well-behaved Readers should never
-				// return non-zero bytes read with an
-				// EOF.  But if so, we clean it.
+		if err == EOF {
+			// Use eofReader instead of nil to avoid nil panic
+			// after performing flatten (Issue 18232).
+			mr.readers[0] = eofReader{} // permit earlier GC
+			mr.readers = mr.readers[1:]
+		}
+		if n > 0 || err != EOF {
+			if err == EOF && len(mr.readers) > 0 {
+				// Don't return EOF yet. More readers remain.
 				err = nil
 			}
 			return
 		}
-		mr.readers = mr.readers[1:]
 	}
-	return 0, os.EOF
+	return 0, EOF
 }
 
 // MultiReader returns a Reader that's the logical concatenation of
-// the provided input readers.  They're read sequentially.  Once all
-// inputs are drained, Read will return os.EOF.
+// the provided input readers. They're read sequentially. Once all
+// inputs have returned EOF, Read will return EOF.  If any of the readers
+// return a non-nil, non-EOF error, Read will return that error.
 func MultiReader(readers ...Reader) Reader {
-	return &multiReader{readers}
+	r := make([]Reader, len(readers))
+	copy(r, readers)
+	return &multiReader{r}
 }
 
 type multiWriter struct {
 	writers []Writer
 }
 
-func (t *multiWriter) Write(p []byte) (n int, err os.Error) {
+func (t *multiWriter) Write(p []byte) (n int, err error) {
 	for _, w := range t.writers {
 		n, err = w.Write(p)
 		if err != nil {
@@ -53,8 +69,34 @@ func (t *multiWriter) Write(p []byte) (n int, err os.Error) {
 	return len(p), nil
 }
 
+var _ stringWriter = (*multiWriter)(nil)
+
+func (t *multiWriter) WriteString(s string) (n int, err error) {
+	var p []byte // lazily initialized if/when needed
+	for _, w := range t.writers {
+		if sw, ok := w.(stringWriter); ok {
+			n, err = sw.WriteString(s)
+		} else {
+			if p == nil {
+				p = []byte(s)
+			}
+			n, err = w.Write(p)
+		}
+		if err != nil {
+			return
+		}
+		if n != len(s) {
+			err = ErrShortWrite
+			return
+		}
+	}
+	return len(s), nil
+}
+
 // MultiWriter creates a writer that duplicates its writes to all the
 // provided writers, similar to the Unix tee(1) command.
 func MultiWriter(writers ...Writer) Writer {
-	return &multiWriter{writers}
+	w := make([]Writer, len(writers))
+	copy(w, writers)
+	return &multiWriter{w}
 }

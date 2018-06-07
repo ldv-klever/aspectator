@@ -1,6 +1,5 @@
 /* Build executable statement trees.
-   Copyright (C) 2000, 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 2000-2017 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -26,6 +25,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
+#include "coretypes.h"
 #include "gfortran.h"
 
 gfc_code new_st;
@@ -41,14 +41,16 @@ gfc_clear_new_st (void)
 }
 
 
-/* Get a gfc_code structure.  */
+/* Get a gfc_code structure, initialized with the current locus
+   and a statement code 'op'.  */
 
 gfc_code *
-gfc_get_code (void)
+gfc_get_code (gfc_exec_op op)
 {
   gfc_code *c;
 
   c = XCNEW (gfc_code);
+  c->op = op;
   c->loc = gfc_current_locus;
   return c;
 }
@@ -89,6 +91,7 @@ gfc_free_statement (gfc_code *p)
     {
     case EXEC_NOP:
     case EXEC_END_BLOCK:
+    case EXEC_END_NESTED_BLOCK:
     case EXEC_ASSIGN:
     case EXEC_INIT_ASSIGN:
     case EXEC_GOTO:
@@ -113,6 +116,11 @@ gfc_free_statement (gfc_code *p)
     case EXEC_SYNC_ALL:
     case EXEC_SYNC_IMAGES:
     case EXEC_SYNC_MEMORY:
+    case EXEC_LOCK:
+    case EXEC_UNLOCK:
+    case EXEC_EVENT_POST:
+    case EXEC_EVENT_WAIT:
+    case EXEC_FAIL_IMAGE:
       break;
 
     case EXEC_BLOCK:
@@ -175,37 +183,90 @@ gfc_free_statement (gfc_code *p)
 	 be freed.  */
       break;
 
+    case EXEC_DO_CONCURRENT:
     case EXEC_FORALL:
       gfc_free_forall_iterator (p->ext.forall_iterator);
       break;
 
+    case EXEC_OACC_DECLARE:
+      if (p->ext.oacc_declare)
+	gfc_free_oacc_declare_clauses (p->ext.oacc_declare);
+      break;
+
+    case EXEC_OACC_PARALLEL_LOOP:
+    case EXEC_OACC_PARALLEL:
+    case EXEC_OACC_KERNELS_LOOP:
+    case EXEC_OACC_KERNELS:
+    case EXEC_OACC_DATA:
+    case EXEC_OACC_HOST_DATA:
+    case EXEC_OACC_LOOP:
+    case EXEC_OACC_UPDATE:
+    case EXEC_OACC_WAIT:
+    case EXEC_OACC_CACHE:
+    case EXEC_OACC_ENTER_DATA:
+    case EXEC_OACC_EXIT_DATA:
+    case EXEC_OACC_ROUTINE:
+    case EXEC_OMP_CANCEL:
+    case EXEC_OMP_CANCELLATION_POINT:
+    case EXEC_OMP_CRITICAL:
+    case EXEC_OMP_DISTRIBUTE:
+    case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
+    case EXEC_OMP_DISTRIBUTE_PARALLEL_DO_SIMD:
+    case EXEC_OMP_DISTRIBUTE_SIMD:
     case EXEC_OMP_DO:
+    case EXEC_OMP_DO_SIMD:
     case EXEC_OMP_END_SINGLE:
+    case EXEC_OMP_ORDERED:
     case EXEC_OMP_PARALLEL:
     case EXEC_OMP_PARALLEL_DO:
+    case EXEC_OMP_PARALLEL_DO_SIMD:
     case EXEC_OMP_PARALLEL_SECTIONS:
-    case EXEC_OMP_SECTIONS:
-    case EXEC_OMP_SINGLE:
-    case EXEC_OMP_TASK:
-    case EXEC_OMP_WORKSHARE:
     case EXEC_OMP_PARALLEL_WORKSHARE:
+    case EXEC_OMP_SECTIONS:
+    case EXEC_OMP_SIMD:
+    case EXEC_OMP_SINGLE:
+    case EXEC_OMP_TARGET:
+    case EXEC_OMP_TARGET_DATA:
+    case EXEC_OMP_TARGET_ENTER_DATA:
+    case EXEC_OMP_TARGET_EXIT_DATA:
+    case EXEC_OMP_TARGET_PARALLEL:
+    case EXEC_OMP_TARGET_PARALLEL_DO:
+    case EXEC_OMP_TARGET_PARALLEL_DO_SIMD:
+    case EXEC_OMP_TARGET_SIMD:
+    case EXEC_OMP_TARGET_TEAMS:
+    case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE:
+    case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO:
+    case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
+    case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_SIMD:
+    case EXEC_OMP_TARGET_UPDATE:
+    case EXEC_OMP_TASK:
+    case EXEC_OMP_TASKLOOP:
+    case EXEC_OMP_TASKLOOP_SIMD:
+    case EXEC_OMP_TEAMS:
+    case EXEC_OMP_TEAMS_DISTRIBUTE:
+    case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO:
+    case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
+    case EXEC_OMP_TEAMS_DISTRIBUTE_SIMD:
+    case EXEC_OMP_WORKSHARE:
       gfc_free_omp_clauses (p->ext.omp_clauses);
       break;
 
-    case EXEC_OMP_CRITICAL:
-      gfc_free (CONST_CAST (char *, p->ext.omp_name));
+    case EXEC_OMP_END_CRITICAL:
+      free (CONST_CAST (char *, p->ext.omp_name));
       break;
 
     case EXEC_OMP_FLUSH:
-      gfc_free_namelist (p->ext.omp_namelist);
+      gfc_free_omp_namelist (p->ext.omp_namelist);
       break;
 
+    case EXEC_OACC_ATOMIC:
     case EXEC_OMP_ATOMIC:
     case EXEC_OMP_BARRIER:
     case EXEC_OMP_MASTER:
-    case EXEC_OMP_ORDERED:
     case EXEC_OMP_END_NOWAIT:
+    case EXEC_OMP_TASKGROUP:
     case EXEC_OMP_TASKWAIT:
+    case EXEC_OMP_TASKYIELD:
       break;
 
     default:
@@ -228,7 +289,7 @@ gfc_free_statements (gfc_code *p)
       if (p->block)
 	gfc_free_statements (p->block);
       gfc_free_statement (p);
-      gfc_free (p);
+      free (p);
     }
 }
 
@@ -242,5 +303,5 @@ gfc_free_association_list (gfc_association_list* assoc)
     return;
 
   gfc_free_association_list (assoc->next);
-  gfc_free (assoc);
+  free (assoc);
 }

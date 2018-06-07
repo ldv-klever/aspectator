@@ -1,5 +1,5 @@
 /* Inline functions to test validity of reg classes for addressing modes.
-   Copyright (C) 2006, 2007, 2010 Free Software Foundation, Inc.
+   Copyright (C) 2006-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,13 +21,17 @@ along with GCC; see the file COPYING3.  If not see
    MODE_BASE_REG_REG_CLASS, MODE_BASE_REG_CLASS and BASE_REG_CLASS.
    Arguments as for the MODE_CODE_BASE_REG_CLASS macro.  */
 
+#ifndef GCC_ADDRESSES_H
+#define GCC_ADDRESSES_H
+
 static inline enum reg_class
-base_reg_class (enum machine_mode mode ATTRIBUTE_UNUSED,
+base_reg_class (machine_mode mode ATTRIBUTE_UNUSED,
+		addr_space_t as ATTRIBUTE_UNUSED,
 		enum rtx_code outer_code ATTRIBUTE_UNUSED,
 		enum rtx_code index_code ATTRIBUTE_UNUSED)
 {
 #ifdef MODE_CODE_BASE_REG_CLASS
-  return MODE_CODE_BASE_REG_CLASS (mode, outer_code, index_code);
+  return MODE_CODE_BASE_REG_CLASS (mode, as, outer_code, index_code);
 #else
 #ifdef MODE_BASE_REG_REG_CLASS
   if (index_code == REG)
@@ -48,12 +52,14 @@ base_reg_class (enum machine_mode mode ATTRIBUTE_UNUSED,
 
 static inline bool
 ok_for_base_p_1 (unsigned regno ATTRIBUTE_UNUSED,
-		 enum machine_mode mode ATTRIBUTE_UNUSED,
+		 machine_mode mode ATTRIBUTE_UNUSED,
+		 addr_space_t as ATTRIBUTE_UNUSED,
 		 enum rtx_code outer_code ATTRIBUTE_UNUSED,
 		 enum rtx_code index_code ATTRIBUTE_UNUSED)
 {
 #ifdef REGNO_MODE_CODE_OK_FOR_BASE_P
-  return REGNO_MODE_CODE_OK_FOR_BASE_P (regno, mode, outer_code, index_code);
+  return REGNO_MODE_CODE_OK_FOR_BASE_P (regno, mode, as,
+					outer_code, index_code);
 #else
 #ifdef REGNO_MODE_OK_FOR_REG_BASE_P
   if (index_code == REG)
@@ -71,11 +77,13 @@ ok_for_base_p_1 (unsigned regno ATTRIBUTE_UNUSED,
    complete.  Arguments as for the called function.  */
 
 static inline bool
-regno_ok_for_base_p (unsigned regno, enum machine_mode mode,
+regno_ok_for_base_p (unsigned regno, machine_mode mode, addr_space_t as,
 		     enum rtx_code outer_code, enum rtx_code index_code)
 {
   if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] >= 0)
     regno = reg_renumber[regno];
 
-  return ok_for_base_p_1 (regno, mode, outer_code, index_code);
+  return ok_for_base_p_1 (regno, mode, as, outer_code, index_code);
 }
+
+#endif /* GCC_ADDRESSES_H */

@@ -1,6 +1,8 @@
+/* { dg-require-effective-target mmap } */
+/* { dg-skip-if "the executable is at the same position the test tries to remap" { m68k-*-linux* } { "*" } { "" } } */
+
 #include <limits.h>
 
-#ifdef __unix__ /* ??? Is that good enough? */
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -17,7 +19,6 @@
 #endif
 #ifndef MAP_FIXED
 #define MAP_FIXED 0
-#endif
 #endif
 
 #define MAP_START (void *)0x7fff8000

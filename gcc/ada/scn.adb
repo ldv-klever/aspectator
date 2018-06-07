@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -25,20 +25,14 @@
 
 with Atree;    use Atree;
 with Csets;    use Csets;
-with Hostparm; use Hostparm;
 with Namet;    use Namet;
 with Opt;      use Opt;
-with Output;   use Output;
 with Restrict; use Restrict;
 with Rident;   use Rident;
 with Scans;    use Scans;
 with Sinfo;    use Sinfo;
 with Sinput;   use Sinput;
 with Uintp;    use Uintp;
-
-with GNAT.Byte_Order_Mark; use GNAT.Byte_Order_Mark;
-
-with System.WCh_Con; use System.WCh_Con;
 
 package body Scn is
 
@@ -49,31 +43,10 @@ package body Scn is
    --  make sure that we only post an error message for incorrect use of a
    --  keyword as an identifier once for a given keyword).
 
-   procedure Check_End_Of_Line;
-   --  Called when end of line encountered. Checks that line is not too long,
-   --  and that other style checks for the end of line are met.
-
    function Determine_License return License_Type;
    --  Scan header of file and check that it has an appropriate GNAT-style
    --  header with a proper license statement. Returns GPL, Unrestricted,
    --  or Modified_GPL depending on header. If none of these, returns Unknown.
-
-   procedure Error_Long_Line;
-   --  Signal error of excessively long line
-
-   -----------------------
-   -- Check_End_Of_Line --
-   -----------------------
-
-   procedure Check_End_Of_Line is
-      Len : constant Int := Int (Scan_Ptr) - Int (Current_Line_Start);
-   begin
-      if Style_Check then
-         Style.Check_Line_Terminator (Len);
-      elsif Len > Max_Line_Length then
-         Error_Long_Line;
-      end if;
-   end Check_End_Of_Line;
 
    -----------------------
    -- Determine_License --
@@ -187,7 +160,7 @@ package body Scn is
 
          Skip_EOL;
 
-         Check_End_Of_Line;
+         Scanner.Check_End_Of_Line;
 
          if Source (Scan_Ptr) /= EOF then
 
@@ -223,17 +196,6 @@ package body Scn is
    begin
       return Scanner.Determine_Token_Casing;
    end Determine_Token_Casing;
-
-   ---------------------
-   -- Error_Long_Line --
-   ---------------------
-
-   procedure Error_Long_Line is
-   begin
-      Error_Msg
-        ("this line is too long",
-         Current_Line_Start + Source_Ptr (Max_Line_Length));
-   end Error_Long_Line;
 
    ------------------------
    -- Initialize_Scanner --
@@ -271,45 +233,7 @@ package body Scn is
          Set_License (Current_Source_File, Determine_License);
       end if;
 
-      --  Check for BOM
-
-      declare
-         BOM : BOM_Kind;
-         Len : Natural;
-         Tst : String (1 .. 5);
-
-      begin
-         for J in 1 .. 5 loop
-            Tst (J) := Source (Scan_Ptr + Source_Ptr (J) - 1);
-         end loop;
-
-         Read_BOM (Tst, Len, BOM, False);
-
-         case BOM is
-            when UTF8_All =>
-               Scan_Ptr := Scan_Ptr + Source_Ptr (Len);
-               Wide_Character_Encoding_Method := WCEM_UTF8;
-               Upper_Half_Encoding := True;
-
-            when UTF16_LE | UTF16_BE =>
-               Set_Standard_Error;
-               Write_Line ("UTF-16 encoding format not recognized");
-               Set_Standard_Output;
-               raise Unrecoverable_Error;
-
-            when UTF32_LE | UTF32_BE =>
-               Set_Standard_Error;
-               Write_Line ("UTF-32 encoding format not recognized");
-               Set_Standard_Output;
-               raise Unrecoverable_Error;
-
-            when Unknown =>
-               null;
-
-            when others =>
-               raise Program_Error;
-         end case;
-      end;
+      Check_For_BOM;
 
       --  Because of the License stuff above, Scng.Initialize_Scanner cannot
       --  call Scan. Scan initial token (note this initializes Prev_Token,
@@ -382,9 +306,9 @@ package body Scn is
 
             if Warn_On_Obsolescent_Feature then
                Error_Msg
-                 ("use of "":"" is an obsolescent feature (RM J.2(3))?", S);
+                 ("?j?use of "":"" is an obsolescent feature (RM J.2(3))", S);
                Error_Msg
-                 ("\use ""'#"" instead?", S);
+                 ("\?j?use ""'#"" instead", S);
             end if;
          end if;
       end Check_Obsolete_Base_Char;
@@ -425,8 +349,8 @@ package body Scn is
 
                if Warn_On_Obsolescent_Feature then
                   Error_Msg_SC
-                    ("use of ""'%"" is an obsolescent feature (RM J.2(4))?");
-                  Error_Msg_SC ("\use """""" instead?");
+                    ("?j?use of ""'%"" is an obsolescent feature (RM J.2(4))");
+                  Error_Msg_SC ("\?j?use """""" instead");
                end if;
             end if;
 
@@ -441,8 +365,8 @@ package body Scn is
 
                if Warn_On_Obsolescent_Feature then
                   Error_Msg_SC
-                    ("use of ""'!"" is an obsolescent feature (RM J.2(2))?");
-                  Error_Msg_SC ("\use ""'|"" instead?");
+                    ("?j?use of ""'!"" is an obsolescent feature (RM J.2(2))");
+                  Error_Msg_SC ("\?j?use ""'|"" instead");
                end if;
             end if;
 
@@ -459,6 +383,14 @@ package body Scn is
       Token_Chars : constant String := Token_Type'Image (Token);
 
    begin
+      --  AI12-0125 : '@' denotes the target_name, i.e. serves as an
+      --  abbreviation for the LHS of an assignment.
+
+      if Token = Tok_At_Sign then
+         Token_Node := New_Node (N_Target_Name, Token_Ptr);
+         return;
+      end if;
+
       --  We have in Token_Chars the image of the Token name, i.e. Tok_xxx.
       --  This code extracts the xxx and makes an identifier out of it.
 
@@ -472,18 +404,9 @@ package body Scn is
       Token_Name := Name_Find;
 
       if not Used_As_Identifier (Token) or else Force_Msg then
-
-         --  If "some" is made into a reserved work in Ada2012, the following
-         --  check will make it into a regular identifier in earlier versions
-         --  of the language.
-
-         if Token = Tok_Some and then Ada_Version < Ada_2012 then
-            null;
-         else
-            Error_Msg_Name_1 := Token_Name;
-            Error_Msg_SC ("reserved word* cannot be used as identifier!");
-            Used_As_Identifier (Token) := True;
-         end if;
+         Error_Msg_Name_1 := Token_Name;
+         Error_Msg_SC ("reserved word* cannot be used as identifier!");
+         Used_As_Identifier (Token) := True;
       end if;
 
       Token := Tok_Identifier;

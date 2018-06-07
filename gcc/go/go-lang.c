@@ -1,5 +1,5 @@
 /* go-lang.c -- Go frontend gcc interface.
-   Copyright (C) 2009, 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2009-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -19,26 +19,25 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
-#include "ansidecl.h"
 #include "coretypes.h"
-#include "opts.h"
+#include "target.h"
 #include "tree.h"
-#include "gimple.h"
-#include "ggc.h"
-#include "toplev.h"
-#include "debug.h"
-#include "options.h"
-#include "flags.h"
-#include "convert.h"
+#include "gimple-expr.h"
 #include "diagnostic.h"
+#include "opts.h"
+#include "fold-const.h"
+#include "gimplify.h"
+#include "stor-layout.h"
+#include "debug.h"
+#include "convert.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
-#include "except.h"
-#include "target.h"
+#include "common/common-target.h"
 
 #include <mpfr.h>
 
 #include "go-c.h"
+#include "go-gcc.h"
 
 /* Language-dependent contents of a type.  */
 
@@ -65,7 +64,7 @@ struct GTY(()) lang_identifier
 /* The resulting tree type.  */
 
 union GTY((desc ("TREE_CODE (&%h.generic) == IDENTIFIER_NODE"),
-	   chain_next ("(union lang_tree_node *) TREE_CHAIN (&%h.generic)")))
+	   chain_next ("CODE_CONTAINS_STRUCT (TREE_CODE (&%h.generic), TS_COMMON) ? ((union lang_tree_node *) TREE_CHAIN (&%h.generic)) : NULL")))
 lang_tree_node
 {
   union tree_node GTY((tag ("0"),
@@ -80,6 +79,13 @@ struct GTY(()) language_function
   int dummy;
 };
 
+/* Option information we need to pass to go_create_gogo.  */
+
+static const char *go_pkgpath = NULL;
+static const char *go_prefix = NULL;
+static const char *go_relative_import_path = NULL;
+static const char *go_c_header = NULL;
+
 /* Language hooks.  */
 
 static bool
@@ -87,33 +93,35 @@ go_langhook_init (void)
 {
   build_common_tree_nodes (false);
 
-  /* The sizetype may be "unsigned long" or "unsigned long long".  */
-  if (TYPE_MODE (long_unsigned_type_node) == ptr_mode)
-    size_type_node = long_unsigned_type_node;
-  else if (TYPE_MODE (long_long_unsigned_type_node) == ptr_mode)
-    size_type_node = long_long_unsigned_type_node;
-  else
-    size_type_node = long_unsigned_type_node;
-  set_sizetype (size_type_node);
-
-  build_common_tree_nodes_2 (0);
+  /* I don't know why this has to be done explicitly.  */
+  void_list_node = build_tree_list (NULL_TREE, void_type_node);
 
   /* We must create the gogo IR after calling build_common_tree_nodes
      (because Gogo::define_builtin_function_trees refers indirectly
      to, e.g., unsigned_char_type_node) but before calling
      build_common_builtin_nodes (because it calls, indirectly,
      go_type_for_size).  */
-  go_create_gogo (INT_TYPE_SIZE, POINTER_SIZE);
+  struct go_create_gogo_args args;
+  args.int_type_size = INT_TYPE_SIZE;
+  args.pointer_size = POINTER_SIZE;
+  args.pkgpath = go_pkgpath;
+  args.prefix = go_prefix;
+  args.relative_import_path = go_relative_import_path;
+  args.c_header = go_c_header;
+  args.check_divide_by_zero = go_check_divide_zero;
+  args.check_divide_overflow = go_check_divide_overflow;
+  args.compiling_runtime = go_compiling_runtime;
+  args.debug_escape_level = go_debug_escape_level;
+  args.linemap = go_get_linemap();
+  args.backend = go_get_backend();
+  go_create_gogo (&args);
 
   build_common_builtin_nodes ();
-
-  /* I don't know why this is not done by any of the above.  */
-  void_list_node = build_tree_list (NULL_TREE, void_type_node);
 
   /* The default precision for floating point numbers.  This is used
      for floating point constants with abstract type.  This may
      eventually be controllable by a command line option.  */
-  mpfr_set_default_prec (128);
+  mpfr_set_default_prec (256);
 
   /* Go uses exceptions.  */
   using_eh_for_cleanups ();
@@ -151,25 +159,28 @@ go_langhook_init_options_struct (struct gcc_options *opts)
   opts->x_flag_errno_math = 0;
   opts->frontend_set_flag_errno_math = true;
 
-  /* We turn on stack splitting if we can.  */
-  if (targetm.supports_split_stack (false, opts))
-    opts->x_flag_split_stack = 1;
-
   /* Exceptions are used to handle recovering from panics.  */
   opts->x_flag_exceptions = 1;
   opts->x_flag_non_call_exceptions = 1;
+
+  /* We need to keep pointers live for the garbage collector.  */
+  opts->x_flag_keep_gc_roots_live = 1;
+
+  /* Go programs expect runtime.Callers to work, and that uses
+     libbacktrace that uses debug info.  Set the debug info level to 1
+     by default.  In post_options we will set the debug type if the
+     debug info level was not set back to 0 on the command line.  */
+  opts->x_debug_info_level = DINFO_LEVEL_TERSE;
 }
 
-/* Infrastructure for a VEC of char * pointers.  */
+/* Infrastructure for a vector of char * pointers.  */
 
 typedef const char *go_char_p;
-DEF_VEC_P(go_char_p);
-DEF_VEC_ALLOC_P(go_char_p, heap);
 
 /* The list of directories to search after all the Go specific
    directories have been searched.  */
 
-static VEC(go_char_p, heap) *go_search_dirs;
+static vec<go_char_p> go_search_dirs;
 
 /* Handle Go specific options.  Return 0 if we didn't do anything.  */
 
@@ -225,7 +236,7 @@ go_langhook_handle_option (
 
 	/* Search ARG too, but only after we've searched to Go
 	   specific directories for all -L arguments.  */
-	VEC_safe_push (go_char_p, heap, go_search_dirs, arg);
+	go_search_dirs.safe_push (arg);
       }
       break;
 
@@ -233,8 +244,24 @@ go_langhook_handle_option (
       ret = go_enable_dump (arg) ? true : false;
       break;
 
+    case OPT_fgo_optimize_:
+      ret = go_enable_optimize (arg) ? true : false;
+      break;
+
+    case OPT_fgo_pkgpath_:
+      go_pkgpath = arg;
+      break;
+
     case OPT_fgo_prefix_:
-      go_set_prefix (arg);
+      go_prefix = arg;
+      break;
+
+    case OPT_fgo_relative_import_path_:
+      go_relative_import_path = arg;
+      break;
+
+    case OPT_fgo_c_header_:
+      go_c_header = arg;
       break;
 
     default:
@@ -255,13 +282,27 @@ go_langhook_post_options (const char **pfilename ATTRIBUTE_UNUSED)
 
   gcc_assert (num_in_fnames > 0);
 
-  FOR_EACH_VEC_ELT (go_char_p, go_search_dirs, ix, dir)
+  FOR_EACH_VEC_ELT (go_search_dirs, ix, dir)
     go_add_search_path (dir);
-  VEC_free (go_char_p, heap, go_search_dirs);
-  go_search_dirs = NULL;
+  go_search_dirs.release ();
 
   if (flag_excess_precision_cmdline == EXCESS_PRECISION_DEFAULT)
     flag_excess_precision_cmdline = EXCESS_PRECISION_STANDARD;
+
+  /* Tail call optimizations can confuse uses of runtime.Callers.  */
+  if (!global_options_set.x_flag_optimize_sibling_calls)
+    global_options.x_flag_optimize_sibling_calls = 0;
+
+  /* If the debug info level is still 1, as set in init_options, make
+     sure that some debugging type is selected.  */
+  if (global_options.x_debug_info_level == DINFO_LEVEL_TERSE
+      && global_options.x_write_symbols == NO_DEBUG)
+    global_options.x_write_symbols = PREFERRED_DEBUGGING_TYPE;
+
+  /* We turn on stack splitting if we can.  */
+  if (!global_options_set.x_flag_split_stack
+      && targetm_common.supports_split_stack (false, &global_options))
+    global_options.x_flag_split_stack = 1;
 
   /* Returning false means that the backend should be used.  */
   return false;
@@ -272,17 +313,52 @@ go_langhook_parse_file (void)
 {
   go_parse_input_files (in_fnames, num_in_fnames, flag_syntax_only,
 			go_require_return_statement);
+
+  /* Final processing of globals and early debug info generation.  */
+  go_write_globals ();
 }
 
 static tree
 go_langhook_type_for_size (unsigned int bits, int unsignedp)
 {
-  return go_type_for_size (bits, unsignedp);
+  tree type;
+  if (unsignedp)
+    {
+      if (bits == INT_TYPE_SIZE)
+        type = unsigned_type_node;
+      else if (bits == CHAR_TYPE_SIZE)
+        type = unsigned_char_type_node;
+      else if (bits == SHORT_TYPE_SIZE)
+        type = short_unsigned_type_node;
+      else if (bits == LONG_TYPE_SIZE)
+        type = long_unsigned_type_node;
+      else if (bits == LONG_LONG_TYPE_SIZE)
+        type = long_long_unsigned_type_node;
+      else
+        type = make_unsigned_type(bits);
+    }
+  else
+    {
+      if (bits == INT_TYPE_SIZE)
+        type = integer_type_node;
+      else if (bits == CHAR_TYPE_SIZE)
+        type = signed_char_type_node;
+      else if (bits == SHORT_TYPE_SIZE)
+        type = short_integer_type_node;
+      else if (bits == LONG_TYPE_SIZE)
+        type = long_integer_type_node;
+      else if (bits == LONG_LONG_TYPE_SIZE)
+        type = long_long_integer_type_node;
+      else
+        type = make_signed_type(bits);
+    }
+  return type;
 }
 
 static tree
-go_langhook_type_for_mode (enum machine_mode mode, int unsignedp)
+go_langhook_type_for_mode (machine_mode mode, int unsignedp)
 {
+  tree type;
   /* Go has no vector types.  Build them here.  FIXME: It does not
      make sense for the middle-end to ask the frontend for a type
      which the frontend does not support.  However, at least for now
@@ -297,7 +373,52 @@ go_langhook_type_for_mode (enum machine_mode mode, int unsignedp)
       return NULL_TREE;
     }
 
-  return go_type_for_mode (mode, unsignedp);
+  enum mode_class mc = GET_MODE_CLASS (mode);
+  if (mc == MODE_INT)
+    return go_langhook_type_for_size (GET_MODE_BITSIZE (mode), unsignedp);
+  else if (mc == MODE_FLOAT)
+    {
+      switch (GET_MODE_BITSIZE (mode))
+	{
+	case 32:
+	  return float_type_node;
+	case 64:
+	  return double_type_node;
+	default:
+	  // We have to check for long double in order to support
+	  // i386 excess precision.
+	  if (mode == TYPE_MODE(long_double_type_node))
+	    return long_double_type_node;
+	}
+    }
+  else if (mc == MODE_COMPLEX_FLOAT)
+    {
+      switch (GET_MODE_BITSIZE (mode))
+	{
+	case 64:
+	  return complex_float_type_node;
+	case 128:
+	  return complex_double_type_node;
+	default:
+	  // We have to check for long double in order to support
+	  // i386 excess precision.
+	  if (mode == TYPE_MODE(complex_long_double_type_node))
+	    return complex_long_double_type_node;
+	}
+    }
+
+#if HOST_BITS_PER_WIDE_INT >= 64
+  /* The middle-end and some backends rely on TImode being supported
+     for 64-bit HWI.  */
+  if (mode == TImode)
+    {
+      type = build_nonstandard_integer_type (GET_MODE_BITSIZE (TImode),
+					     unsignedp);
+      if (type && TYPE_MODE (type) == TImode)
+	return type;
+    }
+#endif
+  return NULL_TREE;
 }
 
 /* Record a builtin function.  We just ignore builtin functions.  */
@@ -308,10 +429,12 @@ go_langhook_builtin_function (tree decl)
   return decl;
 }
 
-static int
+/* Return true if we are in the global binding level.  */
+
+static bool
 go_langhook_global_bindings_p (void)
 {
-  return current_function_decl == NULL ? 1 : 0;
+  return current_function_decl == NULL_TREE;
 }
 
 /* Push a declaration into the current binding level.  We can't
@@ -335,14 +458,6 @@ static tree
 go_langhook_getdecls (void)
 {
   return NULL;
-}
-
-/* Write out globals.  */
-
-static void
-go_langhook_write_globals (void)
-{
-  go_write_globals ();
 }
 
 /* Go specific gimplification.  We need to gimplify
@@ -442,7 +557,6 @@ go_localize_identifier (const char *ident)
 #undef LANG_HOOKS_GLOBAL_BINDINGS_P
 #undef LANG_HOOKS_PUSHDECL
 #undef LANG_HOOKS_GETDECLS
-#undef LANG_HOOKS_WRITE_GLOBALS
 #undef LANG_HOOKS_GIMPLIFY_EXPR
 #undef LANG_HOOKS_EH_PERSONALITY
 
@@ -459,7 +573,6 @@ go_localize_identifier (const char *ident)
 #define LANG_HOOKS_GLOBAL_BINDINGS_P	go_langhook_global_bindings_p
 #define LANG_HOOKS_PUSHDECL		go_langhook_pushdecl
 #define LANG_HOOKS_GETDECLS		go_langhook_getdecls
-#define LANG_HOOKS_WRITE_GLOBALS	go_langhook_write_globals
 #define LANG_HOOKS_GIMPLIFY_EXPR	go_langhook_gimplify_expr
 #define LANG_HOOKS_EH_PERSONALITY	go_langhook_eh_personality
 

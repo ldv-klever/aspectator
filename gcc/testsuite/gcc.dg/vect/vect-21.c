@@ -1,4 +1,5 @@
 /* { dg-require-effective-target vect_int } */
+/* { dg-add-options bind_pic_locally } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
@@ -123,7 +124,6 @@ int main (void)
   return main1 ();
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" { xfail *-*-* } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" { target vect_condition } } } */
 /* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 0 "vect" } } */
 
-/* { dg-final { cleanup-tree-dump "vect" } } */

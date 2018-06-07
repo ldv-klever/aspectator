@@ -10,25 +10,34 @@ import (
 )
 
 type T struct {
-	rune   int
+	rune   rune
 	script string
 }
 
-// Hand-chosen tests from Unicode 5.1.0, mostly to discover when new
-// scripts and categories arise.
+// Hand-chosen tests from Unicode 5.1.0, 6.0.0, 6.2.0, 6.3.0, 7.0.0 and 8.0.0
+// mostly to discover when new scripts and categories arise.
 var inTest = []T{
+	{0x11711, "Ahom"},
+	{0x1e900, "Adlam"},
+	{0x14646, "Anatolian_Hieroglyphs"},
 	{0x06e2, "Arabic"},
 	{0x0567, "Armenian"},
 	{0x10b20, "Avestan"},
+	{0x11c00, "Bhaiksuki"},
 	{0x1b37, "Balinese"},
 	{0xa6af, "Bamum"},
+	{0x16ada, "Bassa_Vah"},
+	{0x1be1, "Batak"},
 	{0x09c2, "Bengali"},
 	{0x3115, "Bopomofo"},
 	{0x282d, "Braille"},
 	{0x1a1a, "Buginese"},
 	{0x1747, "Buhid"},
+	{0x11011, "Brahmi"},
 	{0x156d, "Canadian_Aboriginal"},
 	{0x102a9, "Carian"},
+	{0x10563, "Caucasian_Albanian"},
+	{0x11111, "Chakma"},
 	{0xaa4d, "Cham"},
 	{0x13c2, "Cherokee"},
 	{0x0020, "Common"},
@@ -39,17 +48,21 @@ var inTest = []T{
 	{0xa663, "Cyrillic"},
 	{0x10430, "Deseret"},
 	{0x094a, "Devanagari"},
+	{0x1BC00, "Duployan"},
 	{0x13001, "Egyptian_Hieroglyphs"},
+	{0x10500, "Elbasan"},
 	{0x1271, "Ethiopic"},
 	{0x10fc, "Georgian"},
 	{0x2c40, "Glagolitic"},
 	{0x10347, "Gothic"},
+	{0x11303, "Grantha"},
 	{0x03ae, "Greek"},
 	{0x0abf, "Gujarati"},
 	{0x0a24, "Gurmukhi"},
 	{0x3028, "Han"},
 	{0x11b8, "Hangul"},
 	{0x1727, "Hanunoo"},
+	{0x108FF, "Hatran"},
 	{0x05a0, "Hebrew"},
 	{0x3058, "Hiragana"},
 	{0x10841, "Imperial_Aramaic"},
@@ -63,36 +76,64 @@ var inTest = []T{
 	{0xa928, "Kayah_Li"},
 	{0x10a11, "Kharoshthi"},
 	{0x17c6, "Khmer"},
+	{0x11211, "Khojki"},
+	{0x112df, "Khudawadi"},
 	{0x0eaa, "Lao"},
 	{0x1d79, "Latin"},
 	{0x1c10, "Lepcha"},
 	{0x1930, "Limbu"},
+	{0x10755, "Linear_A"},
 	{0x1003c, "Linear_B"},
 	{0xa4e1, "Lisu"},
 	{0x10290, "Lycian"},
 	{0x10930, "Lydian"},
+	{0x11173, "Mahajani"},
 	{0x0d42, "Malayalam"},
+	{0x0843, "Mandaic"},
+	{0x10ac8, "Manichaean"},
+	{0x11cB6, "Marchen"},
 	{0xabd0, "Meetei_Mayek"},
+	{0x1e800, "Mende_Kikakui"},
+	{0x1099f, "Meroitic_Hieroglyphs"},
+	{0x109a0, "Meroitic_Cursive"},
+	{0x16f00, "Miao"},
+	{0x11611, "Modi"},
 	{0x1822, "Mongolian"},
+	{0x16a60, "Mro"},
+	{0x11293, "Multani"},
 	{0x104c, "Myanmar"},
+	{0x10880, "Nabataean"},
+	{0x11400, "Newa"},
 	{0x19c3, "New_Tai_Lue"},
 	{0x07f8, "Nko"},
 	{0x169b, "Ogham"},
 	{0x1c6a, "Ol_Chiki"},
+	{0x10C80, "Old_Hungarian"},
 	{0x10310, "Old_Italic"},
+	{0x10a80, "Old_North_Arabian"},
+	{0x10350, "Old_Permic"},
 	{0x103c9, "Old_Persian"},
 	{0x10a6f, "Old_South_Arabian"},
 	{0x10c20, "Old_Turkic"},
 	{0x0b3e, "Oriya"},
+	{0x104d9, "Osage"},
 	{0x10491, "Osmanya"},
+	{0x16b2b, "Pahawh_Hmong"},
+	{0x10876, "Palmyrene"},
+	{0x11ACE, "Pau_Cin_Hau"},
 	{0xa860, "Phags_Pa"},
 	{0x10918, "Phoenician"},
+	{0x10baf, "Psalter_Pahlavi"},
 	{0xa949, "Rejang"},
 	{0x16c0, "Runic"},
 	{0x081d, "Samaritan"},
 	{0xa892, "Saurashtra"},
+	{0x111a0, "Sharada"},
 	{0x10463, "Shavian"},
+	{0x115c1, "Siddham"},
+	{0x1D920, "SignWriting"},
 	{0x0dbd, "Sinhala"},
+	{0x110d0, "Sora_Sompeng"},
 	{0x1ba3, "Sundanese"},
 	{0xa803, "Syloti_Nagri"},
 	{0x070f, "Syriac"},
@@ -101,14 +142,18 @@ var inTest = []T{
 	{0x1972, "Tai_Le"},
 	{0x1a62, "Tai_Tham"},
 	{0xaadc, "Tai_Viet"},
+	{0x116c9, "Takri"},
 	{0x0bbf, "Tamil"},
+	{0x17000, "Tangut"},
 	{0x0c55, "Telugu"},
 	{0x07a7, "Thaana"},
 	{0x0e46, "Thai"},
 	{0x0f36, "Tibetan"},
 	{0x2d55, "Tifinagh"},
+	{0x114d9, "Tirhuta"},
 	{0x10388, "Ugaritic"},
 	{0xa60e, "Vai"},
+	{0x118ff, "Warang_Citi"},
 	{0xa216, "Yi"},
 }
 
@@ -118,7 +163,7 @@ var outTest = []T{ // not really worth being thorough
 
 var inCategoryTest = []T{
 	{0x0081, "Cc"},
-	{0x17b4, "Cf"},
+	{0x200B, "Cf"},
 	{0xf0000, "Co"},
 	{0xdb80, "Cs"},
 	{0x0236, "Ll"},
@@ -146,7 +191,14 @@ var inCategoryTest = []T{
 	{0x2028, "Zl"},
 	{0x2029, "Zp"},
 	{0x202f, "Zs"},
-	{0x04aa, "letter"},
+	// Unifieds.
+	{0x04aa, "L"},
+	{0x0009, "C"},
+	{0x1712, "M"},
+	{0x0031, "N"},
+	{0x00bb, "P"},
+	{0x00a2, "S"},
+	{0x00a0, "Z"},
 }
 
 var inPropTest = []T{
@@ -165,7 +217,7 @@ var inPropTest = []T{
 	{0x0EC4, "Logical_Order_Exception"},
 	{0x2FFFF, "Noncharacter_Code_Point"},
 	{0x065E, "Other_Alphabetic"},
-	{0x2069, "Other_Default_Ignorable_Code_Point"},
+	{0x2065, "Other_Default_Ignorable_Code_Point"},
 	{0x0BD7, "Other_Grapheme_Extend"},
 	{0x0387, "Other_ID_Continue"},
 	{0x212E, "Other_ID_Start"},
@@ -174,9 +226,11 @@ var inPropTest = []T{
 	{0x216F, "Other_Uppercase"},
 	{0x0027, "Pattern_Syntax"},
 	{0x0020, "Pattern_White_Space"},
+	{0x06DD, "Prepended_Concatenation_Mark"},
 	{0x300D, "Quotation_Mark"},
 	{0x2EF3, "Radical"},
-	{0x061F, "STerm"},
+	{0x061F, "STerm"}, // Deprecated alias of Sentence_Terminal
+	{0x061F, "Sentence_Terminal"},
 	{0x2071, "Soft_Dotted"},
 	{0x003A, "Terminal_Punctuation"},
 	{0x9FC3, "Unified_Ideograph"},
@@ -194,17 +248,17 @@ func TestScripts(t *testing.T) {
 			t.Fatal(test.script, "not a known script")
 		}
 		if !Is(Scripts[test.script], test.rune) {
-			t.Errorf("IsScript(%#x, %s) = false, want true", test.rune, test.script)
+			t.Errorf("IsScript(%U, %s) = false, want true", test.rune, test.script)
 		}
-		notTested[test.script] = false, false
+		delete(notTested, test.script)
 	}
 	for _, test := range outTest {
 		if Is(Scripts[test.script], test.rune) {
-			t.Errorf("IsScript(%#x, %s) = true, want false", test.rune, test.script)
+			t.Errorf("IsScript(%U, %s) = true, want false", test.rune, test.script)
 		}
 	}
 	for k := range notTested {
-		t.Error("not tested:", k)
+		t.Error("script not tested:", k)
 	}
 }
 
@@ -218,12 +272,12 @@ func TestCategories(t *testing.T) {
 			t.Fatal(test.script, "not a known category")
 		}
 		if !Is(Categories[test.script], test.rune) {
-			t.Errorf("IsCategory(%#x, %s) = false, want true", test.rune, test.script)
+			t.Errorf("IsCategory(%U, %s) = false, want true", test.rune, test.script)
 		}
-		notTested[test.script] = false, false
+		delete(notTested, test.script)
 	}
 	for k := range notTested {
-		t.Error("not tested:", k)
+		t.Error("category not tested:", k)
 	}
 }
 
@@ -237,11 +291,11 @@ func TestProperties(t *testing.T) {
 			t.Fatal(test.script, "not a known prop")
 		}
 		if !Is(Properties[test.script], test.rune) {
-			t.Errorf("IsCategory(%#x, %s) = false, want true", test.rune, test.script)
+			t.Errorf("IsCategory(%U, %s) = false, want true", test.rune, test.script)
 		}
-		notTested[test.script] = false, false
+		delete(notTested, test.script)
 	}
 	for k := range notTested {
-		t.Error("not tested:", k)
+		t.Error("property not tested:", k)
 	}
 }

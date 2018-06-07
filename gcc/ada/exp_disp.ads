@@ -4,9 +4,9 @@
 --                                                                          --
 --                             E X P _ D I S P                              --
 --                                                                          --
---                                 S p e c                                  --
+--                                 GS p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,6 +27,7 @@
 --  dispatching expansion.
 
 with Types; use Types;
+with Uintp; use Uintp;
 
 package Exp_Disp is
 
@@ -52,65 +53,61 @@ package Exp_Disp is
    --      type. Constructs of the form Prefix'Size are converted into
    --      Prefix._Size.
 
-   --      _Alignment (2) - implementation of the attribute 'Alignment for
-   --      any tagged type. Constructs of the form Prefix'Alignment are
-   --      converted into Prefix._Alignment.
-
-   --      TSS_Stream_Read (3) - implementation of the stream attribute Read
+   --      TSS_Stream_Read (2) - implementation of the stream attribute Read
    --      for any tagged type.
 
-   --      TSS_Stream_Write (4) - implementation of the stream attribute Write
+   --      TSS_Stream_Write (3) - implementation of the stream attribute Write
    --      for any tagged type.
 
-   --      TSS_Stream_Input (5) - implementation of the stream attribute Input
+   --      TSS_Stream_Input (4) - implementation of the stream attribute Input
    --      for any tagged type.
 
-   --      TSS_Stream_Output (6) - implementation of the stream attribute
+   --      TSS_Stream_Output (5) - implementation of the stream attribute
    --      Output for any tagged type.
 
-   --      Op_Eq (7) - implementation of the equality operator for any non-
+   --      Op_Eq (6) - implementation of the equality operator for any non-
    --      limited tagged type.
 
-   --      _Assign (8) - implementation of the assignment operator for any
+   --      _Assign (7) - implementation of the assignment operator for any
    --      non-limited tagged type.
 
-   --      TSS_Deep_Adjust (9) - implementation of the finalization operation
+   --      TSS_Deep_Adjust (8) - implementation of the finalization operation
    --      Adjust for any non-limited tagged type.
 
-   --      TSS_Deep_Finalize (10) - implementation of the finalization
+   --      TSS_Deep_Finalize (9) - implementation of the finalization
    --      operation Finalize for any non-limited tagged type.
 
-   --      _Disp_Asynchronous_Select (11) - used in the expansion of ATC with
+   --      _Disp_Asynchronous_Select (10) - used in the expansion of ATC with
    --      dispatching triggers. Null implementation for limited interfaces,
    --      full body generation for types that implement limited interfaces,
    --      not generated for the rest of the cases. See Expand_N_Asynchronous_
    --      Select in Exp_Ch9 for more information.
 
-   --      _Disp_Conditional_Select (12) - used in the expansion of conditional
+   --      _Disp_Conditional_Select (11) - used in the expansion of conditional
    --      selects with dispatching triggers. Null implementation for limited
    --      interfaces, full body generation for types that implement limited
    --      interfaces, not generated for the rest of the cases. See Expand_N_
    --      Conditional_Entry_Call in Exp_Ch9 for more information.
 
-   --      _Disp_Get_Prim_Op_Kind (13) - helper routine used in the expansion
+   --      _Disp_Get_Prim_Op_Kind (12) - helper routine used in the expansion
    --      of ATC with dispatching triggers. Null implementation for limited
    --      interfaces, full body generation for types that implement limited
    --      interfaces, not generated for the rest of the cases.
 
-   --      _Disp_Get_Task_Id (14) - helper routine used in the expansion of
+   --      _Disp_Get_Task_Id (13) - helper routine used in the expansion of
    --      Abort, attributes 'Callable and 'Terminated for task interface
    --      class-wide types. Full body generation for task types, null
    --      implementation for limited interfaces, not generated for the rest
    --      of the cases. See Expand_N_Attribute_Reference in Exp_Attr and
    --      Expand_N_Abort_Statement in Exp_Ch9 for more information.
 
-   --      _Disp_Requeue (15) - used in the expansion of dispatching requeue
+   --      _Disp_Requeue (14) - used in the expansion of dispatching requeue
    --      statements. Null implementation is provided for protected, task
    --      and synchronized interfaces. Protected and task types implementing
    --      concurrent interfaces receive full bodies. See Expand_N_Requeue_
    --      Statement in Exp_Ch9 for more information.
 
-   --      _Disp_Timed_Select (16) - used in the expansion of timed selects
+   --      _Disp_Timed_Select (15) - used in the expansion of timed selects
    --      with dispatching triggers. Null implementation for limited
    --      interfaces, full body generation for types that implement limited
    --      interfaces, not generated for the rest of the cases. See Expand_N_
@@ -226,12 +223,10 @@ package Exp_Disp is
    --  Ada 2005 (AI-251): Displace all the actuals corresponding to class-wide
    --  interfaces to reference the interface tag of the actual object
 
-   procedure Expand_Interface_Conversion
-     (N         : Node_Id;
-      Is_Static : Boolean := True);
-   --  Ada 2005 (AI-251): N is a type-conversion node. Reference the base of
-   --  the object to give access to the interface tag associated with the
-   --  secondary dispatch table.
+   procedure Expand_Interface_Conversion (N : Node_Id);
+   --  Ada 2005 (AI-251): N is a type-conversion node. Displace the pointer
+   --  to the object to give access to the interface tag associated with the
+   --  dispatch table of the target type.
 
    procedure Expand_Interface_Thunk
      (Prim       : Node_Id;
@@ -248,6 +243,9 @@ package Exp_Disp is
 
    function Has_CPP_Constructors (Typ : Entity_Id) return Boolean;
    --  Returns true if the type has CPP constructors
+
+   function Is_Expanded_Dispatching_Call (N : Node_Id) return Boolean;
+   --  Returns true if N is the expanded code of a dispatching call
 
    function Is_Predefined_Dispatching_Operation (E : Entity_Id) return Boolean;
    --  Ada 2005 (AI-251): Determines if E is a predefined primitive operation
@@ -378,11 +376,14 @@ package Exp_Disp is
    --  target object in its first argument; such implicit argument is explicit
    --  in the IP procedures built here.
 
-   procedure Set_DTC_Entity_Value
-     (Tagged_Type : Entity_Id;
-      Prim        : Entity_Id);
+   procedure Set_DT_Position_Value (Prim  : Entity_Id; Value : Uint);
+   --  Set the position of a dispatching primitive its dispatch table. For
+   --  subprogram wrappers propagate the value to the wrapped subprogram.
+
+   procedure Set_DTC_Entity_Value (Tagged_Type : Entity_Id; Prim : Entity_Id);
    --  Set the definite value of the DTC_Entity value associated with a given
-   --  primitive of a tagged type.
+   --  primitive of a tagged type. For subprogram wrappers, propagate the value
+   --  to the wrapped subprogram.
 
    procedure Write_DT (Typ : Entity_Id);
    pragma Export (Ada, Write_DT);

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -24,7 +24,7 @@
 ------------------------------------------------------------------------------
 
 --  This child unit provides utility data structures and procedures used
---  for manipulation of ALI data by the gnatbind and gnatmake.
+--  for manipulation of ALI data by gnatbind and gnatmake.
 
 package ALI.Util is
 
@@ -56,6 +56,13 @@ package ALI.Util is
       --  This flag is set to True if the corresponding source file was
       --  located and the Stamp value was set from the actual source file.
       --  It is always false if Check_Source_Files is not set.
+
+      Stamp_File : File_Name_Type;
+      --  File that Stamp came from. If Source_Found is True, then Stamp is the
+      --  timestamp of the source file, and this is the name of the source
+      --  file. If Source_Found is False, then Stamp comes from a dependency
+      --  line in an ALI file, this is the name of that ALI file. Used only in
+      --  verbose mode, for messages.
 
       All_Timestamps_Match : Boolean;
       --  This flag is set only if all files referencing this source file
@@ -100,11 +107,15 @@ package ALI.Util is
    -- Subprograms for Manipulating ALI Information --
    --------------------------------------------------
 
-   procedure Read_Withed_ALIs (Id : ALI_Id);
+   procedure Read_Withed_ALIs
+     (Id            : ALI_Id;
+      Ignore_Errors : Boolean := False);
    --  Process an ALI file which has been read and scanned by looping through
    --  all withed units in the ALI file, checking if they have been processed.
    --  Each unit that has not yet been processed will be read, scanned, and
-   --  processed recursively.
+   --  processed recursively. If Ignore_Errors is True, then failure to read an
+   --  ALI file is not reported as an error, and scanning continues with other
+   --  ALI files.
 
    procedure Set_Source_Table (A : ALI_Id);
    --  Build source table entry corresponding to the ALI file whose id is A

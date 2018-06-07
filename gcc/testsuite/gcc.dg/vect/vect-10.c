@@ -22,5 +22,4 @@ int foo ()
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { xfail { ! vect_extract_even_odd } } } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { xfail { ! vect_strided2 } } } } */

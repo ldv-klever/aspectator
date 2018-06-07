@@ -1,10 +1,9 @@
-// { dg-do compile }
-// { dg-options "-std=gnu++0x" }
+// { dg-do compile { target c++11 } }
 // { dg-require-cstdint "" }
 
 // 2008-07-03 Chris Fairles <chris.fairles@gmail.com>
 
-// Copyright (C) 2008, 2009, 2011 Free Software Foundation
+// Copyright (C) 2008-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -26,22 +25,26 @@
 void
 test01()
 {
-  std::ratio_add<std::ratio<INTMAX_MAX, 1>, std::ratio<1>>::type r1;
+  std::ratio_add<std::ratio<INTMAX_MAX, 1>, std::ratio<1>>::type r1
+    __attribute__((unused));
 }
 
 void
 test02()
 {  
-  std::ratio_multiply<std::ratio<-INTMAX_MAX, 2>, std::ratio<3, 2>>::type r1;
-  std::ratio_multiply<std::ratio<INTMAX_MAX>, std::ratio<INTMAX_MAX>>::type r2;
+  std::ratio_multiply<std::ratio<-INTMAX_MAX, 2>, std::ratio<3, 2>>::type r1
+    __attribute__((unused));
+  std::ratio_multiply<std::ratio<INTMAX_MAX>, std::ratio<INTMAX_MAX>>::type r2
+    __attribute__((unused));
 }
 
-// { dg-error "instantiated from here" "" { target *-*-* } 29 }
-// { dg-error "instantiated from here" "" { target *-*-* } 35 }
-// { dg-error "instantiated from here" "" { target *-*-* } 36 }
-// { dg-error "overflow in addition" "" { target *-*-* } 132 }
-// { dg-error "overflow in multiplication" "" { target *-*-* } 104 }
-// { dg-error "overflow in multiplication" "" { target *-*-* } 100 }
-// { dg-error "overflow in multiplication" "" { target *-*-* } 102 }
-// { dg-excess-errors "In instantiation of" }
-// { dg-excess-errors "out of range" }
+// { dg-error "required from here" "" { target *-*-* } 28 }
+// { dg-error "expected initializer" "" { target *-*-* } 35 }
+// { dg-error "expected initializer" "" { target *-*-* } 37 }
+// { dg-error "overflow in addition" "" { target *-*-* } 452 }
+// { dg-error "overflow in multiplication" "" { target *-*-* } 97 }
+// { dg-error "overflow in multiplication" "" { target *-*-* } 99 }
+// { dg-error "overflow in multiplication" "" { target *-*-* } 101 }
+// { dg-error "overflow in constant expression" "" { target *-*-* } 108 }
+// { dg-prune-output "out of range" }
+// { dg-prune-output "not usable in a constant expression" }

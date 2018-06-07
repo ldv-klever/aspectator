@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2008, 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -40,9 +40,9 @@
 // Constructors/Destructors.
 PB_DS_CLASS_T_DEC
 PB_DS_CLASS_C_DEC::
-container_rand_regression_test(unsigned long seed, size_t n, size_t m, 
-			       double tp, double ip, double ep, double cp, 
-			       double mp, bool disp) 
+container_rand_regression_test(unsigned long seed, size_t n, size_t m,
+			       double tp, double ip, double ep, double cp,
+			       double mp, bool disp)
 : m_seed((seed == 0) ? twister_rand_gen::get_time_determined_seed() : seed),
   m_n(n), m_m(m), m_tp(tp), m_ip(ip), m_ep(ep), m_cp(cp), m_mp(mp),
   m_disp(disp), m_p_c(0)
@@ -131,7 +131,7 @@ assignment_operator()
   try
     {
       p_c = new Cntnr();
-      * p_c =* m_p_c;
+      *p_c = *m_p_c;
       std::swap(p_c, m_p_c);
     }
   catch(__gnu_cxx::forced_error&)
@@ -379,12 +379,12 @@ it_constructor_imp(__gnu_pbds::pat_trie_tag)
       switch(get_next_sub_op(2))
         {
         case 0:
-	  p_c = new Cntnr(m_p_c->get_e_access_traits());
+	  p_c = new Cntnr(m_p_c->get_access_traits());
 	  m_native_c.clear();
 	  break;
         case 1:
-	  p_c = new Cntnr(m_p_c->begin(), m_p_c->end(), 
-			  m_p_c->get_e_access_traits());
+	  p_c = new Cntnr(m_p_c->begin(), m_p_c->end(),
+			  m_p_c->get_access_traits());
 	  break;
         default:
 	  PB_DS_THROW_IF_FAILED(false, "", m_p_c, &m_native_c);
@@ -406,7 +406,7 @@ it_constructor_imp(__gnu_pbds::pat_trie_tag)
 PB_DS_CLASS_T_DEC
 void
 PB_DS_CLASS_C_DEC::
-cmp(const Cntnr& r_c, const native_type& r_native_c, 
+cmp(const Cntnr& r_c, const native_type& r_native_c,
     const std::string& r_call_fn)
 {
   m_alloc.set_probability(1);
@@ -441,7 +441,7 @@ basic_cmp_(const Cntnr& r_c, const native_type& r_native_c)
   if (static_cast<size_t>(std::distance(r_c.begin(), r_c.end())) != r_c.size())
     PB_DS_THROW_IF_FAILED(false,
 			  static_cast<unsigned long>(std::distance(r_c.begin(), r_c.end())) << " " << static_cast<unsigned long>(r_c.size()), &r_c, &r_native_c);
-  
+
   typename native_type::const_iterator it = r_native_c.begin();
   while (it != r_native_c.end())
     {
@@ -450,7 +450,7 @@ basic_cmp_(const Cntnr& r_c, const native_type& r_native_c)
       m_alloc.set_probability(0);
       const key_type k = native_key;
       m_alloc.set_probability(1);
-      typename cntnr::const_point_iterator found_it = r_c.find(k);
+      typename cntnr::point_const_iterator found_it = r_c.find(k);
       PB_DS_THROW_IF_FAILED(found_it != r_c.end(),
 			    test_traits::native_val_to_string(*it),
 			    &r_c, &r_native_c);
@@ -471,8 +471,8 @@ cmp_(const Cntnr& r_c, const native_type& r_native_c)
   enum
     {
       order_preserving = container_traits::order_preserving,
-      back_order_preserving = container_traits::order_preserving 
-      && 
+      back_order_preserving = container_traits::order_preserving
+      &&
       !__gnu_pbds::detail::is_same<
       typename std::iterator_traits<
       typename cntnr::const_iterator>::iterator_category,
@@ -482,7 +482,7 @@ cmp_(const Cntnr& r_c, const native_type& r_native_c)
       prefix_search = test_traits::prefix_search,
       has_mapped = !__gnu_pbds::detail::is_same<
       typename Cntnr::mapped_type,
-      __gnu_pbds::null_mapped_type>::value
+      __gnu_pbds::null_type>::value
     };
 
   order_preserving_cmp_imp(r_c, r_native_c,
@@ -550,14 +550,14 @@ order_preserving_cmp_imp(const Cntnr& r_c, const native_type& r_native_c, __gnu_
 PB_DS_CLASS_T_DEC
 void
 PB_DS_CLASS_C_DEC::
-back_order_preserving_cmp_imp(const Cntnr&, const native_type&, 
+back_order_preserving_cmp_imp(const Cntnr&, const native_type&,
 				    __gnu_pbds::detail::false_type)
 { }
 
 PB_DS_CLASS_T_DEC
 void
 PB_DS_CLASS_C_DEC::
-back_order_preserving_cmp_imp(const Cntnr& r_c, const native_type& r_native_c, 
+back_order_preserving_cmp_imp(const Cntnr& r_c, const native_type& r_native_c,
 			      __gnu_pbds::detail::true_type)
 {
   PB_DS_SET_DESTRUCT_PRINT
@@ -572,7 +572,7 @@ back_order_preserving_cmp_imp(const Cntnr& r_c, const native_type& r_native_c,
 PB_DS_CLASS_T_DEC
 void
 PB_DS_CLASS_C_DEC::
-reverse_iteration_cmp_imp(const Cntnr&, const native_type&, 
+reverse_iteration_cmp_imp(const Cntnr&, const native_type&,
 			  __gnu_pbds::detail::false_type)
 { }
 
@@ -688,7 +688,7 @@ prefix_search_cmp_imp(const Cntnr& r_c, const native_type& r_native_c, __gnu_pbd
 
       typename native_type::const_iterator native_start_it = r_native_c.begin();
 
-      while (native_start_it != r_native_c.end() && 
+      while (native_start_it != r_native_c.end() &&
 	     !test_traits::prefix_match(k,
 					test_traits::extract_native_key(*native_start_it)))
 	++native_start_it;
@@ -701,7 +701,7 @@ prefix_search_cmp_imp(const Cntnr& r_c, const native_type& r_native_c, __gnu_pbd
 	  if (native_end_it != r_native_c.end())
 	    ++native_end_it;
         }
-      while (native_end_it != r_native_c.end() && 
+      while (native_end_it != r_native_c.end() &&
 	     test_traits::prefix_match(k,
 				       test_traits::extract_native_key(*native_end_it)));
 
@@ -719,7 +719,7 @@ PB_DS_CLASS_T_DEC
 template<typename Const_It, class Const_Native_It>
 void
 PB_DS_CLASS_C_DEC::
-it_cmp_imp(Const_It b, Const_It e, Const_Native_It native_b, 
+it_cmp_imp(Const_It b, Const_It e, Const_Native_It native_b,
 	   Const_Native_It native_e)
 {
   PB_DS_SET_DESTRUCT_PRINT
@@ -733,7 +733,7 @@ it_cmp_imp(Const_It b, Const_It e, Const_Native_It native_b,
 			    << static_cast<unsigned long>(native_dist),
 			    m_p_c, &m_native_c);
     }
-  
+
   while (b != e)
     {
       PB_DS_THROW_IF_FAILED(native_b != native_e, "", m_p_c, &m_native_c);
@@ -756,7 +756,7 @@ PB_DS_CLASS_T_DEC
 template<typename Const_It, class Const_Native_It>
 void
 PB_DS_CLASS_C_DEC::
-back_it_cmp_imp(Const_It b, Const_It e, Const_Native_It native_b, 
+back_it_cmp_imp(Const_It b, Const_It e, Const_Native_It native_b,
 		Const_Native_It native_e)
 {
   PB_DS_SET_DESTRUCT_PRINT
@@ -880,7 +880,7 @@ operator()()
   // Track allocation from this point only.
   const size_t memory_label = 775;
   m_alloc.seed(m_seed);
-  m_alloc.set_label(memory_label);  
+  m_alloc.set_label(memory_label);
 
   prog_bar pb(m_n, std::cout, m_disp);
   m_i = 0;
@@ -960,16 +960,16 @@ operator()()
 		      break;
                     case 1:
 		      PB_DS_RUN_MTHD(copy_constructor)
-                        break;
+                      break;
                     case 2:
 		      PB_DS_RUN_MTHD(it_constructor)
-                        break;
+                      break;
                     case 3:
 		      PB_DS_RUN_MTHD(assignment_operator)
-                        break;
+                      break;
                     case 4:
 		      PB_DS_RUN_MTHD(split_join)
-                        break;
+                      break;
                     case 5:
 		      resize();
 		      break;
@@ -993,7 +993,7 @@ operator()()
     }
   catch (...)
     {
-      std::cerr << "Failed at index " << static_cast<unsigned long>(m_i) 
+      std::cerr << "Failed at index " << static_cast<unsigned long>(m_i)
 		<< std::endl;
       delete m_p_c;
       throw;
@@ -1002,8 +1002,8 @@ operator()()
   // Clean up, then check for allocation by special label, set above.
   delete m_p_c;
 
-  try 
-    { m_alloc.check_allocated(memory_label); }
+  try
+    { m_alloc.check(memory_label); }
   catch (...)
     {
       std::cerr << "detected leaks!" << std::endl;
@@ -1072,11 +1072,11 @@ insert()
       m_alloc.set_probability(0);
       value_type v = test_traits::generate_value(m_g, m_m);
       m_alloc.set_probability(m_tp);
-      const_key_reference r_k = test_traits::extract_key(v);
-      typename cntnr::const_point_iterator found_it = m_p_c->find(r_k);
+      key_const_reference r_k = test_traits::extract_key(v);
+      typename cntnr::point_const_iterator found_it = m_p_c->find(r_k);
       const bool existed = (found_it != m_p_c->end());
       const std::pair<typename cntnr::point_iterator, bool> ins_ret = m_p_c->insert(v);
-      
+
       if (ins_ret.second)
 	{
 	  PB_DS_THROW_IF_FAILED(!existed, "", m_p_c, &m_native_c);
@@ -1096,7 +1096,7 @@ insert()
     {
       PB_DS_THROW_IF_FAILED(false, "", m_p_c, &m_native_c);
     }
-  
+
   PB_DS_COND_COMPARE(*m_p_c, m_native_c);
   PB_DS_CANCEL_DESTRUCT_PRINT
   return done;
@@ -1113,7 +1113,7 @@ subscript()
   enum
     {
       no_data = __gnu_pbds::detail::is_same<
-      typename Cntnr::const_key_reference,
+      typename Cntnr::key_const_reference,
       typename Cntnr::const_reference>::value
     };
 
@@ -1143,7 +1143,7 @@ subscript_imp(__gnu_pbds::detail::false_type)
     {
       done = false;
     }
-  
+
   PB_DS_COND_COMPARE(*m_p_c, m_native_c);
   PB_DS_CANCEL_DESTRUCT_PRINT
   return done;
@@ -1161,14 +1161,14 @@ subscript_imp(__gnu_pbds::detail::true_type)
       m_alloc.set_probability(0);
       value_type v = test_traits::generate_value(m_g, m_m);
       m_alloc.set_probability(m_tp);
-      (*m_p_c)[v] = __gnu_pbds::null_mapped_type();
+      (*m_p_c)[v] = __gnu_pbds::null_type();
       m_native_c.insert(test_traits::native_value(v));
     }
   catch(__gnu_cxx::forced_error&)
     {
       done = false;
     }
-  
+
   PB_DS_COND_COMPARE(*m_p_c, m_native_c);
   PB_DS_CANCEL_DESTRUCT_PRINT
   return done;
@@ -1207,10 +1207,10 @@ erase()
       const bool ersd = m_p_c->erase(k);
       const bool native_ersd = m_native_c.erase(test_traits::native_key(k)) != 0;
 
-      PB_DS_THROW_IF_FAILED(ersd == native_ersd, ersd << " " << native_ersd, 
+      PB_DS_THROW_IF_FAILED(ersd == native_ersd, ersd << " " << native_ersd,
 			    m_p_c, &m_native_c);
 
-      PB_DS_THROW_IF_FAILED(m_p_c->find(k) == m_p_c->end(), "", 
+      PB_DS_THROW_IF_FAILED(m_p_c->find(k) == m_p_c->end(), "",
 			    m_p_c, &m_native_c);
     }
   catch(__gnu_cxx::forced_error&)
@@ -1239,26 +1239,26 @@ erase_if()
       typedef
 	typename std::iterator_traits<typename cntnr::iterator>::reference
 	it_const_reference;
-      
+
       typedef
 	typename test_traits::template erase_if_fn<value_type>
 	erase_if_fn_t;
-      
+
       m_alloc.set_probability(m_tp);
-      
-      const size_t ersd = m_p_c->erase_if(erase_if_fn_t());      
-      const size_t native_ersd = test_traits::erase_if(m_native_c);      
+
+      const size_t ersd = m_p_c->erase_if(erase_if_fn_t());
+      const size_t native_ersd = test_traits::erase_if(m_native_c);
       PB_DS_THROW_IF_FAILED(ersd == native_ersd,
 			    ersd << " " << native_ersd, m_p_c, &m_native_c);
     }
   catch(__gnu_cxx::forced_error&)
     {
       done = false;
-      PB_DS_THROW_IF_FAILED(container_traits::erase_can_throw, 
-			    container_traits::erase_can_throw, 
+      PB_DS_THROW_IF_FAILED(container_traits::erase_can_throw,
+			    container_traits::erase_can_throw,
 			    m_p_c, &m_native_c);
     }
-  
+
   PB_DS_COND_COMPARE(*m_p_c, m_native_c);
   PB_DS_CANCEL_DESTRUCT_PRINT
   return done;
@@ -1306,22 +1306,22 @@ erase_it_imp(__gnu_pbds::detail::true_type)
 
       const bool found = found_it != m_p_c->end();
       const bool native_found = native_it != m_native_c.end();
-      
+
       PB_DS_THROW_IF_FAILED(
 			    found == native_found,
 			    found << " " <<    native_found,
 			    m_p_c,
 			    &m_native_c);
-      
+
       typename cntnr::const_iterator next_it = found_it;
       if (next_it != m_p_c->end())
 	++next_it;
-      
+
       typename cntnr::iterator next_ers_it = m_p_c->erase(found_it);
-      
+
       if (native_it != m_native_c.end())
 	m_native_c.erase(native_it);
-      
+
       bool range_guarantee = __gnu_pbds::detail::is_same<
       typename container_traits::invalidation_guarantee,
 	__gnu_pbds::range_invalidation_guarantee>::value ;
@@ -1347,7 +1347,7 @@ erase_rev_it()
 {
   enum
     {
-      erase_iterators = container_traits::order_preserving 
+      erase_iterators = container_traits::order_preserving
       	                && container_traits::reverse_iteration
     };
 
@@ -1373,20 +1373,20 @@ erase_rev_it_imp(__gnu_pbds::detail::true_type)
 
   try
     {
-      m_alloc.set_probability(0);      
-      const key_type k = test_traits::generate_key(m_g, m_m);      
+      m_alloc.set_probability(0);
+      const key_type k = test_traits::generate_key(m_g, m_m);
       m_alloc.set_probability(m_tp);
-      
+
       typename cntnr::iterator found_it = m_p_c->find(k);
       typename native_type::iterator native_it = m_native_c.find(test_traits::native_key(k));
-      
+
       typename cntnr::const_reverse_iterator next_it = found_it;
       if (next_it != m_p_c->end())
 	++next_it;
-      
+
       typename cntnr::reverse_iterator next_ers_it =
 	m_p_c->erase((typename cntnr::reverse_iterator)found_it);
-      
+
       PB_DS_THROW_IF_FAILED(next_ers_it == next_it, "", m_p_c, &m_native_c);
 
       if (native_it != m_native_c.end())
@@ -1394,9 +1394,9 @@ erase_rev_it_imp(__gnu_pbds::detail::true_type)
     }
   catch(__gnu_cxx::forced_error&)
     {
-      done = false;      
-      PB_DS_THROW_IF_FAILED(container_traits::erase_can_throw, 
-			    container_traits::erase_can_throw, 
+      done = false;
+      PB_DS_THROW_IF_FAILED(container_traits::erase_can_throw,
+			    container_traits::erase_can_throw,
 			    m_p_c, &m_native_c);
     }
 
@@ -1431,9 +1431,9 @@ key_defs()
 {
   typedef typename Cntnr::key_type test_key_type;
   typedef typename Cntnr::key_reference test_key_reference;
-  typedef typename Cntnr::const_key_reference test_const_key_reference;
+  typedef typename Cntnr::key_const_reference test_key_const_reference;
   typedef typename Cntnr::key_pointer test_key_pointer;
-  typedef typename Cntnr::const_key_pointer test_const_key_pointer;
+  typedef typename Cntnr::key_const_pointer test_key_const_pointer;
 }
 
 PB_DS_CLASS_T_DEC
@@ -1443,9 +1443,9 @@ mapped_defs()
 {
   typedef typename Cntnr::mapped_type test_mapped_type;
   typedef typename Cntnr::mapped_reference test_mapped_reference;
-  typedef typename Cntnr::const_mapped_reference test_const_mapped_reference;
+  typedef typename Cntnr::mapped_const_reference test_mapped_const_reference;
   typedef typename Cntnr::mapped_pointer test_mapped_pointer;
-  typedef typename Cntnr::const_mapped_pointer test_const_mapped_pointer;
+  typedef typename Cntnr::mapped_const_pointer test_mapped_const_pointer;
 }
 
 PB_DS_CLASS_T_DEC
@@ -1490,7 +1490,7 @@ PB_DS_CLASS_C_DEC::
 iterator_defs()
 {
   typedef typename Cntnr::point_iterator test_point_iterator;
-  typedef typename Cntnr::const_point_iterator const_test_point_iterator;
+  typedef typename Cntnr::point_const_iterator const_test_point_iterator;
   typedef typename Cntnr::iterator test_iterator;
   typedef typename Cntnr::const_iterator const_test_iterator;
 }
@@ -1507,7 +1507,7 @@ PB_DS_CLASS_C_DEC::
 node_iterator_defs(__gnu_pbds::detail::true_type)
 {
   typedef typename Cntnr::node_iterator test_node_iterator;
-  typedef typename Cntnr::const_node_iterator test_const_node_iterator;
+  typedef typename Cntnr::node_const_iterator test_node_const_iterator;
 }
 
 PB_DS_CLASS_T_DEC
@@ -1571,7 +1571,7 @@ void
 PB_DS_CLASS_C_DEC::
 policy_defs(__gnu_pbds::pat_trie_tag)
 {
-  typedef typename Cntnr::e_access_traits e_access_traits;
+  typedef typename Cntnr::access_traits access_traits;
 }
 
 
@@ -1690,7 +1690,7 @@ void
 PB_DS_CLASS_C_DEC::
 policy_access(__gnu_pbds::pat_trie_tag)
 {
-  typename Cntnr::e_access_traits& r_t = m_p_c->get_e_access_traits();
+  typename Cntnr::access_traits& r_t = m_p_c->get_access_traits();
   assert(&r_t);
 }
 
@@ -1706,7 +1706,8 @@ split_join()
       split_join = container_traits::order_preserving
     };
 
-  return (split_join_imp(__gnu_pbds::detail::integral_constant<int,split_join>()));
+  typedef __gnu_pbds::detail::integral_constant<int, split_join> __true_type;
+  return split_join_imp(__true_type());
 }
 
 PB_DS_CLASS_T_DEC
@@ -1734,13 +1735,13 @@ split_join_imp(__gnu_pbds::detail::true_type)
       native_type native_lhs(m_native_c);
       native_type native_rhs;
       const key_type k = test_traits::generate_key(m_g, m_m);
-      
+
       m_alloc.set_probability(m_tp);
       lhs.split(k, rhs);
-      
+
       typename native_type::const_iterator it =
 	native_lhs.upper_bound(test_traits::native_key(k));
-      
+
       while (!native_lhs.empty()&&  it != native_lhs.end())
 	{
 	  native_rhs.insert(*it);
@@ -1749,15 +1750,15 @@ split_join_imp(__gnu_pbds::detail::true_type)
 	  native_lhs.erase(test_traits::extract_native_key(*it));
 	  it = next_it;
 	}
-      
+
       PB_DS_COND_COMPARE(lhs, native_lhs);
       PB_DS_COND_COMPARE(rhs, native_rhs);
-      
+
       m_alloc.set_probability(m_tp);
-      
+
       if (m_g.get_prob() < 0.5)
 	lhs.swap(rhs);
-      
+
       lhs.join(rhs);
       PB_DS_THROW_IF_FAILED(rhs.size() == 0, rhs.size(), m_p_c, &m_native_c);
       PB_DS_THROW_IF_FAILED(rhs.empty(), rhs.size(), m_p_c, &m_native_c);
@@ -1766,11 +1767,11 @@ split_join_imp(__gnu_pbds::detail::true_type)
   catch(__gnu_cxx::forced_error&)
     {
       done = false;
-      PB_DS_THROW_IF_FAILED(container_traits::split_join_can_throw, 
-			    container_traits::split_join_can_throw, 
+      PB_DS_THROW_IF_FAILED(container_traits::split_join_can_throw,
+			    container_traits::split_join_can_throw,
 			    m_p_c, &m_native_c);
     }
-  
+
   PB_DS_COND_COMPARE(*m_p_c, m_native_c);
   PB_DS_CANCEL_DESTRUCT_PRINT
   return done;
@@ -1788,7 +1789,7 @@ it_copy()
     PB_DS_THROW_IF_FAILED(const_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_it != it), "", m_p_c, &m_native_c);
 
-    typename cntnr::const_point_iterator const_find_it(it);
+    typename cntnr::point_const_iterator const_find_it(it);
     PB_DS_THROW_IF_FAILED(const_find_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != it), "", m_p_c, &m_native_c);
 
@@ -1799,14 +1800,14 @@ it_copy()
 
   {
     typename cntnr::const_iterator const_it = m_p_c->end();
-    typename cntnr::const_point_iterator const_find_it(const_it);
+    typename cntnr::point_const_iterator const_find_it(const_it);
     PB_DS_THROW_IF_FAILED(const_find_it == const_it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != const_it), "", m_p_c, &m_native_c);
   }
 
   {
     typename cntnr::point_iterator find_it = m_p_c->end();
-    typename cntnr::const_point_iterator const_find_it(find_it);
+    typename cntnr::point_const_iterator const_find_it(find_it);
     PB_DS_THROW_IF_FAILED(find_it == const_find_it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(find_it != const_find_it), "", m_p_c, &m_native_c);
   }
@@ -1824,7 +1825,7 @@ it_assign()
     PB_DS_THROW_IF_FAILED(const_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_it != it), "", m_p_c, &m_native_c);
 
-    typename cntnr::const_point_iterator const_find_it;
+    typename cntnr::point_const_iterator const_find_it;
     const_find_it = it;
     PB_DS_THROW_IF_FAILED(const_find_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != it), "", m_p_c, &m_native_c);
@@ -1837,7 +1838,7 @@ it_assign()
 
   {
     typename cntnr::const_iterator const_it = m_p_c->end();
-    typename cntnr::const_point_iterator const_find_it;
+    typename cntnr::point_const_iterator const_find_it;
     const_find_it = const_it;
     PB_DS_THROW_IF_FAILED(const_find_it == const_it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != const_it), "", m_p_c, &m_native_c);
@@ -1845,7 +1846,7 @@ it_assign()
 
   {
     typename cntnr::point_iterator find_it = m_p_c->end();
-    typename cntnr::const_point_iterator const_find_it;
+    typename cntnr::point_const_iterator const_find_it;
     const_find_it = find_it;
     PB_DS_THROW_IF_FAILED(find_it == const_find_it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(find_it != const_find_it), "", m_p_c, &m_native_c);
@@ -1895,7 +1896,7 @@ rev_it_copy_imp(__gnu_pbds::detail::true_type)
     PB_DS_THROW_IF_FAILED(const_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_it != it), "", m_p_c, &m_native_c);
 
-    typename cntnr::const_point_iterator const_find_it(it);
+    typename cntnr::point_const_iterator const_find_it(it);
     PB_DS_THROW_IF_FAILED(const_find_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != it), "", m_p_c, &m_native_c);
 
@@ -1923,7 +1924,7 @@ rev_it_assign_imp(__gnu_pbds::detail::true_type)
     PB_DS_THROW_IF_FAILED(const_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_it != it), "", m_p_c, &m_native_c);
 
-    typename cntnr::const_point_iterator const_find_it;
+    typename cntnr::point_const_iterator const_find_it;
     const_find_it = it;
     PB_DS_THROW_IF_FAILED(const_find_it == it, "", m_p_c, &m_native_c);
     PB_DS_THROW_IF_FAILED(!(const_find_it != it), "", m_p_c, &m_native_c);

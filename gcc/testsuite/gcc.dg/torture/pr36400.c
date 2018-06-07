@@ -1,4 +1,5 @@
 /* { dg-do compile } */
+/* { dg-options "-ffat-lto-objects" } */
 
 struct barstruct { char const* some_string; };
 
@@ -13,4 +14,4 @@ void baz()
   barptr->some_string = "Everything OK";
 }
 
-/* { dg-final { scan-assembler "Everything OK" } } */
+/* { dg-final { scan-assembler "Everything OK" { xfail nvptx-*-* } } } */

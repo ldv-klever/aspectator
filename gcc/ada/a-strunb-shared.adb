@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -50,16 +50,6 @@ package body Ada.Strings.Unbounded is
    --  align the returned memory on the maximum alignment as malloc does not
    --  know the target alignment.
 
-   procedure Sync_Add_And_Fetch
-     (Ptr   : access Interfaces.Unsigned_32;
-      Value : Interfaces.Unsigned_32);
-   pragma Import (Intrinsic, Sync_Add_And_Fetch, "__sync_add_and_fetch_4");
-
-   function Sync_Sub_And_Fetch
-     (Ptr   : access Interfaces.Unsigned_32;
-      Value : Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
-   pragma Import (Intrinsic, Sync_Sub_And_Fetch, "__sync_sub_and_fetch_4");
-
    function Aligned_Max_Length (Max_Length : Natural) return Natural;
    --  Returns recommended length of the shared string which is greater or
    --  equal to specified length. Calculation take in sense alignment of the
@@ -101,7 +91,7 @@ package body Ada.Strings.Unbounded is
       --  Otherwise, allocate new shared string and fill data
 
       else
-         DR := Allocate (LR.Last + RR.Last);
+         DR := Allocate (DL);
          DR.Data (1 .. LR.Last) := LR.Data (1 .. LR.Last);
          DR.Data (LR.Last + 1 .. DL) := RR.Data (1 .. RR.Last);
          DR.Last := DL;
@@ -496,7 +486,7 @@ package body Ada.Strings.Unbounded is
 
    function Aligned_Max_Length (Max_Length : Natural) return Natural is
       Static_Size : constant Natural :=
-                      Empty_Shared_String'Size / Standard'Storage_Unit;
+        Empty_Shared_String'Size / Standard'Storage_Unit;
       --  Total size of all static components
 
    begin
@@ -509,7 +499,9 @@ package body Ada.Strings.Unbounded is
    -- Allocate --
    --------------
 
-   function Allocate (Max_Length : Natural) return Shared_String_Access is
+   function Allocate
+     (Max_Length : Natural) return not null Shared_String_Access
+   is
    begin
       --  Empty string requested, return shared empty string
 
@@ -632,13 +624,12 @@ package body Ada.Strings.Unbounded is
    -------------------
 
    function Can_Be_Reused
-     (Item   : Shared_String_Access;
+     (Item   : not null Shared_String_Access;
       Length : Natural) return Boolean
    is
-      use Interfaces;
    begin
       return
-        Item.Counter = 1
+        System.Atomic_Counters.Is_One (Item.Counter)
           and then Item.Max_Length >= Length
           and then Item.Max_Length <=
                      Aligned_Max_Length (Length + Length / Growth_Factor);
@@ -797,17 +788,20 @@ package body Ada.Strings.Unbounded is
    --------------
 
    procedure Finalize (Object : in out Unbounded_String) is
-      SR : constant Shared_String_Access := Object.Reference;
-
+      SR : constant not null Shared_String_Access := Object.Reference;
    begin
-      if SR /= null then
+      if SR /= Null_Unbounded_String.Reference then
 
          --  The same controlled object can be finalized several times for
          --  some reason. As per 7.6.1(24) this should have no ill effect,
          --  so we need to add a guard for the case of finalizing the same
          --  object twice.
 
-         Object.Reference := null;
+         --  We set the Object to the empty string so there will be no ill
+         --  effects if a program references an already-finalized object.
+
+         Object.Reference := Null_Unbounded_String.Reference;
+         Reference (Object.Reference);
          Unreference (SR);
       end if;
    end Finalize;
@@ -889,7 +883,7 @@ package body Ada.Strings.Unbounded is
          if Count < SR.Last then
             DR.Data (1 .. Count) := SR.Data (1 .. Count);
 
-         --  Length of the source string is less then requested, copy all
+         --  Length of the source string is less than requested, copy all
          --  contents and fill others by Pad character.
 
          else
@@ -943,13 +937,13 @@ package body Ada.Strings.Unbounded is
       else
          DR := Allocate (Count);
 
-         --  Length of the source string is greater then requested, copy
+         --  Length of the source string is greater than requested, copy
          --  corresponding slice.
 
          if Count < SR.Last then
             DR.Data (1 .. Count) := SR.Data (1 .. Count);
 
-         --  Length of the source string is less the requested, copy all
+         --  Length of the source string is less than requested, copy all
          --  existing data and fill remaining positions with Pad characters.
 
          else
@@ -1108,7 +1102,7 @@ package body Ada.Strings.Unbounded is
       --  Otherwise, allocate new shared string and fill it
 
       else
-         DR := Allocate (DL + DL /Growth_Factor);
+         DR := Allocate (DL + DL / Growth_Factor);
          DR.Data (1 .. Before - 1) := SR.Data (1 .. Before - 1);
          DR.Data (Before .. Before + New_Item'Length - 1) := New_Item;
          DR.Data (Before + New_Item'Length .. DL) :=
@@ -1282,7 +1276,7 @@ package body Ada.Strings.Unbounded is
 
    procedure Reference (Item : not null Shared_String_Access) is
    begin
-      Sync_Add_And_Fetch (Item.Counter'Access, 1);
+      System.Atomic_Counters.Increment (Item.Counter);
    end Reference;
 
    ---------------------
@@ -1298,7 +1292,7 @@ package body Ada.Strings.Unbounded is
       DR : Shared_String_Access;
 
    begin
-      --  Bounds check.
+      --  Bounds check
 
       if Index <= SR.Last then
 
@@ -1347,7 +1341,9 @@ package body Ada.Strings.Unbounded is
       --  Do replace operation when removed slice is not empty
 
       if High >= Low then
-         DL := By'Length + SR.Last + Low - High - 1;
+         DL := By'Length + SR.Last + Low - Integer'Min (High, SR.Last) - 1;
+         --  This is the number of characters remaining in the string after
+         --  replacing the slice.
 
          --  Result is empty string, reuse empty shared string
 
@@ -1394,7 +1390,9 @@ package body Ada.Strings.Unbounded is
       --  Do replace operation only when replaced slice is not empty
 
       if High >= Low then
-         DL := By'Length + SR.Last + Low - High - 1;
+         DL := By'Length + SR.Last + Low - Integer'Min (High, SR.Last) - 1;
+         --  This is the number of characters remaining in the string after
+         --  replacing the slice.
 
          --  Result is empty string, reuse empty shared string
 
@@ -1617,17 +1615,35 @@ package body Ada.Strings.Unbounded is
    -------------------------
 
    function To_Unbounded_String (Source : String) return Unbounded_String is
-      DR : constant Shared_String_Access := Allocate (Source'Length);
+      DR : Shared_String_Access;
+
    begin
-      DR.Data (1 .. Source'Length) := Source;
-      DR.Last := Source'Length;
+      if Source'Length = 0 then
+         Reference (Empty_Shared_String'Access);
+         DR := Empty_Shared_String'Access;
+
+      else
+         DR := Allocate (Source'Length);
+         DR.Data (1 .. Source'Length) := Source;
+         DR.Last := Source'Length;
+      end if;
+
       return (AF.Controlled with Reference => DR);
    end To_Unbounded_String;
 
    function To_Unbounded_String (Length : Natural) return Unbounded_String is
-      DR : constant Shared_String_Access := Allocate (Length);
+      DR : Shared_String_Access;
+
    begin
-      DR.Last := Length;
+      if Length = 0 then
+         Reference (Empty_Shared_String'Access);
+         DR := Empty_Shared_String'Access;
+
+      else
+         DR := Allocate (Length);
+         DR.Last := Length;
+      end if;
+
       return (AF.Controlled with Reference => DR);
    end To_Unbounded_String;
 
@@ -2078,7 +2094,6 @@ package body Ada.Strings.Unbounded is
    -----------------
 
    procedure Unreference (Item : not null Shared_String_Access) is
-      use Interfaces;
 
       procedure Free is
         new Ada.Unchecked_Deallocation (Shared_String, Shared_String_Access);
@@ -2086,13 +2101,14 @@ package body Ada.Strings.Unbounded is
       Aux : Shared_String_Access := Item;
 
    begin
-      if Sync_Sub_And_Fetch (Aux.Counter'Access, 1) = 0 then
+      if System.Atomic_Counters.Decrement (Aux.Counter) then
 
-         --  Reference counter of Empty_Shared_String must never reach zero
+         --  Reference counter of Empty_Shared_String should never reach
+         --  zero. We check here in case it wraps around.
 
-         pragma Assert (Aux /= Empty_Shared_String'Access);
-
-         Free (Aux);
+         if Aux /= Empty_Shared_String'Access then
+            Free (Aux);
+         end if;
       end if;
    end Unreference;
 

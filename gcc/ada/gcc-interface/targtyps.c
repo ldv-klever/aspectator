@@ -6,7 +6,7 @@
  *                                                                          *
  *                                  Body                                    *
  *                                                                          *
- *          Copyright (C) 1992-2010, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2015, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -23,28 +23,16 @@
  *                                                                          *
  ****************************************************************************/
 
-/* Functions for retrieving target types. See Ada package Get_Targ */
+/* Functions for retrieving target types.  See Ada package Get_Targ.  */
 
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tree.h"
 #include "tm.h"
-#include "tm_p.h"
+#include "tree.h"
 
 #include "ada.h"
 #include "types.h"
-#include "atree.h"
-#include "elists.h"
-#include "namet.h"
-#include "nlists.h"
-#include "snames.h"
-#include "stringt.h"
-#include "uintp.h"
-#include "urealp.h"
-#include "fe.h"
-#include "sinfo.h"
-#include "einfo.h"
 #include "ada-tree.h"
 #include "gigi.h"
 
@@ -52,10 +40,6 @@
    of C.  */
 #ifndef ADA_LONG_TYPE_SIZE
 #define ADA_LONG_TYPE_SIZE LONG_TYPE_SIZE
-#endif
-
-#ifndef WIDEST_HARDWARE_FP_SIZE
-#define WIDEST_HARDWARE_FP_SIZE LONG_DOUBLE_TYPE_SIZE
 #endif
 
 /* The following provide a functional interface for the front end Ada code
@@ -111,24 +95,6 @@ get_target_long_long_size (void)
 }
 
 Pos
-get_target_float_size (void)
-{
-  return fp_prec_to_size (FLOAT_TYPE_SIZE);
-}
-
-Pos
-get_target_double_size (void)
-{
-  return fp_prec_to_size (DOUBLE_TYPE_SIZE);
-}
-
-Pos
-get_target_long_double_size (void)
-{
-  return fp_prec_to_size (WIDEST_HARDWARE_FP_SIZE);
-}
-
-Pos
 get_target_pointer_size (void)
 {
   return POINTER_SIZE;
@@ -149,7 +115,7 @@ get_target_maximum_default_alignment (void)
   return BIGGEST_ALIGNMENT / BITS_PER_UNIT;
 }
 
-/* Standard'Default_Allocator_Alignment.  Alignment guaranteed to be honored
+/* Standard'System_Allocator_Alignment.  Alignment guaranteed to be honored
    by the default allocator (System.Memory.Alloc or malloc if we have no
    run-time library at hand).
 
@@ -172,7 +138,7 @@ get_target_maximum_default_alignment (void)
 #endif
 
 Pos
-get_target_default_allocator_alignment (void)
+get_target_system_allocator_alignment (void)
 {
   return MALLOC_ALIGNMENT / BITS_PER_UNIT;
 }
@@ -204,25 +170,25 @@ get_target_maximum_alignment (void)
 #endif
 
 Nat
-get_float_words_be (void)
+get_target_float_words_be (void)
 {
   return FLOAT_WORDS_BIG_ENDIAN;
 }
 
 Nat
-get_words_be (void)
+get_target_words_be (void)
 {
   return WORDS_BIG_ENDIAN;
 }
 
 Nat
-get_bytes_be (void)
+get_target_bytes_be (void)
 {
   return BYTES_BIG_ENDIAN;
 }
 
 Nat
-get_bits_be (void)
+get_target_bits_be (void)
 {
   return BITS_BIG_ENDIAN;
 }

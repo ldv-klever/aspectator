@@ -8,6 +8,7 @@
 #define GO_IMPORT_H
 
 #include "export.h"
+#include "go-linemap.h"
 
 class Gogo;
 class Package;
@@ -78,13 +79,13 @@ class Import
     // Give an error if the next bytes do not match STR.  Advance the
     // read position by the length of STR.
     void
-    require_c_string(source_location location, const char* str)
+    require_c_string(Location location, const char* str)
     { this->require_bytes(location, str, strlen(str)); }
 
     // Given an error if the next LENGTH bytes do not match BYTES.
     // Advance the read position by LENGTH.
     void
-    require_bytes(source_location, const char* bytes, size_t length);
+    require_bytes(Location, const char* bytes, size_t length);
 
     // Advance the read position by SKIP bytes.
     void
@@ -123,11 +124,13 @@ class Import
   // Find import data.  This searches the file system for FILENAME and
   // returns a pointer to a Stream object to read the data that it
   // exports.  LOCATION is the location of the import statement.
+  // RELATIVE_IMPORT_PATH is used as a prefix for a relative import.
   static Stream*
-  open_package(const std::string& filename, source_location location);
+  open_package(const std::string& filename, Location location,
+	       const std::string& relative_import_path);
 
   // Constructor.
-  Import(Stream*, source_location);
+  Import(Stream*, Location);
 
   // Register the builtin types.
   void
@@ -142,9 +145,14 @@ class Import
   import(Gogo*, const std::string& local_name, bool is_local_name_exported);
 
   // The location of the import statement.
-  source_location
+  Location
   location() const
   { return this->location_; }
+
+  // Return the package we are importing.
+  Package*
+  package() const
+  { return this->package_; }
 
   // Return the next character.
   int
@@ -180,27 +188,32 @@ class Import
   std::string
   read_identifier();
 
+  // Read a name.  This is like read_identifier, except that a "?" is
+  // returned as an empty string.  This matches Export::write_name.
+  std::string
+  read_name();
+
   // Read a type.
   Type*
   read_type();
 
-  // The name used for parameters, receivers, and results in imported
-  // function types.
-  static const char* const import_marker;
+  // Read an escape note.
+  std::string
+  read_escape();
 
  private:
   static Stream*
-  try_package_in_directory(const std::string&, source_location);
+  try_package_in_directory(const std::string&, Location);
 
   static int
   try_suffixes(std::string*);
 
   static Stream*
-  find_export_data(const std::string& filename, int fd, source_location);
+  find_export_data(const std::string& filename, int fd, Location);
 
   static Stream*
   find_object_export_data(const std::string& filename, int fd,
-			  off_t offset, source_location);
+			  off_t offset, Location);
 
   static const int archive_magic_len = 8;
 
@@ -209,9 +222,17 @@ class Import
 
   static Stream*
   find_archive_export_data(const std::string& filename, int fd,
-			   source_location);
+			   Location);
 
-  // Read the import control functions.
+  // Read a package line.
+  void
+  read_one_package();
+
+  // Read an import line.
+  void
+  read_one_import();
+
+  // Read the import control functions and init graph.
   void
   read_import_init_fns(Gogo*);
 
@@ -239,12 +260,27 @@ class Import
   bool
   string_to_int(const std::string&, bool is_neg_ok, int* ret);
 
+  // Get an unsigned integer from a string.
+  bool
+  string_to_unsigned(const std::string& s, unsigned* ret)
+  {
+    int ivalue;
+    if (!this->string_to_int(s, false, &ivalue))
+      return false;
+    *ret = static_cast<unsigned>(ivalue);
+    return true;
+  }
+
+  // Return the version number of the export data we're reading.
+  Export_data_version
+  version() const { return this->version_; }
+
   // The general IR.
   Gogo* gogo_;
   // The stream from which to read import data.
   Stream* stream_;
   // The location of the import statement we are processing.
-  source_location location_;
+  Location location_;
   // The package we are importing.
   Package* package_;
   // Whether to add new objects to the global scope, rather than to a
@@ -254,6 +290,8 @@ class Import
   std::vector<Named_type*> builtin_types_;
   // Mapping from exported type codes to Type structures.
   std::vector<Type*> types_;
+  // Version of export data we're reading.
+  Export_data_version version_;
 };
 
 // Read import data from a string.
@@ -286,7 +324,7 @@ class Stream_from_string : public Import::Stream
   size_t pos_;
 };
 
-// Read import data from an allocated buffer.
+// Read import data from a buffer allocated using malloc.
 
 class Stream_from_buffer : public Import::Stream
 {
@@ -296,7 +334,7 @@ class Stream_from_buffer : public Import::Stream
   { }
 
   ~Stream_from_buffer()
-  { delete[] this->buf_; }
+  { free(this->buf_); }
 
  protected:
   bool

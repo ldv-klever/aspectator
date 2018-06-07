@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                    Copyright (C) 2001-2010, AdaCore                      --
+--                     Copyright (C) 2001-2016, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -37,7 +35,6 @@
 
 --  This version is for NT
 
-with Ada.Streams;             use Ada.Streams;
 with Ada.Unchecked_Conversion;
 with Interfaces.C.Strings;    use Interfaces.C.Strings;
 with System;                  use System;
@@ -46,7 +43,6 @@ with System.Storage_Elements; use System.Storage_Elements;
 package body GNAT.Sockets.Thin is
 
    use type C.unsigned;
-   use type C.int;
 
    WSAData_Dummy : array (1 .. 512) of C.int;
 
@@ -258,7 +254,7 @@ package body GNAT.Sockets.Thin is
 
    function Socket_Ioctl
      (S   : C.int;
-      Req : C.int;
+      Req : SOSC.IOCTL_Req_T;
       Arg : access C.int) return C.int
    is
    begin
@@ -277,7 +273,8 @@ package body GNAT.Sockets.Thin is
       use type C.size_t;
 
       Fill  : constant Boolean :=
-                (C.unsigned (Flags) and SOSC.MSG_WAITALL) /= 0;
+                SOSC.MSG_WAITALL /= -1
+                  and then (C.unsigned (Flags) and SOSC.MSG_WAITALL) /= 0;
       --  Is the MSG_WAITALL flag set? If so we need to fully fill all vectors
 
       Res   : C.int;
@@ -335,11 +332,11 @@ package body GNAT.Sockets.Thin is
             exit;
 
          else
-            pragma Assert (Stream_Element_Count (Res) <= Current_Iovec.Length);
+            pragma Assert (Interfaces.C.size_t (Res) <= Current_Iovec.Length);
 
             Count := Count + Res;
             Current_Iovec.Length :=
-              Current_Iovec.Length - Stream_Element_Count (Res);
+              Current_Iovec.Length - Interfaces.C.size_t (Res);
             Current_Iovec.Base :=
               To_Access (Current_Iovec.Base.all'Address
                 + Storage_Offset (Res));
@@ -508,7 +505,7 @@ package body GNAT.Sockets.Thin is
 
          --  Exit now if the buffer is not fully transmitted
 
-         exit when Stream_Element_Count (Res) < Iovec (J).Length;
+         exit when Interfaces.C.size_t (Res) < Iovec (J).Length;
       end loop;
 
       return System.CRTL.ssize_t (Count);
@@ -536,8 +533,7 @@ package body GNAT.Sockets.Thin is
       --  error messages are provided by Socket_Error_Message, so the default
       --  separate body for Host_Error_Messages is not used in this case.
 
-      function Host_Error_Message
-        (H_Errno : Integer) return C.Strings.chars_ptr
+      function Host_Error_Message (H_Errno : Integer) return String
          renames Socket_Error_Message;
 
    end Host_Error_Messages;
@@ -566,69 +562,70 @@ package body GNAT.Sockets.Thin is
    -- Socket_Error_Message --
    --------------------------
 
-   function Socket_Error_Message
-     (Errno : Integer) return C.Strings.chars_ptr
-   is
+   function Socket_Error_Message (Errno : Integer) return String is
       use GNAT.Sockets.SOSC;
+
+      Errm : C.Strings.chars_ptr;
 
    begin
       case Errno is
-         when EINTR =>           return Error_Messages (N_EINTR);
-         when EBADF =>           return Error_Messages (N_EBADF);
-         when EACCES =>          return Error_Messages (N_EACCES);
-         when EFAULT =>          return Error_Messages (N_EFAULT);
-         when EINVAL =>          return Error_Messages (N_EINVAL);
-         when EMFILE =>          return Error_Messages (N_EMFILE);
-         when EWOULDBLOCK =>     return Error_Messages (N_EWOULDBLOCK);
-         when EINPROGRESS =>     return Error_Messages (N_EINPROGRESS);
-         when EALREADY =>        return Error_Messages (N_EALREADY);
-         when ENOTSOCK =>        return Error_Messages (N_ENOTSOCK);
-         when EDESTADDRREQ =>    return Error_Messages (N_EDESTADDRREQ);
-         when EMSGSIZE =>        return Error_Messages (N_EMSGSIZE);
-         when EPROTOTYPE =>      return Error_Messages (N_EPROTOTYPE);
-         when ENOPROTOOPT =>     return Error_Messages (N_ENOPROTOOPT);
-         when EPROTONOSUPPORT => return Error_Messages (N_EPROTONOSUPPORT);
-         when ESOCKTNOSUPPORT => return Error_Messages (N_ESOCKTNOSUPPORT);
-         when EOPNOTSUPP =>      return Error_Messages (N_EOPNOTSUPP);
-         when EPFNOSUPPORT =>    return Error_Messages (N_EPFNOSUPPORT);
-         when EAFNOSUPPORT =>    return Error_Messages (N_EAFNOSUPPORT);
-         when EADDRINUSE =>      return Error_Messages (N_EADDRINUSE);
-         when EADDRNOTAVAIL =>   return Error_Messages (N_EADDRNOTAVAIL);
-         when ENETDOWN =>        return Error_Messages (N_ENETDOWN);
-         when ENETUNREACH =>     return Error_Messages (N_ENETUNREACH);
-         when ENETRESET =>       return Error_Messages (N_ENETRESET);
-         when ECONNABORTED =>    return Error_Messages (N_ECONNABORTED);
-         when ECONNRESET =>      return Error_Messages (N_ECONNRESET);
-         when ENOBUFS =>         return Error_Messages (N_ENOBUFS);
-         when EISCONN =>         return Error_Messages (N_EISCONN);
-         when ENOTCONN =>        return Error_Messages (N_ENOTCONN);
-         when ESHUTDOWN =>       return Error_Messages (N_ESHUTDOWN);
-         when ETOOMANYREFS =>    return Error_Messages (N_ETOOMANYREFS);
-         when ETIMEDOUT =>       return Error_Messages (N_ETIMEDOUT);
-         when ECONNREFUSED =>    return Error_Messages (N_ECONNREFUSED);
-         when ELOOP =>           return Error_Messages (N_ELOOP);
-         when ENAMETOOLONG =>    return Error_Messages (N_ENAMETOOLONG);
-         when EHOSTDOWN =>       return Error_Messages (N_EHOSTDOWN);
-         when EHOSTUNREACH =>    return Error_Messages (N_EHOSTUNREACH);
+         when EINTR              => Errm := Error_Messages (N_EINTR);
+         when EBADF              => Errm := Error_Messages (N_EBADF);
+         when EACCES             => Errm := Error_Messages (N_EACCES);
+         when EFAULT             => Errm := Error_Messages (N_EFAULT);
+         when EINVAL             => Errm := Error_Messages (N_EINVAL);
+         when EMFILE             => Errm := Error_Messages (N_EMFILE);
+         when EWOULDBLOCK        => Errm := Error_Messages (N_EWOULDBLOCK);
+         when EINPROGRESS        => Errm := Error_Messages (N_EINPROGRESS);
+         when EALREADY           => Errm := Error_Messages (N_EALREADY);
+         when ENOTSOCK           => Errm := Error_Messages (N_ENOTSOCK);
+         when EDESTADDRREQ       => Errm := Error_Messages (N_EDESTADDRREQ);
+         when EMSGSIZE           => Errm := Error_Messages (N_EMSGSIZE);
+         when EPROTOTYPE         => Errm := Error_Messages (N_EPROTOTYPE);
+         when ENOPROTOOPT        => Errm := Error_Messages (N_ENOPROTOOPT);
+         when EPROTONOSUPPORT    => Errm := Error_Messages (N_EPROTONOSUPPORT);
+         when ESOCKTNOSUPPORT    => Errm := Error_Messages (N_ESOCKTNOSUPPORT);
+         when EOPNOTSUPP         => Errm := Error_Messages (N_EOPNOTSUPP);
+         when EPFNOSUPPORT       => Errm := Error_Messages (N_EPFNOSUPPORT);
+         when EAFNOSUPPORT       => Errm := Error_Messages (N_EAFNOSUPPORT);
+         when EADDRINUSE         => Errm := Error_Messages (N_EADDRINUSE);
+         when EADDRNOTAVAIL      => Errm := Error_Messages (N_EADDRNOTAVAIL);
+         when ENETDOWN           => Errm := Error_Messages (N_ENETDOWN);
+         when ENETUNREACH        => Errm := Error_Messages (N_ENETUNREACH);
+         when ENETRESET          => Errm := Error_Messages (N_ENETRESET);
+         when ECONNABORTED       => Errm := Error_Messages (N_ECONNABORTED);
+         when ECONNRESET         => Errm := Error_Messages (N_ECONNRESET);
+         when ENOBUFS            => Errm := Error_Messages (N_ENOBUFS);
+         when EISCONN            => Errm := Error_Messages (N_EISCONN);
+         when ENOTCONN           => Errm := Error_Messages (N_ENOTCONN);
+         when ESHUTDOWN          => Errm := Error_Messages (N_ESHUTDOWN);
+         when ETOOMANYREFS       => Errm := Error_Messages (N_ETOOMANYREFS);
+         when ETIMEDOUT          => Errm := Error_Messages (N_ETIMEDOUT);
+         when ECONNREFUSED       => Errm := Error_Messages (N_ECONNREFUSED);
+         when ELOOP              => Errm := Error_Messages (N_ELOOP);
+         when ENAMETOOLONG       => Errm := Error_Messages (N_ENAMETOOLONG);
+         when EHOSTDOWN          => Errm := Error_Messages (N_EHOSTDOWN);
+         when EHOSTUNREACH       => Errm := Error_Messages (N_EHOSTUNREACH);
 
          --  Windows-specific error codes
 
-         when WSASYSNOTREADY =>  return Error_Messages (N_WSASYSNOTREADY);
+         when WSASYSNOTREADY     => Errm := Error_Messages (N_WSASYSNOTREADY);
          when WSAVERNOTSUPPORTED =>
-                                 return Error_Messages (N_WSAVERNOTSUPPORTED);
-         when WSANOTINITIALISED =>
-                                 return Error_Messages (N_WSANOTINITIALISED);
-         when WSAEDISCON =>      return Error_Messages (N_WSAEDISCON);
+            Errm := Error_Messages (N_WSAVERNOTSUPPORTED);
+         when WSANOTINITIALISED  =>
+            Errm := Error_Messages (N_WSANOTINITIALISED);
+         when WSAEDISCON         => Errm := Error_Messages (N_WSAEDISCON);
 
          --  h_errno values
 
-         when HOST_NOT_FOUND =>  return Error_Messages (N_HOST_NOT_FOUND);
-         when TRY_AGAIN =>       return Error_Messages (N_TRY_AGAIN);
-         when NO_RECOVERY =>     return Error_Messages (N_NO_RECOVERY);
-         when NO_DATA =>         return Error_Messages (N_NO_DATA);
-
-         when others =>          return Error_Messages (N_OTHERS);
+         when HOST_NOT_FOUND     => Errm := Error_Messages (N_HOST_NOT_FOUND);
+         when TRY_AGAIN          => Errm := Error_Messages (N_TRY_AGAIN);
+         when NO_RECOVERY        => Errm := Error_Messages (N_NO_RECOVERY);
+         when NO_DATA            => Errm := Error_Messages (N_NO_DATA);
+         when others             => Errm := Error_Messages (N_OTHERS);
       end case;
+
+      return Value (Errm);
    end Socket_Error_Message;
 
 end GNAT.Sockets.Thin;

@@ -6,41 +6,40 @@ int main()
 {
   float i;
   
-  if (int i = 1)		// { dg-error "" "" { xfail *-*-* } } , 
+  if (int i = 1)		// { dg-message "previously" }
     {
-      char i;			// { dg-error "" "" { xfail *-*-* } } , 
+      char i;			// { dg-error "redeclaration" } 
       char j;
     }
   else
     {
-      short i;			// { dg-error "" "" { xfail *-*-* } } , 
+      short i;			// { dg-error "redeclaration" }
       char j;
     }
 
-  while (int i = 0)		// { dg-error "previously" }
+  while (int i = 0)		// { dg-message "previously" }
     {
       int i;			// { dg-error "redeclaration" }
     }
 
-  for (; int i = 0; )		// { dg-error "previously" }
+  for (; int i = 0; )		// { dg-message "previously" }
     {
       int i;			// { dg-error "redeclaration" }
     }
 
-  switch (int i = 0)		// { dg-error "" "" { xfail *-*-* } } 
+  switch (int i = 0)		// { dg-message "previously" }
     {
     default:
-      int i;			// { dg-error "" "" { xfail *-*-* } } 
+      int i;			// { dg-error "redeclaration" } 
     }
 
   if (struct A { operator int () { return 1; } } *foo = new A) // { dg-error "defined" } 
     ;
 
   A bar;			// { dg-error "not declared" "decl" } 
-  // { dg-error "expected" "exp" { target *-*-* } 39 }
   
   if (enum A { one, two, three } foo = one) // { dg-error "defined" "def" } 
-  // { dg-error "not declared" "expected" { target *-*-* } 42 }
+  // { dg-error "not declared" "expected" { target *-*-* } .-1 }
     ;
 
   struct B { operator int () { return 2; } };
@@ -49,10 +48,10 @@ int main()
     ;
 
   if (int f () = 1)		// { dg-warning "extern" "extern" } 
-  // { dg-error "is initialized like a variable" "var" { target *-*-* } 51 }
+  // { dg-error "is initialized like a variable" "var" { target *-*-* } .-1 }
     ;
   
-  if (int a[2] = {1, 2})	// { dg-error "extended init" } 
+  if (int a[2] = {1, 2})	// { dg-error "extended init" "" { target { ! c++11 } } }
     ;
 
 }

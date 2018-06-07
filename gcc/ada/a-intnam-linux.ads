@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1991-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1991-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,12 +31,7 @@
 
 --  This is a GNU/Linux version of this package
 
---  The following signals are reserved by the run time (FSU threads):
-
---  SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGTRAP, SIGABRT, SIGINT,
---  SIGALRM, SIGVTALRM, SIGUNUSED, SIGSTOP, SIGKILL
-
---  The following signals are reserved by the run time (LinuxThreads):
+--  The following signals are reserved by the run time:
 
 --  SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGTRAP, SIGABRT, SIGINT,
 --  SIGUSR1, SIGUSR2, SIGVTALRM, SIGUNUSED, SIGSTOP, SIGKILL
@@ -51,6 +46,10 @@
 with System.OS_Interface;
 
 package Ada.Interrupts.Names is
+
+   --  All identifiers in this unit are implementation defined
+
+   pragma Implementation_Defined;
 
    --  Beware that the mapping of names to signals may be many-to-one. There
    --  may be aliases. Also, for all signal names that are not supported on the

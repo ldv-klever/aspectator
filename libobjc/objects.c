@@ -1,5 +1,5 @@
 /* GNU Objective C Runtime class related functions
-   Copyright (C) 1993, 1995, 1996, 2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 1993-2017 Free Software Foundation, Inc.
    Contributed by Kresten Krab Thorup
 
 This file is part of GCC.
@@ -31,8 +31,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include <string.h>                     /* For memcpy()  */
 
 #if OBJC_WITH_GC
-# include <gc.h>
-# include <gc_typed.h>
+# include <gc/gc.h>
+# include <gc/gc_typed.h>
 #endif
 
 /* FIXME: The semantics of extraBytes are not really clear.  */
@@ -66,12 +66,6 @@ class_createInstance (Class class, size_t extraBytes)
 }
 
 /* Traditional GNU Objective-C Runtime API.  */
-id
-class_create_instance (Class class)
-{
-  return class_createInstance (class, 0);
-}
-
 id
 object_copy (id object, size_t extraBytes)
 {
@@ -122,9 +116,3 @@ object_setClass (id object, Class class_)
       return old_class;
     }
 }
-
-/* Hook functions for memory allocation and disposal.  Deprecated and
-   currently unused.  */
-id (*_objc_object_alloc) (Class)   = 0;
-id (*_objc_object_dispose) (id)    = 0;
-id (*_objc_object_copy) (id)       = 0;

@@ -13,7 +13,6 @@ type Visitor interface {
 	Visit(node Node) (w Visitor)
 }
 
-
 // Helper functions for common node lists. They may be empty.
 
 func walkIdentList(v Visitor, list []*Ident) {
@@ -22,13 +21,11 @@ func walkIdentList(v Visitor, list []*Ident) {
 	}
 }
 
-
 func walkExprList(v Visitor, list []Expr) {
 	for _, x := range list {
 		Walk(v, x)
 	}
 }
-
 
 func walkStmtList(v Visitor, list []Stmt) {
 	for _, x := range list {
@@ -36,13 +33,11 @@ func walkStmtList(v Visitor, list []Stmt) {
 	}
 }
 
-
 func walkDeclList(v Visitor, list []Decl) {
 	for _, x := range list {
 		Walk(v, x)
 	}
 }
-
 
 // TODO(gri): Investigate if providing a closure to Walk leads to
 //            simpler use (and may help eliminate Inspect in turn).
@@ -127,6 +122,9 @@ func Walk(v Visitor, node Node) {
 		if n.High != nil {
 			Walk(v, n.High)
 		}
+		if n.Max != nil {
+			Walk(v, n.Max)
+		}
 
 	case *TypeAssertExpr:
 		Walk(v, n.X)
@@ -163,7 +161,9 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Fields)
 
 	case *FuncType:
-		Walk(v, n.Params)
+		if n.Params != nil {
+			Walk(v, n.Params)
+		}
 		if n.Results != nil {
 			Walk(v, n.Results)
 		}
@@ -195,6 +195,10 @@ func Walk(v Visitor, node Node) {
 	case *ExprStmt:
 		Walk(v, n.X)
 
+	case *SendStmt:
+		Walk(v, n.Chan)
+		Walk(v, n.Value)
+
 	case *IncDecStmt:
 		Walk(v, n.X)
 
@@ -223,16 +227,14 @@ func Walk(v Visitor, node Node) {
 		if n.Init != nil {
 			Walk(v, n.Init)
 		}
-		if n.Cond != nil {
-			Walk(v, n.Cond)
-		}
+		Walk(v, n.Cond)
 		Walk(v, n.Body)
 		if n.Else != nil {
 			Walk(v, n.Else)
 		}
 
 	case *CaseClause:
-		walkExprList(v, n.Values)
+		walkExprList(v, n.List)
 		walkStmtList(v, n.Body)
 
 	case *SwitchStmt:
@@ -244,12 +246,6 @@ func Walk(v Visitor, node Node) {
 		}
 		Walk(v, n.Body)
 
-	case *TypeCaseClause:
-		for _, x := range n.Types {
-			Walk(v, x)
-		}
-		walkStmtList(v, n.Body)
-
 	case *TypeSwitchStmt:
 		if n.Init != nil {
 			Walk(v, n.Init)
@@ -258,11 +254,8 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Body)
 
 	case *CommClause:
-		if n.Lhs != nil {
-			Walk(v, n.Lhs)
-		}
-		if n.Rhs != nil {
-			Walk(v, n.Rhs)
+		if n.Comm != nil {
+			Walk(v, n.Comm)
 		}
 		walkStmtList(v, n.Body)
 
@@ -282,7 +275,9 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Body)
 
 	case *RangeStmt:
-		Walk(v, n.Key)
+		if n.Key != nil {
+			Walk(v, n.Key)
+		}
 		if n.Value != nil {
 			Walk(v, n.Value)
 		}
@@ -356,9 +351,6 @@ func Walk(v Visitor, node Node) {
 		}
 		Walk(v, n.Name)
 		walkDeclList(v, n.Decls)
-		for _, g := range n.Comments {
-			Walk(v, g)
-		}
 		// don't walk n.Comments - they have been
 		// visited already through the individual
 		// nodes
@@ -369,13 +361,11 @@ func Walk(v Visitor, node Node) {
 		}
 
 	default:
-		fmt.Printf("ast.Walk: unexpected node type %T", n)
-		panic("ast.Walk")
+		panic(fmt.Sprintf("ast.Walk: unexpected node type %T", n))
 	}
 
 	v.Visit(nil)
 }
-
 
 type inspector func(Node) bool
 
@@ -386,10 +376,10 @@ func (f inspector) Visit(node Node) Visitor {
 	return nil
 }
 
-
 // Inspect traverses an AST in depth-first order: It starts by calling
 // f(node); node must not be nil. If f returns true, Inspect invokes f
-// for all the non-nil children of node, recursively.
+// recursively for each of the non-nil children of node, followed by a
+// call of f(nil).
 //
 func Inspect(node Node, f func(Node) bool) {
 	Walk(inspector(f), node)

@@ -1,6 +1,6 @@
 /* { dg-do run } */
 /* { dg-options "-fdump-tree-alias" } */
-/* { dg-skip-if "" { *-*-* } { "-O0" } { "" } } */
+/* { dg-skip-if "" { *-*-* } { "-O0" "-fno-fat-lto-objects" } { "" } } */
 
 struct Foo {
   int **p;
@@ -33,4 +33,3 @@ int main()
 /* In theory = { i } is the correct solution.  But it's not easy to scan
    for that reliably, so just use what we create now.  */
 /* { dg-final { scan-tree-dump "= { i j }" "alias" } } */
-/* { dg-final { cleanup-tree-dump "alias" } } */

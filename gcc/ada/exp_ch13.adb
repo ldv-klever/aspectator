@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,19 +31,22 @@ with Exp_Ch6;  use Exp_Ch6;
 with Exp_Imgv; use Exp_Imgv;
 with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
+with Freeze;   use Freeze;
 with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
+with Restrict; use Restrict;
+with Rident;   use Rident;
 with Rtsfind;  use Rtsfind;
 with Sem;      use Sem;
+with Sem_Aux;  use Sem_Aux;
 with Sem_Ch7;  use Sem_Ch7;
 with Sem_Ch8;  use Sem_Ch8;
 with Sem_Eval; use Sem_Eval;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
-with Stand;    use Stand;
 with Tbuild;   use Tbuild;
 with Uintp;    use Uintp;
 with Validsw;  use Validsw;
@@ -110,7 +113,7 @@ package body Exp_Ch13 is
                   and then Present (Expression (Decl))
                   and then Nkind (Expression (Decl)) /= N_Null
                   and then
-                   not Comes_From_Source (Original_Node (Expression (Decl)))
+                    not Comes_From_Source (Original_Node (Expression (Decl)))
                then
                   if Present (Base_Init_Proc (Typ))
                     and then
@@ -119,8 +122,8 @@ package body Exp_Ch13 is
                      null;
 
                   elsif Init_Or_Norm_Scalars
-                    and then
-                      (Is_Scalar_Type (Typ) or else Is_String_Type (Typ))
+                    and then (Is_Scalar_Type (Typ)
+                               or else Is_String_Type (Typ))
                   then
                      null;
 
@@ -132,9 +135,16 @@ package body Exp_Ch13 is
                --  has a delayed freeze, but the address expression itself
                --  must be elaborated at the point it appears. If the object
                --  is controlled, additional checks apply elsewhere.
+               --  If the attribute comes from an aspect specification it
+               --  is being elaborated at the freeze point and side effects
+               --  need not be removed (and shouldn't, if the expression
+               --  depends on other entities that have delayed freeze).
+               --  This is another consequence of the delayed analysis of
+               --  aspects, and a real semantic difference.
 
                elsif Nkind (Decl) = N_Object_Declaration
                  and then not Needs_Constant_Address (Decl, Typ)
+                 and then not From_Aspect_Specification (N)
                then
                   Remove_Side_Effects (Exp);
                end if;
@@ -150,8 +160,48 @@ package body Exp_Ch13 is
             --  integer literal (this simplifies things in Gigi).
 
             if Nkind (Exp) /= N_Integer_Literal then
-               Rewrite
-                 (Exp, Make_Integer_Literal (Loc, Expr_Value (Exp)));
+               Rewrite (Exp, Make_Integer_Literal (Loc, Expr_Value (Exp)));
+            end if;
+
+            --  A complex case arises if the alignment clause applies to an
+            --  unconstrained object initialized with a function call. The
+            --  result of the call is placed on the secondary stack, and the
+            --  declaration is rewritten as a renaming of a dereference, which
+            --  fails expansion. We must introduce a temporary and assign its
+            --  value to the existing entity.
+
+            if Nkind (Parent (Ent)) = N_Object_Renaming_Declaration
+              and then not Is_Entity_Name (Renamed_Object (Ent))
+            then
+               declare
+                  Decl : constant Node_Id    := Parent (Ent);
+                  Loc  : constant Source_Ptr := Sloc (N);
+                  Temp : constant Entity_Id  := Make_Temporary (Loc, 'T');
+
+                  New_Decl : Node_Id;
+
+               begin
+                  --  Replace entity with temporary and reanalyze
+
+                  Set_Defining_Identifier (Decl, Temp);
+                  Set_Analyzed (Decl, False);
+                  Analyze (Decl);
+
+                  --  Introduce new declaration for entity but do not reanalyze
+                  --  because entity is already in scope. Type and expression
+                  --  are already resolved.
+
+                  New_Decl :=
+                    Make_Object_Declaration (Loc,
+                      Defining_Identifier => Ent,
+                      Object_Definition   =>
+                        New_Occurrence_Of (Etype (Ent), Loc),
+                      Expression          => New_Occurrence_Of (Temp, Loc));
+
+                  Set_Renamed_Object (Ent, Empty);
+                  Insert_After (Decl, New_Decl);
+                  Set_Analyzed (Decl);
+               end;
             end if;
 
          ------------------
@@ -162,14 +212,41 @@ package body Exp_Ch13 is
 
             --  If the type is a task type, then assign the value of the
             --  storage size to the Size variable associated with the task.
-            --    task_typeZ := expression
+            --  Insert the assignment right after the declaration of the Size
+            --  variable.
+
+            --  Generate:
+
+            --  task_typeZ := expression
 
             if Ekind (Ent) = E_Task_Type then
-               Insert_Action (N,
-                 Make_Assignment_Statement (Loc,
-                   Name => New_Reference_To (Storage_Size_Variable (Ent), Loc),
-                   Expression =>
-                     Convert_To (RTE (RE_Size_Type), Expression (N))));
+               declare
+                  Assign : Node_Id;
+
+               begin
+                  Assign :=
+                    Make_Assignment_Statement (Loc,
+                      Name       =>
+                        New_Occurrence_Of (Storage_Size_Variable (Ent), Loc),
+                      Expression =>
+                        Convert_To (RTE (RE_Size_Type), Expression (N)));
+
+                  --  If the clause is not generated by an aspect, insert
+                  --  the assignment here.  Freezing rules ensure that this
+                  --  is safe, or clause will have been rejected already.
+
+                  if Is_List_Member (N) then
+                     Insert_After (N, Assign);
+
+                  --  Otherwise, insert assignment after task declaration.
+
+                  else
+                     Insert_After
+                       (Parent (Storage_Size_Variable (Entity (N))), Assign);
+                  end if;
+
+                  Analyze (Assign);
+               end;
 
             --  For Storage_Size for an access type, create a variable to hold
             --  the value of the specified size with name typeV and expand an
@@ -189,9 +266,9 @@ package body Exp_Ch13 is
                   Insert_Action (N,
                     Make_Object_Declaration (Loc,
                       Defining_Identifier => V,
-                      Object_Definition  =>
-                        New_Reference_To (RTE (RE_Storage_Offset), Loc),
-                      Expression =>
+                      Object_Definition   =>
+                        New_Occurrence_Of (RTE (RE_Storage_Offset), Loc),
+                      Expression          =>
                         Convert_To (RTE (RE_Storage_Offset), Expression (N))));
 
                   Set_Storage_Size_Variable (Ent, Entity_Id (V));
@@ -202,22 +279,99 @@ package body Exp_Ch13 is
 
          when others =>
             null;
-
       end case;
    end Expand_N_Attribute_Definition_Clause;
+
+   -----------------------------
+   -- Expand_N_Free_Statement --
+   -----------------------------
+
+   procedure Expand_N_Free_Statement (N : Node_Id) is
+      Expr : constant Node_Id := Expression (N);
+      Typ  : Entity_Id;
+
+   begin
+      --  Certain run-time configurations and targets do not provide support
+      --  for controlled types.
+
+      if Restriction_Active (No_Finalization) then
+         return;
+      end if;
+
+      --  Use the base type to perform the check for finalization master
+
+      Typ := Etype (Expr);
+
+      if Ekind (Typ) = E_Access_Subtype then
+         Typ := Etype (Typ);
+      end if;
+
+      --  Handle private access types
+
+      if Is_Private_Type (Typ)
+        and then Present (Full_View (Typ))
+      then
+         Typ := Full_View (Typ);
+      end if;
+
+      --  Do not create a custom Deallocate when freeing an object with
+      --  suppressed finalization. In such cases the object is never attached
+      --  to a master, so it does not need to be detached. Use a regular free
+      --  statement instead.
+
+      if No (Finalization_Master (Typ)) then
+         return;
+      end if;
+
+      --  Use a temporary to store the result of a complex expression. Perform
+      --  the following transformation:
+      --
+      --     Free (Complex_Expression);
+      --
+      --     Temp : constant Type_Of_Expression := Complex_Expression;
+      --     Free (Temp);
+
+      if Nkind (Expr) /= N_Identifier then
+         declare
+            Expr_Typ : constant Entity_Id  := Etype (Expr);
+            Loc      : constant Source_Ptr := Sloc (N);
+            New_Expr : Node_Id;
+            Temp_Id  : Entity_Id;
+
+         begin
+            Temp_Id := Make_Temporary (Loc, 'T');
+            Insert_Action (N,
+              Make_Object_Declaration (Loc,
+                Defining_Identifier => Temp_Id,
+                Object_Definition   => New_Occurrence_Of (Expr_Typ, Loc),
+                Expression          => Relocate_Node (Expr)));
+
+            New_Expr := New_Occurrence_Of (Temp_Id, Loc);
+            Set_Etype (New_Expr, Expr_Typ);
+
+            Set_Expression (N, New_Expr);
+         end;
+      end if;
+
+      --  Create a custom Deallocate for a controlled object. This routine
+      --  ensures that the hidden list header will be deallocated along with
+      --  the actual object.
+
+      Build_Allocate_Deallocate_Proc (N, Is_Allocate => False);
+   end Expand_N_Free_Statement;
 
    ----------------------------
    -- Expand_N_Freeze_Entity --
    ----------------------------
 
    procedure Expand_N_Freeze_Entity (N : Node_Id) is
-      E              : constant Entity_Id := Entity (N);
-      E_Scope        : Entity_Id;
-      S              : Entity_Id;
-      In_Other_Scope : Boolean;
-      In_Outer_Scope : Boolean;
+      E : constant Entity_Id := Entity (N);
+
       Decl           : Node_Id;
       Delete         : Boolean := False;
+      E_Scope        : Entity_Id;
+      In_Other_Scope : Boolean;
+      In_Outer_Scope : Boolean;
 
    begin
       --  If there are delayed aspect specifications, we insert them just
@@ -232,12 +386,29 @@ package body Exp_Ch13 is
             Ritem : Node_Id;
 
          begin
+            --  Look for aspect specs for this entity
+
             Ritem := First_Rep_Item (E);
             while Present (Ritem) loop
-               if Nkind (Ritem) = N_Aspect_Specification then
+               if Nkind (Ritem) = N_Aspect_Specification
+                 and then Entity (Ritem) = E
+               then
                   Aitem := Aspect_Rep_Item (Ritem);
-                  pragma Assert (Is_Delayed_Aspect (Aitem));
-                  Insert_Before (N, Aitem);
+
+                  --  Skip this for aspects (e.g. Current_Value) for which
+                  --  there is no corresponding pragma or attribute.
+
+                  if Present (Aitem)
+
+                    --  Also skip if we have a null statement rather than a
+                    --  delayed aspect (this happens when we are ignoring rep
+                    --  items from use of the -gnatI switch).
+
+                    and then Nkind (Aitem) /= N_Null_Statement
+                  then
+                     pragma Assert (Is_Delayed_Aspect (Aitem));
+                     Insert_Before (N, Aitem);
+                  end if;
                end if;
 
                Next_Rep_Item (Ritem);
@@ -245,10 +416,31 @@ package body Exp_Ch13 is
          end;
       end if;
 
-      --  Processing for objects with address clauses
+      --  Processing for objects
 
-      if Is_Object (E) and then Present (Address_Clause (E)) then
-         Apply_Address_Clause_Check (E, N);
+      if Is_Object (E) then
+         if Present (Address_Clause (E)) then
+            Apply_Address_Clause_Check (E, N);
+         end if;
+
+         --  Analyze actions in freeze node, if any
+
+         if Present (Actions (N)) then
+            declare
+               Act : Node_Id;
+            begin
+               Act := First (Actions (N));
+               while Present (Act) loop
+                  Analyze (Act);
+                  Next (Act);
+               end loop;
+            end;
+         end if;
+
+         --  If initialization statements have been captured in a compound
+         --  statement, insert them back into the tree now.
+
+         Explode_Initialization_Compound_Statement (E);
          return;
 
       --  Only other items requiring any front end action are types and
@@ -265,7 +457,19 @@ package body Exp_Ch13 is
       --  This is an error protection against previous errors
 
       if No (E_Scope) then
+         Check_Error_Detected;
          return;
+      end if;
+
+      --  The entity may be a subtype declared for a constrained record
+      --  component, in which case the relevant scope is the scope of
+      --  the record. This happens for class-wide subtypes created for
+      --  a constrained type extension with inherited discriminants.
+
+      if Is_Type (E_Scope)
+        and then Ekind (E_Scope) not in Concurrent_Kind
+      then
+         E_Scope := Scope (E_Scope);
       end if;
 
       --  Remember that we are processing a freezing entity and its freezing
@@ -288,7 +492,7 @@ package body Exp_Ch13 is
 
       if Ekind (E_Scope) = E_Protected_Type
         or else (Ekind (E_Scope) = E_Task_Type
-                   and then not Has_Completion (E_Scope))
+                  and then not Has_Completion (E_Scope))
       then
          E_Scope := Scope (E_Scope);
 
@@ -296,13 +500,19 @@ package body Exp_Ch13 is
          E_Scope := Corresponding_Spec (Unit_Declaration_Node (E_Scope));
       end if;
 
-      S := Current_Scope;
-      while S /= Standard_Standard and then S /= E_Scope loop
-         S := Scope (S);
-      end loop;
+      --  If the scope of the entity is in open scopes, it is the current one
+      --  or an enclosing one, including a loop, a block, or a subprogram.
 
-      In_Other_Scope := not (S = E_Scope);
-      In_Outer_Scope := (not In_Other_Scope) and then (S /= Current_Scope);
+      if In_Open_Scopes (E_Scope) then
+         In_Other_Scope := False;
+         In_Outer_Scope := E_Scope /= Current_Scope;
+
+      --  Otherwise it is a local package or a different compilation unit
+
+      else
+         In_Other_Scope := True;
+         In_Outer_Scope := False;
+      end if;
 
       --  If the entity being frozen is defined in a scope that is not
       --  currently on the scope stack, we must establish the proper
@@ -310,7 +520,39 @@ package body Exp_Ch13 is
 
       if In_Other_Scope then
          Push_Scope (E_Scope);
-         Install_Visible_Declarations (E_Scope);
+
+         --  Finalizers are little odd in terms of freezing. The spec of the
+         --  procedure appears in the declarations while the body appears in
+         --  the statement part of a single construct. Since the finalizer must
+         --  be called by the At_End handler of the construct, the spec is
+         --  manually frozen right after its declaration. The only side effect
+         --  of this action appears in contexts where the construct is not in
+         --  its final resting place. These contexts are:
+
+         --    * Entry bodies - The declarations and statements are moved to
+         --      the procedure equivalen of the entry.
+         --    * Protected subprograms - The declarations and statements are
+         --      moved to the non-protected version of the subprogram.
+         --    * Task bodies - The declarations and statements are moved to the
+         --      task body procedure.
+
+         --  Visible declarations do not need to be installed in these three
+         --  cases since it does not make semantic sense to do so. All entities
+         --  referenced by a finalizer are visible and already resolved, plus
+         --  the enclosing scope may not have visible declarations at all.
+
+         if Ekind (E) = E_Procedure
+           and then Is_Finalizer (E)
+           and then
+             (Is_Entry (E_Scope)
+                or else (Is_Subprogram (E_Scope)
+                          and then Is_Protected_Type (Scope (E_Scope)))
+                or else Is_Task_Type (E_Scope))
+         then
+            null;
+         else
+            Install_Visible_Declarations (E_Scope);
+         end if;
 
          if Is_Package_Or_Generic_Package (E_Scope) or else
             Is_Protected_Type (E_Scope)             or else
@@ -342,7 +584,7 @@ package body Exp_Ch13 is
       --  If subprogram, freeze the subprogram
 
       elsif Is_Subprogram (E) then
-         Freeze_Subprogram (N);
+         Exp_Ch6.Freeze_Subprogram (N);
 
          --  Ada 2005 (AI-251): Remove the freezing node associated with the
          --  entities internally used by the frontend to register primitives
@@ -398,6 +640,8 @@ package body Exp_Ch13 is
                   Analyze (Decl);
                   Force_Validity_Checks := Save_Force;
                end;
+
+            --  All other freezing actions
 
             else
                Analyze (Decl, Suppress => All_Checks);
@@ -462,7 +706,7 @@ package body Exp_Ch13 is
 
          AtM_Nod :=
            Make_Attribute_Definition_Clause (Loc,
-             Name       => New_Reference_To (Base_Type (Rectype), Loc),
+             Name       => New_Occurrence_Of (Base_Type (Rectype), Loc),
              Chars      => Name_Alignment,
              Expression => Make_Integer_Literal (Loc, Mod_Val));
 

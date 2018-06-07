@@ -1,4 +1,5 @@
 /* { dg-require-effective-target size32plus } */
+/* { dg-require-effective-target run_expensive_tests }  PR testsuite/48283 */
 
 #define DEBUG 0
 #if DEBUG
@@ -54,5 +55,4 @@ main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "will be loop blocked" 1 "graphite" } } */
-/* { dg-final { cleanup-tree-dump "graphite" } } */
+/* { dg-final { scan-tree-dump "tiled by" "graphite" } } */

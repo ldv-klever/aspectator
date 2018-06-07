@@ -1,7 +1,7 @@
 /* Definitions of target machine for GNU compiler, Lattice Mico32 architecture.
    Contributed by Jon Beniston <jon@beniston.com>
 
-   Copyright (C) 2009, 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2009-2017 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -22,11 +22,6 @@
 /*-------------------------------*/
 /* Run-time Target Specification */
 /*-------------------------------*/
-
-/* Print subsidiary information on the compiler version in use.  */
-#ifndef TARGET_VERSION
-#define TARGET_VERSION fprintf (stderr, " (LatticeMico32)")
-#endif
 
 /* Target CPU builtins.  */
 #define TARGET_CPU_CPP_BUILTINS()                       \
@@ -78,7 +73,6 @@
 #define BYTES_BIG_ENDIAN 1
 #define WORDS_BIG_ENDIAN 1
 
-#define BITS_PER_UNIT 8
 #define BITS_PER_WORD 32
 #define UNITS_PER_WORD 4
 
@@ -207,9 +201,6 @@ enum reg_class
 #define REGNO_REG_CLASS(REGNO) \
     (G_REG_P(REGNO) ? GENERAL_REGS : NO_REGS)
 
-#define CLASS_MAX_NREGS(CLASS, MODE) \
-    ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD)
-
 #define INDEX_REG_CLASS NO_REGS
 
 #define BASE_REG_CLASS GENERAL_REGS
@@ -311,8 +302,6 @@ enum reg_class
   LM32_NUM_INTS ((MODE) == BLKmode ?                     \
   int_size_in_bytes (TYPE) : GET_MODE_SIZE (MODE))
 
-#define STRUCT_VALUE 0
-
 /*---------------------------*/
 /* Function entry and exit.  */
 /*---------------------------*/
@@ -351,8 +340,6 @@ enum reg_class
 #define REG_OK_FOR_BASE_P(X) NONSTRICT_REG_OK_FOR_BASE_P(X)
 #endif
 
-#define LEGITIMATE_CONSTANT_P(X) lm32_legitimate_constant_p (X)
-
 /*-------------------------*/
 /* Condition Code Status.  */
 /*-------------------------*/
@@ -365,7 +352,7 @@ enum reg_class
 
 #define SLOW_BYTE_ACCESS 1
 
-#define NO_FUNCTION_CSE
+#define NO_FUNCTION_CSE 1
 
 #define BRANCH_COST(speed_p, predictable_p) 4
 
@@ -448,7 +435,7 @@ do 									\
       switch_to_section (bss_section);					\
       fprintf ((FILE), "%s", COMMON_ASM_OP);				\
       assemble_name ((FILE), (NAME));					\
-      fprintf ((FILE), ","HOST_WIDE_INT_PRINT_UNSIGNED",%u\n",          \
+      fprintf ((FILE), "," HOST_WIDE_INT_PRINT_UNSIGNED",%u\n",          \
                (SIZE), (ALIGN) / BITS_PER_UNIT);	                \
     }									\
 }									\
@@ -532,11 +519,11 @@ do {                                                            \
 
 #define CASE_VECTOR_MODE Pmode
 
-#define WORD_REGISTER_OPERATIONS
+#define WORD_REGISTER_OPERATIONS 1
 
 #define LOAD_EXTEND_OP(MODE) ZERO_EXTEND
 
-#define SHORT_IMMEDIATES_SIGN_EXTEND
+#define SHORT_IMMEDIATES_SIGN_EXTEND 1
 
 #define MOVE_MAX        UNITS_PER_WORD
 #define MAX_MOVE_MAX    4

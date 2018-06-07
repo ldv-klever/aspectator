@@ -4,9 +4,9 @@
 --                                                                          --
 --                             B I N D U S G                                --
 --                                                                          --
---                                B o d y                                   --
+--                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -25,6 +25,7 @@
 
 with Osint;  use Osint;
 with Output; use Output;
+with Switch; use Switch;
 
 with System.WCh_Con; use System.WCh_Con;
 
@@ -55,6 +56,8 @@ package body Bindusg is
       Write_Eol;
       Write_Eol;
 
+      Display_Usage_Version_And_Help;
+
       --  Line for @response_file
 
       Write_Line ("  @<resp_file> Get arguments from response file");
@@ -73,9 +76,10 @@ package body Bindusg is
       Write_Line ("  -a        Automatically initialize elaboration " &
                   "procedure");
 
-      --  Line for -A switch
+      --  Lines for -A switch
 
       Write_Line ("  -A        Give list of ALI files in partition");
+      Write_Line ("  -A=file   Write ALI file list to named file");
 
       --  Line for -b switch
 
@@ -104,9 +108,14 @@ package body Bindusg is
 
       --  Line for -E switch
 
-      Write_Line ("  -E        Store tracebacks in exception occurrences");
+      Write_Line ("  -Ea       Store tracebacks in exception occurrences");
+      Write_Line ("  -Es       Store tracebacks in exception occurrences,");
+      Write_Line ("            and enable symbolic tracebacks");
+      Write_Line ("  -E        Same as -Ea");
 
-      --  The -f switch is voluntarily omitted, because it is obsolete
+      --  Line for -f switch
+
+      Write_Line ("  -ffile    Force elaboration order from given file");
 
       --  Line for -F switch
 
@@ -115,11 +124,6 @@ package body Bindusg is
       --  Line for -h switch
 
       Write_Line ("  -h        Output this usage (help) information");
-
-      --  Line for -H switch
-
-      Write_Line ("  -Hnn      Use nn bit heap where nn is 32 or 64 " &
-                  "(VMS Only)");
 
       --  Lines for -I switch
 
@@ -178,6 +182,10 @@ package body Bindusg is
 
       Write_Line ("  -p        Pessimistic (worst-case) elaboration order");
 
+      --  Line for -P switch
+
+      Write_Line ("  -P        Generate binder file suitable for CodePeer");
+
       --  Line for -r switch
 
       Write_Line ("  -r        List restrictions that could be applied " &
@@ -225,6 +233,10 @@ package body Bindusg is
       Write_Line ("  -v        Verbose mode. Error messages, " &
                   "header, summary output to stdout");
 
+      --  Line for -V switch
+
+      Write_Line ("  -Vkey=val Record bind-time variable key " &
+                  "with value val");
       --  Line for -w switch
 
       Write_Line ("  -wx       Warning mode. (x=s/e for " &

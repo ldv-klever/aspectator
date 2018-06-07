@@ -1,7 +1,6 @@
-// { dg-do compile }
-// { dg-options "-std=gnu++0x" }
+// { dg-do compile { target c++11 } }
 
-// Copyright (C) 2005, 2007, 2009 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -27,11 +26,11 @@
 
 using __gnu_test::forward_iterator_wrapper;
 
-class X 
+struct X 
 { 
-  X();
-  X(const X&);
-  void operator=(const X&);
+  X() = delete;
+  X(const X&) = delete;
+  void operator=(const X&) = delete;
 };
 
 void

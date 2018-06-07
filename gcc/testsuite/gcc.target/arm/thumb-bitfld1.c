@@ -1,5 +1,6 @@
 /* { dg-do compile } */
-/* { dg-options "-O1 -mthumb -march=armv5t" }  */
+/* { dg-require-effective-target arm_thumb1_ok } */
+/* { dg-options "-O1 -mthumb" }  */
 
 struct foo
 {
@@ -9,6 +10,8 @@ struct foo
   unsigned b28 : 1;
   unsigned rest : 28;
 };
+
+unsigned
 foo(a)
      struct foo a;
 {

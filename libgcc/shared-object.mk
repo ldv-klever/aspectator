@@ -6,13 +6,15 @@ iter-items := $(filter-out $o,$(iter-items))
 
 base := $(basename $(notdir $o))
 
+c_flags-$o := $(c_flags)
+
 ifeq ($(suffix $o),.c)
 
 $(base)$(objext): $o
-	$(gcc_compile) $(c_flags) -c $< $(vis_hide)
+	$(gcc_compile) $(c_flags-$<) -c $< $(vis_hide)
 
 $(base)_s$(objext): $o
-	$(gcc_s_compile) $(c_flags) -c $<
+	$(gcc_s_compile) $(c_flags-$<) -c $<
 
 else
 
@@ -22,13 +24,15 @@ $(error Unsupported file type: $o)
 endif
 endif
 
+as_flags-$o := -xassembler$(if $(filter .S,$(suffix $o)),-with-cpp)
+
 $(base)$(objext): $o $(base).vis
-	$(gcc_compile) -c -xassembler-with-cpp -include $*.vis $<
+	$(gcc_compile) -c $(as_flags-$<) -include $*.vis $<
 
 $(base).vis: $(base)_s$(objext)
 	$(gen-hide-list)
 
 $(base)_s$(objext): $o
-	$(gcc_s_compile) -c -xassembler-with-cpp $<
+	$(gcc_s_compile) -c $(as_flags-$<) $<
 
 endif

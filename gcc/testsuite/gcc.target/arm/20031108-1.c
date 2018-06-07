@@ -1,5 +1,6 @@
 /* PR optimization/10467  */
 /* { dg-do compile } */
+/* { dg-skip-if "" { ! { arm_thumb1_ok || arm_thumb2_ok } } } */
 /* { dg-options "-O2 -mthumb" } */
 
 typedef enum {Ident_1} Enumeration;
@@ -19,6 +20,9 @@ typedef struct record
 
 Rec_Pointer Ptr_Glob;
 
+extern int Proc_7 (int, int, int *);
+
+void
 Proc_1 (Ptr_Val_Par)
     Rec_Pointer Ptr_Val_Par;
 {

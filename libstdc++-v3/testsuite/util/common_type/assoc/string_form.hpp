@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2009 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -109,11 +109,11 @@ namespace __gnu_pbds
 	  { return (""); }
 
 	  static std::string
-	  name(__gnu_pbds::null_mapped_type)
+	  name(__gnu_pbds::null_type)
 	  { return ("set"); }
 
 	  static std::string
-	  desc(__gnu_pbds::null_mapped_type)
+	  desc(__gnu_pbds::null_type)
 	  { return (""); }
 
 	public:
@@ -157,19 +157,19 @@ namespace __gnu_pbds
       { };
 
       template<typename Cntnr>
-      struct tag_select_string_form<Cntnr, native_hash_tag> 
+      struct tag_select_string_form<Cntnr, native_hash_tag>
       : public native_string_form<Cntnr>
       { };
 
       template<typename Cntnr>
-      struct tag_select_string_form<Cntnr, native_tree_tag> 
+      struct tag_select_string_form<Cntnr, native_tree_tag>
       : public native_string_form<Cntnr>
       { };
     } // namespace detail
 
     template<typename Cntnr>
-    struct string_form 
-    : public detail::tag_select_string_form<Cntnr, 
+    struct string_form
+    : public detail::tag_select_string_form<Cntnr,
 					    typename Cntnr::container_category>
     { };
   } // namespace test

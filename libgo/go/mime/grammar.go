@@ -8,29 +8,25 @@ import (
 	"strings"
 )
 
-// isTSpecial returns true if rune is in 'tspecials' as defined by RFC
-// 1531 and RFC 2045.
-func isTSpecial(rune int) bool {
-	return strings.IndexRune(`()<>@,;:\"/[]?=`, rune) != -1
+// isTSpecial reports whether rune is in 'tspecials' as defined by RFC
+// 1521 and RFC 2045.
+func isTSpecial(r rune) bool {
+	return strings.ContainsRune(`()<>@,;:\"/[]?=`, r)
 }
 
-// IsTokenChar returns true if rune is in 'token' as defined by RFC
-// 1531 and RFC 2045.
-func IsTokenChar(rune int) bool {
+// isTokenChar reports whether rune is in 'token' as defined by RFC
+// 1521 and RFC 2045.
+func isTokenChar(r rune) bool {
 	// token := 1*<any (US-ASCII) CHAR except SPACE, CTLs,
 	//             or tspecials>
-	return rune > 0x20 && rune < 0x7f && !isTSpecial(rune)
+	return r > 0x20 && r < 0x7f && !isTSpecial(r)
 }
 
-// IsQText returns true if rune is in 'qtext' as defined by RFC 822.
-func IsQText(rune int) bool {
-	// CHAR        =  <any ASCII character>        ; (  0-177,  0.-127.)
-	// qtext       =  <any CHAR excepting <">,     ; => may be folded
-	//                "\" & CR, and including
-	//                linear-white-space>
-	switch rune {
-	case '"', '\\', '\r':
+// isToken reports whether s is a 'token' as defined by RFC 1521
+// and RFC 2045.
+func isToken(s string) bool {
+	if s == "" {
 		return false
 	}
-	return rune < 0x80
+	return strings.IndexFunc(s, isNotTokenChar) < 0
 }

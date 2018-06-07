@@ -1,8 +1,6 @@
 // Iostreams base classes -*- C++ -*-
 
-// Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
-// 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 1997-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -42,14 +40,20 @@
 #include <bits/localefwd.h>
 #include <bits/locale_classes.h>
 
+#if __cplusplus < 201103L
+# include <stdexcept>
+#else
+# include <system_error>
+#endif
+
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   // The following definitions of bitmask types are enums, not ints,
   // as permitted (but not required) in the standard, in order to provide
-  // better type safety in iostream calls.  A side effect is that
-  // expressions involving them are no longer compile-time constants.
+  // better type safety in iostream calls.  A side effect is that in C++98
+  // expressions involving them are not compile-time constants.
   enum _Ios_Fmtflags 
     { 
       _S_boolalpha 	= 1L << 0,
@@ -70,7 +74,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_adjustfield 	= _S_left | _S_right | _S_internal,
       _S_basefield 	= _S_dec | _S_oct | _S_hex,
       _S_floatfield 	= _S_scientific | _S_fixed,
-      _S_ios_fmtflags_end = 1L << 16 
+      _S_ios_fmtflags_end = 1L << 16,
+      _S_ios_fmtflags_max = __INT_MAX__,
+      _S_ios_fmtflags_min = ~__INT_MAX__
     };
 
   inline _GLIBCXX_CONSTEXPR _Ios_Fmtflags
@@ -110,7 +116,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_in 		= 1L << 3,
       _S_out 		= 1L << 4,
       _S_trunc 		= 1L << 5,
-      _S_ios_openmode_end = 1L << 16 
+      _S_ios_openmode_end = 1L << 16,
+      _S_ios_openmode_max = __INT_MAX__,
+      _S_ios_openmode_min = ~__INT_MAX__
     };
 
   inline _GLIBCXX_CONSTEXPR _Ios_Openmode
@@ -148,7 +156,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_badbit 		= 1L << 0,
       _S_eofbit 		= 1L << 1,
       _S_failbit		= 1L << 2,
-      _S_ios_iostate_end = 1L << 16 
+      _S_ios_iostate_end = 1L << 16,
+      _S_ios_iostate_max = __INT_MAX__,
+      _S_ios_iostate_min = ~__INT_MAX__
     };
 
   inline _GLIBCXX_CONSTEXPR _Ios_Iostate
@@ -188,6 +198,23 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_ios_seekdir_end = 1L << 16 
     };
 
+#if __cplusplus >= 201103L
+  /// I/O error code
+  enum class io_errc { stream = 1 };
+
+  template <> struct is_error_code_enum<io_errc> : public true_type { };
+
+  const error_category& iostream_category() noexcept;
+
+  inline error_code
+  make_error_code(io_errc __e) noexcept
+  { return error_code(static_cast<int>(__e), iostream_category()); }
+
+  inline error_condition
+  make_error_condition(io_errc __e) noexcept
+  { return error_condition(static_cast<int>(__e), iostream_category()); }
+#endif
+
   // 27.4.2  Class ios_base
   /**
    *  @brief  The base of the I/O class hierarchy.
@@ -200,6 +227,22 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   */
   class ios_base
   {
+#if _GLIBCXX_USE_CXX11_ABI
+#if __cplusplus < 201103L
+    // Type that is layout-compatible with std::system_error
+    struct system_error : std::runtime_error
+    {
+      // Type that is layout-compatible with std::error_code
+      struct error_code
+      {
+	error_code() { }
+      private:
+	int		_M_value;
+	const void*	_M_cat;
+      } _M_code;
+    };
+#endif
+#endif
   public:
 
     /** 
@@ -208,6 +251,28 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
      *
      *  27.4.2.1.1  Class ios_base::failure
      */
+#if _GLIBCXX_USE_CXX11_ABI
+    class _GLIBCXX_ABI_TAG_CXX11 failure : public system_error
+    {
+    public:
+      explicit
+      failure(const string& __str);
+
+#if __cplusplus >= 201103L
+      explicit
+      failure(const string&, const error_code&);
+
+      explicit
+      failure(const char*, const error_code& = io_errc::stream);
+#endif
+
+      virtual
+      ~failure() throw();
+
+      virtual const char*
+      what() const throw();
+    };
+#else
     class failure : public exception
     {
     public:
@@ -227,6 +292,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     private:
       string _M_msg;
     };
+#endif
 
     // 27.4.2.1.2  Type ios_base::fmtflags
     /**
@@ -370,7 +436,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /// Perform input and output in binary mode (as opposed to text mode).
     /// This is probably not what you think it is; see
-    /// http://gcc.gnu.org/onlinedocs/libstdc++/manual/bk01pt11ch27s02.html
+    /// https://gcc.gnu.org/onlinedocs/libstdc++/manual/fstreams.html#std.io.filestreams.binary
     static const openmode binary =	_S_bin;
 
     /// Open for input.  Default for @c ifstream and fstream.
@@ -427,15 +493,15 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  The type of an event callback function.
-     *  @param  event  One of the members of the event enum.
-     *  @param  ios_base  Reference to the ios_base object.
-     *  @param  int  The integer provided when the callback was registered.
+     *  @param  __e  One of the members of the event enum.
+     *  @param  __b  Reference to the ios_base object.
+     *  @param  __i  The integer provided when the callback was registered.
      *
      *  Event callbacks are user defined functions that get called during
      *  several ios_base and basic_ios functions, specifically imbue(),
      *  copyfmt(), and ~ios().
     */
-    typedef void (*event_callback) (event, ios_base&, int);
+    typedef void (*event_callback) (event __e, ios_base& __b, int __i);
 
     /**
      *  @brief  Add the callback __fn with parameter __index.
@@ -555,10 +621,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Setting new format flags all at once.
-     *  @param  fmtfl  The new flags to set.
+     *  @param  __fmtfl  The new flags to set.
      *  @return  The previous format control flags.
      *
-     *  This function overwrites all the format flags with @a fmtfl.
+     *  This function overwrites all the format flags with @a __fmtfl.
     */
     fmtflags
     flags(fmtflags __fmtfl)
@@ -570,7 +636,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Setting new format flags.
-     *  @param  fmtfl  Additional flags to set.
+     *  @param  __fmtfl  Additional flags to set.
      *  @return  The previous format control flags.
      *
      *  This function sets additional flags in format control.  Flags that
@@ -586,8 +652,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Setting new format flags.
-     *  @param  fmtfl  Additional flags to set.
-     *  @param  mask  The flags mask for @a fmtfl.
+     *  @param  __fmtfl  Additional flags to set.
+     *  @param  __mask  The flags mask for @a fmtfl.
      *  @return  The previous format control flags.
      *
      *  This function clears @a mask in the format flags, then sets
@@ -604,9 +670,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Clearing format flags.
-     *  @param  mask  The flags to unset.
+     *  @param  __mask  The flags to unset.
      *
-     *  This function clears @a mask in the format flags.
+     *  This function clears @a __mask in the format flags.
     */
     void
     unsetf(fmtflags __mask)
@@ -625,7 +691,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Changing flags.
-     *  @param  prec  The new precision value.
+     *  @param  __prec  The new precision value.
      *  @return  The previous value of precision().
     */
     streamsize
@@ -648,7 +714,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     /**
      *  @brief  Changing flags.
-     *  @param  wide  The new width value.
+     *  @param  __wide  The new width value.
      *  @return  The previous value of width().
     */
     streamsize
@@ -662,13 +728,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     // [27.4.2.4] ios_base static members
     /**
      *  @brief  Interaction with the standard C I/O objects.
-     *  @param  sync  Whether to synchronize or not.
+     *  @param  __sync  Whether to synchronize or not.
      *  @return  True if the standard streams were previously synchronized.
      *
      *  The synchronization referred to is @e only that between the standard
      *  C facilities (e.g., stdout) and the standard C++ objects (e.g.,
      *  cout).  User-declared streams are unaffected.  See
-     *  http://gcc.gnu.org/onlinedocs/libstdc++/manual/bk01pt11ch28s02.html
+     *  https://gcc.gnu.org/onlinedocs/libstdc++/manual/fstreams.html#std.io.filestreams.binary
     */
     static bool
     sync_with_stdio(bool __sync = true);
@@ -676,7 +742,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     // [27.4.2.3] ios_base locale functions
     /**
      *  @brief  Setting a new locale.
-     *  @param  loc  The new locale.
+     *  @param  __loc  The new locale.
      *  @return  The previous locale.
      *
      *  Sets the new locale for this stream, and then invokes each callback
@@ -782,6 +848,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   protected:
     ios_base() throw ();
 
+#if __cplusplus < 201103L
   // _GLIBCXX_RESOLVE_LIB_DEFECTS
   // 50.  Copy constructor and assignment operator of ios_base
   private:
@@ -789,6 +856,20 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     ios_base&
     operator=(const ios_base&);
+#else
+  public:
+    ios_base(const ios_base&) = delete;
+
+    ios_base&
+    operator=(const ios_base&) = delete;
+
+  protected:
+    void
+    _M_move(ios_base&) noexcept;
+
+    void
+    _M_swap(ios_base& __rhs) noexcept;
+#endif
   };
 
   // [27.4.5.1] fmtflags manipulators
@@ -970,6 +1051,27 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     __base.setf(ios_base::scientific, ios_base::floatfield);
     return __base;
   }
+
+#if __cplusplus >= 201103L
+  // New C++11 floatfield manipulators
+
+  /// Calls
+  /// base.setf(ios_base::fixed|ios_base::scientific, ios_base::floatfield)
+  inline ios_base&
+  hexfloat(ios_base& __base)
+  {
+    __base.setf(ios_base::fixed | ios_base::scientific, ios_base::floatfield);
+    return __base;
+  }
+
+  /// Calls @c base.unsetf(ios_base::floatfield)
+  inline ios_base&
+  defaultfloat(ios_base& __base)
+  {
+    __base.unsetf(ios_base::floatfield);
+    return __base;
+  }
+#endif
 
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace

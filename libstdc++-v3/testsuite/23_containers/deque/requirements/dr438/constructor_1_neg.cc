@@ -1,6 +1,6 @@
 // 2007-04-27  Paolo Carlini  <pcarlini@suse.de>
 
-// Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation
+// Copyright (C) 2007-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -18,12 +18,11 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do compile }
-// { dg-error "no matching" "" { target *-*-* } 1594 }
-// { dg-excess-errors "" }
+// { dg-prune-output "no matching function .*_M_fill_initialize" }
 
 #include <deque>
 
 void f()
 {
-  std::deque<std::deque<int> > d(10, 1);
+  std::deque<std::deque<int> > d(10, 1); // { dg-error "here|no match" }
 }

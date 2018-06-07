@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -74,10 +74,13 @@ package body Ch12 is
    --  GENERIC_RENAMING_DECLARATION ::=
    --    generic package DEFINING_PROGRAM_UNIT_NAME
    --      renames generic_package_NAME
+   --        [ASPECT_SPECIFICATIONS];
    --  | generic procedure DEFINING_PROGRAM_UNIT_NAME
    --      renames generic_procedure_NAME
+   --        [ASPECT_SPECIFICATIONS];
    --  | generic function DEFINING_PROGRAM_UNIT_NAME
    --      renames generic_function_NAME
+   --        [ASPECT_SPECIFICATIONS];
 
    --  GENERIC_FORMAL_PARAMETER_DECLARATION ::=
    --    FORMAL_OBJECT_DECLARATION
@@ -140,6 +143,8 @@ package body Ch12 is
                Scan; -- past RENAMES
                Set_Defining_Unit_Name (Decl_Node, Def_Unit);
                Set_Name (Decl_Node, P_Name);
+
+               P_Aspect_Specifications (Decl_Node, Semicolon => False);
                TF_Semicolon;
                return Decl_Node;
             end if;
@@ -163,6 +168,7 @@ package body Ch12 is
 
          if Token = Tok_Use then
             Append (P_Use_Clause, Decls);
+
          else
             --  Parse a generic parameter declaration
 
@@ -202,11 +208,15 @@ package body Ch12 is
 
       if Token = Tok_Package then
          Gen_Decl := New_Node (N_Generic_Package_Declaration, Gen_Sloc);
-         Set_Specification (Gen_Decl, P_Package (Pf_Spcn, Gen_Decl));
+         Set_Specification (Gen_Decl, P_Package (Pf_Spcn));
+
+         --  Aspects have been parsed by the package spec. Move them to the
+         --  generic declaration where they belong.
+
+         Move_Aspects (Specification (Gen_Decl), Gen_Decl);
 
       else
          Gen_Decl := New_Node (N_Generic_Subprogram_Declaration, Gen_Sloc);
-
          Set_Specification (Gen_Decl, P_Subprogram_Specification);
 
          if Nkind (Defining_Unit_Name (Specification (Gen_Decl))) =
@@ -336,13 +346,13 @@ package body Ch12 is
    begin
       Generic_Assoc_Node := New_Node (N_Generic_Association, Token_Ptr);
 
-      --  Ada2005: an association can be given by: others => <>
+      --  Ada 2005: an association can be given by: others => <>
 
       if Token = Tok_Others then
          if Ada_Version < Ada_2005 then
             Error_Msg_SP
-              ("partial parametrization of formal packages" &
-                " is an Ada 2005 extension");
+              ("partial parameterization of formal packages"
+               & " is an Ada 2005 extension");
             Error_Msg_SP
               ("\unit must be compiled with -gnat05 switch");
          end if;
@@ -531,9 +541,30 @@ package body Ch12 is
            (Decl_Node, P_Known_Discriminant_Part_Opt);
       end if;
 
-      T_Is;
+      if Token = Tok_Semicolon then
+
+         --  Ada 2012: Incomplete formal type
+
+         Scan; -- past semicolon
+
+         Error_Msg_Ada_2012_Feature
+           ("formal incomplete type", Sloc (Decl_Node));
+
+         Set_Formal_Type_Definition
+           (Decl_Node,
+            New_Node (N_Formal_Incomplete_Type_Definition, Token_Ptr));
+         return Decl_Node;
+
+      else
+         T_Is;
+      end if;
 
       Def_Node := P_Formal_Type_Definition;
+
+      if Nkind (Def_Node) = N_Formal_Incomplete_Type_Definition then
+         Error_Msg_Ada_2012_Feature
+           ("formal incomplete type", Sloc (Decl_Node));
+      end if;
 
       if Def_Node /= Error then
          Set_Formal_Type_Definition (Decl_Node, Def_Node);
@@ -563,6 +594,7 @@ package body Ch12 is
 
    --  FORMAL_TYPE_DEFINITION ::=
    --    FORMAL_PRIVATE_TYPE_DEFINITION
+   --  | FORMAL_INCOMPLETE_TYPE_DEFINITION
    --  | FORMAL_DERIVED_TYPE_DEFINITION
    --  | FORMAL_DISCRETE_TYPE_DEFINITION
    --  | FORMAL_SIGNED_INTEGER_TYPE_DEFINITION
@@ -694,7 +726,7 @@ package body Ch12 is
 
          when Tok_Not =>
             if P_Null_Exclusion then
-               Typedef_Node :=  P_Access_Type_Definition;
+               Typedef_Node := P_Access_Type_Definition;
                Set_Null_Exclusion_Present (Typedef_Node);
                return Typedef_Node;
 
@@ -704,9 +736,21 @@ package body Ch12 is
                return Error;
             end if;
 
-         when Tok_Private |
-              Tok_Tagged  =>
+         when Tok_Private =>
             return P_Formal_Private_Type_Definition;
+
+         when Tok_Tagged =>
+            if Next_Token_Is (Tok_Semicolon) then
+               Typedef_Node :=
+                 New_Node (N_Formal_Incomplete_Type_Definition, Token_Ptr);
+               Set_Tagged_Present (Typedef_Node);
+
+               Scan;  --  past tagged
+               return Typedef_Node;
+
+            else
+               return P_Formal_Private_Type_Definition;
+            end if;
 
          when Tok_Range =>
             return P_Formal_Signed_Integer_Type_Definition;
@@ -719,10 +763,10 @@ package body Ch12 is
          --  Ada 2005 (AI-345): Task, Protected or Synchronized interface or
          --  (AI-443): Synchronized formal derived type declaration.
 
-         when Tok_Protected    |
-              Tok_Synchronized |
-              Tok_Task         =>
-
+         when Tok_Protected
+            | Tok_Synchronized
+            | Tok_Task
+         =>
             declare
                Saved_Token : constant Token_Type := Token;
 
@@ -768,7 +812,6 @@ package body Ch12 is
             Error_Msg_BC ("expecting generic type definition here");
             Resync_Past_Semicolon;
             return Error;
-
       end case;
    end P_Formal_Type_Definition;
 

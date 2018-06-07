@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, NetBSD/arm ELF version.
-   Copyright (C) 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2002-2017 Free Software Foundation, Inc.
    Contributed by Wasabi Systems, Inc.
 
    This file is part of GCC.
@@ -14,13 +14,16 @@
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
    License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING3.  If not see
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
+   You should have received a copy of the GNU General Public License and
+   a copy of the GCC Runtime Library Exception along with this program;
+   see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    <http://www.gnu.org/licenses/>.  */
 
 /* Run-time Target Specification.  */
-#undef TARGET_VERSION
-#define TARGET_VERSION fputs (" (NetBSD/arm ELF)", stderr);
 
 /* arm.h defaults to ARM6 CPU.  */
 
@@ -52,13 +55,12 @@
 
 #undef SUBTARGET_EXTRA_ASM_SPEC
 #define SUBTARGET_EXTRA_ASM_SPEC	\
-  "-matpcs %{fpic|fpie:-k} %{fPIC|fPIE:-k}"
+  "-matpcs %{" FPIE_OR_FPIC_SPEC ":-k}"
 
-/* Default to full VFP if -mhard-float is specified.  */
+/* Default to full VFP if -mfloat-abi=hard is specified.  */
 #undef SUBTARGET_ASM_FLOAT_SPEC
 #define SUBTARGET_ASM_FLOAT_SPEC	\
-  "%{mhard-float:{!mfpu=*:-mfpu=vfp}}   \
-   %{mfloat-abi=hard:{!mfpu=*:-mfpu=vfp}}"
+  "%{mfloat-abi=hard:{!mfpu=*:-mfpu=vfp}}"
 
 #undef SUBTARGET_EXTRA_SPECS
 #define SUBTARGET_EXTRA_SPECS				\

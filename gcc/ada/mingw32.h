@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 2002-2009, Free Software Foundation, Inc.         *
+ *          Copyright (C) 2002-2016, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -38,28 +38,8 @@
 
 #include <_mingw.h>
 
-/* The unicode support is activated by default starting with the 3.9 MingW
-   version. It is not possible to use it with previous version due to a bug
-   in the MingW runtime.  */
-
-#if (((__MINGW32_MAJOR_VERSION == 3 \
-		   && __MINGW32_MINOR_VERSION >= 9) \
-     || (__MINGW32_MAJOR_VERSION >= 4) \
-     || defined (__MINGW64))	       \
-     && !defined (RTX))
+#ifndef RTX
 #define GNAT_UNICODE_SUPPORT
-
-#else
-
-/*  Older MingW versions have no definition for _tfreopen, add it here to have a
-    proper build without unicode support.  */
-#ifndef _tfreopen
-#define _tfreopen   freopen
-#endif
-
-#endif
-
-#ifdef GNAT_UNICODE_SUPPORT
 #define _UNICODE /* For C runtime */
 #define UNICODE  /* For Win32 API */
 #endif
@@ -69,7 +49,14 @@
 #define _WIN32_WINNT 0x0501
 #endif
 
+#ifndef __CYGWIN__
 #include <tchar.h>
+#endif
+#if defined (__CYGWIN__) && !defined (__CYGWIN32__) && !defined (IN_RTS)
+/* Note: windows.h on cygwin-64 includes x86intrin.h which uses malloc.
+   That fails to compile, if malloc is poisoned, i.e. if !IN_RTS.  */
+#define _X86INTRIN_H_INCLUDED
+#endif
 #include <windows.h>
 
 /* After including this file it is possible to use the character t as prefix
@@ -81,13 +68,15 @@
 
 #ifdef GNAT_UNICODE_SUPPORT
 
-extern UINT CurrentCodePage;
+extern UINT __gnat_current_codepage;
+extern UINT __gnat_current_ccs_encoding;
 
-/*  Macros to convert to/from the code page specified in CurrentCodePage.  */
+/*  Macros to convert to/from the code page specified in
+    __gnat_current_codepage.  */
 #define S2WSC(wstr,str,len) \
-   MultiByteToWideChar (CurrentCodePage,0,str,-1,wstr,len)
+   MultiByteToWideChar (__gnat_current_codepage,0,str,-1,wstr,len)
 #define WS2SC(str,wstr,len) \
-   WideCharToMultiByte (CurrentCodePage,0,wstr,-1,str,len,NULL,NULL)
+   WideCharToMultiByte (__gnat_current_codepage,0,wstr,-1,str,len,NULL,NULL)
 
 /*  Macros to convert to/from UTF-8 code page.  */
 #define S2WSU(wstr,str,len) \

@@ -1,14 +1,15 @@
 // Contributed by Dodji Seketeli <dodji@redhat.com>
 // Origin: PR c++/40684
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
 
 struct A
 {
 };
 
-template <typename S, typename T, typename U, typename S::v = &S::v::s>
+template <typename S, typename T, typename U,
+	  typename S::v = &S::v::s> // { dg-error "is not a" }
 typename S::A
-foo (S c, T t, U u)		// { dg-message "note" }
+foo (S c, T t, U u)
 {
 }
 
@@ -21,7 +22,6 @@ struct B
     {
       A a;
       A b = foo (this, a, t); // { dg-error "no matching function" }
-      // { dg-message "candidate" "candidate note" { target *-*-* } 23 }
     }
   } c;
   B () : c (A ())

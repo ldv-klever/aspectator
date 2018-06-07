@@ -1,4 +1,4 @@
-/* { dg-do run { target { { i?86-*-* x86_64-*-* } && ilp32 } } } */
+/* { dg-do run { target { { i?86-*-* x86_64-*-* } && ia32 } } } */
 
 #include "check.h"
 
@@ -21,7 +21,10 @@ struct B {};
 
 __attribute__ ((thiscall))
 void
-foo (int j, int k, int m, int n, int o) throw (B,A)
+foo (int j, int k, int m, int n, int o)
+#if __cplusplus <= 201402L
+throw (B,A)			// { dg-warning "deprecated" "" { target { c++11 && { ! c++1z } } } }
+#endif
 {
   aligned i;
 

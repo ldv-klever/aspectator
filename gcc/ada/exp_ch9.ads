@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -50,28 +50,27 @@ package Exp_Ch9 is
    --  Task_Id of the associated task as the parameter. The caller is
    --  responsible for analyzing and resolving the resulting tree.
 
-   function Build_Entry_Names (Conc_Typ : Entity_Id) return Node_Id;
-   --  Create the statements which populate the entry names array of a task or
-   --  protected type. The statements are wrapped inside a block due to a local
-   --  declaration.
+   procedure Build_Class_Wide_Master (Typ : Entity_Id);
+   --  Given an access-to-limited class-wide type or an access-to-limited
+   --  interface, ensure that the designated type has a _master and generate
+   --  a renaming of the said master to service the access type.
 
-   procedure Build_Master_Entity (E : Entity_Id);
-   --  Given an entity E for the declaration of an object containing tasks
-   --  or of a type declaration for an allocator whose designated type is a
-   --  task or contains tasks, this routine marks the appropriate enclosing
-   --  context as a master, and also declares a variable called _Master in
-   --  the current declarative part which captures the value of Current_Master
-   --  (if not already built by a prior call). We build this object (instead
-   --  of just calling Current_Master) for two reasons. First it is clearly
-   --  more efficient to call Current_Master only once for a bunch of tasks
-   --  in the same declarative part, and second it makes things easier in
-   --  generating the initialization routines, since they can just reference
-   --  the object _Master by name, and they will get the proper Current_Master
-   --  value at the outer level, and copy in the parameter value for the outer
-   --  initialization call if the call is for a nested component). Note that
-   --  in the case of nested packages, we only really need to make one such
-   --  object at the outer level, but it is much easier to generate one per
-   --  declarative part.
+   procedure Build_Master_Entity (Obj_Or_Typ : Entity_Id);
+   --  Given the name of an object or a type which is either a task, contains
+   --  tasks or designates tasks, create a _master in the appropriate scope
+   --  which captures the value of Current_Master. Mark the nearest enclosing
+   --  body or block as being a task master.
+
+   procedure Build_Master_Renaming
+     (Ptr_Typ : Entity_Id;
+      Ins_Nod : Node_Id := Empty);
+   --  Given an access type Ptr_Typ whose designated type is either a task or
+   --  contains tasks, create a renaming of the form:
+   --
+   --     <Ptr_Typ>M : Master_Id renames _Master;
+   --
+   --  where _master denotes the task master of the enclosing context. Ins_Nod
+   --  is used to provide a specific insertion node for the renaming.
 
    function Build_Private_Protected_Declaration (N : Node_Id) return Entity_Id;
    --  A subprogram body without a previous spec that appears in a protected
@@ -81,6 +80,8 @@ package Exp_Ch9 is
    --  needed, but in fact, in Ada 2005 the subprogram may be used in a call-
    --  back, and therefore a protected version of the operation must be
    --  generated as well.
+   --
+   --  Possibly factor this with Exp_Dist.Copy_Specification ???
 
    function Build_Protected_Sub_Specification
      (N        : Node_Id;
@@ -102,6 +103,16 @@ package Exp_Ch9 is
    --  subprogram, and Rec is the record corresponding to the protected object.
    --  External is False if the call is to another protected subprogram within
    --  the same object.
+
+   procedure Build_Protected_Subprogram_Call_Cleanup
+     (Op_Spec   : Node_Id;
+      Conc_Typ  : Node_Id;
+      Loc       : Source_Ptr;
+      Stmts     : List_Id);
+   --  Append to Stmts the cleanups after a call to a protected subprogram
+   --  whose specification is Op_Spec. Conc_Typ is the concurrent type and Loc
+   --  the sloc for appended statements. The cleanup will either unlock the
+   --  protected object or serve pending entries.
 
    procedure Build_Task_Activation_Call (N : Node_Id);
    --  This procedure is called for constructs that can be task activators,
@@ -152,7 +163,8 @@ package Exp_Ch9 is
    --  allocated aggregates with default initialized components. Init_Stmts
    --  contains the list of statements required to initialize the allocated
    --  aggregate. It replaces the call to Init (Args) done by
-   --  Build_Task_Allocate_Block.
+   --  Build_Task_Allocate_Block. Also used to expand allocators containing
+   --  build-in-place function calls.
 
    function Build_Wrapper_Spec
      (Subp_Id : Entity_Id;
@@ -244,12 +256,13 @@ package Exp_Ch9 is
    --  allows these two nodes to be found from the type, without benefit of
    --  further attributes, using Corresponding_Record.
 
-   procedure Expand_N_Requeue_Statement          (N : Node_Id);
-   procedure Expand_N_Selective_Accept           (N : Node_Id);
-   procedure Expand_N_Single_Task_Declaration    (N : Node_Id);
-   procedure Expand_N_Task_Body                  (N : Node_Id);
-   procedure Expand_N_Task_Type_Declaration      (N : Node_Id);
-   procedure Expand_N_Timed_Entry_Call           (N : Node_Id);
+   procedure Expand_N_Requeue_Statement            (N : Node_Id);
+   procedure Expand_N_Selective_Accept             (N : Node_Id);
+   procedure Expand_N_Single_Protected_Declaration (N : Node_Id);
+   procedure Expand_N_Single_Task_Declaration      (N : Node_Id);
+   procedure Expand_N_Task_Body                    (N : Node_Id);
+   procedure Expand_N_Task_Type_Declaration        (N : Node_Id);
+   procedure Expand_N_Timed_Entry_Call             (N : Node_Id);
 
    procedure Expand_Protected_Body_Declarations
      (N       : Node_Id;
@@ -260,13 +273,13 @@ package Exp_Ch9 is
    --  is the entity for the corresponding protected type declaration.
 
    function External_Subprogram (E : Entity_Id) return Entity_Id;
-   --  return the external version of a protected operation, which locks
+   --  Return the external version of a protected operation, which locks
    --  the object before invoking the internal protected subprogram body.
 
    function Find_Master_Scope (E : Entity_Id) return Entity_Id;
    --  When a type includes tasks, a master entity is created in the scope, to
    --  be used by the runtime during activation. In general the master is the
-   --  immediate scope in which the type is declared, but in Ada2005, in the
+   --  immediate scope in which the type is declared, but in Ada 2005, in the
    --  presence of synchronized classwide interfaces, the immediate scope of
    --  an anonymous access type may be a transient scope, which has no run-time
    --  presence. In this case, the scope of the master is the innermost scope

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -40,19 +40,11 @@ package body Ch9 is
    function P_Entry_Body_Formal_Part               return Node_Id;
    function P_Entry_Declaration                    return Node_Id;
    function P_Entry_Index_Specification            return Node_Id;
+   function P_Protected_Definition                 return Node_Id;
    function P_Protected_Operation_Declaration_Opt  return Node_Id;
    function P_Protected_Operation_Items            return List_Id;
    function P_Task_Items                           return List_Id;
-
-   function P_Protected_Definition (Decl : Node_Id) return Node_Id;
-   --  Parses protected definition and following aspect specifications if
-   --  present. The argument is the declaration node to which the aspect
-   --  specifications are to be attached.
-
-   function P_Task_Definition (Decl : Node_Id) return Node_Id;
-   --  Parses task definition and following aspect specifications if present.
-   --  The argument is the declaration node to which the aspect specifications
-   --  are to be attached.
+   function P_Task_Definition return Node_Id;
 
    -----------------------------
    -- 9.1  Task (also 10.1.3) --
@@ -60,23 +52,24 @@ package body Ch9 is
 
    --  TASK_TYPE_DECLARATION ::=
    --    task type DEFINING_IDENTIFIER [KNOWN_DISCRIMINANT_PART]
-   --      [is [new INTERFACE_LIST with] TASK_DEFINITION]
-   --        [ASPECT_SPECIFICATIONS];
+   --      [ASPECT_SPECIFICATIONS]
+   --      [is [new INTERFACE_LIST with] TASK_DEFINITION];
 
    --  SINGLE_TASK_DECLARATION ::=
    --    task DEFINING_IDENTIFIER
-   --      [is [new INTERFACE_LIST with] TASK_DEFINITION]
-   --        [ASPECT_SPECIFICATIONS];
+   --      [ASPECT_SPECIFICATIONS]
+   --      [is [new INTERFACE_LIST with] TASK_DEFINITION];
 
    --  TASK_BODY ::=
-   --    task body DEFINING_IDENTIFIER is
+   --    task body DEFINING_IDENTIFIER [ASPECT_SPECIFICATIONS] is
    --      DECLARATIVE_PART
    --    begin
    --      HANDLED_SEQUENCE_OF_STATEMENTS
    --    end [task_IDENTIFIER]
 
    --  TASK_BODY_STUB ::=
-   --    task body DEFINING_IDENTIFIER is separate;
+   --    task body DEFINING_IDENTIFIER is separate
+   --      [ASPECT_SPECIFICATIONS];
 
    --  This routine scans out a task declaration, task body, or task stub
 
@@ -86,9 +79,15 @@ package body Ch9 is
    --  Error recovery: cannot raise Error_Resync
 
    function P_Task return Node_Id is
-      Name_Node  : Node_Id;
-      Task_Node  : Node_Id;
-      Task_Sloc  : Source_Ptr;
+      Aspect_Sloc : Source_Ptr;
+      Name_Node   : Node_Id;
+      Task_Node   : Node_Id;
+      Task_Sloc   : Source_Ptr;
+
+      Dummy_Node : constant Node_Id := New_Node (N_Task_Body, Token_Ptr);
+      --  Placeholder node used to hold legal or prematurely declared aspect
+      --  specifications. Depending on the context, the aspect specifications
+      --  may be moved to a new node.
 
    begin
       Push_Scope_Stack;
@@ -108,6 +107,11 @@ package body Ch9 is
             Discard_Junk_List (P_Known_Discriminant_Part_Opt);
          end if;
 
+         if Aspect_Specifications_Present then
+            Aspect_Sloc := Token_Ptr;
+            P_Aspect_Specifications (Dummy_Node, Semicolon => False);
+         end if;
+
          TF_Is;
 
          --  Task stub
@@ -116,6 +120,14 @@ package body Ch9 is
             Scan; -- past SEPARATE
             Task_Node := New_Node (N_Task_Body_Stub, Task_Sloc);
             Set_Defining_Identifier (Task_Node, Name_Node);
+
+            if Has_Aspects (Dummy_Node) then
+               Error_Msg
+                 ("aspect specifications must come after SEPARATE",
+                  Aspect_Sloc);
+            end if;
+
+            P_Aspect_Specifications (Task_Node, Semicolon => False);
             TF_Semicolon;
             Pop_Scope_Stack; -- remove unused entry
 
@@ -124,7 +136,25 @@ package body Ch9 is
          else
             Task_Node := New_Node (N_Task_Body, Task_Sloc);
             Set_Defining_Identifier (Task_Node, Name_Node);
+
+            --  Move the aspect specifications to the body node
+
+            if Has_Aspects (Dummy_Node) then
+               Move_Aspects (From => Dummy_Node, To => Task_Node);
+            end if;
+
             Parse_Decls_Begin_End (Task_Node);
+
+            --  The statement list of a task body needs to include at least a
+            --  null statement, so if a parsing error produces an empty list,
+            --  patch it now.
+
+            if No (First (Statements
+                           (Handled_Statement_Sequence (Task_Node))))
+            then
+               Set_Statements (Handled_Statement_Sequence (Task_Node),
+                 New_List (Make_Null_Statement (Token_Ptr)));
+            end if;
          end if;
 
          return Task_Node;
@@ -153,27 +183,26 @@ package body Ch9 is
             end if;
          end if;
 
-         --  If we have aspect definitions present here, then we do not have
-         --  a task definition present.
+         --  Scan aspect specifications, don't eat the semicolon, since it
+         --  might not be there if we have an IS.
 
-         if Aspect_Specifications_Present then
-            P_Aspect_Specifications (Task_Node);
+         P_Aspect_Specifications (Task_Node, Semicolon => False);
 
          --  Parse optional task definition. Note that P_Task_Definition scans
          --  out the semicolon and possible aspect specifications as well as
          --  the task definition itself.
 
-         elsif Token = Tok_Semicolon then
+         if Token = Tok_Semicolon then
 
-            --  A little check, if the next token after semicolon is
-            --  Entry, then surely the semicolon should really be IS
+            --  A little check, if the next token after semicolon is Entry,
+            --  then surely the semicolon should really be IS
 
             Scan; -- past semicolon
 
             if Token = Tok_Entry then
                Error_Msg_SP -- CODEFIX
                  ("|"";"" should be IS");
-               Set_Task_Definition (Task_Node, P_Task_Definition (Task_Node));
+               Set_Task_Definition (Task_Node, P_Task_Definition);
             else
                Pop_Scope_Stack; -- Remove unused entry
             end if;
@@ -214,7 +243,7 @@ package body Ch9 is
                end if;
             end if;
 
-            Set_Task_Definition (Task_Node, P_Task_Definition (Task_Node));
+            Set_Task_Definition (Task_Node, P_Task_Definition);
          end if;
 
          return Task_Node;
@@ -249,11 +278,11 @@ package body Ch9 is
    --  regard the semicolon after end as part of the Task_Definition, and in
    --  the official syntax, it's part of the enclosing declaration. The reason
    --  for this deviation is that otherwise the end processing would have to
-   --  be special cased, which would be a nuisance!
+   --  be special cased, which would be a nuisance.
 
    --  Error recovery:  cannot raise Error_Resync
 
-   function P_Task_Definition (Decl : Node_Id) return Node_Id is
+   function P_Task_Definition return Node_Id is
       Def_Node  : Node_Id;
 
    begin
@@ -273,7 +302,7 @@ package body Ch9 is
          end loop;
       end if;
 
-      End_Statements (Def_Node, Decl);
+      End_Statements (Def_Node);
       return Def_Node;
    end P_Task_Definition;
 
@@ -309,10 +338,10 @@ package body Ch9 is
          Decl_Sloc := Token_Ptr;
 
          if Token = Tok_Pragma then
-            Append (P_Pragma, Items);
+            P_Pragmas_Opt (Items);
 
-         --  Ada 2005 (AI-397): Reserved words NOT and OVERRIDING
-         --  may begin an entry declaration.
+         --  Ada 2005 (AI-397): Reserved words NOT and OVERRIDING may begin an
+         --  entry declaration.
 
          elsif Token = Tok_Entry
            or else Token = Tok_Not
@@ -321,8 +350,9 @@ package body Ch9 is
             Append (P_Entry_Declaration, Items);
 
          elsif Token = Tok_For then
-            --  Representation clause in task declaration. The only rep
-            --  clause which is legal in a protected is an address clause,
+
+            --  Representation clause in task declaration. The only rep clause
+            --  which is legal in a protected declaration is an address clause,
             --  so that is what we try to scan out.
 
             Item_Node := P_Representation_Clause;
@@ -367,21 +397,24 @@ package body Ch9 is
 
    --  PROTECTED_TYPE_DECLARATION ::=
    --    protected type DEFINING_IDENTIFIER [KNOWN_DISCRIMINANT_PART]
-   --      is [new INTERFACE_LIST with] PROTECTED_DEFINITION
-   --        [ASPECT_SPECIFICATIONS];
+   --      [ASPECT_SPECIFICATIONS]
+   --    is [new INTERFACE_LIST with] PROTECTED_DEFINITION;
 
    --  SINGLE_PROTECTED_DECLARATION ::=
    --    protected DEFINING_IDENTIFIER
+   --      [ASPECT_SPECIFICATIONS]
    --    is [new INTERFACE_LIST with] PROTECTED_DEFINITION;
-   --      [ASPECT_SPECIFICATIONS];
 
    --  PROTECTED_BODY ::=
-   --    protected body DEFINING_IDENTIFIER is
+   --    protected body DEFINING_IDENTIFIER
+   --      [ASPECT_SPECIFICATIONS]
+   --    is
    --      {PROTECTED_OPERATION_ITEM}
    --    end [protected_IDENTIFIER];
 
    --  PROTECTED_BODY_STUB ::=
-   --    protected body DEFINING_IDENTIFIER is separate;
+   --    protected body DEFINING_IDENTIFIER is separate
+   --      [ASPECT_SPECIFICATIONS];
 
    --  This routine scans out a protected declaration, protected body
    --  or a protected stub.
@@ -392,10 +425,16 @@ package body Ch9 is
    --  Error recovery: cannot raise Error_Resync
 
    function P_Protected return Node_Id is
+      Aspect_Sloc    : Source_Ptr;
       Name_Node      : Node_Id;
       Protected_Node : Node_Id;
       Protected_Sloc : Source_Ptr;
       Scan_State     : Saved_Scan_State;
+
+      Dummy_Node : constant Node_Id := New_Node (N_Protected_Body, Token_Ptr);
+      --  Placeholder node used to hold legal or prematurely declared aspect
+      --  specifications. Depending on the context, the aspect specifications
+      --  may be moved to a new node.
 
    begin
       Push_Scope_Stack;
@@ -414,14 +453,28 @@ package body Ch9 is
             Discard_Junk_List (P_Known_Discriminant_Part_Opt);
          end if;
 
+         if Aspect_Specifications_Present then
+            Aspect_Sloc := Token_Ptr;
+            P_Aspect_Specifications (Dummy_Node, Semicolon => False);
+         end if;
+
          TF_Is;
 
          --  Protected stub
 
          if Token = Tok_Separate then
             Scan; -- past SEPARATE
+
             Protected_Node := New_Node (N_Protected_Body_Stub, Protected_Sloc);
             Set_Defining_Identifier (Protected_Node, Name_Node);
+
+            if Has_Aspects (Dummy_Node) then
+               Error_Msg
+                 ("aspect specifications must come after SEPARATE",
+                  Aspect_Sloc);
+            end if;
+
+            P_Aspect_Specifications (Protected_Node, Semicolon => False);
             TF_Semicolon;
             Pop_Scope_Stack; -- remove unused entry
 
@@ -430,6 +483,8 @@ package body Ch9 is
          else
             Protected_Node := New_Node (N_Protected_Body, Protected_Sloc);
             Set_Defining_Identifier (Protected_Node, Name_Node);
+
+            Move_Aspects (From => Dummy_Node, To => Protected_Node);
             Set_Declarations (Protected_Node, P_Protected_Operation_Items);
             End_Statements (Protected_Node);
          end if;
@@ -463,6 +518,8 @@ package body Ch9 is
 
             Scope.Table (Scope.Last).Labl := Name_Node;
          end if;
+
+         P_Aspect_Specifications (Protected_Node, Semicolon => False);
 
          --  Check for semicolon not followed by IS, this is something like
 
@@ -525,8 +582,7 @@ package body Ch9 is
             Scan; -- past WITH
          end if;
 
-         Set_Protected_Definition
-           (Protected_Node, P_Protected_Definition (Protected_Node));
+         Set_Protected_Definition (Protected_Node, P_Protected_Definition);
          return Protected_Node;
       end if;
    end P_Protected;
@@ -561,9 +617,11 @@ package body Ch9 is
 
    --  Error recovery: cannot raise Error_Resync
 
-   function P_Protected_Definition (Decl : Node_Id) return Node_Id is
-      Def_Node  : Node_Id;
-      Item_Node : Node_Id;
+   function P_Protected_Definition return Node_Id is
+      Def_Node   : Node_Id;
+      Item_Node  : Node_Id;
+      Priv_Decls : List_Id;
+      Vis_Decls  : List_Id;
 
    begin
       Def_Node := New_Node (N_Protected_Definition, Token_Ptr);
@@ -576,38 +634,68 @@ package body Ch9 is
 
       --  Loop to scan visible declarations (protected operation declarations)
 
-      Set_Visible_Declarations (Def_Node, New_List);
+      Vis_Decls := New_List;
+      Set_Visible_Declarations (Def_Node, Vis_Decls);
+
+      --  Flag and discard all pragmas which cannot appear in the protected
+      --  definition. Note that certain pragmas are still allowed as long as
+      --  they apply to entries, entry families, or protected subprograms.
+
+      P_Pragmas_Opt (Vis_Decls);
 
       loop
          Item_Node := P_Protected_Operation_Declaration_Opt;
+
+         if Present (Item_Node) then
+            Append (Item_Node, Vis_Decls);
+         end if;
+
+         P_Pragmas_Opt (Vis_Decls);
+
          exit when No (Item_Node);
-         Append (Item_Node, Visible_Declarations (Def_Node));
       end loop;
 
       --  Deal with PRIVATE part (including graceful handling of multiple
       --  PRIVATE parts).
 
       Private_Loop : while Token = Tok_Private loop
-         if No (Private_Declarations (Def_Node)) then
-            Set_Private_Declarations (Def_Node, New_List);
-         else
+         Priv_Decls := Private_Declarations (Def_Node);
+
+         if Present (Priv_Decls) then
             Error_Msg_SC ("duplicate private part");
+         else
+            Priv_Decls := New_List;
+            Set_Private_Declarations (Def_Node, Priv_Decls);
          end if;
 
          Scan; -- past PRIVATE
 
+         --  Flag and discard all pragmas which cannot appear in the protected
+         --  definition. Note that certain pragmas are still allowed as long as
+         --  they apply to entries, entry families, or protected subprograms.
+
+         P_Pragmas_Opt (Priv_Decls);
+
          Declaration_Loop : loop
             if Token = Tok_Identifier then
-               P_Component_Items (Private_Declarations (Def_Node));
+               P_Component_Items (Priv_Decls);
+               P_Pragmas_Opt (Priv_Decls);
+
             else
                Item_Node := P_Protected_Operation_Declaration_Opt;
+
+               if Present (Item_Node) then
+                  Append (Item_Node, Priv_Decls);
+               end if;
+
+               P_Pragmas_Opt (Priv_Decls);
+
                exit Declaration_Loop when No (Item_Node);
-               Append (Item_Node, Private_Declarations (Def_Node));
             end if;
          end loop Declaration_Loop;
       end loop Private_Loop;
 
-      End_Statements (Def_Node, Decl);
+      End_Statements (Def_Node);
       return Def_Node;
    end P_Protected_Definition;
 
@@ -808,8 +896,8 @@ package body Ch9 is
 
    --  ENTRY_DECLARATION ::=
    --    [OVERRIDING_INDICATOR]
-   --    entry DEFINING_IDENTIFIER [(DISCRETE_SUBTYPE_DEFINITION)]
-   --      PARAMETER_PROFILE;
+   --    entry DEFINING_IDENTIFIER
+   --      [(DISCRETE_SUBTYPE_DEFINITION)] PARAMETER_PROFILE
    --        [ASPECT_SPECIFICATIONS];
 
    --  The caller has checked that the initial token is ENTRY, NOT or
@@ -992,7 +1080,7 @@ package body Ch9 is
 
             else
                Restore_Scan_State (Scan_State); -- to left paren
-               Scan; -- past left paren (again!)
+               Scan; -- past left paren (again)
                Set_Entry_Index (Accept_Node, P_Expression);
                T_Right_Paren;
                Set_Parameter_Specifications (Accept_Node, P_Parameter_Profile);
@@ -1034,7 +1122,6 @@ package body Ch9 is
          Resync_Past_Semicolon;
          Pop_Scope_Stack; -- discard unused entry
          return Error;
-
    end P_Accept_Statement;
 
    ------------------------
@@ -1043,12 +1130,45 @@ package body Ch9 is
 
    --  Parsed by P_Expression (4.4)
 
+   --------------------------
+   -- 9.5.2  Entry Barrier --
+   --------------------------
+
+   --  ENTRY_BARRIER ::= when CONDITION
+
+   --  Error_Recovery: cannot raise Error_Resync
+
+   function P_Entry_Barrier return Node_Id is
+      Bnode : Node_Id;
+
+   begin
+      if Token = Tok_When then
+         Scan; -- past WHEN;
+         Bnode := P_Expression_No_Right_Paren;
+
+         if Token = Tok_Colon_Equal then
+            Error_Msg_SC -- CODEFIX
+              ("|"":="" should be ""=""");
+            Scan;
+            Bnode := P_Expression_No_Right_Paren;
+         end if;
+
+      else
+         T_When; -- to give error message
+         Bnode := Error;
+      end if;
+
+      return Bnode;
+   end P_Entry_Barrier;
+
    -----------------------
    -- 9.5.2  Entry Body --
    -----------------------
 
    --  ENTRY_BODY ::=
-   --    entry DEFINING_IDENTIFIER ENTRY_BODY_FORMAL_PART ENTRY_BARRIER is
+   --    entry DEFINING_IDENTIFIER ENTRY_BODY_FORMAL_PART
+   --      [ASPECT_SPECIFICATIONS] ENTRY_BARRIER
+   --    is
    --      DECLARATIVE_PART
    --    begin
    --      HANDLED_SEQUENCE_OF_STATEMENTS
@@ -1059,6 +1179,7 @@ package body Ch9 is
    --  Error_Recovery: cannot raise Error_Resync
 
    function P_Entry_Body return Node_Id is
+      Dummy_Node       : Node_Id;
       Entry_Node       : Node_Id;
       Formal_Part_Node : Node_Id;
       Name_Node        : Node_Id;
@@ -1071,6 +1192,7 @@ package body Ch9 is
       Scope.Table (Scope.Last).Ecol := Start_Column;
       Scope.Table (Scope.Last).Lreq := False;
       Scope.Table (Scope.Last).Etyp := E_Name;
+      Scope.Table (Scope.Last).Sloc := Token_Ptr;
 
       Name_Node := P_Defining_Identifier;
       Set_Defining_Identifier (Entry_Node, Name_Node);
@@ -1079,8 +1201,34 @@ package body Ch9 is
       Formal_Part_Node := P_Entry_Body_Formal_Part;
       Set_Entry_Body_Formal_Part (Entry_Node, Formal_Part_Node);
 
+      --  Ada 2012 (AI12-0169): Aspect specifications may appear on an entry
+      --  body immediately after the formal part. Do not parse the aspect
+      --  specifications directly because the "when" of the entry barrier may
+      --  be interpreted as a misused "with".
+
+      if Token = Tok_With then
+         P_Aspect_Specifications (Entry_Node, Semicolon => False);
+      end if;
+
       Set_Condition (Formal_Part_Node, P_Entry_Barrier);
+
+      --  Detect an illegal placement of aspect specifications following the
+      --  entry barrier.
+
+      --    entry E ... when Barrier with Aspect is
+
+      if Token = Tok_With then
+         Error_Msg_SC ("aspect specifications must come before entry barrier");
+
+         --  Consume the illegal aspects to allow for parsing to continue
+
+         Dummy_Node := New_Node (N_Entry_Body, Sloc (Entry_Node));
+         P_Aspect_Specifications (Dummy_Node, Semicolon => False);
+      end if;
+
+      TF_Is;
       Parse_Decls_Begin_End (Entry_Node);
+
       return Entry_Node;
    end P_Entry_Body;
 
@@ -1128,38 +1276,6 @@ package body Ch9 is
       Set_Parameter_Specifications (Fpart_Node, P_Parameter_Profile);
       return Fpart_Node;
    end P_Entry_Body_Formal_Part;
-
-   --------------------------
-   -- 9.5.2  Entry Barrier --
-   --------------------------
-
-   --  ENTRY_BARRIER ::= when CONDITION
-
-   --  Error_Recovery: cannot raise Error_Resync
-
-   function P_Entry_Barrier return Node_Id is
-      Bnode : Node_Id;
-
-   begin
-      if Token = Tok_When then
-         Scan; -- past WHEN;
-         Bnode := P_Expression_No_Right_Paren;
-
-         if Token = Tok_Colon_Equal then
-            Error_Msg_SC -- CODEFIX
-              ("|"":="" should be ""=""");
-            Scan;
-            Bnode := P_Expression_No_Right_Paren;
-         end if;
-
-      else
-         T_When; -- to give error message
-         Bnode := Error;
-      end if;
-
-      TF_Is;
-      return Bnode;
-   end P_Entry_Barrier;
 
    --------------------------------------
    -- 9.5.2  Entry Index Specification --
@@ -1235,7 +1351,7 @@ package body Ch9 is
       Scan; -- past DELAY
 
       --  The following check for delay until misused in Ada 83 doesn't catch
-      --  all cases, but it's good enough to catch most of them!
+      --  all cases, but it's good enough to catch most of them.
 
       if Token_Name = Name_Until then
          Check_95_Keyword (Tok_Until, Tok_Left_Paren);

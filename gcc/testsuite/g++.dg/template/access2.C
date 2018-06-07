@@ -9,12 +9,12 @@ template <class T> struct A {
 };
 
 class B {
-  typedef int X;			// { dg-error "private" }
-  static int i;				// { dg-error "private" }
+  typedef int X;			// { dg-message "private" }
+  static int i;				// { dg-message "private" }
 };
 
 int main()
 {
-  A<B> ab;				// { dg-message "instantiated" }
-  ab.f();				// { dg-message "instantiated" }
+  A<B> ab;				// { dg-message "required" }
+  ab.f();				// { dg-message "required" }
 }

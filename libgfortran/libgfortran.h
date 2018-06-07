@@ -1,7 +1,5 @@
 /* Common declarations for all of libgfortran.
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-   2011
-   Free Software Foundation, Inc.
+   Copyright (C) 2002-2017 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>, and
    Andy Vaught <andy@xena.eas.asu.edu>
 
@@ -42,10 +40,20 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include "config.h"
 
 #include <stdio.h>
-#include <math.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <float.h>
 #include <stdarg.h>
+#include <stdbool.h>
+
+#if HAVE_COMPLEX_H
+/* Must appear before math.h on VMS systems.  */
+# include <complex.h>
+#else
+#define complex __complex__
+#endif
+
+#include <math.h>
 
 /* If we're support quad-precision floating-point type, include the
    header to our support library.  */
@@ -64,12 +72,6 @@ extern long double __strtold (const char *, char **);
 #define gfc_strtof strtof
 #define gfc_strtod strtod
 #define gfc_strtold strtold
-#endif
-
-#if HAVE_COMPLEX_H
-# include <complex.h>
-#else
-#define complex __complex__
 #endif
 
 #include "../gcc/fortran/libgfortran.h"
@@ -96,47 +98,29 @@ typedef off_t gfc_offset;
 #define NULL (void *) 0
 #endif
 
-#ifndef __GNUC__
-#define __attribute__(x)
-#define likely(x)       (x)
-#define unlikely(x)     (x)
-#else
+
+/* The following macros can be used to annotate conditions which are likely or
+   unlikely to be true.  Avoid using them when a condition is only slightly
+   more likely/less unlikely than average to avoid the performance penalties of
+   branch misprediction. In addition, as __builtin_expect overrides the compiler
+   heuristic, do not use in conditions where one of the branches ends with a
+   call to a function with __attribute__((noreturn)): the compiler internal
+   heuristic will mark this branch as much less likely as unlikely() would
+   do.  */
+
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
-#endif
 
+/* This macro can be used to annotate conditions which we know to
+   be true, so that the compiler can optimize based on the condition.  */
 
-/* We use intptr_t and uintptr_t, which may not be always defined in
-   system headers.  */
+#define GFC_ASSERT(EXPR)                                                \
+  ((void)(__builtin_expect (!(EXPR), 0) ? __builtin_unreachable (), 0 : 0))
 
-#ifndef HAVE_INTPTR_T
-#if __SIZEOF_POINTER__ == __SIZEOF_LONG__
-#define intptr_t long
-#elif __SIZEOF_POINTER__ == __SIZEOF_LONG_LONG__
-#define intptr_t long long
-#elif __SIZEOF_POINTER__ == __SIZEOF_INT__
-#define intptr_t int
-#elif __SIZEOF_POINTER__ == __SIZEOF_SHORT__
-#define intptr_t short
-#else
-#error "Pointer type with unexpected size"
+/* Make sure we have ptrdiff_t. */
+#ifndef HAVE_PTRDIFF_T
+typedef intptr_t ptrdiff_t;
 #endif
-#endif
-
-#ifndef HAVE_UINTPTR_T
-#if __SIZEOF_POINTER__ == __SIZEOF_LONG__
-#define uintptr_t unsigned long
-#elif __SIZEOF_POINTER__ == __SIZEOF_LONG_LONG__
-#define uintptr_t unsigned long long
-#elif __SIZEOF_POINTER__ == __SIZEOF_INT__
-#define uintptr_t unsigned int
-#elif __SIZEOF_POINTER__ == __SIZEOF_SHORT__
-#define uintptr_t unsigned short
-#else
-#error "Pointer type with unexpected size"
-#endif
-#endif
-
 
 /* On mingw, work around the buggy Windows snprintf() by using the one
    mingw provides, __mingw_snprintf().  We also provide a prototype for
@@ -146,6 +130,10 @@ extern int __mingw_snprintf (char *, size_t, const char *, ...)
      __attribute__ ((format (gnu_printf, 3, 4)));
 #undef snprintf
 #define snprintf __mingw_snprintf
+/* Fallback to sprintf if target does not have snprintf.  */
+#elif !defined(HAVE_SNPRINTF)
+#undef snprintf
+#define snprintf(str, size, ...) sprintf (str, __VA_ARGS__)
 #endif
 
 
@@ -247,11 +235,6 @@ extern int __mingw_snprintf (char *, size_t, const char *, ...)
 #undef signbit
 #define signbit(x) __builtin_signbit(x)
 
-/* TODO: find the C99 version of these an move into above ifdef.  */
-#define REALPART(z) (__real__(z))
-#define IMAGPART(z) (__imag__(z))
-#define COMPLEX_ASSIGN(z_, r_, i_) {__real__(z_) = (r_); __imag__(z_) = (i_);}
-
 #include "kinds.h"
 
 /* Define the type used for the current record number for large file I/O.
@@ -269,7 +252,7 @@ typedef GFC_INTEGER_4 GFC_IO_INT;
 /* The following two definitions must be consistent with the types used
    by the compiler.  */
 /* The type used of array indices, amongst other things.  */
-typedef ssize_t index_type;
+typedef ptrdiff_t index_type;
 
 /* The type used for the lengths of character variables.  */
 typedef GFC_INTEGER_4 gfc_charlen_type;
@@ -345,7 +328,7 @@ internal_proto(big_endian);
 typedef struct descriptor_dimension
 {
   index_type _stride;
-  index_type _lbound;
+  index_type lower_bound;
   index_type _ubound;
 }
 
@@ -353,7 +336,7 @@ descriptor_dimension;
 
 #define GFC_ARRAY_DESCRIPTOR(r, type) \
 struct {\
-  type *data;\
+  type *base_addr;\
   size_t offset;\
   index_type dtype;\
   descriptor_dimension dim[r];\
@@ -398,26 +381,26 @@ typedef GFC_ARRAY_DESCRIPTOR (GFC_MAX_DIMENSIONS, GFC_LOGICAL_16) gfc_array_l16;
 #define GFC_DESCRIPTOR_TYPE(desc) (((desc)->dtype & GFC_DTYPE_TYPE_MASK) \
                                    >> GFC_DTYPE_TYPE_SHIFT)
 #define GFC_DESCRIPTOR_SIZE(desc) ((desc)->dtype >> GFC_DTYPE_SIZE_SHIFT)
-#define GFC_DESCRIPTOR_DATA(desc) ((desc)->data)
+#define GFC_DESCRIPTOR_DATA(desc) ((desc)->base_addr)
 #define GFC_DESCRIPTOR_DTYPE(desc) ((desc)->dtype)
 
-#define GFC_DIMENSION_LBOUND(dim) ((dim)._lbound)
+#define GFC_DIMENSION_LBOUND(dim) ((dim).lower_bound)
 #define GFC_DIMENSION_UBOUND(dim) ((dim)._ubound)
 #define GFC_DIMENSION_STRIDE(dim) ((dim)._stride)
-#define GFC_DIMENSION_EXTENT(dim) ((dim)._ubound + 1 - (dim)._lbound)
+#define GFC_DIMENSION_EXTENT(dim) ((dim)._ubound + 1 - (dim).lower_bound)
 #define GFC_DIMENSION_SET(dim,lb,ub,str) \
   do \
     { \
-      (dim)._lbound = lb;			\
+      (dim).lower_bound = lb;			\
       (dim)._ubound = ub;			\
       (dim)._stride = str;			\
     } while (0)
 	    
 
-#define GFC_DESCRIPTOR_LBOUND(desc,i) ((desc)->dim[i]._lbound)
+#define GFC_DESCRIPTOR_LBOUND(desc,i) ((desc)->dim[i].lower_bound)
 #define GFC_DESCRIPTOR_UBOUND(desc,i) ((desc)->dim[i]._ubound)
 #define GFC_DESCRIPTOR_EXTENT(desc,i) ((desc)->dim[i]._ubound + 1 \
-				      - (desc)->dim[i]._lbound)
+				      - (desc)->dim[i].lower_bound)
 #define GFC_DESCRIPTOR_EXTENT_BYTES(desc,i) \
   (GFC_DESCRIPTOR_EXTENT(desc,i) * GFC_DESCRIPTOR_SIZE(desc))
 
@@ -427,8 +410,7 @@ typedef GFC_ARRAY_DESCRIPTOR (GFC_MAX_DIMENSIONS, GFC_LOGICAL_16) gfc_array_l16;
 
 /* Macros to get both the size and the type with a single masking operation  */
 
-#define GFC_DTYPE_SIZE_MASK \
-  ((~((index_type) 0) >> GFC_DTYPE_SIZE_SHIFT) << GFC_DTYPE_SIZE_SHIFT)
+#define GFC_DTYPE_SIZE_MASK (-((index_type) 1 << GFC_DTYPE_SIZE_SHIFT))
 #define GFC_DTYPE_TYPE_SIZE_MASK (GFC_DTYPE_SIZE_MASK | GFC_DTYPE_TYPE_MASK)
 
 #define GFC_DTYPE_TYPE_SIZE(desc) ((desc)->dtype & GFC_DTYPE_TYPE_SIZE_MASK)
@@ -531,16 +513,16 @@ typedef struct
   int separator_len;
   const char *separator;
 
-  int use_stderr, all_unbuffered, unbuffered_preconnected, default_recl;
-  int fpe, dump_core, backtrace;
+  int all_unbuffered, unbuffered_preconnected, default_recl;
+  int fpe, backtrace;
 }
 options_t;
 
 extern options_t options;
 internal_proto(options);
 
-extern void handler (int);
-internal_proto(handler);
+extern void backtrace_handler (int);
+internal_proto(backtrace_handler);
 
 
 /* Compile-time options that will influence the library.  */
@@ -551,13 +533,12 @@ typedef struct
   int allow_std;
   int pedantic;
   int convert;
-  int dump_core;
   int backtrace;
   int sign_zero;
   size_t record_marker;
   int max_subrecord_length;
   int bounds_check;
-  int range_check;
+  int fpe_summary;
 }
 compile_options_t;
 
@@ -586,10 +567,6 @@ typedef enum
 { NOTIFICATION_SILENT, NOTIFICATION_WARNING, NOTIFICATION_ERROR }
 notification;
 
-/* This is returned by notify_std and several io functions.  */
-typedef enum
-{ SUCCESS = 1, FAILURE }
-try;
 
 /* The filename and line number don't go inside the globals structure.
    They are set by the rest of the program and must be linked to.  */
@@ -601,14 +578,6 @@ iexport_data_proto(line);
 extern char *filename;
 iexport_data_proto(filename);
 
-/* Avoid conflicting prototypes of alloca() in system headers by using 
-   GCC's builtin alloca().  */
-#define gfc_alloca(x)  __builtin_alloca(x)
-
-
-/* Directory for creating temporary files.  Only used when none of the
-   following environment variables exist: GFORTRAN_TMPDIR, TMP and TEMP.  */
-#define DEFAULT_TEMPDIR "/tmp"
 
 /* The default value of record length for preconnected units is defined
    here. This value can be overriden by an environment variable.
@@ -646,6 +615,7 @@ st_parameter_common;
 
 #define IOPARM_COMMON_MASK              ((1 << 7) - 1)
 
+/* Make sure to keep in sync with io/io.h (st_parameter_open).  */
 #define IOPARM_OPEN_HAS_RECL_IN         (1 << 7)
 #define IOPARM_OPEN_HAS_FILE            (1 << 8)
 #define IOPARM_OPEN_HAS_STATUS          (1 << 9)
@@ -663,6 +633,9 @@ st_parameter_common;
 #define IOPARM_OPEN_HAS_SIGN		(1 << 21)
 #define IOPARM_OPEN_HAS_ASYNCHRONOUS	(1 << 22)
 #define IOPARM_OPEN_HAS_NEWUNIT		(1 << 23)
+#define IOPARM_OPEN_HAS_READONLY	(1 << 24)
+#define IOPARM_OPEN_HAS_CC              (1 << 25)
+#define IOPARM_OPEN_HAS_SHARE           (1 << 26)
 
 /* library start function and end macro.  These can be expanded if needed
    in the future.  cmp is st_parameter_common *cmp  */
@@ -683,16 +656,11 @@ iexport_proto(set_args);
 extern void get_args (int *, char ***);
 internal_proto(get_args);
 
-extern void store_exe_path (const char *);
-export_proto(store_exe_path);
-
-extern char * full_exe_path (void);
-internal_proto(full_exe_path);
-
 /* backtrace.c */
 
-extern void show_backtrace (void);
+extern void show_backtrace (bool);
 internal_proto(show_backtrace);
+
 
 /* error.c */
 
@@ -711,32 +679,44 @@ internal_proto(show_backtrace);
 #define GFC_OTOA_BUF_SIZE (GFC_LARGEST_BUF * 3 + 1)
 #define GFC_BTOA_BUF_SIZE (GFC_LARGEST_BUF * 8 + 1)
 
-extern void sys_exit (int) __attribute__ ((noreturn));
-internal_proto(sys_exit);
+extern _Noreturn void sys_abort (void);
+internal_proto(sys_abort);
+
+extern _Noreturn void exit_error (int);
+internal_proto(exit_error);
+
+extern ssize_t estr_write (const char *);
+internal_proto(estr_write);
+
+extern int st_vprintf (const char *, va_list);
+internal_proto(st_vprintf);
+
+extern int st_printf (const char *, ...)
+  __attribute__((format (gfc_printf, 1, 2)));
+internal_proto(st_printf);
 
 extern const char *gfc_xtoa (GFC_UINTEGER_LARGEST, char *, size_t);
 internal_proto(gfc_xtoa);
 
-extern void os_error (const char *) __attribute__ ((noreturn));
+extern _Noreturn void os_error (const char *);
 iexport_proto(os_error);
 
 extern void show_locus (st_parameter_common *);
 internal_proto(show_locus);
 
-extern void runtime_error (const char *, ...)
-     __attribute__ ((noreturn, format (gfc_printf, 1, 2)));
+extern _Noreturn void runtime_error (const char *, ...)
+     __attribute__ ((format (gfc_printf, 1, 2)));
 iexport_proto(runtime_error);
 
-extern void runtime_error_at (const char *, const char *, ...)
-     __attribute__ ((noreturn, format (gfc_printf, 2, 3)));
+extern _Noreturn void runtime_error_at (const char *, const char *, ...)
+     __attribute__ ((format (gfc_printf, 2, 3)));
 iexport_proto(runtime_error_at);
 
 extern void runtime_warning_at (const char *, const char *, ...)
      __attribute__ ((format (gfc_printf, 2, 3)));
 iexport_proto(runtime_warning_at);
 
-extern void internal_error (st_parameter_common *, const char *)
-  __attribute__ ((noreturn));
+extern _Noreturn void internal_error (st_parameter_common *, const char *);
 internal_proto(internal_error);
 
 extern const char *translate_error (int);
@@ -748,7 +728,7 @@ iexport_proto(generate_error);
 extern void generate_warning (st_parameter_common *, const char *);
 internal_proto(generate_warning);
 
-extern try notify_std (st_parameter_common *, int, const char *);
+extern bool notify_std (st_parameter_common *, int, const char *);
 internal_proto(notify_std);
 
 extern notification notification_std(int);
@@ -762,27 +742,81 @@ internal_proto(gf_strerror);
 extern void set_fpu (void);
 internal_proto(set_fpu);
 
+extern int get_fpu_trap_exceptions (void);
+internal_proto(get_fpu_trap_exceptions);
+
+extern void set_fpu_trap_exceptions (int, int);
+internal_proto(set_fpu_trap_exceptions);
+
+extern int support_fpu_trap (int);
+internal_proto(support_fpu_trap);
+
+extern int get_fpu_except_flags (void);
+internal_proto(get_fpu_except_flags);
+
+extern void set_fpu_except_flags (int, int);
+internal_proto(set_fpu_except_flags);
+
+extern int support_fpu_flag (int);
+internal_proto(support_fpu_flag);
+
+extern void set_fpu_rounding_mode (int);
+internal_proto(set_fpu_rounding_mode);
+
+extern int get_fpu_rounding_mode (void);
+internal_proto(get_fpu_rounding_mode);
+
+extern int support_fpu_rounding_mode (int);
+internal_proto(support_fpu_rounding_mode);
+
+extern void get_fpu_state (void *);
+internal_proto(get_fpu_state);
+
+extern void set_fpu_state (void *);
+internal_proto(set_fpu_state);
+
+extern int get_fpu_underflow_mode (void);
+internal_proto(get_fpu_underflow_mode);
+
+extern void set_fpu_underflow_mode (int);
+internal_proto(set_fpu_underflow_mode);
+
+extern int support_fpu_underflow_control (int);
+internal_proto(support_fpu_underflow_control);
+
 /* memory.c */
 
-extern void *get_mem (size_t) __attribute__ ((malloc));
-internal_proto(get_mem);
+extern void *xmalloc (size_t) __attribute__ ((malloc));
+internal_proto(xmalloc);
 
-extern void *internal_malloc_size (size_t) __attribute__ ((malloc));
-internal_proto(internal_malloc_size);
+extern void *xmallocarray (size_t, size_t) __attribute__ ((malloc));
+internal_proto(xmallocarray);
+
+extern void *xcalloc (size_t, size_t) __attribute__ ((malloc));
+internal_proto(xcalloc);
+
+extern void *xrealloc (void *, size_t);
+internal_proto(xrealloc);
 
 /* environ.c */
-
-extern int check_buffered (int);
-internal_proto(check_buffered);
 
 extern void init_variables (void);
 internal_proto(init_variables);
 
-extern void show_variables (void);
-internal_proto(show_variables);
-
 unit_convert get_unformatted_convert (int);
 internal_proto(get_unformatted_convert);
+
+/* Secure getenv() which returns NULL if running as SUID/SGID.  */
+#ifndef HAVE_SECURE_GETENV
+#if defined(HAVE_GETUID) && defined(HAVE_GETEUID) \
+  && defined(HAVE_GETGID) && defined(HAVE_GETEGID)
+#define FALLBACK_SECURE_GETENV
+extern char *secure_getenv (const char *);
+internal_proto(secure_getenv);
+#else
+#define secure_getenv getenv
+#endif
+#endif
 
 /* string.c */
 
@@ -798,6 +832,22 @@ internal_proto(fstrcpy);
 
 extern gfc_charlen_type cf_strcpy (char *, gfc_charlen_type, const char *);
 internal_proto(cf_strcpy);
+
+extern gfc_charlen_type string_len_trim (gfc_charlen_type, const char *);
+export_proto(string_len_trim);
+
+extern gfc_charlen_type string_len_trim_char4 (gfc_charlen_type,
+					       const gfc_char4_t *);
+export_proto(string_len_trim_char4);
+
+extern char *fc_strdup(const char *, gfc_charlen_type);
+internal_proto(fc_strdup);
+
+extern char *fc_strdup_notrim(const char *, gfc_charlen_type);
+internal_proto(fc_strdup_notrim);
+
+extern const char *gfc_itoa(GFC_INTEGER_LARGEST, char *, size_t);
+internal_proto(gfc_itoa);
 
 /* io/intrinsics.c */
 
@@ -815,20 +865,12 @@ internal_proto(close_units);
 extern int unit_to_fd (int);
 internal_proto(unit_to_fd);
 
-extern int st_printf (const char *, ...)
-  __attribute__ ((format (gfc_printf, 1, 2)));
-internal_proto(st_printf);
-
-extern int st_vprintf (const char *, va_list);
-internal_proto(st_vprintf);
-
 extern char * filename_from_unit (int);
 internal_proto(filename_from_unit);
 
 /* stop.c */
 
-extern void stop_string (const char *, GFC_INTEGER_4)
-  __attribute__ ((noreturn));
+extern _Noreturn void stop_string (const char *, GFC_INTEGER_4);
 export_proto(stop_string);
 
 /* reshape_packed.c */
@@ -1284,6 +1326,10 @@ extern int compare_string_char4 (gfc_charlen_type, const gfc_char4_t *,
 				 gfc_charlen_type, const gfc_char4_t *);
 iexport_proto(compare_string_char4);
 
+extern int memcmp_char4 (const void *, const void *, size_t);
+internal_proto(memcmp_char4);
+
+
 /* random.c */
 
 extern void random_seed_i4 (GFC_INTEGER_4 * size, gfc_array_i4 * put,
@@ -1323,52 +1369,52 @@ internal_proto(count_0);
 
 /* Internal auxiliary functions for cshift */
 
-void cshift0_i1 (gfc_array_i1 *, const gfc_array_i1 *, ssize_t, int);
+void cshift0_i1 (gfc_array_i1 *, const gfc_array_i1 *, ptrdiff_t, int);
 internal_proto(cshift0_i1);
 
-void cshift0_i2 (gfc_array_i2 *, const gfc_array_i2 *, ssize_t, int);
+void cshift0_i2 (gfc_array_i2 *, const gfc_array_i2 *, ptrdiff_t, int);
 internal_proto(cshift0_i2);
 
-void cshift0_i4 (gfc_array_i4 *, const gfc_array_i4 *, ssize_t, int);
+void cshift0_i4 (gfc_array_i4 *, const gfc_array_i4 *, ptrdiff_t, int);
 internal_proto(cshift0_i4);
 
-void cshift0_i8 (gfc_array_i8 *, const gfc_array_i8 *, ssize_t, int);
+void cshift0_i8 (gfc_array_i8 *, const gfc_array_i8 *, ptrdiff_t, int);
 internal_proto(cshift0_i8);
 
 #ifdef HAVE_GFC_INTEGER_16
-void cshift0_i16 (gfc_array_i16 *, const gfc_array_i16 *, ssize_t, int);
+void cshift0_i16 (gfc_array_i16 *, const gfc_array_i16 *, ptrdiff_t, int);
 internal_proto(cshift0_i16);
 #endif
 
-void cshift0_r4 (gfc_array_r4 *, const gfc_array_r4 *, ssize_t, int);
+void cshift0_r4 (gfc_array_r4 *, const gfc_array_r4 *, ptrdiff_t, int);
 internal_proto(cshift0_r4);
 
-void cshift0_r8 (gfc_array_r8 *, const gfc_array_r8 *, ssize_t, int);
+void cshift0_r8 (gfc_array_r8 *, const gfc_array_r8 *, ptrdiff_t, int);
 internal_proto(cshift0_r8);
 
 #ifdef HAVE_GFC_REAL_10
-void cshift0_r10 (gfc_array_r10 *, const gfc_array_r10 *, ssize_t, int);
+void cshift0_r10 (gfc_array_r10 *, const gfc_array_r10 *, ptrdiff_t, int);
 internal_proto(cshift0_r10);
 #endif
 
 #ifdef HAVE_GFC_REAL_16
-void cshift0_r16 (gfc_array_r16 *, const gfc_array_r16 *, ssize_t, int);
+void cshift0_r16 (gfc_array_r16 *, const gfc_array_r16 *, ptrdiff_t, int);
 internal_proto(cshift0_r16);
 #endif
 
-void cshift0_c4 (gfc_array_c4 *, const gfc_array_c4 *, ssize_t, int);
+void cshift0_c4 (gfc_array_c4 *, const gfc_array_c4 *, ptrdiff_t, int);
 internal_proto(cshift0_c4);
 
-void cshift0_c8 (gfc_array_c8 *, const gfc_array_c8 *, ssize_t, int);
+void cshift0_c8 (gfc_array_c8 *, const gfc_array_c8 *, ptrdiff_t, int);
 internal_proto(cshift0_c8);
 
 #ifdef HAVE_GFC_COMPLEX_10
-void cshift0_c10 (gfc_array_c10 *, const gfc_array_c10 *, ssize_t, int);
+void cshift0_c10 (gfc_array_c10 *, const gfc_array_c10 *, ptrdiff_t, int);
 internal_proto(cshift0_c10);
 #endif
 
 #ifdef HAVE_GFC_COMPLEX_16
-void cshift0_c16 (gfc_array_c16 *, const gfc_array_c16 *, ssize_t, int);
+void cshift0_c16 (gfc_array_c16 *, const gfc_array_c16 *, ptrdiff_t, int);
 internal_proto(cshift0_c16);
 #endif
 

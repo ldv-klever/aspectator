@@ -1,7 +1,6 @@
-// { dg-options "-std=gnu++0x" }
+// { dg-do run { target c++11 } }
 
-// Copyright (C) 2005, 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -24,10 +23,6 @@
 
 #undef _GLIBCXX_CONCEPT_CHECKS
 
-// XXX FIXME:  parallel-mode should deal correctly with moveable-only types
-// per C++0x, at minimum smoothly fall back to serial.
-#undef _GLIBCXX_PARALLEL
-
 #include <algorithm>
 #include <testsuite_hooks.h>
 #include <testsuite_iterators.h>
@@ -43,12 +38,9 @@ typedef test_container<rvalstruct, forward_iterator_wrapper> Fcontainer;
 typedef test_container<rvalstruct, bidirectional_iterator_wrapper> Bcontainer; 
 typedef test_container<rvalstruct, random_access_iterator_wrapper> Rcontainer; 
 
-
-
 void
 test1()
 {
-  bool test __attribute__((unused)) = true;
   int data[] = {1, 2, 3, 4, 5};
   rvalstruct array[5];
   std::copy(data, data + 5, array); 

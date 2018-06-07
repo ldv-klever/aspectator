@@ -1,6 +1,5 @@
 /* Definitions of target machine GNU compiler.  IA-64 version.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-   2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 1999-2017 Free Software Foundation, Inc.
    Contributed by James E. Wilson <wilson@cygnus.com> and
    		  David Mosberger <davidm@hpl.hp.com>.
 
@@ -102,19 +101,6 @@ enum ia64_inline_type
 #ifndef TARGET_CPU_DEFAULT
 #define TARGET_CPU_DEFAULT 0
 #endif
-
-/* Which processor to schedule for. The cpu attribute defines a list
-   that mirrors this list, so changes to ia64.md must be made at the
-   same time.  */
-
-enum processor_type
-{
-  PROCESSOR_ITANIUM,			/* Original Itanium.  */
-  PROCESSOR_ITANIUM2,
-  PROCESSOR_max
-};
-
-extern enum processor_type ia64_tune;
 
 /* Driver configuration */
 
@@ -267,13 +253,6 @@ while (0)
    : TARGET_ABI_OPEN_VMS ? 64 \
    : 80)
 
-/* We always want the XFmode operations from libgcc2.c, except on VMS
-   where this yields references to unimplemented "insns".  */
-#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE  (TARGET_ABI_OPEN_VMS ? 64 : 80)
-
-
-/* On HP-UX, we use the l suffix for TFmode in libgcc2.c.  */
-#define LIBGCC2_TF_CEXT l
 
 #define DEFAULT_SIGNED_CHAR 1
 
@@ -787,19 +766,6 @@ enum reg_class
     0xFFFFFFFF, 0xFFFFFFFF, 0x3FFF },			\
 }
 
-/* The following macro defines cover classes for Integrated Register
-   Allocator.  Cover classes is a set of non-intersected register
-   classes covering all hard registers used for register allocation
-   purpose.  Any move between two registers of a cover class should be
-   cheaper than load or store of the registers.  The macro value is
-   array of register classes with LIM_REG_CLASSES used as the end
-   marker.  */
-
-#define IRA_COVER_CLASSES						     \
-{									     \
-  PR_REGS, BR_REGS, AR_M_REGS, AR_I_REGS, GR_REGS, FR_REGS, LIM_REG_CLASSES  \
-}
-
 /* A C expression whose value is a register class containing hard register
    REGNO.  In general there is more than one such class; choose a class which
    is "minimal", meaning that no smaller class also contains the register.  */
@@ -930,7 +896,7 @@ enum reg_class
    RTL is either a `REG', indicating that the return value is saved in `REG',
    or a `MEM' representing a location in the stack.  This enables DWARF2
    unwind info for C++ EH.  */
-#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG (VOIDmode, BR_REG (0))
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG (Pmode, BR_REG (0))
 
 /* A C expression whose value is an integer giving the offset, in bytes, from
    the value of the stack pointer register to the top of the stack frame at the
@@ -995,10 +961,8 @@ enum reg_class
   {FRAME_POINTER_REGNUM, HARD_FRAME_POINTER_REGNUM},			\
 }
 
-/* This macro is similar to `INITIAL_FRAME_POINTER_OFFSET'.  It
-   specifies the initial difference between the specified pair of
-   registers.  This macro must be defined if `ELIMINABLE_REGS' is
-   defined.  */
+/* This macro returns the initial difference between the specified pair
+   of registers.  */
 #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET) \
   ((OFFSET) = ia64_initial_elimination_offset ((FROM), (TO)))
 
@@ -1180,57 +1144,6 @@ do {									\
 
 #define MAX_REGS_PER_ADDRESS 2
 
-/* A C compound statement with a conditional `goto LABEL;' executed if X (an
-   RTX) is a legitimate memory address on the target machine for a memory
-   operand of mode MODE.  */
-
-#define LEGITIMATE_ADDRESS_REG(X)					\
-  ((GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
-   || (GET_CODE (X) == SUBREG && GET_CODE (XEXP (X, 0)) == REG		\
-       && REG_OK_FOR_BASE_P (XEXP (X, 0))))
-
-#define LEGITIMATE_ADDRESS_DISP(R, X)					\
-  (GET_CODE (X) == PLUS							\
-   && rtx_equal_p (R, XEXP (X, 0))					\
-   && (LEGITIMATE_ADDRESS_REG (XEXP (X, 1))				\
-       || (GET_CODE (XEXP (X, 1)) == CONST_INT				\
-	   && INTVAL (XEXP (X, 1)) >= -256				\
-	   && INTVAL (XEXP (X, 1)) < 256)))
-
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, LABEL) 			\
-do {									\
-  if (LEGITIMATE_ADDRESS_REG (X))					\
-    goto LABEL;								\
-  else if ((GET_CODE (X) == POST_INC || GET_CODE (X) == POST_DEC)	\
-	   && LEGITIMATE_ADDRESS_REG (XEXP (X, 0))			\
-	   && XEXP (X, 0) != arg_pointer_rtx)				\
-    goto LABEL;								\
-  else if (GET_CODE (X) == POST_MODIFY					\
-	   && LEGITIMATE_ADDRESS_REG (XEXP (X, 0))			\
-	   && XEXP (X, 0) != arg_pointer_rtx				\
-	   && LEGITIMATE_ADDRESS_DISP (XEXP (X, 0), XEXP (X, 1)))	\
-    goto LABEL;								\
-} while (0)
-
-/* A C expression that is nonzero if X (assumed to be a `reg' RTX) is valid for
-   use as a base register.  */
-
-#ifdef REG_OK_STRICT
-#define REG_OK_FOR_BASE_P(X) REGNO_OK_FOR_BASE_P (REGNO (X))
-#else
-#define REG_OK_FOR_BASE_P(X) \
-  (GENERAL_REGNO_P (REGNO (X)) || (REGNO (X) >= FIRST_PSEUDO_REGISTER))
-#endif
-
-/* A C expression that is nonzero if X (assumed to be a `reg' RTX) is valid for
-   use as an index register.  This is needed for POST_MODIFY.  */
-
-#define REG_OK_FOR_INDEX_P(X) REG_OK_FOR_BASE_P (X)
-
-/* A C expression that is nonzero if X is a legitimate constant for an
-   immediate operand on the target machine.  */
-
-#define LEGITIMATE_CONSTANT_P(X) ia64_legitimate_constant_p (X)
 
 /* Condition Code Status */
 
@@ -1263,7 +1176,7 @@ do {									\
    Indirect function calls are more expensive that direct function calls, so
    don't cse function addresses.  */
 
-#define NO_FUNCTION_CSE
+#define NO_FUNCTION_CSE 1
 
 
 /* Dividing the output into sections.  */
@@ -1543,27 +1456,6 @@ do {									\
   { "loc79", LOC_REG (79) }, 						\
 }
 
-/* A C compound statement to output to stdio stream STREAM the assembler syntax
-   for an instruction operand X.  X is an RTL expression.  */
-
-#define PRINT_OPERAND(STREAM, X, CODE) \
-  ia64_print_operand (STREAM, X, CODE)
-
-/* A C expression which evaluates to true if CODE is a valid punctuation
-   character for use in the `PRINT_OPERAND' macro.  */
-
-/* ??? Keep this around for now, as we might need it later.  */
-
-#define PRINT_OPERAND_PUNCT_VALID_P(CODE) \
-  ((CODE) == '+' || (CODE) == ',')
-
-/* A C compound statement to output to stdio stream STREAM the assembler syntax
-   for an instruction operand that is a memory reference whose address is X.  X
-   is an RTL expression.  */
-
-#define PRINT_OPERAND_ADDRESS(STREAM, X) \
-  ia64_print_operand_address (STREAM, X)
-
 /* If defined, C string expressions to be used for the `%R', `%L', `%U', and
    `%I' options of `asm_fprintf' (see `final.c').  */
 
@@ -1582,15 +1474,15 @@ do {									\
 
 #define ASM_OUTPUT_ADDR_DIFF_ELT(STREAM, BODY, VALUE, REL)	\
   do {								\
-  if (TARGET_ILP32)						\
+  if (CASE_VECTOR_MODE == SImode)				\
     fprintf (STREAM, "\tdata4 @pcrel(.L%d)\n", VALUE);		\
   else								\
     fprintf (STREAM, "\tdata8 @pcrel(.L%d)\n", VALUE);		\
   } while (0)
 
-/* Jump tables only need 8 byte alignment.  */
+/* Jump tables only need 4 or 8 byte alignment.  */
 
-#define ADDR_VEC_ALIGN(ADDR_VEC) 3
+#define ADDR_VEC_ALIGN(ADDR_VEC) (CASE_VECTOR_MODE == SImode ? 2 : 3)
 
 
 /* Assembler Commands for Exception Regions.  */
@@ -1689,11 +1581,14 @@ do {									\
 /* Use section-relative relocations for debugging offsets.  Unlike other
    targets that fake this by putting the section VMA at 0, IA-64 has
    proper relocations for them.  */
-#define ASM_OUTPUT_DWARF_OFFSET(FILE, SIZE, LABEL, SECTION)	\
+#define ASM_OUTPUT_DWARF_OFFSET(FILE, SIZE, LABEL, OFFSET, SECTION) \
   do {								\
     fputs (integer_asm_op (SIZE, FALSE), FILE);			\
     fputs ("@secrel(", FILE);					\
     assemble_name (FILE, LABEL);				\
+    if ((OFFSET) != 0)						\
+      fprintf (FILE, "+" HOST_WIDE_INT_PRINT_DEC,		\
+	       (HOST_WIDE_INT) (OFFSET));			\
     fputc (')', FILE);						\
   } while (0)
 
@@ -1737,7 +1632,7 @@ do {									\
 /* Define this macro if operations between registers with integral mode smaller
    than a word are always performed on the entire register.  */
 
-#define WORD_REGISTER_OPERATIONS
+#define WORD_REGISTER_OPERATIONS 1
 
 /* Define this macro to be a C expression indicating when insns that read
    memory in MODE, an integral mode narrower than a word, set the bits outside

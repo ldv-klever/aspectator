@@ -1,9 +1,7 @@
 /* This file contains the definitions and documentation for the
    additional tree codes used in the GNU C++ compiler (see tree.def
    for the standard codes).
-   Copyright (C) 1987, 1988, 1990, 1993, 1997, 1998, 2003, 2004, 2005,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1987-2017 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -201,18 +199,27 @@ DEFTREECODE (BOUND_TEMPLATE_TEMPLATE_PARM, "bound_template_template_parm",
 DEFTREECODE (UNBOUND_CLASS_TEMPLATE, "unbound_class_template", tcc_type, 0)
 
 /* A using declaration.  USING_DECL_SCOPE contains the specified
-   scope.  In a member using decl, unless DECL_DEPENDENT_P is true,
+   scope.  In a variadic using-declaration, this is a TYPE_PACK_EXPANSION.
+   In a member using decl, unless DECL_DEPENDENT_P is true,
    USING_DECL_DECLS contains the _DECL or OVERLOAD so named.  This is
    not an alias, but is later expanded into multiple aliases.  */
 DEFTREECODE (USING_DECL, "using_decl", tcc_declaration, 0)
 
 /* A using directive. The operand is USING_STMT_NAMESPACE.  */
-DEFTREECODE (USING_STMT, "using_directive", tcc_statement, 1)
+DEFTREECODE (USING_STMT, "using_stmt", tcc_statement, 1)
 
 /* An un-parsed default argument.  Holds a vector of input tokens and
    a vector of places where the argument was instantiated before
    parsing had occurred.  */
 DEFTREECODE (DEFAULT_ARG, "default_arg", tcc_exceptional, 0)
+
+/* An uninstantiated/unevaluated noexcept-specification.  For the
+   uninstantiated case, DEFERRED_NOEXCEPT_PATTERN is the pattern from the
+   template, and DEFERRED_NOEXCEPT_ARGS are the template arguments to
+   substitute into the pattern when needed.  For the unevaluated case,
+   those slots are NULL_TREE and we use get_defaulted_eh_spec to find
+   the exception-specification.  */
+DEFTREECODE (DEFERRED_NOEXCEPT, "deferred_noexcept", tcc_exceptional, 0)
 
 /* A template-id, like foo<int>.  The first operand is the template.
    The second is NULL if there are no explicit arguments, or a
@@ -245,6 +252,7 @@ DEFTREECODE (REINTERPRET_CAST_EXPR, "reinterpret_cast_expr", tcc_unary, 1)
 DEFTREECODE (CONST_CAST_EXPR, "const_cast_expr", tcc_unary, 1)
 DEFTREECODE (STATIC_CAST_EXPR, "static_cast_expr", tcc_unary, 1)
 DEFTREECODE (DYNAMIC_CAST_EXPR, "dynamic_cast_expr", tcc_unary, 1)
+DEFTREECODE (IMPLICIT_CONV_EXPR, "implicit_conv_expr", tcc_unary, 1)
 DEFTREECODE (DOTSTAR_EXPR, "dotstar_expr", tcc_expression, 2)
 DEFTREECODE (TYPEID_EXPR, "typeid_expr", tcc_expression, 1)
 DEFTREECODE (NOEXCEPT_EXPR, "noexcept_expr", tcc_unary, 1)
@@ -275,8 +283,9 @@ DEFTREECODE (EH_SPEC_BLOCK, "eh_spec_block", tcc_statement, 2)
 DEFTREECODE (HANDLER, "handler", tcc_statement, 2)
 
 /* A MUST_NOT_THROW_EXPR wraps an expression that may not
-   throw, and must call terminate if it does.  */
-DEFTREECODE (MUST_NOT_THROW_EXPR, "must_not_throw_expr", tcc_expression, 1)
+   throw, and must call terminate if it does.  The second argument
+   is a condition, used in templates to express noexcept (condition).  */
+DEFTREECODE (MUST_NOT_THROW_EXPR, "must_not_throw_expr", tcc_expression, 2)
 
 /* A CLEANUP_STMT marks the point at which a declaration is fully
    constructed.  The CLEANUP_EXPR is run on behalf of CLEANUP_DECL
@@ -284,19 +293,19 @@ DEFTREECODE (MUST_NOT_THROW_EXPR, "must_not_throw_expr", tcc_expression, 1)
 DEFTREECODE (CLEANUP_STMT, "cleanup_stmt", tcc_statement, 3)
 
 /* Represents an 'if' statement. The operands are IF_COND,
-   THEN_CLAUSE, and ELSE_CLAUSE, respectively.  */
+   THEN_CLAUSE, and ELSE_CLAUSE, and the current scope, respectively.  */
 /* ??? It is currently still necessary to distinguish between IF_STMT
    and COND_EXPR for the benefit of templates.  */
-DEFTREECODE (IF_STMT, "if_stmt", tcc_statement, 3)
+DEFTREECODE (IF_STMT, "if_stmt", tcc_statement, 4)
 
 /* Used to represent a `for' statement. The operands are
    FOR_INIT_STMT, FOR_COND, FOR_EXPR, and FOR_BODY, respectively.  */
-DEFTREECODE (FOR_STMT, "for_stmt", tcc_statement, 4)
+DEFTREECODE (FOR_STMT, "for_stmt", tcc_statement, 5)
 
 /* Used to represent a range-based `for' statement. The operands are
-   RANGE_FOR_DECL, RANGE_FOR_EXPR, RANGE_FOR_BODY, respectively.  Only used
-   in templates.  */
-DEFTREECODE (RANGE_FOR_STMT, "range_for_stmt", tcc_statement, 3)
+   RANGE_FOR_DECL, RANGE_FOR_EXPR, RANGE_FOR_BODY, and RANGE_FOR_SCOPE,
+   respectively.  Only used in templates.  */
+DEFTREECODE (RANGE_FOR_STMT, "range_for_stmt", tcc_statement, 4)
 
 /* Used to represent a 'while' statement. The operands are WHILE_COND
    and WHILE_BODY, respectively.  */
@@ -313,8 +322,9 @@ DEFTREECODE (BREAK_STMT, "break_stmt", tcc_statement, 0)
 DEFTREECODE (CONTINUE_STMT, "continue_stmt", tcc_statement, 0)
 
 /* Used to represent a 'switch' statement. The operands are
-   SWITCH_STMT_COND, SWITCH_STMT_BODY and SWITCH_STMT_TYPE, respectively.  */
-DEFTREECODE (SWITCH_STMT, "switch_stmt", tcc_statement, 3)
+   SWITCH_STMT_COND, SWITCH_STMT_BODY, SWITCH_STMT_TYPE, and
+   SWITCH_STMT_SCOPE, respectively.  */
+DEFTREECODE (SWITCH_STMT, "switch_stmt", tcc_statement, 4)
 
 /* Used to represent an expression statement.  Use `EXPR_STMT_EXPR' to
    obtain the expression.  */
@@ -323,10 +333,12 @@ DEFTREECODE (EXPR_STMT, "expr_stmt", tcc_expression, 1)
 DEFTREECODE (TAG_DEFN, "tag_defn", tcc_expression, 0)
 
 /* Represents an 'offsetof' expression during template expansion.  */
-DEFTREECODE (OFFSETOF_EXPR, "offsetof_expr", tcc_expression, 1)
+DEFTREECODE (OFFSETOF_EXPR, "offsetof_expr", tcc_expression, 2)
 
-/* Represents a 'sizeof' expression during template expansion.  */
-DEFTREECODE (SIZEOF_EXPR, "sizeof_expr", tcc_expression, 1)
+/* Represents an '__builtin_addressof' expression during template
+   expansion.  This is similar to ADDR_EXPR, but it doesn't invoke
+   overloaded & operators.  */
+DEFTREECODE (ADDRESSOF_EXPR, "addressof_expr", tcc_expression, 1)
 
 /* Represents the -> operator during template expansion.  */
 DEFTREECODE (ARROW_EXPR, "arrow_expr", tcc_expression, 1)
@@ -348,9 +360,9 @@ DEFTREECODE (STMT_EXPR, "stmt_expr", tcc_expression, 1)
    is applied.  */
 DEFTREECODE (UNARY_PLUS_EXPR, "unary_plus_expr", tcc_unary, 1)
 
-/** C++0x extensions. */
+/** C++11 extensions. */
 
-/* A static assertion.  This is a C++0x extension.
+/* A static assertion.  This is a C++11 extension.
    STATIC_ASSERT_CONDITION contains the condition that is being
    checked.  STATIC_ASSERT_MESSAGE contains the message (a string
    literal) to be displayed if the condition fails to hold.  */
@@ -412,7 +424,7 @@ DEFTREECODE (TYPE_PACK_EXPANSION, "type_pack_expansion", tcc_type, 0)
 
    EXPR_PACK_EXPANSION plays precisely the same role as TYPE_PACK_EXPANSION,
    but will be used for expressions.  */
-DEFTREECODE (EXPR_PACK_EXPANSION, "expr_pack_expansion", tcc_expression, 1)
+DEFTREECODE (EXPR_PACK_EXPANSION, "expr_pack_expansion", tcc_expression, 3)
 
 /* Selects the Ith parameter out of an argument pack. This node will
    be used when instantiating pack expansions; see
@@ -426,6 +438,26 @@ DEFTREECODE (EXPR_PACK_EXPANSION, "expr_pack_expansion", tcc_expression, 1)
    index is a machine integer.  */
 DEFTREECODE (ARGUMENT_PACK_SELECT, "argument_pack_select", tcc_exceptional, 0)
 
+/* Fold expressions allow the expansion of a template argument pack
+   over a binary operator.
+
+   FOLD_EXPR_MOD_P is true when the fold operation is a compound assignment
+   operator.
+
+   FOLD_EXPR_OP is an INTEGER_CST storing the tree code for the folded
+   expression. Note that when FOLDEXPR_MOD_P is true, the operator is
+   a compound assignment operator for that kind of expression.
+
+   FOLD_EXPR_PACK is an expression containing an unexpanded parameter pack;
+   when expanded, each term becomes an argument of the folded expression.
+
+   In a BINARY_FOLD_EXPRESSION, FOLD_EXPR_INIT is the non-pack argument. */
+DEFTREECODE (UNARY_LEFT_FOLD_EXPR, "unary_left_fold_expr", tcc_expression, 2)
+DEFTREECODE (UNARY_RIGHT_FOLD_EXPR, "unary_right_fold_expr", tcc_expression, 2)
+DEFTREECODE (BINARY_LEFT_FOLD_EXPR, "binary_left_fold_expr", tcc_expression, 3)
+DEFTREECODE (BINARY_RIGHT_FOLD_EXPR, "binary_right_fold_expr", tcc_expression, 3)
+
+
 /** C++ extensions. */
 
 /* Represents a trait expression during template expansion.  */
@@ -436,6 +468,8 @@ DEFTREECODE (TRAIT_EXPR, "trait_expr", tcc_exceptional, 0)
    none.
    LAMBDA_EXPR_CAPTURE_LIST holds the capture-list, including `this'.
    LAMBDA_EXPR_THIS_CAPTURE goes straight to the capture of `this', if it exists.
+   LAMBDA_EXPR_PENDING_PROXIES is a vector of capture proxies which need to
+   be pushed once scope returns to the lambda.
    LAMBDA_EXPR_MUTABLE_P signals whether this lambda was declared mutable.
    LAMBDA_EXPR_RETURN_TYPE holds the return type, if it was specified.  */
 DEFTREECODE (LAMBDA_EXPR, "lambda_expr", tcc_exceptional, 0)
@@ -449,6 +483,14 @@ DEFTREECODE (LAMBDA_EXPR, "lambda_expr", tcc_exceptional, 0)
    DECLTYPE_FOR_LAMBDA_RETURN is set if we want lambda return deduction.  */
 DEFTREECODE (DECLTYPE_TYPE, "decltype_type", tcc_type, 0)
 
+/* A type designated by `__underlying_type (type)'.
+   UNDERLYING_TYPE_TYPE is the type in question.  */
+DEFTREECODE (UNDERLYING_TYPE, "underlying_type", tcc_type, 0)
+
+/* A type designated by one of the bases type traits.
+   BASES_TYPE is the type in question.  */
+DEFTREECODE (BASES, "bases", tcc_type, 0)
+
 /* Used to represent the template information stored by template
    specializations.
    The accessors are:
@@ -458,6 +500,102 @@ DEFTREECODE (DECLTYPE_TYPE, "decltype_type", tcc_type, 0)
    the pattern of the template for which access check is needed at template
    instantiation time.  */
 DEFTREECODE (TEMPLATE_INFO, "template_info", tcc_exceptional, 0)
+
+/* Extensions for Concepts. */
+
+/* Used to represent information associated with constrained declarations. */
+DEFTREECODE (CONSTRAINT_INFO, "constraint_info", tcc_exceptional, 0)
+
+/* A wildcard declaration is a placeholder for a template parameter
+   used to resolve constrained-type-names in concepts.  During
+   resolution, the matching argument is saved as the TREE_TYPE
+   of the wildcard.  */
+DEFTREECODE (WILDCARD_DECL, "wildcard_decl", tcc_declaration, 0)
+
+/* A requires-expr is a binary expression. The first operand is
+   its parameter list (possibly NULL). The second is a list of
+   requirements, which are denoted by the _REQ* tree codes
+   below. */
+DEFTREECODE (REQUIRES_EXPR,   "requires_expr", tcc_expression, 2)
+
+/* A requirement for an expression. */
+DEFTREECODE (SIMPLE_REQ, "simple_req", tcc_expression, 1)
+
+/* A requirement for a type. */
+DEFTREECODE (TYPE_REQ, "type_req", tcc_expression, 1)
+
+/* A requirement for an expression and its properties. The
+   first operand is the expression, and the 2nd is its type.
+   The accessor COMPOUND_REQ_NOEXCEPT determines whether
+   the noexcept keyword was present. */
+DEFTREECODE (COMPOUND_REQ, "compound_req", tcc_expression, 2)
+
+/* A requires clause within a requires expression. */
+DEFTREECODE (NESTED_REQ, "nested_req", tcc_expression, 1)
+
+/* Constraints are modeled as kinds of expressions.
+   The operands of a constraint can be either types or expressions.
+   Unlike expressions, constraints do not have a type. */
+
+/* A predicate constraint evaluates an expression E.
+
+   PRED_CONSTR_EXPR has the expression to be evaluated. */
+DEFTREECODE (PRED_CONSTR, "pred_constr", tcc_expression, 1)
+
+/* A check constraint represents the checking of a concept
+   C. It has two operands: the template defining the concept
+   and a sequence of template arguments.
+
+   CHECK_CONSTR_CONCEPT has the concept definition
+   CHECK_CONSTR_ARGUMENTS are the template arguments */
+DEFTREECODE (CHECK_CONSTR, "check_constr", tcc_expression, 2)
+
+/* An expression constraint determines the validity of a expression E.
+
+   EXPR_CONST_EXPR has the expression being validated. */
+DEFTREECODE (EXPR_CONSTR, "expr_constr", tcc_expression, 1)
+
+/* A type constraint determines the validity of a type T. Note that
+
+   TYPE_CONST_TYPE has the type being validated */
+DEFTREECODE (TYPE_CONSTR, "type_constr", tcc_expression, 1)
+
+/* An implicit conversion constraint determines if an expression
+   E is implicitly convertible to a type T. Note that T may
+   be dependent but does not contain any placeholders.
+
+   ICONV_CONSTR_EXPR has the expression E.
+   ICONV_CONSTR_TYPE has the type T.
+   */
+DEFTREECODE (ICONV_CONSTR, "iconv_constr", tcc_expression, 2)
+
+/* An argument deduction constraint determines if the type of an
+   expression E can be deduced from a type pattern T. Note that
+   T must contain at least one place holder.
+
+   DEDUCT_CONSTR_EXPR has the expression E
+   DEDUCT_CONSTR_PATTERN has the type pattern T.
+   DEDUCT_CONSTR_PLACEHOLDERS has the list of placeholder nodes in T. */
+DEFTREECODE (DEDUCT_CONSTR, "deduct_constr", tcc_expression, 3)
+
+/* An exception constraint determines if, for an expression E,
+   noexcept(E) is true.
+
+   EXCEPT_CONSTR_EXPR has the expression E. */
+DEFTREECODE (EXCEPT_CONSTR, "except_constr", tcc_expression, 1)
+
+/* A parameterized constraint declares constraint variables, which
+   are used in expression, type, and exception constraints.
+
+   PARM_CONSTR_PARMS has a TREE_LIST of parameter declarations.
+   PARM_CONSTR_OPERAND has the nested constraint. */
+DEFTREECODE (PARM_CONSTR, "parm_constr", tcc_expression, 2)
+
+/* The conjunction and disjunction of two constraints, respectively.
+   Operands are accessed using TREE_OPERAND. */
+DEFTREECODE (CONJ_CONSTR, "conj_constr", tcc_expression, 2)
+DEFTREECODE (DISJ_CONSTR, "disj_constr", tcc_expression, 2)
+
 
 /*
 Local variables:

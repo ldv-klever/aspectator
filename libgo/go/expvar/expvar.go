@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// The expvar package provides a standardized interface to public variables,
-// such as operation counters in servers. It exposes these variables via
-// HTTP at /debug/vars in JSON format.
+// Package expvar provides a standardized interface to public variables, such
+// as operation counters in servers. It exposes these variables via HTTP at
+// /debug/vars in JSON format.
 //
 // Operations to set or modify these public variables are atomic.
 //
@@ -15,75 +15,93 @@
 //	memstats  runtime.Memstats
 //
 // The package is sometimes only imported for the side effect of
-// registering its HTTP handler and the above variables.  To use it
-// this way, simply link this package into your program:
+// registering its HTTP handler and the above variables. To use it
+// this way, link this package into your program:
 //	import _ "expvar"
 //
 package expvar
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
-	"http"
-	"json"
 	"log"
+	"math"
+	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 )
 
 // Var is an abstract type for all exported variables.
 type Var interface {
+	// String returns a valid JSON value for the variable.
+	// Types with String methods that do not return valid JSON
+	// (such as time.Time) must not be used as a Var.
 	String() string
 }
 
 // Int is a 64-bit integer variable that satisfies the Var interface.
 type Int struct {
-	i  int64
-	mu sync.Mutex
+	i int64
 }
 
-func (v *Int) String() string { return strconv.Itoa64(v.i) }
+func (v *Int) Value() int64 {
+	return atomic.LoadInt64(&v.i)
+}
+
+func (v *Int) String() string {
+	return strconv.FormatInt(atomic.LoadInt64(&v.i), 10)
+}
 
 func (v *Int) Add(delta int64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.i += delta
+	atomic.AddInt64(&v.i, delta)
 }
 
 func (v *Int) Set(value int64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.i = value
+	atomic.StoreInt64(&v.i, value)
 }
 
 // Float is a 64-bit float variable that satisfies the Var interface.
 type Float struct {
-	f  float64
-	mu sync.Mutex
+	f uint64
 }
 
-func (v *Float) String() string { return strconv.Ftoa64(v.f, 'g', -1) }
+func (v *Float) Value() float64 {
+	return math.Float64frombits(atomic.LoadUint64(&v.f))
+}
+
+func (v *Float) String() string {
+	return strconv.FormatFloat(
+		math.Float64frombits(atomic.LoadUint64(&v.f)), 'g', -1, 64)
+}
 
 // Add adds delta to v.
 func (v *Float) Add(delta float64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.f += delta
+	for {
+		cur := atomic.LoadUint64(&v.f)
+		curVal := math.Float64frombits(cur)
+		nxtVal := curVal + delta
+		nxt := math.Float64bits(nxtVal)
+		if atomic.CompareAndSwapUint64(&v.f, cur, nxt) {
+			return
+		}
+	}
 }
 
 // Set sets v to value.
 func (v *Float) Set(value float64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.f = value
+	atomic.StoreUint64(&v.f, math.Float64bits(value))
 }
 
 // Map is a string-to-Var map variable that satisfies the Var interface.
 type Map struct {
-	m  map[string]Var
-	mu sync.Mutex
+	mu   sync.RWMutex
+	m    map[string]Var
+	keys []string // sorted
 }
 
 // KeyValue represents a single entry in a Map.
@@ -93,19 +111,19 @@ type KeyValue struct {
 }
 
 func (v *Map) String() string {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	b := new(bytes.Buffer)
-	fmt.Fprintf(b, "{")
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "{")
 	first := true
-	for key, val := range v.m {
+	v.doLocked(func(kv KeyValue) {
 		if !first {
-			fmt.Fprintf(b, ", ")
+			fmt.Fprintf(&b, ", ")
 		}
-		fmt.Fprintf(b, "\"%s\": %v", key, val.String())
+		fmt.Fprintf(&b, "%q: %v", kv.Key, kv.Value)
 		first = false
-	}
-	fmt.Fprintf(b, "}")
+	})
+	fmt.Fprintf(&b, "}")
 	return b.String()
 }
 
@@ -114,9 +132,23 @@ func (v *Map) Init() *Map {
 	return v
 }
 
+// updateKeys updates the sorted list of keys in v.keys.
+// must be called with v.mu held.
+func (v *Map) updateKeys() {
+	if len(v.m) == len(v.keys) {
+		// No new key.
+		return
+	}
+	v.keys = v.keys[:0]
+	for k := range v.m {
+		v.keys = append(v.keys, k)
+	}
+	sort.Strings(v.keys)
+}
+
 func (v *Map) Get(key string) Var {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	return v.m[key]
 }
 
@@ -124,15 +156,23 @@ func (v *Map) Set(key string, av Var) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.m[key] = av
+	v.updateKeys()
 }
 
 func (v *Map) Add(key string, delta int64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	v.mu.RLock()
 	av, ok := v.m[key]
+	v.mu.RUnlock()
 	if !ok {
-		av = new(Int)
-		v.m[key] = av
+		// check again under the write lock
+		v.mu.Lock()
+		av, ok = v.m[key]
+		if !ok {
+			av = new(Int)
+			v.m[key] = av
+			v.updateKeys()
+		}
+		v.mu.Unlock()
 	}
 
 	// Add to Int; ignore otherwise.
@@ -143,12 +183,19 @@ func (v *Map) Add(key string, delta int64) {
 
 // AddFloat adds delta to the *Float value stored under the given map key.
 func (v *Map) AddFloat(key string, delta float64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	v.mu.RLock()
 	av, ok := v.m[key]
+	v.mu.RUnlock()
 	if !ok {
-		av = new(Float)
-		v.m[key] = av
+		// check again under the write lock
+		v.mu.Lock()
+		av, ok = v.m[key]
+		if !ok {
+			av = new(Float)
+			v.m[key] = av
+			v.updateKeys()
+		}
+		v.mu.Unlock()
 	}
 
 	// Add to Float; ignore otherwise.
@@ -157,53 +204,72 @@ func (v *Map) AddFloat(key string, delta float64) {
 	}
 }
 
-// TODO(rsc): Make sure map access in separate thread is safe.
-func (v *Map) iterate(c chan<- KeyValue) {
-	for k, v := range v.m {
-		c <- KeyValue{k, v}
-	}
-	close(c)
+// Do calls f for each entry in the map.
+// The map is locked during the iteration,
+// but existing entries may be concurrently updated.
+func (v *Map) Do(f func(KeyValue)) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	v.doLocked(f)
 }
 
-func (v *Map) Iter() <-chan KeyValue {
-	c := make(chan KeyValue)
-	go v.iterate(c)
-	return c
+// doLocked calls f for each entry in the map.
+// v.mu must be held for reads.
+func (v *Map) doLocked(f func(KeyValue)) {
+	for _, k := range v.keys {
+		f(KeyValue{k, v.m[k]})
+	}
 }
 
 // String is a string variable, and satisfies the Var interface.
 type String struct {
-	s string
+	mu sync.RWMutex
+	s  string
 }
 
-func (v *String) String() string { return strconv.Quote(v.s) }
+func (v *String) Value() string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.s
+}
 
-func (v *String) Set(value string) { v.s = value }
+// String implements the Val interface. To get the unquoted string
+// use Value.
+func (v *String) String() string {
+	v.mu.RLock()
+	s := v.s
+	v.mu.RUnlock()
+	b, _ := json.Marshal(s)
+	return string(b)
+}
 
-// IntFunc wraps a func() int64 to create a value that satisfies the Var interface.
-// The function will be called each time the Var is evaluated.
-type IntFunc func() int64
+func (v *String) Set(value string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.s = value
+}
 
-func (v IntFunc) String() string { return strconv.Itoa64(v()) }
+// Func implements Var by calling the function
+// and formatting the returned value using JSON.
+type Func func() interface{}
 
-// FloatFunc wraps a func() float64 to create a value that satisfies the Var interface.
-// The function will be called each time the Var is evaluated.
-type FloatFunc func() float64
+func (f Func) Value() interface{} {
+	return f()
+}
 
-func (v FloatFunc) String() string { return strconv.Ftoa64(v(), 'g', -1) }
-
-// StringFunc wraps a func() string to create value that satisfies the Var interface.
-// The function will be called each time the Var is evaluated.
-type StringFunc func() string
-
-func (f StringFunc) String() string { return strconv.Quote(f()) }
-
+func (f Func) String() string {
+	v, _ := json.Marshal(f())
+	return string(v)
+}
 
 // All published variables.
-var vars map[string]Var = make(map[string]Var)
-var mutex sync.Mutex
+var (
+	mutex   sync.RWMutex
+	vars    = make(map[string]Var)
+	varKeys []string // sorted
+)
 
-// Publish declares an named exported variable. This should be called from a
+// Publish declares a named exported variable. This should be called from a
 // package's init function when it creates its Vars. If the name is already
 // registered then this will log.Panic.
 func Publish(name string, v Var) {
@@ -213,19 +279,16 @@ func Publish(name string, v Var) {
 		log.Panicln("Reuse of exported var name:", name)
 	}
 	vars[name] = v
+	varKeys = append(varKeys, name)
+	sort.Strings(varKeys)
 }
 
-// Get retrieves a named exported variable.
+// Get retrieves a named exported variable. It returns nil if the name has
+// not been registered.
 func Get(name string) Var {
+	mutex.RLock()
+	defer mutex.RUnlock()
 	return vars[name]
-}
-
-// RemoveAll removes all exported variables.
-// This is for tests; don't call this on a real server.
-func RemoveAll() {
-	mutex.Lock()
-	defer mutex.Unlock()
-	vars = make(map[string]Var)
 }
 
 // Convenience functions for creating new exported variables.
@@ -254,46 +317,50 @@ func NewString(name string) *String {
 	return v
 }
 
-// TODO(rsc): Make sure map access in separate thread is safe.
-func iterate(c chan<- KeyValue) {
-	for k, v := range vars {
-		c <- KeyValue{k, v}
+// Do calls f for each exported variable.
+// The global variable map is locked during the iteration,
+// but existing entries may be concurrently updated.
+func Do(f func(KeyValue)) {
+	mutex.RLock()
+	defer mutex.RUnlock()
+	for _, k := range varKeys {
+		f(KeyValue{k, vars[k]})
 	}
-	close(c)
-}
-
-func Iter() <-chan KeyValue {
-	c := make(chan KeyValue)
-	go iterate(c)
-	return c
 }
 
 func expvarHandler(w http.ResponseWriter, r *http.Request) {
-	w.SetHeader("content-type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	fmt.Fprintf(w, "{\n")
 	first := true
-	for name, value := range vars {
+	Do(func(kv KeyValue) {
 		if !first {
 			fmt.Fprintf(w, ",\n")
 		}
 		first = false
-		fmt.Fprintf(w, "%q: %s", name, value)
-	}
+		fmt.Fprintf(w, "%q: %s", kv.Key, kv.Value)
+	})
 	fmt.Fprintf(w, "\n}\n")
 }
 
-func memstats() string {
-	b, _ := json.MarshalIndent(&runtime.MemStats, "", "\t")
-	return string(b)
+// Handler returns the expvar HTTP Handler.
+//
+// This is only needed to install the handler in a non-standard location.
+func Handler() http.Handler {
+	return http.HandlerFunc(expvarHandler)
 }
 
-func cmdline() string {
-	b, _ := json.Marshal(os.Args)
-	return string(b)
+func cmdline() interface{} {
+	return os.Args
+}
+
+func memstats() interface{} {
+	stats := new(runtime.MemStats)
+	runtime.ReadMemStats(stats)
+	return *stats
 }
 
 func init() {
-	http.Handle("/debug/vars", http.HandlerFunc(expvarHandler))
-	Publish("cmdline", StringFunc(cmdline))
-	Publish("memstats", StringFunc(memstats))
+	http.HandleFunc("/debug/vars", expvarHandler)
+	Publish("cmdline", Func(cmdline))
+	Publish("memstats", Func(memstats))
 }

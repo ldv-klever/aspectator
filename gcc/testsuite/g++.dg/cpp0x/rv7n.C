@@ -2,8 +2,8 @@
 
 // Test overload resolution among reference types
 
-// { dg-do compile }
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
+// { dg-options "-fno-ipa-icf" }
 
 template <bool> struct sa;
 template <> struct sa<true> {};
@@ -20,7 +20,7 @@ struct eight {char x[8];};
 struct A
 {
     A();
-    A(const volatile A&&);	// { dg-error "argument 1" }
+    A(const volatile A&&);
 };
 
                A    source();
@@ -31,21 +31,20 @@ const volatile A cv_source();
 // 7 at a time
 
 one   sink_7_1234567(               A&);  // { dg-message "one sink_7_1234567|no known conversion" }
-two   sink_7_1234567(const          A&);  // { dg-message "note" }
-three sink_7_1234567(volatile       A&);  // { dg-message "note" }
-four  sink_7_1234567(const volatile A&);  // { dg-message "note" }
-five  sink_7_1234567(               A&&);  // { dg-message "note" }
-six   sink_7_1234567(const          A&&);  // { dg-message "note" }
-seven sink_7_1234567(volatile       A&&);  // { dg-message "note" }
+two   sink_7_1234567(const          A&);
+three sink_7_1234567(volatile       A&);
+four  sink_7_1234567(const volatile A&);
+five  sink_7_1234567(               A&&);
+six   sink_7_1234567(const          A&&);
+seven sink_7_1234567(volatile       A&&);
 
 int test7_1234567()
 {
                    A a;
-    const          A ca = a; // { dg-error "lvalue" }
+    const          A ca = a; // { dg-error "deleted" }
           volatile A va;
-    const volatile A cva = a; // { dg-error "lvalue" }
-    sink_7_1234567(cv_source());  // { dg-error "no match" }
-    // { dg-message "candidate" "candidate note" { target *-*-* } 47 }
+    const volatile A cva = a; // { dg-error "deleted" }
+    sink_7_1234567(cv_source());  // { dg-error "" }
     return 0;
 }
 
@@ -60,48 +59,46 @@ eight sink_7_1235678(const volatile A&&); // { dg-message "" }
 int test7_1235678()
 {
                    A a;
-    const          A ca = a; // { dg-error "lvalue" }
+    const          A ca = a; // { dg-error "deleted" }
           volatile A va;
-    const volatile A cva = a; // { dg-error "lvalue" }
-    sink_7_1235678(cva);	// { dg-error "lvalue" }
+    const volatile A cva = a; // { dg-error "deleted" }
+    sink_7_1235678(cva);	// { dg-error "" }
     return 0;
 }
 
-two   sink_7_2345678(const          A&);  // { dg-message "note" }
-three sink_7_2345678(volatile       A&);  // { dg-message "note" }
-four  sink_7_2345678(const volatile A&);  // { dg-message "note" }
-five  sink_7_2345678(               A&&);  // { dg-message "note" }
-six   sink_7_2345678(const          A&&);  // { dg-message "note" }
-seven sink_7_2345678(volatile       A&&);  // { dg-message "note" }
-eight sink_7_2345678(const volatile A&&);  // { dg-message "note" }
+two   sink_7_2345678(const          A&);
+three sink_7_2345678(volatile       A&);
+four  sink_7_2345678(const volatile A&);
+five  sink_7_2345678(               A&&);
+six   sink_7_2345678(const          A&&);
+seven sink_7_2345678(volatile       A&&);
+eight sink_7_2345678(const volatile A&&);
 
 int test7_2345678()
 {
                    A a;
-    const          A ca = a; // { dg-error "lvalue" }
+    const          A ca = a; // { dg-error "deleted" }
           volatile A va;
-    const volatile A cva = a; // { dg-error "lvalue" }
-    sink_7_2345678(a);  // { dg-error "ambiguous" }
-    // { dg-message "candidate" "candidate note" { target *-*-* } 84 }
+    const volatile A cva = a; // { dg-error "deleted" }
+    sink_7_2345678(a);  // { dg-error "" }
     return 0;
 }
 
 one   sink_7_1234678(               A&);
-two   sink_7_1234678(const          A&);  // { dg-message "note" }
+two   sink_7_1234678(const          A&);
 three sink_7_1234678(volatile       A&);
 four  sink_7_1234678(const volatile A&);
-six   sink_7_1234678(const          A&&);  // { dg-message "note" }
-seven sink_7_1234678(volatile       A&&);  // { dg-message "note" }
-eight sink_7_1234678(const volatile A&&);  // { dg-message "note" }
+six   sink_7_1234678(const          A&&);
+seven sink_7_1234678(volatile       A&&);
+eight sink_7_1234678(const volatile A&&);
 
 int test7_1234678()
 {
                    A a;
-    const          A ca = a; // { dg-error "lvalue" }
+    const          A ca = a; // { dg-error "deleted" }
           volatile A va;
-    const volatile A cva = a; // { dg-error "lvalue" }
-    sink_7_1234678(source());  // { dg-error "ambiguous" }
-    // { dg-message "candidate" "candidate note" { target *-*-* } 103 }
+    const volatile A cva = a; // { dg-error "deleted" }
+    sink_7_1234678(source());  // { dg-error "" }
     return 0;
 }
 

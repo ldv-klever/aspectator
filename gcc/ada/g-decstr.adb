@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 2007-2008, AdaCore                     --
+--                     Copyright (C) 2007-2014, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -194,6 +192,11 @@ package body GNAT.Decode_String is
             elsif (U and 2#11100000#) = 2#110_00000# then
                W := U and 2#00011111#;
                Get_UTF_Byte;
+
+               if W not in 16#00_0080# .. 16#00_07FF# then
+                  Bad;
+               end if;
+
                Result := Wide_Wide_Character'Val (W);
 
             --  16#00_0800#-16#00_ffff#: 1110xxxx 10xxxxxx 10xxxxxx
@@ -202,6 +205,11 @@ package body GNAT.Decode_String is
                W := U and 2#00001111#;
                Get_UTF_Byte;
                Get_UTF_Byte;
+
+               if W not in 16#00_0800# .. 16#00_FFFF# then
+                  Bad;
+               end if;
+
                Result := Wide_Wide_Character'Val (W);
 
             --  16#01_0000#-16#10_FFFF#: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
@@ -212,6 +220,10 @@ package body GNAT.Decode_String is
                for K in 1 .. 3 loop
                   Get_UTF_Byte;
                end loop;
+
+               if W not in 16#01_0000# .. 16#10_FFFF# then
+                  Bad;
+               end if;
 
                Result := Wide_Wide_Character'Val (W);
 
@@ -224,6 +236,10 @@ package body GNAT.Decode_String is
                for K in 1 .. 4 loop
                   Get_UTF_Byte;
                end loop;
+
+               if W not in 16#0020_0000# .. 16#03FF_FFFF# then
+                  Bad;
+               end if;
 
                Result := Wide_Wide_Character'Val (W);
 
@@ -306,100 +322,9 @@ package body GNAT.Decode_String is
    -------------------------
 
    procedure Next_Wide_Character (Input : String; Ptr : in out Natural) is
+      Discard : Wide_Character;
    begin
-      if Ptr < Input'First then
-         Past_End;
-      end if;
-
-      --  Special efficient encoding for UTF-8 case
-
-      if Encoding_Method = WCEM_UTF8 then
-         UTF8 : declare
-            U : Unsigned_32;
-
-            procedure Getc;
-            pragma Inline (Getc);
-            --  Gets the character at Input (Ptr) and returns code in U as
-            --  Unsigned_32 value. On return Ptr is bumped past the character.
-
-            procedure Skip_UTF_Byte;
-            pragma Inline (Skip_UTF_Byte);
-            --  Skips past one encoded byte which must be 2#10xxxxxx#
-
-            ----------
-            -- Getc --
-            ----------
-
-            procedure Getc is
-            begin
-               if Ptr > Input'Last then
-                  Past_End;
-               else
-                  U := Unsigned_32 (Character'Pos (Input (Ptr)));
-                  Ptr := Ptr + 1;
-               end if;
-            end Getc;
-
-            -------------------
-            -- Skip_UTF_Byte --
-            -------------------
-
-            procedure Skip_UTF_Byte is
-            begin
-               Getc;
-
-               if (U and 2#11000000#) /= 2#10_000000# then
-                  Bad;
-               end if;
-            end Skip_UTF_Byte;
-
-         --  Start of processing for UTF-8 case
-
-         begin
-            --  16#00_0000#-16#00_007F#: 0xxxxxxx
-
-            Getc;
-
-            if (U and 2#10000000#) = 2#00000000# then
-               return;
-
-            --  16#00_0080#-16#00_07FF#: 110xxxxx 10xxxxxx
-
-            elsif (U and 2#11100000#) = 2#110_00000# then
-               Skip_UTF_Byte;
-
-            --  16#00_0800#-16#00_ffff#: 1110xxxx 10xxxxxx 10xxxxxx
-
-            elsif (U and 2#11110000#) = 2#1110_0000# then
-               Skip_UTF_Byte;
-               Skip_UTF_Byte;
-
-            --  Any other code is invalid, note that this includes:
-
-            --  16#01_0000#-16#10_FFFF#: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-
-            --  16#0020_0000#-16#03FF_FFFF#: 111110xx 10xxxxxx 10xxxxxx
-            --                               10xxxxxx 10xxxxxx
-
-            --  16#0400_0000#-16#7FFF_FFFF#: 1111110x 10xxxxxx 10xxxxxx
-            --                               10xxxxxx 10xxxxxx 10xxxxxx
-
-            --  since Wide_Character does not allow codes > 16#FFFF#
-
-            else
-               Bad;
-            end if;
-         end UTF8;
-
-      --  Non-UTF-8 case
-
-      else
-         declare
-            Discard : Wide_Character;
-         begin
-            Decode_Wide_Character (Input, Ptr, Discard);
-         end;
-      end if;
+      Decode_Wide_Character (Input, Ptr, Discard);
    end Next_Wide_Character;
 
    ------------------------------
@@ -407,110 +332,9 @@ package body GNAT.Decode_String is
    ------------------------------
 
    procedure Next_Wide_Wide_Character (Input : String; Ptr : in out Natural) is
+      Discard : Wide_Wide_Character;
    begin
-      --  Special efficient encoding for UTF-8 case
-
-      if Encoding_Method = WCEM_UTF8 then
-         UTF8 : declare
-            U : Unsigned_32;
-
-            procedure Getc;
-            pragma Inline (Getc);
-            --  Gets the character at Input (Ptr) and returns code in U as
-            --  Unsigned_32 value. On return Ptr is bumped past the character.
-
-            procedure Skip_UTF_Byte;
-            pragma Inline (Skip_UTF_Byte);
-            --  Skips past one encoded byte which must be 2#10xxxxxx#
-
-            ----------
-            -- Getc --
-            ----------
-
-            procedure Getc is
-            begin
-               if Ptr > Input'Last then
-                  Past_End;
-               else
-                  U := Unsigned_32 (Character'Pos (Input (Ptr)));
-                  Ptr := Ptr + 1;
-               end if;
-            end Getc;
-
-            -------------------
-            -- Skip_UTF_Byte --
-            -------------------
-
-            procedure Skip_UTF_Byte is
-            begin
-               Getc;
-
-               if (U and 2#11000000#) /= 2#10_000000# then
-                  Bad;
-               end if;
-            end Skip_UTF_Byte;
-
-         --  Start of processing for UTF-8 case
-
-         begin
-            if Ptr < Input'First then
-               Past_End;
-            end if;
-
-            --  16#00_0000#-16#00_007F#: 0xxxxxxx
-
-            Getc;
-
-            if (U and 2#10000000#) = 2#00000000# then
-               null;
-
-            --  16#00_0080#-16#00_07FF#: 110xxxxx 10xxxxxx
-
-            elsif (U and 2#11100000#) = 2#110_00000# then
-               Skip_UTF_Byte;
-
-            --  16#00_0800#-16#00_ffff#: 1110xxxx 10xxxxxx 10xxxxxx
-
-            elsif (U and 2#11110000#) = 2#1110_0000# then
-               Skip_UTF_Byte;
-               Skip_UTF_Byte;
-
-            --  16#01_0000#-16#10_FFFF#: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-
-            elsif (U and 2#11111000#) = 2#11110_000# then
-               for K in 1 .. 3 loop
-                  Skip_UTF_Byte;
-               end loop;
-
-            --  16#0020_0000#-16#03FF_FFFF#: 111110xx 10xxxxxx 10xxxxxx
-            --                               10xxxxxx 10xxxxxx
-
-            elsif (U and 2#11111100#) = 2#111110_00# then
-               for K in 1 .. 4 loop
-                  Skip_UTF_Byte;
-               end loop;
-
-            --  Any other code is invalid, note that this includes:
-
-            --  16#0400_0000#-16#7FFF_FFFF#: 1111110x 10xxxxxx 10xxxxxx
-            --                               10xxxxxx 10xxxxxx 10xxxxxx
-
-            --  since Wide_Wide_Character does not allow codes > 16#03FF_FFFF#
-
-            else
-               Bad;
-            end if;
-         end UTF8;
-
-      --  Non-UTF-8 case
-
-      else
-         declare
-            Discard : Wide_Wide_Character;
-         begin
-            Decode_Wide_Wide_Character (Input, Ptr, Discard);
-         end;
-      end if;
+      Decode_Wide_Wide_Character (Input, Ptr, Discard);
    end Next_Wide_Wide_Character;
 
    --------------

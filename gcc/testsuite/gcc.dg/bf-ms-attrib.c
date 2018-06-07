@@ -3,7 +3,7 @@
    posted to GCC-patches
    http://gcc.gnu.org/ml/gcc-patches/2000-08/msg00577.html */ 
 
-/* { dg-do run { target *-*-interix* *-*-mingw* *-*-cygwin* } } */
+/* { dg-do run { target *-*-mingw* *-*-cygwin* } } */
 
 /* We don't want the default "pedantic-errors" in this case, since we're
    testing nonstandard stuff to begin with. */
@@ -32,7 +32,7 @@ main()
     /* As long as the sizes are as expected, we know attributes are working.
        bf-ms-layout.c makes sure the right thing happens when the attribute
        is on. */
-    if (sizeof(struct one_ms) != 12)
+    if (sizeof(struct one_ms) != 8)
 	abort();
     if (sizeof(struct one_gcc) != 8)
 	abort();

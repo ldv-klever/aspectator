@@ -1,6 +1,9 @@
 /* Verify that ldr is preferred on XScale for loading a 3 or 4 byte constant. */
 /* { dg-do compile } */
-/* { dg-options "-mcpu=xscale -O" } */
+/* { dg-skip-if "Test is specific to Xscale" { arm*-*-* } { "-march=*" } { "-march=xscale" } } */
+/* { dg-skip-if "Test is specific to Xscale" { arm*-*-* } { "-mcpu=*" } { "-mcpu=xscale" } } */
+/* { dg-skip-if "do not override -mfloat-abi" { *-*-* } { "-mfloat-abi=*" } { "-mfloat-abi=softfp" } } */
+/* { dg-options "-mcpu=xscale -O -mfloat-abi=softfp" } */
 
 unsigned load4(void) __attribute__ ((naked));
 unsigned load4(void)
