@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -37,13 +37,13 @@
 --  initialized to non-tasking versions, and then if the tasking support is
 --  initialized, they are set to the real tasking versions.
 
-pragma Compiler_Unit;
+pragma Compiler_Unit_Warning;
 
 with Ada.Exceptions;
 with System.Stack_Checking;
 
 package System.Soft_Links is
-   pragma Preelaborate_05;
+   pragma Preelaborate;
 
    subtype EOA is Ada.Exceptions.Exception_Occurrence_Access;
    subtype EO is Ada.Exceptions.Exception_Occurrence;
@@ -59,6 +59,11 @@ package System.Soft_Links is
 
    type No_Param_Proc     is access procedure;
    pragma Favor_Top_Level (No_Param_Proc);
+   pragma Suppress_Initialization (No_Param_Proc);
+   --  Some uninitialized objects of that type are initialized by the Binder
+   --  so it is important that such objects are not reset to null during
+   --  elaboration.
+
    type Addr_Param_Proc   is access procedure (Addr : Address);
    pragma Favor_Top_Level (Addr_Param_Proc);
    type EO_Param_Proc     is access procedure (Excep : EO);
@@ -135,18 +140,12 @@ package System.Soft_Links is
    --  Undefer task abort (non-tasking case, does nothing)
 
    procedure Abort_Handler_NT;
-   --  Handle task abort (non-tasking case, does nothing). Currently, only VMS
-   --  uses this.
-
-   procedure Update_Exception_NT (X : EO := Current_Target_Exception);
-   --  Handle exception setting. This routine is provided for targets that
-   --  have built-in exception handling such as the Java Virtual Machine.
-   --  Currently, only JGNAT uses this. See 4jexcept.ads for an explanation on
-   --  how this routine is used.
+   --  Handle task abort (non-tasking case, does nothing). Currently, no port
+   --  makes use of this, but we retain the interface for possible future use.
 
    function Check_Abort_Status_NT return Integer;
    --  Returns Boolean'Pos (True) iff abort signal should raise
-   --  Standard.Abort_Signal.
+   --  Standard'Abort_Signal.
 
    procedure Task_Lock_NT;
    --  Lock out other tasks (non-tasking case, does nothing)
@@ -157,9 +156,6 @@ package System.Soft_Links is
    procedure Task_Termination_NT (Excep : EO);
    --  Handle task termination routines for the environment task (non-tasking
    --  case, does nothing).
-
-   procedure Null_Finalize_Global_List;
-   --  Finalize global list for controlled objects (does nothing)
 
    procedure Adafinal_NT;
    --  Shuts down the runtime system (non-tasking case)
@@ -175,12 +171,9 @@ package System.Soft_Links is
    Abort_Handler : No_Param_Proc := Abort_Handler_NT'Access;
    --  Handle task abort (task/non-task case as appropriate)
 
-   Update_Exception : Special_EO_Call := Update_Exception_NT'Access;
-   --  Handle exception setting and tasking polling when appropriate
-
    Check_Abort_Status : Get_Integer_Call := Check_Abort_Status_NT'Access;
    --  Called when Abort_Signal is delivered to the process.  Checks to
-   --  see if signal should result in raising Standard.Abort_Signal.
+   --  see if signal should result in raising Standard'Abort_Signal.
 
    Lock_Task : No_Param_Proc := Task_Lock_NT'Access;
    --  Locks out other tasks. Preceding a section of code by Task_Lock and
@@ -221,8 +214,10 @@ package System.Soft_Links is
    Task_Termination_Handler : EO_Param_Proc := Task_Termination_NT'Access;
    --  Handle task termination routines (task/non-task case as appropriate)
 
-   Finalize_Global_List : No_Param_Proc := Null_Finalize_Global_List'Access;
-   --  Performs finalization of global list for controlled objects
+   Finalize_Library_Objects : No_Param_Proc;
+   pragma Export (C, Finalize_Library_Objects,
+                  "__gnat_finalize_library_objects");
+   --  Will be initialized by the binder
 
    Adafinal : No_Param_Proc := Adafinal_NT'Access;
    --  Performs the finalization of the Ada Runtime
@@ -238,9 +233,6 @@ package System.Soft_Links is
 
    Get_Sec_Stack_Addr : Get_Address_Call := Get_Sec_Stack_Addr_NT'Access;
    Set_Sec_Stack_Addr : Set_Address_Call := Set_Sec_Stack_Addr_NT'Access;
-
-   function Get_Exc_Stack_Addr_NT return Address;
-   Get_Exc_Stack_Addr : Get_Address_Call := Get_Exc_Stack_Addr_NT'Access;
 
    function Get_Current_Excep_NT return EOA;
 
@@ -262,9 +254,9 @@ package System.Soft_Links is
    procedure Enter_Master_NT;
    procedure Complete_Master_NT;
 
-   Current_Master  : Get_Integer_Call :=  Current_Master_NT'Access;
-   Enter_Master    : No_Param_Proc    :=  Enter_Master_NT'Access;
-   Complete_Master : No_Param_Proc    :=  Complete_Master_NT'Access;
+   Current_Master  : Get_Integer_Call := Current_Master_NT'Access;
+   Enter_Master    : No_Param_Proc    := Enter_Master_NT'Access;
+   Complete_Master : No_Param_Proc    := Complete_Master_NT'Access;
 
    ----------------------
    -- Delay Soft-Links --
@@ -287,11 +279,19 @@ package System.Soft_Links is
    -- Exception Tracebacks Soft-Links --
    -------------------------------------
 
+   Library_Exception : EO;
+   --  Library-level finalization routines use this common reference to store
+   --  the first library-level exception which occurs during finalization.
+
+   Library_Exception_Set : Boolean := False;
+   --  Used in conjunction with Library_Exception, set when an exception has
+   --  been stored.
+
    Traceback_Decorator_Wrapper : Traceback_Decorator_Wrapper_Call;
    --  Wrapper to the possible user specified traceback decorator to be
    --  called during automatic output of exception data.
 
-   --  The nullity of this wrapper shall correspond to the nullity of the
+   --  The null value of this wrapper correspond sto the null value of the
    --  current actual decorator. This is ensured first by the null initial
    --  value of the corresponding variables, and then by Set_Trace_Decorator
    --  in g-exctra.adb.
@@ -300,6 +300,10 @@ package System.Soft_Links is
    --  Since concurrent read/write operations may occur on this variable.
    --  See the body of Tailored_Exception_Traceback in Ada.Exceptions for
    --  a more detailed description of the potential problems.
+
+   procedure Save_Library_Occurrence (E : EOA);
+   --  When invoked, this routine saves an exception occurrence into a hidden
+   --  reference. Subsequent calls will have no effect.
 
    ------------------------
    -- Task Specific Data --
@@ -370,8 +374,6 @@ package System.Soft_Links is
    procedure Set_Sec_Stack_Addr_Soft (Addr : Address);
    pragma Inline (Get_Sec_Stack_Addr_Soft);
    pragma Inline (Set_Sec_Stack_Addr_Soft);
-
-   function Get_Exc_Stack_Addr_Soft return Address;
 
    --  The following is a dummy record designed to mimic Communication_Block as
    --  defined in s-tpobop.ads:

@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 2000-2005 AdaCore                      --
+--          Copyright (C) 2000-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -39,17 +37,27 @@
 --  the name of the source file in which the exception is handled.
 
 package GNAT.Source_Info is
-   pragma Pure;
+   pragma Preelaborate;
+   --  Note that this unit is Preelaborate, but not Pure, that's because the
+   --  functions here such as Line are clearly not pure functions, and normally
+   --  we mark intrinsic functions in a Pure unit as Pure, even though they are
+   --  imported.
+   --
+   --  Historical note: this used to be Pure, but that was when we marked all
+   --  intrinsics as not Pure, even in Pure units, so no problems arose.
 
-   function File return String;
+   function File return String with
+     Import, Convention => Intrinsic;
    --  Return the name of the current file, not including the path information.
    --  The result is considered to be a static string constant.
 
-   function Line return Positive;
+   function Line return Positive with
+     Import, Convention => Intrinsic;
    --  Return the current input line number. The result is considered to be a
    --  static expression.
 
-   function Source_Location return String;
+   function Source_Location return String with
+     Import, Convention => Intrinsic;
    --  Return a string literal of the form "name:line", where name is the
    --  current source file name without path information, and line is the
    --  current line number. In the event that instantiations are involved,
@@ -57,7 +65,8 @@ package GNAT.Source_Info is
    --  string " instantiated at ". The result is considered to be a static
    --  string constant.
 
-   function Enclosing_Entity return String;
+   function Enclosing_Entity return String with
+     Import, Convention => Intrinsic;
    --  Return the name of the current subprogram, package, task, entry or
    --  protected subprogram. The string is in exactly the form used for the
    --  declaration of the entity (casing and encoding conventions), and is
@@ -70,9 +79,18 @@ package GNAT.Source_Info is
    --  package itself. This is useful in identifying and logging information
    --  from within generic templates.
 
-private
-   pragma Import (Intrinsic, File);
-   pragma Import (Intrinsic, Line);
-   pragma Import (Intrinsic, Source_Location);
-   pragma Import (Intrinsic, Enclosing_Entity);
+   function Compilation_ISO_Date return String with
+     Import, Convention => Intrinsic;
+   --  Returns date of compilation as a static string "yyyy-mm-dd".
+
+   function Compilation_Date return String with
+     Import, Convention => Intrinsic;
+   --  Returns date of compilation as a static string "mmm dd yyyy". This is
+   --  in local time form, and is exactly compatible with C macro __DATE__.
+
+   function Compilation_Time return String with
+     Import, Convention => Intrinsic;
+   --  Returns GMT time of compilation as a static string "hh:mm:ss". This is
+   --  in local time form, and is exactly compatible with C macro __TIME__.
+
 end GNAT.Source_Info;

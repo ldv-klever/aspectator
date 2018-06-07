@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,6 +26,7 @@
 with Makeutl;
 with Osint;   use Osint;
 with Output;  use Output;
+with Switch;  use Switch;
 with Usage;
 
 procedure Makeusg is
@@ -50,6 +51,8 @@ begin
 
    Write_Str ("gnatmake switches:");
    Write_Eol;
+
+   Display_Usage_Version_And_Help;
 
    --  Line for -a
 
@@ -81,6 +84,11 @@ begin
 
    Write_Str ("  -C=mapp  Cache source mappings: " &
               "invoke compiler with mapping file mapp");
+   Write_Eol;
+
+   --  Line for -d
+
+   Write_Str ("  -d       Display compilation progress");
    Write_Eol;
 
    --  Line for -D
@@ -247,6 +255,17 @@ begin
 
    Write_Str ("  -z       No main subprogram (zero main)");
    Write_Eol;
+   Write_Eol;
+
+   Write_Str ("  --create-map-file   Create map file mainprog.map");
+   Write_Eol;
+
+   Write_Str ("  --create-map-file=mapfile");
+   Write_Eol;
+   Write_Str ("                      Create map file mapfile");
+   Write_Eol;
+
+   Write_Str ("  --keep-temp-files   Keep temporary files");
    Write_Eol;
 
    Write_Str ("  --GCC=command       Use this gcc command");

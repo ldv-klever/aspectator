@@ -1,8 +1,6 @@
 // Deque implementation (out of line) -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-// 2009, 2010, 2011
-// Free Software Foundation, Inc.
+// Copyright (C) 2001-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -62,7 +60,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
   template <typename _Tp, typename _Alloc>
     void
     deque<_Tp, _Alloc>::
@@ -94,9 +92,26 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     deque<_Tp, _Alloc>::
     operator=(const deque& __x)
     {
-      const size_type __len = size();
       if (&__x != this)
 	{
+#if __cplusplus >= 201103L
+	  if (_Alloc_traits::_S_propagate_on_copy_assign())
+	    {
+	      if (!_Alloc_traits::_S_always_equal()
+	          && _M_get_Tp_allocator() != __x._M_get_Tp_allocator())
+	        {
+		  // Replacement allocator cannot free existing storage,
+		  // so deallocate everything and take copy of __x's data.
+		  _M_replace_map(__x, __x.get_allocator());
+		  std::__alloc_on_copy(_M_get_Tp_allocator(),
+				       __x._M_get_Tp_allocator());
+		  return *this;
+		}
+	      std::__alloc_on_copy(_M_get_Tp_allocator(),
+				   __x._M_get_Tp_allocator());
+	    }
+#endif
+	  const size_type __len = size();
 	  if (__len >= __x.size())
 	    _M_erase_at_end(std::copy(__x.begin(), __x.end(),
 				      this->_M_impl._M_start));
@@ -104,51 +119,97 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    {
 	      const_iterator __mid = __x.begin() + difference_type(__len);
 	      std::copy(__x.begin(), __mid, this->_M_impl._M_start);
-	      insert(this->_M_impl._M_finish, __mid, __x.end());
+	      _M_range_insert_aux(this->_M_impl._M_finish, __mid, __x.end(),
+				  std::random_access_iterator_tag());
 	    }
 	}
       return *this;
     }
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
     template<typename... _Args>
+#if __cplusplus > 201402L
+      typename deque<_Tp, _Alloc>::reference
+#else
       void
+#endif
       deque<_Tp, _Alloc>::
       emplace_front(_Args&&... __args)
       {
 	if (this->_M_impl._M_start._M_cur != this->_M_impl._M_start._M_first)
 	  {
-	    this->_M_impl.construct(this->_M_impl._M_start._M_cur - 1,
-				    std::forward<_Args>(__args)...);
+	    _Alloc_traits::construct(this->_M_impl,
+	                             this->_M_impl._M_start._M_cur - 1,
+			             std::forward<_Args>(__args)...);
 	    --this->_M_impl._M_start._M_cur;
 	  }
 	else
 	  _M_push_front_aux(std::forward<_Args>(__args)...);
+#if __cplusplus > 201402L
+	return front();
+#endif
       }
 
   template<typename _Tp, typename _Alloc>
     template<typename... _Args>
+#if __cplusplus > 201402L
+      typename deque<_Tp, _Alloc>::reference
+#else
       void
+#endif
       deque<_Tp, _Alloc>::
       emplace_back(_Args&&... __args)
       {
 	if (this->_M_impl._M_finish._M_cur
 	    != this->_M_impl._M_finish._M_last - 1)
 	  {
-	    this->_M_impl.construct(this->_M_impl._M_finish._M_cur,
-				    std::forward<_Args>(__args)...);
+	    _Alloc_traits::construct(this->_M_impl,
+	                             this->_M_impl._M_finish._M_cur,
+			             std::forward<_Args>(__args)...);
 	    ++this->_M_impl._M_finish._M_cur;
 	  }
 	else
 	  _M_push_back_aux(std::forward<_Args>(__args)...);
+#if __cplusplus > 201402L
+	return back();
+#endif
+      }
+#endif
+
+#if __cplusplus >= 201103L
+  template<typename _Tp, typename _Alloc>
+    template<typename... _Args>
+      typename deque<_Tp, _Alloc>::iterator
+      deque<_Tp, _Alloc>::
+      emplace(const_iterator __position, _Args&&... __args)
+      {
+	if (__position._M_cur == this->_M_impl._M_start._M_cur)
+	  {
+	    emplace_front(std::forward<_Args>(__args)...);
+	    return this->_M_impl._M_start;
+	  }
+	else if (__position._M_cur == this->_M_impl._M_finish._M_cur)
+	  {
+	    emplace_back(std::forward<_Args>(__args)...);
+	    iterator __tmp = this->_M_impl._M_finish;
+	    --__tmp;
+	    return __tmp;
+	  }
+	else
+	  return _M_insert_aux(__position._M_const_cast(),
+			       std::forward<_Args>(__args)...);
       }
 #endif
 
   template <typename _Tp, typename _Alloc>
     typename deque<_Tp, _Alloc>::iterator
     deque<_Tp, _Alloc>::
+#if __cplusplus >= 201103L
+    insert(const_iterator __position, const value_type& __x)
+#else
     insert(iterator __position, const value_type& __x)
+#endif
     {
       if (__position._M_cur == this->_M_impl._M_start._M_cur)
 	{
@@ -163,37 +224,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  return __tmp;
 	}
       else
-        return _M_insert_aux(__position, __x);
-    }
-
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
-  template<typename _Tp, typename _Alloc>
-    template<typename... _Args>
-      typename deque<_Tp, _Alloc>::iterator
-      deque<_Tp, _Alloc>::
-      emplace(iterator __position, _Args&&... __args)
-      {
-	if (__position._M_cur == this->_M_impl._M_start._M_cur)
-	  {
-	    push_front(std::forward<_Args>(__args)...);
-	    return this->_M_impl._M_start;
-	  }
-	else if (__position._M_cur == this->_M_impl._M_finish._M_cur)
-	  {
-	    push_back(std::forward<_Args>(__args)...);
-	    iterator __tmp = this->_M_impl._M_finish;
-	    --__tmp;
-	    return __tmp;
-	  }
-	else
-	  return _M_insert_aux(__position, std::forward<_Args>(__args)...);
-      }
-#endif
+	return _M_insert_aux(__position._M_const_cast(), __x);
+   }
 
   template <typename _Tp, typename _Alloc>
     typename deque<_Tp, _Alloc>::iterator
     deque<_Tp, _Alloc>::
-    erase(iterator __position)
+    _M_erase(iterator __position)
     {
       iterator __next = __position;
       ++__next;
@@ -216,9 +253,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
   template <typename _Tp, typename _Alloc>
     typename deque<_Tp, _Alloc>::iterator
     deque<_Tp, _Alloc>::
-    erase(iterator __first, iterator __last)
+    _M_erase(iterator __first, iterator __last)
     {
-      if (__first == begin() && __last == end())
+      if (__first == __last)
+	return __first;
+      else if (__first == begin() && __last == end())
 	{
 	  clear();
 	  return end();
@@ -256,7 +295,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         if (__first == __last)
           _M_erase_at_end(__cur);
         else
-          insert(end(), __first, __last);
+          _M_range_insert_aux(end(), __first, __last,
+			      std::__iterator_category(__first));
       }
 
   template <typename _Tp, typename _Alloc>
@@ -301,7 +341,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         _M_insert_aux(__pos, __n, __x);
     }
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
   template <typename _Tp, typename _Alloc>
     void
     deque<_Tp, _Alloc>::
@@ -324,6 +364,24 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	      __throw_exception_again;
 	    }
 	}
+    }
+
+  template <typename _Tp, typename _Alloc>
+    bool
+    deque<_Tp, _Alloc>::
+    _M_shrink_to_fit()
+    {
+      const difference_type __front_capacity
+	= (this->_M_impl._M_start._M_cur - this->_M_impl._M_start._M_first);
+      if (__front_capacity == 0)
+	return false;
+
+      const difference_type __back_capacity
+	= (this->_M_impl._M_finish._M_last - this->_M_impl._M_finish._M_cur);
+      if (__front_capacity + __back_capacity < _S_buffer_size())
+	return false;
+
+      return std::__shrink_to_fit_aux<deque>::_S_do_it(*this);
     }
 #endif
 
@@ -363,7 +421,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         __try
           {
             for (; __first != __last; ++__first)
+#if __cplusplus >= 201103L
+	      emplace_back(*__first);
+#else
               push_back(*__first);
+#endif
           }
         __catch(...)
           {
@@ -410,7 +472,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   // Called only if _M_impl._M_finish._M_cur == _M_impl._M_finish._M_last - 1.
   template<typename _Tp, typename _Alloc>
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
     template<typename... _Args>
       void
       deque<_Tp, _Alloc>::
@@ -425,9 +487,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	*(this->_M_impl._M_finish._M_node + 1) = this->_M_allocate_node();
 	__try
 	  {
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
-	    this->_M_impl.construct(this->_M_impl._M_finish._M_cur,
-				    std::forward<_Args>(__args)...);
+#if __cplusplus >= 201103L
+	    _Alloc_traits::construct(this->_M_impl,
+	                             this->_M_impl._M_finish._M_cur,
+			             std::forward<_Args>(__args)...);
 #else
 	    this->_M_impl.construct(this->_M_impl._M_finish._M_cur, __t);
 #endif
@@ -444,7 +507,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   // Called only if _M_impl._M_start._M_cur == _M_impl._M_start._M_first.
   template<typename _Tp, typename _Alloc>
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
     template<typename... _Args>
       void
       deque<_Tp, _Alloc>::
@@ -462,9 +525,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    this->_M_impl._M_start._M_set_node(this->_M_impl._M_start._M_node
 					       - 1);
 	    this->_M_impl._M_start._M_cur = this->_M_impl._M_start._M_last - 1;
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
-	    this->_M_impl.construct(this->_M_impl._M_start._M_cur,
-				    std::forward<_Args>(__args)...);
+#if __cplusplus >= 201103L
+	    _Alloc_traits::construct(this->_M_impl,
+	                             this->_M_impl._M_start._M_cur,
+			             std::forward<_Args>(__args)...);
 #else
 	    this->_M_impl.construct(this->_M_impl._M_start._M_cur, __t);
 #endif
@@ -485,7 +549,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       _M_deallocate_node(this->_M_impl._M_finish._M_first);
       this->_M_impl._M_finish._M_set_node(this->_M_impl._M_finish._M_node - 1);
       this->_M_impl._M_finish._M_cur = this->_M_impl._M_finish._M_last - 1;
-      this->_M_impl.destroy(this->_M_impl._M_finish._M_cur);
+      _Alloc_traits::destroy(_M_get_Tp_allocator(),
+			     this->_M_impl._M_finish._M_cur);
     }
 
   // Called only if _M_impl._M_start._M_cur == _M_impl._M_start._M_last - 1.
@@ -497,7 +562,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     void deque<_Tp, _Alloc>::
     _M_pop_front_aux()
     {
-      this->_M_impl.destroy(this->_M_impl._M_start._M_cur);
+      _Alloc_traits::destroy(_M_get_Tp_allocator(),
+			     this->_M_impl._M_start._M_cur);
       _M_deallocate_node(this->_M_impl._M_start._M_first);
       this->_M_impl._M_start._M_set_node(this->_M_impl._M_start._M_node + 1);
       this->_M_impl._M_start._M_cur = this->_M_impl._M_start._M_first;
@@ -559,7 +625,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       }
 
   template<typename _Tp, typename _Alloc>
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
     template<typename... _Args>
       typename deque<_Tp, _Alloc>::iterator
       deque<_Tp, _Alloc>::
@@ -976,7 +1042,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       return __result;
     }
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
   template<typename _Tp>
     _Deque_iterator<_Tp, _Tp&, _Tp*>
     move(_Deque_iterator<_Tp, const _Tp&, const _Tp*> __first,

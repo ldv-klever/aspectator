@@ -5,26 +5,37 @@
    license that can be found in the LICENSE file.  */
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-#include "map.h"
+#include "runtime.h"
+#include "go-type.h"
 
-struct __go_map *
-__go_construct_map (const struct __go_map_descriptor *descriptor,
-		    size_t count, size_t entry_size, size_t val_offset,
-		    size_t val_size, const void *ventries)
+extern void *makemap (const struct __go_map_type *, int64_t hint,
+		      void *, void *)
+  __asm__ (GOSYM_PREFIX "runtime.makemap");
+
+extern void *mapassign (const struct __go_map_type *, void *hmap,
+			const void *key)
+  __asm__ (GOSYM_PREFIX "runtime.mapassign");
+
+void *
+__go_construct_map (const struct __go_map_type *type,
+		    uintptr_t count, uintptr_t entry_size,
+		    uintptr_t val_offset, const void *ventries)
 {
-  struct __go_map *ret;
+  void *ret;
   const unsigned char *entries;
-  size_t i;
+  uintptr_t i;
+  void *p;
 
-  ret = __go_new_map (descriptor, count);
+  ret = makemap(type, (int64_t) count, NULL, NULL);
 
   entries = (const unsigned char *) ventries;
   for (i = 0; i < count; ++i)
     {
-      void *val = __go_map_index (ret, entries, 1);
-      __builtin_memcpy (val, entries + val_offset, val_size);
+      p = mapassign (type, ret, entries);
+      typedmemmove (type->__val_type, p, entries + val_offset);
       entries += entry_size;
     }
 

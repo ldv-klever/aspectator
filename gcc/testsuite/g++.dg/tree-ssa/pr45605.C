@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O1 -fdump-tree-ssa" } */
+/* { dg-options "-O1 -fdump-tree-fre1" } */
 extern "C" void abort(); 
 bool destructor_called = false; 
 
@@ -15,7 +15,11 @@ struct D : public B {
         } o; 
 
         struct Raiser { 
-            Raiser()  throw( int ) {throw 1;}; 
+            Raiser()
+#if __cplusplus <= 201402L
+	    throw( int )			// { dg-warning "deprecated" "" { target { c++11 && { ! c++1z } } } }
+#endif
+	    {throw 1;}; 
         } raiser; 
       }; 
 }; 
@@ -33,5 +37,4 @@ int main() {
 
 
 /* We should devirtualize call to D::Run */
-/* { dg-final { scan-tree-dump-times "D::Run \\(" 1 "ssa" { xfail *-*-* } } } */
-/* { dg-final { cleanup-tree-dump "ssa" } } */
+/* { dg-final { scan-tree-dump-times "D::Run \\(" 1 "fre1" } } */

@@ -167,7 +167,7 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
           ldv_c_backend_buffer_prev = ldv_c_backend_buffer;
 
           if (!(ldv_c_backend_buffer = concat (ldv_c_backend_buffer, str, NULL)))
-            fatal_error ("can't concatenate strings '%s' and '%s'", ldv_c_backend_buffer, str);
+            internal_error ("can't concatenate strings '%s' and '%s'", ldv_c_backend_buffer, str);
 
           /* Free previously allocated buffer, since in concatenating
              completely new memory is allocated. */
@@ -215,7 +215,7 @@ ldv_cbe_handle_options (void)
 
   if ((ldv_c_backend_out_fname = getenv ("LDV_C_BACKEND_OUT")))
     if (!(ldv_c_backend_out_stream = fopen (ldv_c_backend_out_fname, "w")))
-      fatal_error ("can't open file '%s' for write: %m", ldv_c_backend_out_fname);
+      internal_error ("can't open file '%s' for write: %m", ldv_c_backend_out_fname);
 
   if ((lines_level_str = getenv ("LDV_C_BACKEND_LINES_LEVEL")))
     ldv_c_backend_lines_level = atoi (lines_level_str);

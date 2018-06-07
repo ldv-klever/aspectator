@@ -1,5 +1,6 @@
 /* { dg-require-effective-target vect_int } */
 /* { dg-require-effective-target vect_float } */
+/* { dg-add-options bind_pic_locally } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
@@ -215,6 +216,6 @@ int main (void)
 }
 
 /* { dg-final { scan-tree-dump-times "vectorized 10 loops" 1 "vect" } } */
-/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 0 "vect" } } */
+/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 0 "vect" { target { { vect_aligned_arrays } && {! vect_sizes_32B_16B} } } } } */
+/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 1 "vect" { target { {! vect_aligned_arrays } && {vect_sizes_32B_16B} } } } } */
 /* { dg-final { scan-tree-dump-times "Alignment of access forced using peeling" 0 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */

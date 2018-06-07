@@ -1,9 +1,9 @@
 // PR c++/42399
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
 
 struct A {
   A();
-  A(const A&) = delete;		// { dg-error "declared" }
+  A(const A&) = delete;		// { dg-message "declared" }
 };
 
 template <class T>
@@ -15,5 +15,5 @@ void f()
 
 int main()
 {
-  f<A>();			// { dg-message "instantiated" }
+  f<A>();			// { dg-message "required" }
 }

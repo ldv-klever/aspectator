@@ -1,4 +1,4 @@
-// Copyright (C) 2005, 2009 Free Software Foundation
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,6 +15,8 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
+// { dg-require-fileio "" }
+
 // 27.6.2.4 basic_ostream seek members
 
 #include <ostream>
@@ -28,7 +30,6 @@ void test01()
   typedef wios::off_type off_type;
   typedef wios::pos_type pos_type;
 
-  bool test __attribute__((unused)) = true;
   const char str_lit01[] = "wostream_seeks-1.txt";
 
   // out

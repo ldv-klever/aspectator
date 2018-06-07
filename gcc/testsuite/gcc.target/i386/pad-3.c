@@ -1,4 +1,5 @@
 /* { dg-do compile } */
+/* { dg-skip-if "" { *-*-* } { "-march=*" } { "-march=atom" } } */
 /* { dg-options "-O2 -fomit-frame-pointer -march=atom -fno-pic" } */
 /* { dg-final { scan-assembler-not "nop" } } */
 /* { dg-final { scan-assembler-not "rep" } } */

@@ -1,15 +1,14 @@
 // Test that a base with only a move constructor causes the implicit copy
 // constructor to be deleted.
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
 
-struct A
+struct A			// { dg-message "declares a move" }
 {
-  A();				// { dg-message "A::A|candidate expects" }
-  A(A&&);			// { dg-message "A::A|no known conversion" }
+  A();
+  A(A&&);
 };
 
-struct B: A			// { dg-error "implicit|no match" }
-// { dg-message "candidate" "candidate note" { target *-*-* } 11 }
+struct B: A			// { dg-error "use of deleted" }
 {
 };
 

@@ -1,5 +1,5 @@
 /* Set the title of a process.
-   Copyright (C) 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2010-2017 Free Software Foundation, Inc.
 
 This file is part of the libiberty library.
 Libiberty is free software; you can redistribute it and/or
@@ -41,8 +41,8 @@ void
 setproctitle (const char *name ATTRIBUTE_UNUSED, ...)
 {
 #ifdef PR_SET_NAME
-  /* On Linux this sets the top visible "comm", but not necessarily
-     the name visible in ps. */
+  /* On GNU/Linux this sets the top visible "comm", but not
+     necessarily the name visible in ps. */
   prctl (PR_SET_NAME, name);
 #endif
 }

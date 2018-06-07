@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007, 2008, 2009, 2011 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2017 Free Software Foundation, Inc.
 
    This file is free software; you can redistribute it and/or modify it under
    the terms of the GNU General Public License as published by the Free
@@ -35,10 +35,6 @@
 #undef STANDARD_STARTFILE_PREFIX_2
 #define STANDARD_STARTFILE_PREFIX_2 ""
 
-/* Use "/include" instead of "/usr/include".  */
-#undef STANDARD_INCLUDE_DIR
-#define STANDARD_INCLUDE_DIR "/include"
-
 /* We do not provide any "/usr/local/include" directory on SPU.  */
 #undef LOCAL_INCLUDE_DIR
 
@@ -65,7 +61,7 @@
 #undef TARGET_ASM_NAMED_SECTION
 #define TARGET_ASM_NAMED_SECTION  default_elf_asm_named_section
 
-#define EH_FRAME_IN_DATA_SECTION 1
+#define EH_FRAME_THROUGH_COLLECT2 1
 
 #define LINK_SPEC "%{mlarge-mem: --defsym __stack=0xfffffff0 }"
 
@@ -77,4 +73,3 @@
       mcache-size=16 :-lgcc_cache16k; \
       mcache-size=8  :-lgcc_cache8k; \
                      :-lgcc_cache64k}"
-

@@ -1,6 +1,6 @@
 // Test that we don't have to deal with type punning
-// FIXME Mike Miller thinks it should work
-// { dg-options -std=c++0x }
+// DR 1188 says this is ill-formed
+// { dg-do compile { target c++11 } }
 
 union U
 {

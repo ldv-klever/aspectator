@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O -fdump-tree-fre-details" } */
+/* { dg-options "-O -fdump-tree-fre1-details" } */
 
 int *q;
 void __attribute__((noinline))
@@ -21,5 +21,4 @@ int foo(int which_p)
   return x;
 }
 
-/* { dg-final { scan-tree-dump "Replaced x with 0" "fre" } } */
-/* { dg-final { cleanup-tree-dump "fre" } } */
+/* { dg-final { scan-tree-dump "Replaced x with 0" "fre1" } } */

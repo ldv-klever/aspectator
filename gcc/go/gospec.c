@@ -1,5 +1,5 @@
 /* gospec.c -- Specific flags and argument handling of the gcc Go front end.
-   Copyright (C) 2009, 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2009-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,7 +21,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "gcc.h"
 #include "opts.h"
 
 /* This bit is set if we saw a `-xfoo' language specification.  */
@@ -106,8 +105,24 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
   /* The total number of arguments with the new stuff.  */
   int num_args = 1;
 
+  /* Supports split stack */
+  int supports_split_stack = 0;
+
   /* Whether the -o option was used.  */
   bool saw_opt_o = false;
+
+  /* Whether the -c option was used.  Also used for -E, -fsyntax-only,
+     in general anything which implies only compilation and not
+     linking.  */
+  bool saw_opt_c = false;
+
+  /* Whether the -S option was used.  */
+  bool saw_opt_S = false;
+
+#ifdef TARGET_CAN_SPLIT_STACK_64BIT
+  /* Whether the -m64 option is in force. */
+  bool is_m64 = TARGET_CAN_SPLIT_STACK_64BIT;
+#endif
 
   /* The first input file with an extension of .go.  */
   const char *first_go_file = NULL;  
@@ -144,6 +159,16 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
 	    library = (library == 0) ? 1 : library;
 	  break;
 
+#ifdef TARGET_CAN_SPLIT_STACK_64BIT
+	case OPT_m32:
+	  is_m64 = false;
+	  break;
+
+	case OPT_m64:
+	  is_m64 = true;
+	  break;
+#endif
+
 	case OPT_pg:
 	case OPT_p:
 	  saw_profile_flag = true;
@@ -163,13 +188,18 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
 	  break;
 
 	case OPT_c:
-	case OPT_S:
 	case OPT_E:
 	case OPT_M:
 	case OPT_MM:
 	case OPT_fsyntax_only:
 	  /* Don't specify libraries if we won't link, since that would
 	     cause a warning.  */
+	  saw_opt_c = true;
+	  library = -1;
+	  break;
+
+	case OPT_S:
+	  saw_opt_S = true;
 	  library = -1;
 	  break;
 
@@ -214,7 +244,7 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
 #endif
 
   /* Make sure to have room for the trailing NULL argument.  */
-  num_args = argc + need_math + shared_libgcc + (library > 0) * 5 + 5;
+  num_args = argc + need_math + shared_libgcc + (library > 0) * 5 + 10;
   new_decoded_options = XNEWVEC (struct cl_decoded_option, num_args);
 
   i = 0;
@@ -223,15 +253,22 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
   /* Copy the 0th argument, i.e., the name of the program itself.  */
   new_decoded_options[j++] = decoded_options[i++];
 
-  /* If we are linking, pass -fsplit-stack if it is supported.  */
 #ifdef TARGET_CAN_SPLIT_STACK
-  if (library >= 0)
+  supports_split_stack = 1;
+#endif
+
+#ifdef TARGET_CAN_SPLIT_STACK_64BIT
+  if (is_m64)
+    supports_split_stack = 1;
+#endif
+
+  /* If we are linking, pass -fsplit-stack if it is supported.  */
+  if ((library >= 0) && supports_split_stack)
     {
       generate_option (OPT_fsplit_stack, NULL, 1, CL_DRIVER,
 		       &new_decoded_options[j]);
       j++;
     }
-#endif
 
   /* NOTE: We start at 1 now, not 0.  */
   while (i < argc)
@@ -265,28 +302,39 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
       j++;
     }
 
-  /* If we are not linking, add a -o option.  This is because we need
+  /* If we didn't see a -o option, add one.  This is because we need
      the driver to pass all .go files to go1.  Without a -o option the
-     driver will invoke go1 separately for each input file.  */
-  if (library < 0 && first_go_file != NULL && !saw_opt_o)
+     driver will invoke go1 separately for each input file.  FIXME:
+     This should probably use some other interface to force the driver
+     to set combine_inputs.  */
+  if (first_go_file != NULL && !saw_opt_o)
     {
-      const char *base;
-      int baselen;
-      int alen;
-      char *out;
+      if (saw_opt_c || saw_opt_S)
+	{
+	  const char *base;
+	  int baselen;
+	  int alen;
+	  char *out;
 
-      base = lbasename (first_go_file);
-      baselen = strlen (base) - 3;
-      alen = baselen + 3;
-      out = XNEWVEC (char, alen);
-      memcpy (out, base, baselen);
-      /* The driver will convert .o to some other suffix if
-	 appropriate.  */
-      out[baselen] = '.';
-      out[baselen + 1] = 'o';
-      out[baselen + 2] = '\0';
-      generate_option (OPT_o, out, 1, CL_DRIVER,
-		       &new_decoded_options[j]);
+	  base = lbasename (first_go_file);
+	  baselen = strlen (base) - 3;
+	  alen = baselen + 3;
+	  out = XNEWVEC (char, alen);
+	  memcpy (out, base, baselen);
+	  /* The driver will convert .o to some other suffix (e.g.,
+	     .obj) if appropriate.  */
+	  out[baselen] = '.';
+	  if (saw_opt_S)
+	    out[baselen + 1] = 's';
+	  else
+	    out[baselen + 1] = 'o';
+	  out[baselen + 2] = '\0';
+	  generate_option (OPT_o, out, 1, CL_DRIVER,
+			   &new_decoded_options[j]);
+	}
+      else
+	generate_option (OPT_o, "a.out", 1, CL_DRIVER,
+			 &new_decoded_options[j]);
       j++;
     }
 
@@ -356,6 +404,27 @@ lang_specific_driver (struct cl_decoded_option **in_decoded_options,
   if (shared_libgcc && !static_link)
     generate_option (OPT_shared_libgcc, NULL, 1, CL_DRIVER,
 		     &new_decoded_options[j++]);
+
+  /* libgcc wraps pthread_create to support split stack, however, due to
+     relative ordering of -lpthread and -lgcc, we can't just mark
+     __real_pthread_create in libgcc as non-weak.  But we need to link in
+     pthread_create from pthread if we are statically linking, so we work-
+     around by passing -u pthread_create to the linker. */
+  if (static_link && supports_split_stack)
+    {
+      generate_option (OPT_Wl_, "-u,pthread_create", 1, CL_DRIVER,
+		       &new_decoded_options[j]);
+      j++;
+    }
+
+#if defined(TARGET_SOLARIS) && !defined(USE_GLD)
+  /* We use a common symbol for go$zerovalue.  On Solaris, when not
+     using the GNU linker, the Solaris linker needs an option to not
+     warn about this.  Everything works without this option, but you
+     get unsightly warnings at link time.  */
+  generate_option (OPT_Wl_, "-t", 1, CL_DRIVER, &new_decoded_options[j]);
+  j++;
+#endif
 
   *in_decoded_options_count = j;
   *in_decoded_options = new_decoded_options;

@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                       Copyright (C) 2007, AdaCore                        --
+--                     Copyright (C) 2007-2013, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -48,6 +46,17 @@
 --  will be Unicode/ISO-10646 as specified by the Ada RM, but this package
 --  does not make any assumptions about the character coding. See also the
 --  packages Ada.Wide_[Wide_]Characters.Unicode for unicode specific functions.
+
+--  In particular, in the case of UTF-8, all valid UTF-8 encodings, as listed
+--  in table 3.6 of the Unicode Standard, version 6.2.0, are recognized as
+--  legitimate. This includes the full range 16#0000_0000# .. 16#03FF_FFFF#.
+--  This includes codes in the range 16#D800# - 16#DFFF#. These codes all
+--  have UTF-8 encoding sequences that are well-defined (e.g. the encoding for
+--  16#D800# is ED A0 80). But these codes do not correspond to defined Unicode
+--  characters and are thus considered to be "not well-formed" (see table 3.7
+--  of the Unicode Standard). If you need to exclude these codes, you must do
+--  that manually, e.g. use Decode_Wide_Character/Decode_Wide_String and check
+--  that the resulting code(s) are not in this range.
 
 --  Note on the use of brackets encoding (WCEM_Brackets). The brackets encoding
 --  method is ambiguous in the context of this package, since there is no way
@@ -88,7 +97,6 @@ package GNAT.Decode_String is
    --  will be raised.
 
    function Decode_Wide_Wide_String (S : String) return Wide_Wide_String;
-   pragma Inline (Decode_Wide_Wide_String);
    --  Same as above function but for Wide_Wide_String output
 
    procedure Decode_Wide_Wide_String
@@ -126,16 +134,17 @@ package GNAT.Decode_String is
      (Input  : String;
       Ptr    : in out Natural;
       Result : out Wide_Wide_Character);
+   pragma Inline (Decode_Wide_Wide_Character);
    --  Same as above procedure but with Wide_Wide_Character input
 
    procedure Next_Wide_Character (Input : String; Ptr : in out Natural);
+   pragma Inline (Next_Wide_Character);
    --  This procedure examines the input string starting at Input (Ptr), and
    --  advances Ptr past one character in the encoded string, so that on return
    --  Ptr points to the next encoded character. Constraint_Error is raised if
    --  an invalid encoding is encountered, or the end of the string is reached
    --  or if Ptr is less than String'First on entry, or if the character
-   --  skipped is not a valid Wide_Character code. This call may be more
-   --  efficient than calling Decode_Wide_Character and discarding the result.
+   --  skipped is not a valid Wide_Character code.
 
    procedure Prev_Wide_Character (Input : String; Ptr : in out Natural);
    --  This procedure is similar to Next_Encoded_Character except that it moves
@@ -151,8 +160,12 @@ package GNAT.Decode_String is
    --  WCEM_Brackets). For all other encodings, we work by starting at the
    --  beginning of the string and moving forward till Ptr is reached, which
    --  is correct but slow.
+   --
+   --  Note: this routine assumes that the sequence prior to Ptr is correctly
+   --  encoded, it does not have a defined behavior if this is not the case.
 
    procedure Next_Wide_Wide_Character (Input : String; Ptr : in out Natural);
+   pragma Inline (Next_Wide_Wide_Character);
    --  Similar to Next_Wide_Character except that codes skipped must be valid
    --  Wide_Wide_Character codes.
 

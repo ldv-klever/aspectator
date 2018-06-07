@@ -20,31 +20,67 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "input.h"
 #include "tm.h"
-
-/* Tree conceptions. */
+#include "intl.h"
+#include "hash-set.h"
+#include "vec.h"
+#include "symtab.h"
+#include "input.h"
+#include "alias.h"
+#include "double-int.h"
+#include "machmode.h"
+#include "inchash.h"
 #include "tree.h"
-
-/* For build_function_call function. */
-#include "c-lang.h"
-
-/* For error functions. */
-#include "diagnostic-core.h"
-#include "toplev.h"
-
-/* Statement list iterator. */
-#include "tree-iterator.h"
-
-/* For function structure. */
-#include "function.h"
-
+#include "fold-const.h"
+#include "print-tree.h"
+#include "stor-layout.h"
+#include "varasm.h"
+#include "attribs.h"
+#include "stringpool.h"
+#include "tree-inline.h"
+#include "flags.h"
 #include "hashtab.h"
+#include "hash-set.h"
+#include "vec.h"
+#include "machmode.h"
+#include "hard-reg-set.h"
+#include "function.h"
+#include "c/c-tree.h"
+#include "toplev.h"
+#include "tm_p.h"
+#include "cpplib.h"
+#include "target.h"
+#include "debug.h"
+#include "opts.h"
+#include "timevar.h"
+#include "c-family/c-common.h"
+#include "c-family/c-objc.h"
+#include "c-family/c-pragma.h"
+#include "c-family/c-ubsan.h"
+#include "c/c-lang.h"
+#include "langhooks.h"
+#include "tree-iterator.h"
+#include "diagnostic-core.h"
+#include "dumpfile.h"
+#include "hash-map.h"
+#include "is-a.h"
+#include "plugin-api.h"
+#include "ipa-ref.h"
+#include "cgraph.h"
+#include "hash-table.h"
+#include "langhooks-def.h"
+#include "plugin.h"
+#include "c-family/c-ada-spec.h"
+#include "cilk.h"
+#include "builtins.h"
 
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-parser.h"
 #include "ldv-converter.h"
 #include "ldv-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
+#include "c-family/ldv-convert.h"
 #include "c-family/ldv-grammar.h"
 #include "ldv-io.h"
 #include "ldv-opts.h"
@@ -65,7 +101,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* This is copypasted from C-backend. */
 #define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
-#define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
+#define LDV_TREE_NODE_NAME(t) (get_tree_code_name(TREE_CODE (t)))
 
 
 typedef struct ldv_var_array_internal
@@ -82,7 +118,6 @@ ldv_pps_declspecs_ptr ldv_entity_declspecs = NULL;
 ldv_list_ptr ldv_func_arg_info_list = NULL;
 tree ldv_func_called_matched = NULL_TREE;
 tree ldv_func_decl_matched = NULL_TREE;
-ldv_i_match_ptr ldv_i_match = NULL;
 
 static ldv_list_ptr ldv_var_array_list;
 static ldv_i_func_ptr func_context = NULL;
@@ -628,7 +663,7 @@ ldv_match_expr (tree t, tree context)
 
         case CONSTRUCTOR:
           FOR_EACH_CONSTRUCTOR_VALUE (CONSTRUCTOR_ELTS (t), ix, value)
-            ldv_match_expr (value, t);
+            ldv_match_expr (value, context);
 
           break;
 
@@ -1066,7 +1101,7 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 
   /* Obtain information on a type declaration signature. */
   typedecl->name = ldv_create_id ();
-  if (DECL_NAME (t)) 
+  if (DECL_NAME (t))
     ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
   else
     ldv_puts_id ("", typedecl->name);
@@ -1300,7 +1335,7 @@ ldv_visualize_expr (tree t, int offset)
 
   /* Obtain information on an expression node. */
   code = TREE_CODE (t);
-  code_name = tree_code_name[(int) code];
+  code_name = get_tree_code_name(code);
   code_class = TREE_CODE_CLASS (code);
 
   /* Separate a new expression from the previos one. */

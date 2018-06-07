@@ -16,9 +16,9 @@ typedef int I;
 typedef I I;
 
 //p3--cannot redefine to a different type in a given scope
-class complex2 { /* ... */ };// { dg-error "" } .*
+class complex2 { /* ... */ };// { dg-message "" } .*
 typedef int complex2;// { dg-error "" } .*
-typedef int complex3;// { dg-error "" } .*
+typedef int complex3;// { dg-message "" } .*
 class complex3 { /* ... */ };// { dg-error "" } .*
 
 
@@ -37,7 +37,7 @@ struct S {
   ~S();
 };
 
-typedef struct S T;		// { dg-error "previous declaration" }
+typedef struct S T;		// { dg-message "previous declaration" }
 
 S a = T();                      // OK 
 struct T * p;                   // { dg-error "" } using typedef after struct

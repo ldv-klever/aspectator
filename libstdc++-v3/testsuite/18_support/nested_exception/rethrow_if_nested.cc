@@ -1,7 +1,6 @@
-// { dg-options "-std=gnu++0x" }
-// { dg-require-atomic-builtins "" }
+// { dg-do run { target c++11 } }
 
-// Copyright (C) 2009 Free Software Foundation, Inc.
+// Copyright (C) 2009-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -23,14 +22,14 @@
 
 struct derived : std::nested_exception { };
 
-struct base { virtual ~base(); };
-inline base::~base() = default;
+struct base { virtual ~base() noexcept; };
+inline base::~base() noexcept = default;
 
 struct derived2 : base, std::nested_exception { };
 
 void test01() 
 {
-  bool test __attribute__((unused)) = false;
+  bool test = false;
 
   try
   {
@@ -55,7 +54,7 @@ void test01()
 
 void test02() 
 {
-  bool test __attribute__((unused)) = false;
+  bool test = false;
 
   try
   {
@@ -72,7 +71,7 @@ void test02()
 
 void test03() 
 {
-  bool test __attribute__((unused)) = false;
+  bool test = false;
 
   try
   {
@@ -101,11 +100,30 @@ void test03()
   VERIFY( test );
 }
 
+void
+test04()
+{
+  // LWG 2484 requires that these cases are well-formed, but don't rethrow.
+
+  std::rethrow_if_nested(1);
+
+  struct S { } nonpolymorphic;
+  std::rethrow_if_nested(nonpolymorphic);
+
+  struct derived3 : derived, derived2 { };
+  derived3 ambiguous_base;
+  std::rethrow_if_nested(ambiguous_base);
+
+  struct derived4 : private std::nested_exception { };
+  derived4 private_base;
+  std::rethrow_if_nested(private_base);
+}
 
 int main()
 {
   test01();
   test02();
   test03();
+  test04();
   return 0;
 }

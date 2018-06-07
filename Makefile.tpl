@@ -6,7 +6,7 @@ in
 #
 # Makefile for directory with subdirs to build.
 #   Copyright (C) 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-#   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
+#   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
 #   Free Software Foundation
 #
 # This file is free software; you can redistribute it and/or modify
@@ -103,8 +103,6 @@ TOPLEVEL_CONFIGURE_ARGUMENTS=@TOPLEVEL_CONFIGURE_ARGUMENTS@
 tooldir = @tooldir@
 build_tooldir = @build_tooldir@
 
-GDB_NLM_DEPS = 
-
 # This is the name of the environment variable used for the path to
 # the libraries.
 RPATH_ENVVAR = @RPATH_ENVVAR@
@@ -158,7 +156,6 @@ BUILD_EXPORTS = \
 	CONFIG_SHELL="$(SHELL)"; export CONFIG_SHELL; \
 	CXX="$(CXX_FOR_BUILD)"; export CXX; \
 	CXXFLAGS="$(CXXFLAGS_FOR_BUILD)"; export CXXFLAGS; \
-	GCJ="$(GCJ_FOR_BUILD)"; export GCJ; \
 	GFORTRAN="$(GFORTRAN_FOR_BUILD)"; export GFORTRAN; \
 	GOC="$(GOC_FOR_BUILD)"; export GOC; \
 	GOCFLAGS="$(GOCFLAGS_FOR_BUILD)"; export GOCFLAGS; \
@@ -171,7 +168,7 @@ BUILD_EXPORTS = \
 	WINDMC="$(WINDMC_FOR_BUILD)"; export WINDMC;
 
 # These variables must be set on the make command line for directories
-# built for the build system to override those in BASE_FLAGS_TO_PASSS.
+# built for the build system to override those in BASE_FLAGS_TO_PASS.
 EXTRA_BUILD_FLAGS = \
 	CFLAGS="$(CFLAGS_FOR_BUILD)" \
 	LDFLAGS="$(LDFLAGS_FOR_BUILD)"
@@ -196,7 +193,6 @@ HOST_EXPORTS = \
 	CONFIG_SHELL="$(SHELL)"; export CONFIG_SHELL; \
 	CXX="$(CXX)"; export CXX; \
 	CXXFLAGS="$(CXXFLAGS)"; export CXXFLAGS; \
-	GCJ="$(GCJ)"; export GCJ; \
 	GFORTRAN="$(GFORTRAN)"; export GFORTRAN; \
 	GOC="$(GOC)"; export GOC; \
 	AR="$(AR)"; export AR; \
@@ -211,23 +207,25 @@ HOST_EXPORTS = \
 	WINDMC="$(WINDMC)"; export WINDMC; \
 	OBJCOPY="$(OBJCOPY)"; export OBJCOPY; \
 	OBJDUMP="$(OBJDUMP)"; export OBJDUMP; \
+	READELF="$(READELF)"; export READELF; \
 	AR_FOR_TARGET="$(AR_FOR_TARGET)"; export AR_FOR_TARGET; \
 	AS_FOR_TARGET="$(AS_FOR_TARGET)"; export AS_FOR_TARGET; \
 	GCC_FOR_TARGET="$(GCC_FOR_TARGET)"; export GCC_FOR_TARGET; \
 	LD_FOR_TARGET="$(LD_FOR_TARGET)"; export LD_FOR_TARGET; \
 	NM_FOR_TARGET="$(NM_FOR_TARGET)"; export NM_FOR_TARGET; \
 	OBJDUMP_FOR_TARGET="$(OBJDUMP_FOR_TARGET)"; export OBJDUMP_FOR_TARGET; \
+	OBJCOPY_FOR_TARGET="$(OBJCOPY_FOR_TARGET)"; export OBJCOPY_FOR_TARGET; \
 	RANLIB_FOR_TARGET="$(RANLIB_FOR_TARGET)"; export RANLIB_FOR_TARGET; \
+	READELF_FOR_TARGET="$(READELF_FOR_TARGET)"; export READELF_FOR_TARGET; \
 	TOPLEVEL_CONFIGURE_ARGUMENTS="$(TOPLEVEL_CONFIGURE_ARGUMENTS)"; export TOPLEVEL_CONFIGURE_ARGUMENTS; \
 	HOST_LIBS="$(STAGE1_LIBS)"; export HOST_LIBS; \
 	GMPLIBS="$(HOST_GMPLIBS)"; export GMPLIBS; \
 	GMPINC="$(HOST_GMPINC)"; export GMPINC; \
-	PPLLIBS="$(HOST_PPLLIBS)"; export PPLLIBS; \
-	PPLINC="$(HOST_PPLINC)"; export PPLINC; \
-	CLOOGLIBS="$(HOST_CLOOGLIBS)"; export CLOOGLIBS; \
-	CLOOGINC="$(HOST_CLOOGINC)"; export CLOOGINC; \
-	LIBELFLIBS="$(HOST_LIBELFLIBS)" ; export LIBELFLIBS; \
-	LIBELFINC="$(HOST_LIBELFINC)" ; export LIBELFINC; \
+	ISLLIBS="$(HOST_ISLLIBS)"; export ISLLIBS; \
+	ISLINC="$(HOST_ISLINC)"; export ISLINC; \
+	LIBELFLIBS="$(HOST_LIBELFLIBS)"; export LIBELFLIBS; \
+	LIBELFINC="$(HOST_LIBELFINC)"; export LIBELFINC; \
+	XGCC_FLAGS_FOR_TARGET="$(XGCC_FLAGS_FOR_TARGET)"; export XGCC_FLAGS_FOR_TARGET; \
 @if gcc-bootstrap
 	$(RPATH_ENVVAR)=`echo "$(TARGET_LIB_PATH)$$$(RPATH_ENVVAR)" | sed 's,::*,:,g;s,^:*,,;s,:*$$,,'`; export $(RPATH_ENVVAR); \
 @endif gcc-bootstrap
@@ -239,13 +237,16 @@ POSTSTAGE1_CXX_EXPORT = \
 @if target-libstdc++-v3-bootstrap
 # Override the above if we're bootstrapping C++.
 POSTSTAGE1_CXX_EXPORT = \
-	CXX="$(STAGE_CC_WRAPPER) $$r/$(HOST_SUBDIR)/prev-gcc/g++$(exeext) \
+	CXX="$(STAGE_CC_WRAPPER) $$r/$(HOST_SUBDIR)/prev-gcc/xg++$(exeext) \
 	  -B$$r/$(HOST_SUBDIR)/prev-gcc/ -B$(build_tooldir)/bin/ -nostdinc++ \
 	  -B$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/src/.libs \
-	  -I$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/include/$(TARGET_SUBDIR) \
-	  -I$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/include \
-	  -I$$s/libstdc++-v3/libsupc++ \
-	  -L$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/src/.libs"; export CXX; \
+	  -B$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/libsupc++/.libs \
+	  `if $(LEAN); then echo ' -isystem '; else echo ' -I'; fi`$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/include/$(TARGET_SUBDIR) \
+	  `if $(LEAN); then echo ' -isystem '; else echo ' -I'; fi`$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/include \
+	  `if $(LEAN); then echo ' -isystem '; else echo ' -I'; fi`$$s/libstdc++-v3/libsupc++ \
+	  -L$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/src/.libs \
+	  -L$$r/prev-$(TARGET_SUBDIR)/libstdc++-v3/libsupc++/.libs"; \
+	  export CXX; \
 	CXX_FOR_BUILD="$$CXX"; export CXX_FOR_BUILD;
 @endif target-libstdc++-v3-bootstrap
 
@@ -257,6 +258,7 @@ POSTSTAGE1_HOST_EXPORTS = \
 	  $(XGCC_FLAGS_FOR_TARGET) $$TFLAGS"; export CC; \
 	CC_FOR_BUILD="$$CC"; export CC_FOR_BUILD; \
 	$(POSTSTAGE1_CXX_EXPORT) \
+	$(LTO_EXPORTS) \
 	GNATBIND="$$r/$(HOST_SUBDIR)/prev-gcc/gnatbind"; export GNATBIND; \
 	LDFLAGS="$(POSTSTAGE1_LDFLAGS) $(BOOT_LDFLAGS)"; export LDFLAGS; \
 	HOST_LIBS="$(POSTSTAGE1_LIBS)"; export HOST_LIBS;
@@ -277,7 +279,6 @@ BASE_TARGET_EXPORTS = \
 	CONFIG_SHELL="$(SHELL)"; export CONFIG_SHELL; \
 	CPPFLAGS="$(CPPFLAGS_FOR_TARGET)"; export CPPFLAGS; \
 	CXXFLAGS="$(CXXFLAGS_FOR_TARGET)"; export CXXFLAGS; \
-	GCJ="$(GCJ_FOR_TARGET) $(XGCC_FLAGS_FOR_TARGET) $$TFLAGS"; export GCJ; \
 	GFORTRAN="$(GFORTRAN_FOR_TARGET) $(XGCC_FLAGS_FOR_TARGET) $$TFLAGS"; export GFORTRAN; \
 	GOC="$(GOC_FOR_TARGET) $(XGCC_FLAGS_FOR_TARGET) $$TFLAGS"; export GOC; \
 	DLLTOOL="$(DLLTOOL_FOR_TARGET)"; export DLLTOOL; \
@@ -286,7 +287,9 @@ BASE_TARGET_EXPORTS = \
 	LIPO="$(LIPO_FOR_TARGET)"; export LIPO; \
 	NM="$(COMPILER_NM_FOR_TARGET)"; export NM; \
 	OBJDUMP="$(OBJDUMP_FOR_TARGET)"; export OBJDUMP; \
+	OBJCOPY="$(OBJCOPY_FOR_TARGET)"; export OBJCOPY; \
 	RANLIB="$(RANLIB_FOR_TARGET)"; export RANLIB; \
+	READELF="$(READELF_FOR_TARGET)"; export READELF; \
 	STRIP="$(STRIP_FOR_TARGET)"; export STRIP; \
 	WINDRES="$(WINDRES_FOR_TARGET)"; export WINDRES; \
 	WINDMC="$(WINDMC_FOR_TARGET)"; export WINDMC; \
@@ -309,13 +312,9 @@ NORMAL_TARGET_EXPORTS = \
 HOST_GMPLIBS = @gmplibs@
 HOST_GMPINC = @gmpinc@
 
-# Where to find PPL
-HOST_PPLLIBS = @ppllibs@
-HOST_PPLINC = @pplinc@
-
-# Where to find CLOOG
-HOST_CLOOGLIBS = @clooglibs@
-HOST_CLOOGINC = @clooginc@
+# Where to find isl
+HOST_ISLLIBS = @isllibs@
+HOST_ISLINC = @islinc@
 
 # Where to find libelf
 HOST_LIBELFLIBS = @libelflibs@
@@ -325,7 +324,7 @@ HOST_LIBELFINC = @libelfinc@
 # Programs producing files for the BUILD machine
 # ----------------------------------------------
 
-SHELL = @config_shell@
+SHELL = @SHELL@
 
 # pwd command to use.  Allow user to override default by setting PWDCMD in
 # the environment to account for automounters.  The make variable must not
@@ -344,7 +343,6 @@ CFLAGS_FOR_BUILD = @CFLAGS_FOR_BUILD@
 CXXFLAGS_FOR_BUILD = @CXXFLAGS_FOR_BUILD@
 CXX_FOR_BUILD = @CXX_FOR_BUILD@
 DLLTOOL_FOR_BUILD = @DLLTOOL_FOR_BUILD@
-GCJ_FOR_BUILD = @GCJ_FOR_BUILD@
 GFORTRAN_FOR_BUILD = @GFORTRAN_FOR_BUILD@
 GOC_FOR_BUILD = @GOC_FOR_BUILD@
 LDFLAGS_FOR_BUILD = @LDFLAGS_FOR_BUILD@
@@ -363,7 +361,7 @@ BUILD_PREFIX_1 = @BUILD_PREFIX_1@
 # here so that they can be overridden by Makefile fragments.
 BOOT_CFLAGS= -g -O2
 BOOT_LDFLAGS=
-BOOT_ADAFLAGS=-gnatpg -gnata
+BOOT_ADAFLAGS= -gnatpg
 
 AWK = @AWK@
 SED = @SED@
@@ -375,6 +373,8 @@ M4 = @M4@
 MAKEINFO = @MAKEINFO@
 EXPECT = @EXPECT@
 RUNTEST = @RUNTEST@
+
+AUTO_PROFILE = gcc-auto-profile -c 1000000
 
 # This just becomes part of the MAKEINFO definition passed down to
 # sub-makes.  It lets flags be given on the command line while still
@@ -397,6 +397,7 @@ LIPO = @LIPO@
 NM = @NM@
 OBJDUMP = @OBJDUMP@
 RANLIB = @RANLIB@
+READELF = @READELF@
 STRIP = @STRIP@
 WINDRES = @WINDRES@
 WINDMC = @WINDMC@
@@ -410,6 +411,8 @@ LIBCFLAGS = $(CFLAGS)
 CXXFLAGS = @CXXFLAGS@
 LIBCXXFLAGS = $(CXXFLAGS) -fno-implicit-templates
 GOCFLAGS = $(CFLAGS)
+
+CREATE_GCOV = create_gcov
 
 TFLAGS =
 
@@ -431,11 +434,9 @@ STAGE[+id+]_TFLAGS = $(STAGE_TFLAGS)
 STAGE[+id+]_CONFIGURE_FLAGS = $(STAGE_CONFIGURE_FLAGS)
 [+ ENDFOR bootstrap-stage +]
 
-# Only build the C compiler for stage1, because that is the only one that
-# we can guarantee will build with the native compiler, and also it is the
-# only thing useful for building stage2. STAGE1_CFLAGS (via CFLAGS),
-# MAKEINFO and MAKEINFOFLAGS are explicitly passed here to make them
-# overrideable (for a bootstrap build stage1 also builds gcc.info).
+# By default, C and C++ are the only stage1 languages, because they are the
+# only ones we require to build with the bootstrap compiler, and also the
+# only ones useful for building stage2.
 
 STAGE1_CFLAGS = @stage1_cflags@
 STAGE1_CHECKING = @stage1_checking@
@@ -446,14 +447,22 @@ STAGE1_LANGUAGES = @stage1_languages@
 #   the last argument when conflicting --enable arguments are passed.
 # * Likewise, we force-disable coverage flags, since the installed
 #   compiler probably has never heard of them.
+# * We also disable -Wformat, since older GCCs don't understand newer %s.
 STAGE1_CONFIGURE_FLAGS = --disable-intermodule $(STAGE1_CHECKING) \
-	  --disable-coverage --enable-languages="$(STAGE1_LANGUAGES)"
+	  --disable-coverage --enable-languages="$(STAGE1_LANGUAGES)" \
+	  --disable-build-format-warnings
 
 STAGEprofile_CFLAGS = $(STAGE2_CFLAGS) -fprofile-generate
 STAGEprofile_TFLAGS = $(STAGE2_TFLAGS)
 
 STAGEfeedback_CFLAGS = $(STAGE3_CFLAGS) -fprofile-use
 STAGEfeedback_TFLAGS = $(STAGE3_TFLAGS)
+
+STAGEautoprofile_CFLAGS = $(STAGE2_CFLAGS) -g
+STAGEautoprofile_TFLAGS = $(STAGE2_TFLAGS)
+
+STAGEautofeedback_CFLAGS = $(STAGE3_CFLAGS)
+STAGEautofeedback_TFLAGS = $(STAGE3_TFLAGS)
 
 do-compare = @do_compare@
 do-compare3 = $(do-compare)
@@ -473,7 +482,6 @@ CC_FOR_TARGET=$(STAGE_CC_WRAPPER) @CC_FOR_TARGET@
 GCC_FOR_TARGET=$(STAGE_CC_WRAPPER) @GCC_FOR_TARGET@
 CXX_FOR_TARGET=$(STAGE_CC_WRAPPER) @CXX_FOR_TARGET@
 RAW_CXX_FOR_TARGET=$(STAGE_CC_WRAPPER) @RAW_CXX_FOR_TARGET@
-GCJ_FOR_TARGET=$(STAGE_CC_WRAPPER) @GCJ_FOR_TARGET@
 GFORTRAN_FOR_TARGET=$(STAGE_CC_WRAPPER) @GFORTRAN_FOR_TARGET@
 GOC_FOR_TARGET=$(STAGE_CC_WRAPPER) @GOC_FOR_TARGET@
 DLLTOOL_FOR_TARGET=@DLLTOOL_FOR_TARGET@
@@ -482,7 +490,9 @@ LD_FOR_TARGET=@LD_FOR_TARGET@
 LIPO_FOR_TARGET=@LIPO_FOR_TARGET@
 NM_FOR_TARGET=@NM_FOR_TARGET@
 OBJDUMP_FOR_TARGET=@OBJDUMP_FOR_TARGET@
+OBJCOPY_FOR_TARGET=@OBJCOPY_FOR_TARGET@
 RANLIB_FOR_TARGET=@RANLIB_FOR_TARGET@
+READELF_FOR_TARGET=@READELF_FOR_TARGET@
 STRIP_FOR_TARGET=@STRIP_FOR_TARGET@
 WINDRES_FOR_TARGET=@WINDRES_FOR_TARGET@
 WINDMC_FOR_TARGET=@WINDMC_FOR_TARGET@
@@ -496,7 +506,7 @@ CXXFLAGS_FOR_TARGET = @CXXFLAGS_FOR_TARGET@
 
 LIBCFLAGS_FOR_TARGET = $(CFLAGS_FOR_TARGET)
 LIBCXXFLAGS_FOR_TARGET = $(CXXFLAGS_FOR_TARGET) -fno-implicit-templates
-LDFLAGS_FOR_TARGET = 
+LDFLAGS_FOR_TARGET = @LDFLAGS_FOR_TARGET@
 GOCFLAGS_FOR_TARGET = -O2 -g
 
 FLAGS_FOR_TARGET = @FLAGS_FOR_TARGET@
@@ -571,7 +581,9 @@ CXX_FOR_TARGET_FLAG_TO_PASS = \
 	$(shell if echo "$(CXX_FOR_TARGET)" | grep " -funconfigured-" > /dev/null; then :; else echo '"CXX_FOR_TARGET=$(CXX_FOR_TARGET)"'; fi)
 @endif target-libstdc++-v3
 
-# Flags to pass down to all sub-makes.
+# Flags to pass down to all sub-makes. STAGE*FLAGS,
+# MAKEINFO and MAKEINFOFLAGS are explicitly passed here to make them
+# overrideable (for a bootstrap build stage1 also builds gcc.info).
 BASE_FLAGS_TO_PASS =[+ FOR flags_to_pass +][+ IF optional +] \
 	"`echo '[+flag+]=$([+flag+])' | sed -e s'/[^=][^=]*=$$/XFOO=/'`"[+ ELSE optional +] \
 	"[+flag+]=$([+flag+])"[+ ENDIF optional+][+ ENDFOR flags_to_pass +][+ FOR bootstrap-stage +] \
@@ -581,7 +593,8 @@ BASE_FLAGS_TO_PASS =[+ FOR flags_to_pass +][+ IF optional +] \
 	$(CXX_FOR_TARGET_FLAG_TO_PASS) \
 	"TFLAGS=$(TFLAGS)" \
 	"CONFIG_SHELL=$(SHELL)" \
-	"MAKEINFO=$(MAKEINFO) $(MAKEINFOFLAGS)" 
+	"MAKEINFO=$(MAKEINFO) $(MAKEINFOFLAGS)" \
+	$(if $(LSAN_OPTIONS),"LSAN_OPTIONS=$(LSAN_OPTIONS)")
 
 # We leave this in just in case, but it is not needed anymore.
 RECURSE_FLAGS_TO_PASS = $(BASE_FLAGS_TO_PASS)
@@ -594,7 +607,6 @@ EXTRA_HOST_FLAGS = \
 	'CC=$(CC)' \
 	'CXX=$(CXX)' \
 	'DLLTOOL=$(DLLTOOL)' \
-	'GCJ=$(GCJ)' \
 	'GFORTRAN=$(GFORTRAN)' \
 	'GOC=$(GOC)' \
 	'LD=$(LD)' \
@@ -602,23 +614,19 @@ EXTRA_HOST_FLAGS = \
 	'NM=$(NM)' \
 	'OBJDUMP=$(OBJDUMP)' \
 	'RANLIB=$(RANLIB)' \
+	'READELF=$(READELF)' \
 	'STRIP=$(STRIP)' \
 	'WINDRES=$(WINDRES)' \
-	'WINDMC=$(WINDMC)'
+	'WINDMC=$(WINDMC)' \
+	'CREATE_GCOV=$(CREATE_GCOV)'
 
 FLAGS_TO_PASS = $(BASE_FLAGS_TO_PASS) $(EXTRA_HOST_FLAGS)
 
-# Flags that are concerned with the location of the X11 include files
-# and library files
-#
-# NOTE: until the top-level is getting the values via autoconf, it only
-# causes problems to have this top-level Makefile overriding the autoconf-set
-# values in child directories.  Only variables that don't conflict with
-# autoconf'ed ones should be passed by X11_FLAGS_TO_PASS for now.
-#
-X11_FLAGS_TO_PASS = \
-	'X11_EXTRA_CFLAGS=$(X11_EXTRA_CFLAGS)' \
-	'X11_EXTRA_LIBS=$(X11_EXTRA_LIBS)'
+# Flags to pass to stage1 or when not bootstrapping.
+
+STAGE1_FLAGS_TO_PASS = \
+	LDFLAGS="$${LDFLAGS}" \
+	HOST_LIBS="$${HOST_LIBS}"
 
 # Flags to pass to stage2 and later makes.
 
@@ -628,7 +636,16 @@ POSTSTAGE1_FLAGS_TO_PASS = \
 	GNATBIND="$${GNATBIND}" \
 	LDFLAGS="$${LDFLAGS}" \
 	HOST_LIBS="$${HOST_LIBS}" \
+	$(LTO_FLAGS_TO_PASS) \
 	"`echo 'ADAFLAGS=$(BOOT_ADAFLAGS)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`"
+
+@if gcc-bootstrap
+EXTRA_HOST_EXPORTS = if [ $(current_stage) != stage1 ]; then \
+		       $(POSTSTAGE1_HOST_EXPORTS) \
+		     fi;
+
+EXTRA_BOOTSTRAP_FLAGS = CC="$$CC" CXX="$$CXX" LDFLAGS="$$LDFLAGS"
+@endif gcc-bootstrap
 
 # Flags to pass down to makes which are built with the target environment.
 # The double $ decreases the length of the command line; those variables
@@ -640,10 +657,11 @@ EXTRA_TARGET_FLAGS = \
 	'AS=$(COMPILER_AS_FOR_TARGET)' \
 	'CC=$$(CC_FOR_TARGET) $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
 	'CFLAGS=$$(CFLAGS_FOR_TARGET)' \
-	'CXX=$$(CXX_FOR_TARGET) $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
+	'CXX=$$(CXX_FOR_TARGET) -B$$r/$$(TARGET_SUBDIR)/libstdc++-v3/src/.libs \
+	 -B$$r/$$(TARGET_SUBDIR)/libstdc++-v3/libsupc++/.libs \
+	 $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
 	'CXXFLAGS=$$(CXXFLAGS_FOR_TARGET)' \
 	'DLLTOOL=$$(DLLTOOL_FOR_TARGET)' \
-	'GCJ=$$(GCJ_FOR_TARGET) $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
 	'GFORTRAN=$$(GFORTRAN_FOR_TARGET) $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
 	'GOC=$$(GOC_FOR_TARGET) $$(XGCC_FLAGS_FOR_TARGET) $$(TFLAGS)' \
 	'GOCFLAGS=$$(GOCFLAGS_FOR_TARGET)' \
@@ -653,10 +671,14 @@ EXTRA_TARGET_FLAGS = \
 	'LIBCXXFLAGS=$$(LIBCXXFLAGS_FOR_TARGET)' \
 	'NM=$(COMPILER_NM_FOR_TARGET)' \
 	'OBJDUMP=$$(OBJDUMP_FOR_TARGET)' \
+	'OBJCOPY=$$(OBJCOPY_FOR_TARGET)' \
 	'RANLIB=$$(RANLIB_FOR_TARGET)' \
+	'READELF=$$(READELF_FOR_TARGET)' \
 	'WINDRES=$$(WINDRES_FOR_TARGET)' \
 	'WINDMC=$$(WINDMC_FOR_TARGET)' \
 	'XGCC_FLAGS_FOR_TARGET=$(XGCC_FLAGS_FOR_TARGET)' \
+	'STAGE1_LDFLAGS=$$(POSTSTAGE1_LDFLAGS)' \
+	'STAGE1_LIBS=$$(POSTSTAGE1_LIBS)' \
 	"TFLAGS=$$TFLAGS"
 
 TARGET_FLAGS_TO_PASS = $(BASE_FLAGS_TO_PASS) $(EXTRA_TARGET_FLAGS)
@@ -670,10 +692,7 @@ TARGET_FLAGS_TO_PASS = $(BASE_FLAGS_TO_PASS) $(EXTRA_TARGET_FLAGS)
 EXTRA_GCC_FLAGS = \
 	"GCC_FOR_TARGET=$(GCC_FOR_TARGET)" \
 	"`echo 'STMP_FIXPROTO=$(STMP_FIXPROTO)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`" \
-	"`echo 'LIMITS_H_TEST=$(LIMITS_H_TEST)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`" \
-	"`echo 'LIBGCC2_CFLAGS=$(LIBGCC2_CFLAGS)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`" \
-	"`echo 'LIBGCC2_DEBUG_CFLAGS=$(LIBGCC2_DEBUG_CFLAGS)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`" \
-	"`echo 'LIBGCC2_INCLUDES=$(LIBGCC2_INCLUDES)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`"
+	"`echo 'LIMITS_H_TEST=$(LIMITS_H_TEST)' | sed -e s'/[^=][^=]*=$$/XFOO=/'`"
 
 GCC_FLAGS_TO_PASS = $(BASE_FLAGS_TO_PASS) $(EXTRA_HOST_FLAGS) $(EXTRA_GCC_FLAGS)
 
@@ -778,9 +797,9 @@ do-info: maybe-all-texinfo
 
 install-info: do-install-info dir.info
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
-	if [ -f dir.info ] ; then \
-	  $(INSTALL_DATA) dir.info $(DESTDIR)$(infodir)/dir.info ; \
-	else true ; fi
+	if [ -f dir.info ]; then \
+	  $(INSTALL_DATA) dir.info $(DESTDIR)$(infodir)/dir.info; \
+	else true; fi
 
 install-pdf: do-install-pdf
 
@@ -791,7 +810,7 @@ local-clean:
 
 local-distclean:
 	-rm -f Makefile config.status config.cache mh-frag mt-frag
-	-rm -f maybedep.tmp serdep.tmp
+	-rm -f maybedep.tmp serdep.tmp stage_final
 	-if [ "$(TARGET_SUBDIR)" != "." ]; then \
 	  rm -rf $(TARGET_SUBDIR); \
 	else true; fi
@@ -803,7 +822,8 @@ local-distclean:
 	-rm -f texinfo/doc/Makefile texinfo/po/POTFILES
 	-rmdir texinfo/doc texinfo/info texinfo/intl texinfo/lib 2>/dev/null
 	-rmdir texinfo/makeinfo texinfo/po texinfo/util 2>/dev/null
-	-rmdir fastjar gcc libiberty texinfo zlib 2>/dev/null
+	-rmdir fastjar gcc gnattools gotools libcc1 libiberty 2>/dev/null
+	-rmdir texinfo zlib 2>/dev/null
 	-find . -name config.cache -exec rm -f {} \; \; 2>/dev/null
 
 local-maintainer-clean:
@@ -862,6 +882,27 @@ mail-report-with-warnings.log: warning.log
 	chmod +x $@
 	echo If you really want to send e-mail, run ./$@ now
 
+# Local Vim config
+
+$(srcdir)/.local.vimrc:
+	$(LN_S) contrib/vimrc $@
+
+$(srcdir)/.lvimrc:
+	$(LN_S) contrib/vimrc $@
+
+vimrc: $(srcdir)/.local.vimrc $(srcdir)/.lvimrc
+
+.PHONY: vimrc
+
+# clang-format config
+
+$(srcdir)/.clang-format:
+	$(LN_S) contrib/clang-format $@
+
+clang-format: $(srcdir)/.clang-format
+
+.PHONY: clang-format
+
 # Installation targets.
 
 .PHONY: install uninstall
@@ -894,21 +935,22 @@ uninstall:
 
 .PHONY: install.all
 install.all: install-no-fixedincludes
-	@if [ -f ./gcc/Makefile ] ; then \
-		r=`${PWD_COMMAND}` ; export r ; \
+	@if [ -f ./gcc/Makefile ]; then \
+		r=`${PWD_COMMAND}`; export r; \
 		s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 		$(HOST_EXPORTS) \
 		(cd ./gcc && \
-		$(MAKE) $(FLAGS_TO_PASS) install-headers) ; \
+		$(MAKE) $(FLAGS_TO_PASS) install-headers); \
 	else \
-		true ; \
+		true; \
 	fi
 
-# install-no-fixedincludes is used because Cygnus can not distribute
-# the fixed header files.
+# install-no-fixedincludes is used to allow the elaboration of binary packages
+# suitable for distribution, where we cannot include the fixed system header
+# files.
 .PHONY: install-no-fixedincludes
 install-no-fixedincludes: installdirs install-host-nogcc \
-	install-target gcc-no-fixedincludes
+	install-target gcc-install-no-fixedincludes
 
 .PHONY: install-strip
 install-strip:
@@ -940,10 +982,10 @@ installdirs: mkinstalldirs
 	$(SHELL) $(srcdir)/mkinstalldirs $(MAKEDIRS)
 
 dir.info: do-install-info
-	if [ -f $(srcdir)/texinfo/gen-info-dir ] ; then \
-	  $(srcdir)/texinfo/gen-info-dir $(DESTDIR)$(infodir) $(srcdir)/texinfo/dir.info-template > dir.info.new ; \
-	  mv -f dir.info.new dir.info ; \
-	else true ; \
+	if [ -f $(srcdir)/texinfo/gen-info-dir ]; then \
+	  $(srcdir)/texinfo/gen-info-dir $(DESTDIR)$(infodir) $(srcdir)/texinfo/dir.info-template > dir.info.new; \
+	  mv -f dir.info.new dir.info; \
+	else true; \
 	fi
 
 dist:
@@ -978,8 +1020,8 @@ configure-[+prefix+][+module+]: [+ IF bootstrap +][+ ELSE +]
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	[+ IF check_multilibs
 	+]echo "Checking multilib configuration for [+module+]..."; \
-	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+] ; \
-	$(CC_FOR_TARGET) --print-multi-lib > [+subdir+]/[+module+]/multilib.tmp 2> /dev/null ; \
+	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+]; \
+	$(CC_FOR_TARGET) --print-multi-lib > [+subdir+]/[+module+]/multilib.tmp 2> /dev/null; \
 	if test -r [+subdir+]/[+module+]/multilib.out; then \
 	  if cmp -s [+subdir+]/[+module+]/multilib.tmp [+subdir+]/[+module+]/multilib.out; then \
 	    rm -f [+subdir+]/[+module+]/multilib.tmp; \
@@ -991,7 +1033,7 @@ configure-[+prefix+][+module+]: [+ IF bootstrap +][+ ELSE +]
 	  mv [+subdir+]/[+module+]/multilib.tmp [+subdir+]/[+module+]/multilib.out; \
 	fi; \
 	[+ ENDIF check_multilibs +]test ! -f [+subdir+]/[+module+]/Makefile || exit 0; \
-	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+] ; \
+	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+]; \
 	[+exports+] [+extra_exports+] \
 	echo Configuring in [+subdir+]/[+module+]; \
 	cd "[+subdir+]/[+module+]" || exit 1; \
@@ -1000,12 +1042,13 @@ configure-[+prefix+][+module+]: [+ IF bootstrap +][+ ELSE +]
 	  *) topdir=`echo [+subdir+]/[+module+]/ | \
 		sed -e 's,\./,,g' -e 's,[^/]*/,../,g' `$(srcdir) ;; \
 	esac; \
-	srcdiroption="--srcdir=$${topdir}/[+module+]"; \
-	libsrcdir="$$s/[+module+]"; \
+	module_srcdir=[+? module_srcdir (get "module_srcdir") (get "module")+]; \
 	[+ IF no-config-site +]rm -f no-such-file || : ; \
-	CONFIG_SITE=no-such-file [+ ENDIF +]$(SHELL) $${libsrcdir}/configure \
+	CONFIG_SITE=no-such-file [+ ENDIF +]$(SHELL) \
+	  $$s/$$module_srcdir/configure \
+	  --srcdir=$${topdir}/$$module_srcdir \
 	  [+args+] --build=${build_alias} --host=[+host_alias+] \
-	  --target=[+target_alias+] $${srcdiroption} [+extra_configure_flags+] \
+	  --target=[+target_alias+] [+extra_configure_flags+] \
 	  || exit 1
 @endif [+prefix+][+module+]
 
@@ -1023,7 +1066,7 @@ configure-stage[+id+]-[+prefix+][+module+]:
 	TFLAGS="$(STAGE[+id+]_TFLAGS)"; \
 	[+ IF check_multilibs
 	+]echo "Checking multilib configuration for [+module+]..."; \
-	$(CC_FOR_TARGET) --print-multi-lib > [+subdir+]/[+module+]/multilib.tmp 2> /dev/null ; \
+	$(CC_FOR_TARGET) --print-multi-lib > [+subdir+]/[+module+]/multilib.tmp 2> /dev/null; \
 	if test -r [+subdir+]/[+module+]/multilib.out; then \
 	  if cmp -s [+subdir+]/[+module+]/multilib.tmp [+subdir+]/[+module+]/multilib.out; then \
 	    rm -f [+subdir+]/[+module+]/multilib.tmp; \
@@ -1045,20 +1088,20 @@ configure-stage[+id+]-[+prefix+][+module+]:
 	LIBCFLAGS="$(STAGE[+id+]_CFLAGS)"[+ ELSE prev +] \
 	LIBCFLAGS="$(LIBCFLAGS)"[+ ENDIF prev +]; export LIBCFLAGS;[+
   ENDIF prefix +] [+extra_exports+] \
-	echo Configuring stage [+id+] in [+subdir+]/[+module+] ; \
-	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+] ; \
+	echo Configuring stage [+id+] in [+subdir+]/[+module+]; \
+	$(SHELL) $(srcdir)/mkinstalldirs [+subdir+]/[+module+]; \
 	cd [+subdir+]/[+module+] || exit 1; \
 	case $(srcdir) in \
 	  /* | [A-Za-z]:[\\/]*) topdir=$(srcdir) ;; \
 	  *) topdir=`echo [+subdir+]/[+module+]/ | \
 		sed -e 's,\./,,g' -e 's,[^/]*/,../,g' `$(srcdir) ;; \
 	esac; \
-	srcdiroption="--srcdir=$${topdir}/[+module+]"; \
-	libsrcdir="$$s/[+module+]"; \
-	$(SHELL) $${libsrcdir}/configure \
+	module_srcdir=[+? module_srcdir (get "module_srcdir") (get "module")+]; \
+	$(SHELL) $$s/$$module_srcdir/configure \
+	  --srcdir=$${topdir}/$$module_srcdir \
 	  [+args+] --build=${build_alias} --host=[+host_alias+] \
-	  --target=[+target_alias+] $${srcdiroption} [+ IF prev +]\
-	  --with-build-libsubdir=$(HOST_SUBDIR) [+ ENDIF prev +]\
+	  --target=[+target_alias+] \
+	  [+ IF prev +]--with-build-libsubdir=$(HOST_SUBDIR)[+ ENDIF prev +] \
 	  $(STAGE[+id+]_CONFIGURE_FLAGS)[+ IF extra_configure_flags +] \
 	  [+extra_configure_flags+][+ ENDIF extra_configure_flags +]
 @endif [+prefix+][+module+]-bootstrap
@@ -1082,7 +1125,7 @@ all-[+prefix+][+module+]: configure-[+prefix+][+module+][+ IF bootstrap +][+ ELS
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	[+exports+] [+extra_exports+] \
 	(cd [+subdir+]/[+module+] && \
-	  $(MAKE) $(BASE_FLAGS_TO_PASS) [+args+] [+extra_make_flags+] \
+	  $(MAKE) $(BASE_FLAGS_TO_PASS) [+args+] [+stage1_args+] [+extra_make_flags+] \
 		$(TARGET-[+prefix+][+module+]))
 @endif [+prefix+][+module+]
 
@@ -1104,6 +1147,7 @@ all-stage[+id+]-[+prefix+][+module+]: configure-stage[+id+]-[+prefix+][+module+]
 	[+exports+][+ IF prev +] \
 	[+poststage1_exports+][+ ENDIF prev +] [+extra_exports+] \
 	cd [+subdir+]/[+module+] && \
+	[+autoprofile+] \
 	$(MAKE) $(BASE_FLAGS_TO_PASS)[+ IF prefix +] \
 		CFLAGS="$(CFLAGS_FOR_TARGET)" \
 		CXXFLAGS="$(CXXFLAGS_FOR_TARGET)" \
@@ -1115,10 +1159,9 @@ all-stage[+id+]-[+prefix+][+module+]: configure-stage[+id+]-[+prefix+][+module+]
 		CFLAGS_FOR_TARGET="$(CFLAGS_FOR_TARGET)" \
 		CXXFLAGS_FOR_TARGET="$(CXXFLAGS_FOR_TARGET)" \
 		LIBCFLAGS_FOR_TARGET="$(LIBCFLAGS_FOR_TARGET)" \
-		[+args+] [+
-		IF prev +][+poststage1_args+][+ ENDIF prev
-		+] [+extra_make_flags+] \
-		TFLAGS="$(STAGE[+id+]_TFLAGS)" \
+		[+args+] [+IF prev +][+poststage1_args+][+ ELSE prev +] \
+		[+stage1_args+][+ ENDIF prev +] [+extra_make_flags+] \
+		TFLAGS="$(STAGE[+id+]_TFLAGS)" [+profile_data+] \
 		$(TARGET-stage[+id+]-[+prefix+][+module+])
 
 maybe-clean-stage[+id+]-[+prefix+][+module+]: clean-stage[+id+]-[+prefix+][+module+]
@@ -1131,9 +1174,8 @@ clean-stage[+id+]-[+prefix+][+module+]:
 	  $(MAKE) stage[+id+]-start; \
 	fi; \
 	cd [+subdir+]/[+module+] && \
-	$(MAKE) [+args+] [+ IF prev +] \
-		[+poststage1_args+] [+ ENDIF prev +] \
-		[+extra_make_flags+] clean
+	$(MAKE) [+args+] [+ IF prev +][+poststage1_args+][+ ELSE prev +] \
+	[+stage1_args+][+ ENDIF prev +] [+extra_make_flags+] clean
 @endif [+prefix+][+module+]-bootstrap
 
 [+ ENDFOR bootstrap_stage +]
@@ -1168,6 +1210,7 @@ clean-stage[+id+]-[+prefix+][+module+]:
        exports="$(HOST_EXPORTS)"
        poststage1_exports="$(POSTSTAGE1_HOST_EXPORTS)"
        args="$(EXTRA_HOST_FLAGS)"
+       stage1_args="$(STAGE1_FLAGS_TO_PASS)"
        poststage1_args="$(POSTSTAGE1_FLAGS_TO_PASS)" +]
 
 .PHONY: check-[+module+] maybe-check-[+module+]
@@ -1180,21 +1223,25 @@ check-[+module+]:
 # This module is only tested in a native toolchain.
 check-[+module+]:
 	@: $(MAKE); $(unstage)
-	@if [ '$(host)' = '$(target)' ] ; then \
+	@if [ '$(host)' = '$(target)' ]; then \
 	  r=`${PWD_COMMAND}`; export r; \
 	  s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
-	  $(HOST_EXPORTS) \
+	  $(HOST_EXPORTS) [+ IF bootstrap +]$(EXTRA_HOST_EXPORTS)[+
+	  ENDIF bootstrap +] \
 	  (cd $(HOST_SUBDIR)/[+module+] && \
-	    $(MAKE) $(FLAGS_TO_PASS) [+extra_make_flags+] check); \
+	    $(MAKE) $(FLAGS_TO_PASS) [+extra_make_flags+][+
+	    IF bootstrap +] $(EXTRA_BOOTSTRAP_FLAGS)[+ ENDIF bootstrap +] check)
 	fi
 [+ ELSE check +]
 check-[+module+]:
 	@: $(MAKE); $(unstage)
 	@r=`${PWD_COMMAND}`; export r; \
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
-	$(HOST_EXPORTS) \
+	$(HOST_EXPORTS) [+ IF bootstrap +]$(EXTRA_HOST_EXPORTS)[+
+	ENDIF bootstrap +] \
 	(cd $(HOST_SUBDIR)/[+module+] && \
-	  $(MAKE) $(FLAGS_TO_PASS) [+extra_make_flags+] check)
+	  $(MAKE) $(FLAGS_TO_PASS) [+extra_make_flags+][+
+	  IF bootstrap +] $(EXTRA_BOOTSTRAP_FLAGS)[+ ENDIF bootstrap +] check)
 [+ ENDIF no_check +]
 @endif [+module+]
 
@@ -1254,7 +1301,7 @@ maybe-[+make_target+]-[+module+]: [+make_target+]-[+module+]
 	for flag in $(EXTRA_HOST_FLAGS) [+extra_make_flags+]; do \
 	  eval `echo "$$flag" | sed -e "s|^\([^=]*\)=\(.*\)|\1='\2'; export \1|"`; \
 	done; \
-	echo "Doing [+make_target+] in [+module+]" ; \
+	echo "Doing [+make_target+] in [+module+]"; \
 	(cd $(HOST_SUBDIR)/[+module+] && \
 	  $(MAKE) $(BASE_FLAGS_TO_PASS) "AR=$${AR}" "AS=$${AS}" \
 	          "CC=$${CC}" "CXX=$${CXX}" "LD=$${LD}" "NM=$${NM}" \
@@ -1381,7 +1428,7 @@ maybe-[+make_target+]-target-[+module+]: [+make_target+]-target-[+module+]
     [+depend+]-target-[+module+] [+
   ENDFOR depend +]
 	@: $(MAKE); $(unstage)
-	@[ -f $(TARGET_SUBDIR)/[+module+]/Makefile ] || exit 0 ; \
+	@[ -f $(TARGET_SUBDIR)/[+module+]/Makefile ] || exit 0; \
 	r=`${PWD_COMMAND}`; export r; \
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \[+
 IF raw_cxx +]
@@ -1389,7 +1436,7 @@ IF raw_cxx +]
 ELSE normal_cxx +]
 	$(NORMAL_TARGET_EXPORTS) \[+
 ENDIF raw_cxx +]
-	echo "Doing [+make_target+] in $(TARGET_SUBDIR)/[+module+]" ; \
+	echo "Doing [+make_target+] in $(TARGET_SUBDIR)/[+module+]"; \
 	for flag in $(EXTRA_TARGET_FLAGS); do \
 	  eval `echo "$$flag" | sed -e "s|^\([^=]*\)=\(.*\)|\1='\2'; export \1|"`; \
 	done; \
@@ -1405,6 +1452,20 @@ ENDIF raw_cxx +]
 [+ ENDFOR recursive_targets +]
 [+ ENDFOR target_modules +]
 
+@if target-libgomp
+.PHONY: check-target-libgomp-c++
+check-target-libgomp-c++:
+	$(MAKE) RUNTESTFLAGS="$(RUNTESTFLAGS) c++.exp" check-target-libgomp
+
+@endif target-libgomp
+
+@if target-libitm
+.PHONY: check-target-libitm-c++
+check-target-libitm-c++:
+	$(MAKE) RUNTESTFLAGS="$(RUNTESTFLAGS) c++.exp" check-target-libitm
+
+@endif target-libitm
+
 # ----------
 # GCC module
 # ----------
@@ -1418,7 +1479,7 @@ cross: all-build all-gas all-ld
 	echo "Building the C and C++ compiler"; \
 	cd gcc && $(MAKE) $(GCC_FLAGS_TO_PASS) LANGUAGES="c c++"
 	@r=`${PWD_COMMAND}`; export r; \
-	s=`cd $(srcdir); ${PWD_COMMAND}` ; export s; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	echo "Building runtime libraries"; \
 	$(MAKE) $(RECURSE_FLAGS_TO_PASS) LANGUAGES="c c++" all
 @endif gcc-no-bootstrap
@@ -1434,25 +1495,16 @@ check-gcc-[+language+]:
 check-[+language+]: check-gcc-[+language+][+ FOR lib-check-target +] [+ lib-check-target +][+ ENDFOR lib-check-target +]
 [+ ENDFOR languages +]
 
-# Install the gcc headers files, but not the fixed include files,
-# which Cygnus is not allowed to distribute.  This rule is very
-# dependent on the workings of the gcc Makefile.in.
-.PHONY: gcc-no-fixedincludes
-gcc-no-fixedincludes:
+# The gcc part of install-no-fixedincludes, which relies on an intimate
+# knowledge of how a number of gcc internal targets (inter)operate.  Delegate.
+.PHONY: gcc-install-no-fixedincludes
+gcc-install-no-fixedincludes:
 	@if [ -f ./gcc/Makefile ]; then \
-	  rm -rf gcc/tmp-include; \
-	  mv gcc/include gcc/tmp-include 2>/dev/null; \
-	  mkdir gcc/include; \
-	  cp $(srcdir)/gcc/gsyslimits.h gcc/include/syslimits.h; \
-	  touch gcc/stmp-fixinc gcc/include/fixed; \
-	  rm -f gcc/stmp-headers gcc/stmp-int-hdrs; \
 	  r=`${PWD_COMMAND}`; export r; \
-	  s=`cd $(srcdir); ${PWD_COMMAND}` ; export s; \
+	  s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	  $(HOST_EXPORTS) \
-	  (cd ./gcc && \
-	   $(MAKE) $(GCC_FLAGS_TO_PASS) install); \
-	  rm -rf gcc/include; \
-	  mv gcc/tmp-include gcc/include 2>/dev/null; \
+	  (cd ./gcc \
+	   && $(MAKE) $(GCC_FLAGS_TO_PASS) install-no-fixedincludes); \
 	else true; fi
 @endif gcc
 
@@ -1511,31 +1563,31 @@ objext = .o
 
 stage[+id+]-start::
 	@: $(MAKE); $(stage); \
-	echo stage[+id+] > stage_current ; \
+	echo stage[+id+] > stage_current; \
 	echo stage[+id+] > stage_last; \
 	$(SHELL) $(srcdir)/mkinstalldirs $(HOST_SUBDIR)[+
    FOR host_modules +][+ IF bootstrap +]
 @if [+ module +]
 	@cd $(HOST_SUBDIR); [ -d stage[+id+]-[+module+] ] || \
 	  mkdir stage[+id+]-[+module+]; \
-	mv stage[+id+]-[+module+] [+module+] [+ IF prev +] ; \
+	mv stage[+id+]-[+module+] [+module+][+ IF prev +]; \
 	mv stage[+prev+]-[+module+] prev-[+module+] || test -f stage[+prev+]-lean [+ ENDIF prev +]
 @endif [+ module +][+ ENDIF bootstrap +][+ ENDFOR host_modules +]
 	@[ -d stage[+id+]-$(TARGET_SUBDIR) ] || \
 	  mkdir stage[+id+]-$(TARGET_SUBDIR); \
-	mv stage[+id+]-$(TARGET_SUBDIR) $(TARGET_SUBDIR) [+ IF prev +] ; \
+	mv stage[+id+]-$(TARGET_SUBDIR) $(TARGET_SUBDIR)[+ IF prev +]; \
 	mv stage[+prev+]-$(TARGET_SUBDIR) prev-$(TARGET_SUBDIR) || test -f stage[+prev+]-lean [+ ENDIF prev +]
 
 stage[+id+]-end:: [+ FOR host_modules +][+ IF bootstrap +]
 @if [+ module +]
-	@if test -d $(HOST_SUBDIR)/[+module+] ; then \
-	  cd $(HOST_SUBDIR); mv [+module+] stage[+id+]-[+module+] [+ IF prev +]; \
-	  mv prev-[+module+] stage[+prev+]-[+module+] ; : [+ ENDIF prev +] ; \
+	@if test -d $(HOST_SUBDIR)/[+module+]; then \
+	  cd $(HOST_SUBDIR); mv [+module+] stage[+id+]-[+module+][+ IF prev +]; \
+	  mv prev-[+module+] stage[+prev+]-[+module+]; : [+ ENDIF prev +]; \
 	fi
 @endif [+ module +][+ ENDIF bootstrap +][+ ENDFOR host_modules +]
-	@if test -d $(TARGET_SUBDIR) ; then \
-	  mv $(TARGET_SUBDIR) stage[+id+]-$(TARGET_SUBDIR) [+ IF prev +] ; \
-	  mv prev-$(TARGET_SUBDIR) stage[+prev+]-$(TARGET_SUBDIR) ; : [+ ENDIF prev +] ; \
+	@if test -d $(TARGET_SUBDIR); then \
+	  mv $(TARGET_SUBDIR) stage[+id+]-$(TARGET_SUBDIR)[+ IF prev +]; \
+	  mv prev-$(TARGET_SUBDIR) stage[+prev+]-$(TARGET_SUBDIR); : [+ ENDIF prev +]; \
 	fi
 	rm -f stage_current
 
@@ -1547,13 +1599,13 @@ stage[+id+]-bubble:: [+ IF prev +]stage[+prev+]-bubble[+ ENDIF +]
 	@r=`${PWD_COMMAND}`; export r; \
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	if test -f stage[+id+]-lean [+
-	  IF prev +]|| test -f stage[+prev+]-lean [+ ENDIF prev +] ; then \
-	  echo Skipping rebuild of stage[+id+] ; \
+	  IF prev +]|| test -f stage[+prev+]-lean [+ ENDIF prev +]; then \
+	  echo Skipping rebuild of stage[+id+]; \
 	else \
 	  $(MAKE) stage[+id+]-start; \[+IF lean +]
 	  if $(LEAN); then \
-	    rm -rf stage[+lean+]-* ; \
-	    $(STAMP) stage[+lean+]-lean ; \
+	    rm -rf stage[+lean+]-*; \
+	    $(STAMP) stage[+lean+]-lean; \
 	  fi; \[+ ENDIF lean +]
 	  $(MAKE) $(RECURSE_FLAGS_TO_PASS) all-stage[+id+]; \
 	fi[+ IF compare-target +]
@@ -1570,16 +1622,16 @@ do-clean: clean-stage[+id+]
 	@r=`${PWD_COMMAND}`; export r; \
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	if test -f stage[+prev+]-lean; then \
-	  echo Cannot compare object files as stage [+prev+] was deleted. ; \
-	  exit 0 ; \
+	  echo Cannot compare object files as stage [+prev+] was deleted.; \
+	  exit 0; \
 	fi; \
 	: $(MAKE); $(stage); \
-	rm -f .bad_compare ; \
-	echo Comparing stages [+prev+] and [+id+] ; \
+	rm -f .bad_compare; \
+	echo Comparing stages [+prev+] and [+id+]; \
         sed=`echo stage[+id+] | sed 's,^stage,,;s,.,.,g'`; \
 	files=`find stage[+id+]-* -name "*$(objext)" -print | \
-		 sed -n s,^stage$$sed-,,p` ; \
-	for file in $${files} ; do \
+		 sed -n s,^stage$$sed-,,p`; \
+	for file in $${files}; do \
 	  f1=$$r/stage[+prev+]-$$file; f2=$$r/stage[+id+]-$$file; \
 	  if test ! -f $$f1; then continue; fi; \
 	  $(do-[+compare-target+]) > /dev/null 2>&1; \
@@ -1589,16 +1641,16 @@ do-clean: clean-stage[+id+]
 	        echo warning: $$file differs ;; \
 	      *) \
 	        echo $$file differs >> .bad_compare ;; \
-	    esac ; \
-	  fi ; \
-	done ; \
+	    esac; \
+	  fi; \
+	done; \
 	if [ -f .bad_compare ]; then \
 	  echo "Bootstrap comparison failure!"; \
 	  cat .bad_compare; \
 	  exit 1; \
 	else \
 	  echo Comparison successful.; \
-	fi ; \
+	fi; \
 	$(STAMP) [+compare-target+][+ IF prev +]
 	if $(LEAN); then \
 	  rm -rf stage[+prev+]-*; \
@@ -1664,10 +1716,10 @@ stagefeedback-start::
 	@r=`${PWD_COMMAND}`; export r; \
 	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
 	for i in prev-*; do \
-	  j=`echo $$i | sed s/^prev-//` ; \
+	  j=`echo $$i | sed s/^prev-//`; \
 	  cd $$r/$$i && \
-	  { find . -type d | sort | sed 's,.*,$(SHELL) '"$$s"'/mkinstalldirs "../'$$j'/&",' | $(SHELL) ; } && \
-	  { find . -name '*.*da' | sed 's,.*,$(LN) -f "&" "../'$$j'/&",' | $(SHELL) ; } ; \
+	  { find . -type d | sort | sed 's,.*,$(SHELL) '"$$s"'/mkinstalldirs "../'$$j'/&",' | $(SHELL); } && \
+	  { find . -name '*.*da' | sed 's,.*,$(LN) -f "&" "../'$$j'/&",' | $(SHELL); }; \
 	done
 
 @if gcc-bootstrap
@@ -1880,7 +1932,10 @@ config.status: configure
 # Rebuilding configure.
 AUTOCONF = autoconf
 $(srcdir)/configure: @MAINT@ $(srcdir)/configure.ac $(srcdir)/config/acx.m4 \
-	$(srcdir)/config/override.m4 $(srcdir)/config/proginstall.m4
+	$(srcdir)/config/override.m4 $(srcdir)/config/proginstall.m4 \
+	$(srcdir)/config/elf.m4 $(srcdir)/config/isl.m4 \
+	$(srcdir)/libtool.m4 $(srcdir)/ltoptions.m4 $(srcdir)/ltsugar.m4 \
+	$(srcdir)/ltversion.m4 $(srcdir)/lt~obsolete.m4
 	cd $(srcdir) && $(AUTOCONF)
 
 # ------------------------------

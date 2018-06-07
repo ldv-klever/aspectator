@@ -1,6 +1,5 @@
 /* Configuration file for Symbian OS on ARM processors.
-   Copyright (C) 2004, 2005, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 2004-2017 Free Software Foundation, Inc.
    Contributed by CodeSourcery, LLC   
 
    This file is part of GCC.
@@ -60,22 +59,11 @@
 /* Support the "dllimport" attribute.  */
 #define TARGET_DLLIMPORT_DECL_ATTRIBUTES 1
 
-/* Symbian OS assumes ARM V5 or above.  Since -march=armv5 is
-   equivalent to making the ARM 10TDMI core the default, we can set
-   SUBTARGET_CPU_DEFAULT and get an equivalent effect.  */
-#undef SUBTARGET_CPU_DEFAULT
-#define SUBTARGET_CPU_DEFAULT TARGET_CPU_arm10tdmi
-
 /* The assembler should assume VFP FPU format, and armv5t.  */
 #undef SUBTARGET_ASM_FLOAT_SPEC
 #define SUBTARGET_ASM_FLOAT_SPEC \
   "%{!mfpu=*:-mfpu=vfp} %{!mcpu=*:%{!march=*:-march=armv5t}}"
   
-/* SymbianOS provides the BPABI routines in a separate library.
-   Therefore, we do not need to define any of them in libgcc.  */
-#undef RENAME_LIBRARY
-#define RENAME_LIBRARY(GCC_NAME, AEABI_NAME) /* empty */
-
 /* Define the __symbian__ macro.  */
 #undef TARGET_OS_CPP_BUILTINS
 #define TARGET_OS_CPP_BUILTINS()				\
@@ -103,3 +91,5 @@
 #define TARGET_ARM_DYNAMIC_VAGUE_LINKAGE_P false
 
 #define TARGET_DEFAULT_WORD_RELOCATIONS 1
+
+#define ARM_TARGET2_DWARF_FORMAT DW_EH_PE_absptr

@@ -17,7 +17,7 @@ template<class T> struct A
 };
 
 class C {
-  int i;	// { dg-error "private" }
+  int i;	// { dg-message "private" }
   template<class T> friend struct A<T>::B1;
 };
 
@@ -30,5 +30,5 @@ template<class T> void A<T>::B2::f()
 int main()
 {
   A<int>::B2 b1;
-  b1.f();	// { dg-message "instantiated" }
+  b1.f();	// { dg-message "required" }
 }

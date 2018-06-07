@@ -1,7 +1,7 @@
-// { dg-options "-std=gnu++0x" }
+// { dg-do run { target c++11 } }
 // { dg-require-cstdint "" }
 
-// Copyright (C) 2008, 2009 Free Software Foundation
+// Copyright (C) 2008-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -27,14 +27,13 @@
 void
 test01()
 {
-  bool test __attribute__((unused)) = true;
   using namespace std::chrono;
   
   time_point<system_clock> t1;
   VERIFY(t1.time_since_epoch() == system_clock::duration::zero());
 
-  time_point<monotonic_clock> t2;
-  VERIFY(t2.time_since_epoch() == monotonic_clock::duration::zero());
+  time_point<steady_clock> t2;
+  VERIFY(t2.time_since_epoch() == steady_clock::duration::zero());
 
   time_point<high_resolution_clock> t3;
   VERIFY(t3.time_since_epoch() == high_resolution_clock::duration::zero());

@@ -2,7 +2,7 @@
 /* Origin: Lev Makhlis <lmakhlis@bmc.com> */
 
 /* { dg-do compile } */
-/* { dg-require-effective-target ilp32 } */
+/* { dg-require-effective-target ia32 } */
 /* { dg-require-effective-target nonpic } */
 /* { dg-options "-O2 -mtune=i686" } */
 
@@ -14,4 +14,4 @@ int f(int i)
 }
 
 /* { dg-final { scan-assembler "a\\+1" } } */
-/* { dg-final { scan-assembler "b\\+1" } } */
+/* { dg-final { scan-assembler "b\\+1" { xfail *-*-* } } } */

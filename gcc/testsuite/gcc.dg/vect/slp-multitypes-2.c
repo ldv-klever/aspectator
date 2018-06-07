@@ -1,5 +1,4 @@
 /* { dg-require-effective-target vect_int } */
-/* { dg-xfail-run-if "PR rtl-optimization/46603" { sparc*-*-* && { ilp32 && gas } } } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
@@ -79,5 +78,4 @@ int main (void)
 
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect"  } } */
 /* { dg-final { scan-tree-dump-times "vectorizing stmts using SLP" 2 "vect"  } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
   

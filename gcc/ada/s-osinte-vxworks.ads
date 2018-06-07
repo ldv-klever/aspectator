@@ -7,25 +7,23 @@
 --                                   S p e c                                --
 --                                                                          --
 --            Copyright (C) 1991-1994, Florida State University             --
---          Copyright (C) 1995-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -34,8 +32,8 @@
 
 --  This is the VxWorks version of this package
 
---  This package encapsulates all direct interfaces to OS services
---  that are needed by the tasking run-time (libgnarl).
+--  This package encapsulates all direct interfaces to OS services that are
+--  needed by the tasking run-time (libgnarl).
 
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package.
@@ -43,11 +41,13 @@
 with Interfaces.C;
 with System.VxWorks;
 with System.VxWorks.Ext;
+with System.Multiprocessors;
 
 package System.OS_Interface is
    pragma Preelaborate;
 
    subtype int             is Interfaces.C.int;
+   subtype unsigned        is Interfaces.C.unsigned;
    subtype short           is Short_Integer;
    type unsigned_int       is mod 2 ** int'Size;
    type long               is new Long_Integer;
@@ -83,6 +83,8 @@ package System.OS_Interface is
    type HW_Interrupt is new int range 0 .. Max_HW_Interrupt;
 
    Max_Interrupt : constant := Max_HW_Interrupt;
+   subtype Interrupt_Range is Natural range 0 .. Max_HW_Interrupt;
+   --  For s-interr
 
    --  Signals common to Vxworks 5.x and 6.x
 
@@ -192,9 +194,6 @@ package System.OS_Interface is
    function c_signal (sig : Signal; handler : isr_address) return isr_address;
    pragma Import (C, c_signal, "signal");
 
-   function sigwait (set : access sigset_t; sig : access Signal) return int;
-   pragma Inline (sigwait);
-
    function pthread_sigmask
      (how  : int;
       set  : access sigset_t;
@@ -203,6 +202,10 @@ package System.OS_Interface is
 
    subtype t_id is System.VxWorks.Ext.t_id;
    subtype Thread_Id is t_id;
+   --  Thread_Id and t_id are VxWorks identifiers for tasks. This value,
+   --  although represented as a Long_Integer, is in fact an address. With
+   --  some BSPs, this address can have a value sufficiently high that the
+   --  Thread_Id becomes negative: this should not be considered as an error.
 
    function kill (pid : t_id; sig : Signal) return int;
    pragma Inline (kill);
@@ -211,25 +214,26 @@ package System.OS_Interface is
 
    function Task_Stop (tid : t_id) return int
      renames System.VxWorks.Ext.Task_Stop;
-   --  If we are in the kernel space, stop the task whose t_id is
-   --  given in parameter in such a way that it can be examined by the
-   --  debugger. This typically maps to taskSuspend on VxWorks 5 and
-   --  to taskStop on VxWorks 6.
+   --  If we are in the kernel space, stop the task whose t_id is given in
+   --  parameter in such a way that it can be examined by the debugger. This
+   --  typically maps to taskSuspend on VxWorks 5 and to taskStop on VxWorks 6.
 
    function Task_Cont (tid : t_id) return int
      renames System.VxWorks.Ext.Task_Cont;
-   --  If we are in the kernel space, continue the task whose t_id is
-   --  given in parameter if it has been stopped previously to be examined
-   --  by the debugger (e.g. by taskStop). It typically maps to taskResume
-   --  on VxWorks 5 and to taskCont on VxWorks 6.
+   --  If we are in the kernel space, continue the task whose t_id is given
+   --  in parameter if it has been stopped previously to be examined by the
+   --  debugger (e.g. by taskStop). It typically maps to taskResume on VxWorks
+   --  5 and to taskCont on VxWorks 6.
 
    function Int_Lock return int renames System.VxWorks.Ext.Int_Lock;
    --  If we are in the kernel space, lock interrupts. It typically maps to
    --  intLock.
 
-   function Int_Unlock return int renames System.VxWorks.Ext.Int_Unlock;
+   function Int_Unlock (Old : int) return int
+     renames System.VxWorks.Ext.Int_Unlock;
    --  If we are in the kernel space, unlock interrupts. It typically maps to
-   --  intUnlock.
+   --  intUnlock. The parameter Old is only used on PowerPC where it contains
+   --  the returned value from Int_Lock (the old MPSR).
 
    ----------
    -- Time --
@@ -243,15 +247,19 @@ package System.OS_Interface is
    end record;
    pragma Convention (C, timespec);
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME : constant clockid_t;   --  System wide realtime clock
+   type clockid_t is new int;
 
    function To_Duration (TS : timespec) return Duration;
    pragma Inline (To_Duration);
 
    function To_Timespec (D : Duration) return timespec;
    pragma Inline (To_Timespec);
+   --  Convert a Duration value to a timespec value. Note that in VxWorks,
+   --  timespec is always non-negative (since time_t is defined above as
+   --  unsigned long). This means that there is a potential problem if a
+   --  negative argument is passed for D. However, in actual usage, the
+   --  value of the input argument D is always non-negative, so no problem
+   --  arises in practice.
 
    function To_Clock_Ticks (D : Duration) return int;
    --  Convert a duration value (in seconds) into clock ticks
@@ -278,7 +286,7 @@ package System.OS_Interface is
    OK    : constant STATUS := 0;
    ERROR : constant STATUS := Interfaces.C.int (-1);
 
-   function taskIdVerify (tid : t_id)  return STATUS;
+   function taskIdVerify (tid : t_id) return STATUS;
    pragma Import (C, taskIdVerify, "taskIdVerify");
 
    function taskIdSelf return t_id;
@@ -297,7 +305,6 @@ package System.OS_Interface is
    pragma Import (C, taskIsSuspended, "taskIsSuspended");
 
    function taskDelay (ticks : int) return int;
-   procedure taskDelay (ticks : int);
    pragma Import (C, taskDelay, "taskDelay");
 
    function sysClkRateGet return int;
@@ -327,6 +334,7 @@ package System.OS_Interface is
    pragma Import (C, taskVarGet, "taskVarGet");
 
    --  VxWorks 6.x specific functions
+
    --  Can only be called from the VxWorks 6 run-time libary that supports
    --  tlsLib, and not by the VxWorks 6.6 SMP library
 
@@ -471,9 +479,9 @@ package System.OS_Interface is
       Handler   : Interrupt_Handler;
       Parameter : System.Address := System.Null_Address) return int;
    pragma Inline (Interrupt_Connect);
-   --  Use this to set up an user handler. The routine installs a user
-   --  handler which is invoked after the OS has saved enough context for a
-   --  high-level language routine to be safely invoked.
+   --  Use this to set up an user handler. The routine installs a user handler
+   --  which is invoked after the OS has saved enough context for a high-level
+   --  language routine to be safely invoked.
 
    function Interrupt_Context return int;
    pragma Inline (Interrupt_Context);
@@ -494,13 +502,22 @@ package System.OS_Interface is
    --  For SMP run-times the affinity to CPU.
    --  For uniprocessor systems return ERROR status.
 
+   function taskMaskAffinitySet (tid : t_id; CPU_Set : unsigned) return int
+     renames System.VxWorks.Ext.taskMaskAffinitySet;
+   --  For SMP run-times the affinity to CPU_Set.
+   --  For uniprocessor systems return ERROR status.
+
+   ---------------------
+   -- Multiprocessors --
+   ---------------------
+
+   function Current_CPU return Multiprocessors.CPU;
+   --  Return the id of the current CPU
+
 private
    type pid_t is new int;
 
    ERROR_PID : constant pid_t := -1;
-
-   type clockid_t is new int;
-   CLOCK_REALTIME : constant clockid_t := 0;
 
    type sigset_t is new System.VxWorks.Ext.sigset_t;
 end System.OS_Interface;

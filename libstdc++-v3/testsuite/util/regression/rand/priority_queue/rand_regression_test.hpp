@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2008, 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -56,18 +56,21 @@ namespace detail
   struct rand_reg_test
   {
   public:
-    rand_reg_test(size_t seed, size_t n, size_t m, double tp, double ip, 
-		  double dp, double ep, double cp, double mp, bool d) 
-    : m_sd(seed), m_n(n), m_m(m), m_tp(tp), m_ip(ip), m_dp(dp), m_ep(ep), 
+    rand_reg_test(size_t seed, size_t n, size_t m, double tp, double ip,
+		  double dp, double ep, double cp, double mp, bool d)
+    : m_sd(seed), m_n(n), m_m(m), m_tp(tp), m_ip(ip), m_dp(dp), m_ep(ep),
       m_cp(cp), m_mp(mp), m_disp(d)
-    { }
+    {
+      if (m_disp)
+	xml_test_rand_regression_formatter(seed, n, m, tp, ip, ep, cp, mp);
+    }
 
     template<typename Cntnr>
     void
     operator()(Cntnr)
     {
       unsigned long ul = static_cast<unsigned long>(m_sd);
-      container_rand_regression_test<Cntnr> t(ul, m_n, m_n, m_tp, m_ip, m_dp, 
+      container_rand_regression_test<Cntnr> t(ul, m_n, m_n, m_tp, m_ip, m_dp,
 					      m_ep, m_cp, m_mp, m_disp);
       t();
     }
@@ -89,7 +92,7 @@ namespace detail
   usage(const std::string& r_name);
 
   void
-  verify_params(size_t&, size_t&, size_t&, 
+  verify_params(size_t&, size_t&, size_t&,
 		double&, double&, double&, double&, double&, double&, bool&);
 } // namespace detail
 
@@ -100,14 +103,14 @@ namespace detail
     // Sane defaults.
     size_t n = iter;
     size_t m = keys;
-    size_t sd = 0; // 0 = time-determined arbitrary
+    size_t sd = twister_rand_gen::get_time_determined_seed();
     double tp = 0.2;
     double ip = 0.6;
     double dp = 0.1;
-    double ep = 0.2; 
+    double ep = 0.2;
     double cp = 0.001;
     double mp = 1;
-    bool disp = false; // show progress
+    bool disp = true; // show progress
 
     try
       {
@@ -123,13 +126,6 @@ namespace detail
 	return -2;
       };
 
-    xml_test_rand_regression_formatter* p_fmt = 0;
-    if (sd == 0)
-      sd = twister_rand_gen::get_time_determined_seed();
-    if (disp)
-      p_fmt = new xml_test_rand_regression_formatter(sd, n, m, tp, ip, dp,
-						     ep, cp, mp);
-
     try
       {
 	detail::rand_reg_test tst(sd, n, m, tp, ip, dp, ep, cp, mp, disp);
@@ -138,13 +134,9 @@ namespace detail
     catch(...)
       {
 	std::cerr << "Test failed with seed " << sd << std::endl;
-	if (disp)
-	  delete p_fmt;
-	return -1;
+	throw;
       }
 
-    if (disp)
-      delete p_fmt;
     return 0;
   }
 
@@ -183,8 +175,8 @@ namespace detail
   }
 
   inline void
-  verify_params(size_t& r_seed, size_t& r_n, 
-		size_t& r_m, double& r_tp, double& r_ip, double& r_dp, 
+  verify_params(size_t& r_seed, size_t& r_n,
+		size_t& r_m, double& r_tp, double& r_ip, double& r_dp,
 		double& r_ep, double& r_cp, double& r_mp, bool& r_d)
   {
     verify_prob(r_tp);

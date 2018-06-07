@@ -1,4 +1,4 @@
-// { dg-options -std=c++0x }
+// { dg-do compile { target c++11 } }
 
 #include <type_traits>
 
@@ -33,6 +33,7 @@ YES(NotLiteral (NotLiteral::*)(NotLiteral));
 
 struct A {
   A(const A&) = default;
+  A(int);
 };
 
 NO(A);				// no constexpr ctor other than copy

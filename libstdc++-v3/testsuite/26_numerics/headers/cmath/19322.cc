@@ -1,4 +1,6 @@
-// Copyright (C) 2005, 2009 Free Software Foundation, Inc.
+// { dg-require-c-std "" }
+
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,24 +17,17 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-
 #include <cmath>
 #include <testsuite_hooks.h>
 
-#if _GLIBCXX_USE_C99_MATH
 // libstdc++/19322
 void test01()
 {
-  bool test __attribute__((unused)) = true;
-
   VERIFY( !std::isnan(3.0) );
 }
-#endif
 
 int main()
 {
-#if _GLIBCXX_USE_C99_MATH
   test01();
-#endif
   return 0;
 }

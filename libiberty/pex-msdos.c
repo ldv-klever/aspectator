@@ -1,7 +1,6 @@
 /* Utilities to execute a program in a subprocess (possibly linked by pipes
    with other subprocesses), and wait for it.  Generic MSDOS specialization.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2003, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1996-2017 Free Software Foundation, Inc.
 
 This file is part of the libiberty library.
 Libiberty is free software; you can redistribute it and/or
@@ -310,10 +309,8 @@ pex_msdos_cleanup (struct pex_obj  *obj)
 
   ms = (struct pex_msdos *) obj->sysdep;
   for (i = 0; i < PEX_MSDOS_FILE_COUNT; ++i)
-    if (msdos->files[i] != NULL)
-      free (msdos->files[i]);
-  if (msdos->statuses != NULL)
-    free (msdos->statuses);
+    free (msdos->files[i]);
+  free (msdos->statuses);
   free (msdos);
   obj->sysdep = NULL;
 }

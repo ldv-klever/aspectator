@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2002-2007, Free Software Foundation, Inc.         --
+--          Copyright (C) 2002-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,23 +26,26 @@
 --  This package stores all preprocessing data for the compiler
 
 with Namet; use Namet;
+with Types; use Types;
 
 package Prepcomp is
 
-   procedure Add_Dependencies;
-   --  Add dependencies on the preprocessing data file and the
-   --  preprocessing definition files, if any.
+   procedure Add_Dependency (S : Source_File_Index);
+   --  Add a dependency on a non-source file. This is used internally for the
+   --  preprocessing data file and the preprocessing definition file, and also
+   --  externally for non-temporary configuration pragmas files.
 
-   procedure Add_Symbol_Definition (Def : String);
-   --  Add a symbol definition from the command line.
-   --  Fail if definition is illegal.
+   procedure Add_Dependencies;
+   --  Add dependencies on the preprocessing data file and the preprocessing
+   --  definition files, if any, and the non-temporary configuration pragmas
+   --  files, if any.
 
    procedure Check_Symbols;
-   --  Check if there are preprocessing symbols on the command line and
-   --  set preprocessing if there are some: all files are preprocessed with
-   --  these symbols. This procedure should not be called if there is a
-   --  preprocessing data file specified on the command line. Procedure
-   --  Parse_Preprocessing_Data_File should be called instead.
+   --  Check if there are preprocessing symbols on the command line and set
+   --  preprocessing if there are some: all files are preprocessed with these
+   --  symbols. This procedure should not be called if there is a preprocessing
+   --  data file specified on the command line. Instead a call should be made
+   --  to Parse_Preprocessing_Data_File.
 
    procedure Parse_Preprocessing_Data_File (N : File_Name_Type);
    --  Parse a preprocessing data file, specified with a -gnatep= switch
@@ -50,10 +53,10 @@ package Prepcomp is
    procedure Prepare_To_Preprocess
      (Source               : File_Name_Type;
       Preprocessing_Needed : out Boolean);
-   --  Prepare, if necessary, the preprocessor for a source file.
-   --  If the source file needs to be preprocessed, Preprocessing_Needed
-   --  is set to True. Otherwise, Preprocessing_Needed is set to False
-   --  and no preprocessing needs to be done.
+   --  Prepare, if necessary, the preprocessor for a source file. If the source
+   --  file needs to be preprocessed, Preprocessing_Needed is set to True.
+   --  Otherwise, Preprocessing_Needed is set to False and no preprocessing
+   --  needs to be done.
 
    procedure Process_Command_Line_Symbol_Definitions;
    --  Check symbol definitions that have been added by calls to procedure

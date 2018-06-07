@@ -18,7 +18,7 @@ template<typename Q>
 class F1
 {
     friend class A<Q>::B;
-    enum { foo = 0 };	// { dg-error "private" }
+    enum { foo = 0 };	// { dg-message "private" }
 };
 
 template<typename Q>
@@ -43,4 +43,4 @@ void A<T>::B::func2(void)
     (void)F2<T*>::foo;
 }
 
-template class A<int>;	// { dg-message "instantiated" }
+template class A<int>;	// { dg-message "required" }

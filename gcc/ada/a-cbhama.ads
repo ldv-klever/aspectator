@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -31,8 +31,11 @@
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
+with Ada.Iterator_Interfaces;
+
 private with Ada.Containers.Hash_Tables;
 private with Ada.Streams;
+private with Ada.Finalization;
 
 generic
    type Key_Type is private;
@@ -43,10 +46,16 @@ generic
    with function "=" (Left, Right : Element_Type) return Boolean is <>;
 
 package Ada.Containers.Bounded_Hashed_Maps is
+   pragma Annotate (CodePeer, Skip_Analysis);
    pragma Pure;
    pragma Remote_Types;
 
-   type Map (Capacity : Count_Type; Modulus : Hash_Type) is tagged private;
+   type Map (Capacity : Count_Type; Modulus : Hash_Type) is tagged private with
+      Constant_Indexing => Constant_Reference,
+      Variable_Indexing => Reference,
+      Default_Iterator  => Iterate,
+      Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (Map);
 
    type Cursor is private;
@@ -59,6 +68,12 @@ package Ada.Containers.Bounded_Hashed_Maps is
    No_Element : constant Cursor;
    --  Cursor objects declared without an initialization expression are
    --  initialized to the value No_Element.
+
+   function Has_Element (Position : Cursor) return Boolean;
+   --  Equivalent to Position /= No_Element
+
+   package Map_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    function "=" (Left, Right : Map) return Boolean;
    --  For each key/element pair in Left, equality attempts to find the key in
@@ -121,9 +136,35 @@ package Ada.Containers.Bounded_Hashed_Maps is
    --  Calls Process with the key (with only a constant view) and element (with
    --  a variable view) of the node designed by the cursor.
 
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is
+   private
+   with
+      Implicit_Dereference => Element;
+
+   type Reference_Type (Element : not null access Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Position  : Cursor) return Constant_Reference_Type;
+
+   function Reference
+     (Container : aliased in out Map;
+      Position  : Cursor) return Reference_Type;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Key       : Key_Type) return Constant_Reference_Type;
+
+   function Reference
+     (Container : aliased in out Map;
+      Key       : Key_Type) return Reference_Type;
+
    procedure Assign (Target : in out Map; Source : Map);
    --  If Target denotes the same object as Source, then the operation has no
-   --  effect. If the Target capacity is less then the Source length, then
+   --  effect. If the Target capacity is less than the Source length, then
    --  Assign raises Capacity_Error.  Otherwise, Assign clears Target and then
    --  copies the (active) elements from Source to Target.
 
@@ -253,9 +294,6 @@ package Ada.Containers.Bounded_Hashed_Maps is
    function Element (Container : Map; Key : Key_Type) return Element_Type;
    --  Equivalent to Element (Find (Container, Key))
 
-   function Has_Element (Position : Cursor) return Boolean;
-   --  Equivalent to Position /= No_Element
-
    function Equivalent_Keys (Left, Right : Cursor) return Boolean;
    --  Returns the result of calling Equivalent_Keys with the keys of the nodes
    --  designated by cursors Left and Right.
@@ -273,8 +311,10 @@ package Ada.Containers.Bounded_Hashed_Maps is
       Process   : not null access procedure (Position : Cursor));
    --  Calls Process for each node in the map
 
+   function Iterate (Container : Map)
+      return Map_Iterator_Interfaces.Forward_Iterator'class;
+
 private
-   --  pragma Inline ("=");
    pragma Inline (Length);
    pragma Inline (Is_Empty);
    pragma Inline (Clear);
@@ -285,12 +325,11 @@ private
    pragma Inline (Capacity);
    pragma Inline (Reserve_Capacity);
    pragma Inline (Has_Element);
-   pragma Inline (Equivalent_Keys);
    pragma Inline (Next);
 
    type Node_Type is record
       Key     : Key_Type;
-      Element : Element_Type;
+      Element : aliased Element_Type;
       Next    : Count_Type;
    end record;
 
@@ -300,8 +339,9 @@ private
    type Map (Capacity : Count_Type; Modulus : Hash_Type) is
       new HT_Types.Hash_Table_Type (Capacity, Modulus) with null record;
 
-   use HT_Types;
+   use HT_Types, HT_Types.Implementation;
    use Ada.Streams;
+   use Ada.Finalization;
 
    procedure Write
      (Stream    : not null access Root_Stream_Type'Class;
@@ -318,9 +358,15 @@ private
    type Map_Access is access all Map;
    for Map_Access'Storage_Size use 0;
 
+   --  Note: If a Cursor object has no explicit initialization expression,
+   --  it must default initialize to the same value as constant No_Element.
+   --  The Node component of type Cursor has scalar type Count_Type, so it
+   --  requires an explicit initialization expression of its own declaration,
+   --  in order for objects of record type Cursor to properly initialize.
+
    type Cursor is record
       Container : Map_Access;
-      Node      : Count_Type;
+      Node      : Count_Type := 0;
    end record;
 
    procedure Read
@@ -335,9 +381,88 @@ private
 
    for Cursor'Write use Write;
 
-   No_Element : constant Cursor := (Container => null, Node => 0);
+   subtype Reference_Control_Type is Implementation.Reference_Control_Type;
+   --  It is necessary to rename this here, so that the compiler can find it
+
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
+
+   for Constant_Reference_Type'Read use Read;
+
+   type Reference_Type (Element : not null access Element_Type) is record
+      Control : Reference_Control_Type :=
+        raise Program_Error with "uninitialized reference";
+      --  The RM says, "The default initialization of an object of
+      --  type Constant_Reference_Type or Reference_Type propagates
+      --  Program_Error."
+   end record;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type);
+
+   for Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type);
+
+   for Reference_Type'Read use Read;
+
+   --  Three operations are used to optimize in the expansion of "for ... of"
+   --  loops: the Next(Cursor) procedure in the visible part, and the following
+   --  Pseudo_Reference and Get_Element_Access functions. See Sem_Ch5 for
+   --  details.
+
+   function Pseudo_Reference
+     (Container : aliased Map'Class) return Reference_Control_Type;
+   pragma Inline (Pseudo_Reference);
+   --  Creates an object of type Reference_Control_Type pointing to the
+   --  container, and increments the Lock. Finalization of this object will
+   --  decrement the Lock.
+
+   type Element_Access is access all Element_Type with
+     Storage_Size => 0;
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access;
+   --  Returns a pointer to the element designated by Position.
 
    Empty_Map : constant Map :=
-     (Hash_Table_Type with Capacity => 0, Modulus => 0);
+                 (Hash_Table_Type with Capacity => 0, Modulus => 0);
+
+   No_Element : constant Cursor := (Container => null, Node => 0);
+
+   type Iterator is new Limited_Controlled and
+     Map_Iterator_Interfaces.Forward_Iterator with
+   record
+      Container : Map_Access;
+   end record
+     with Disable_Controlled => not T_Check;
+
+   overriding procedure Finalize (Object : in out Iterator);
+
+   overriding function First (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
 
 end Ada.Containers.Bounded_Hashed_Maps;

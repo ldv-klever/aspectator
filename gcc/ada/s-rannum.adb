@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2007-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2007-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -86,28 +86,26 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Calendar;             use Ada.Calendar;
 with Ada.Unchecked_Conversion;
+
+with System.Random_Seed;
 
 with Interfaces; use Interfaces;
 
 use Ada;
 
-package body System.Random_Numbers is
-
-   Y2K : constant Calendar.Time :=
-           Calendar.Time_Of
-             (Year => 2000, Month => 1, Day => 1, Seconds => 0.0);
-   --  First day of Year 2000 (what is this for???)
-
+package body System.Random_Numbers with
+  SPARK_Mode => Off
+is
    Image_Numeral_Length : constant := Max_Image_Width / N;
+
    subtype Image_String is String (1 .. Max_Image_Width);
 
    ----------------------------
    -- Algorithmic Parameters --
    ----------------------------
 
-   Lower_Mask : constant := 2**31-1;
+   Lower_Mask : constant := 2**31 - 1;
    Upper_Mask : constant := 2**31;
 
    Matrix_A   : constant array (State_Val range 0 .. 1) of State_Val
@@ -210,7 +208,7 @@ package body System.Random_Numbers is
       G.I := I;
 
       Y := Y xor Shift_Right (Y, U);
-      Y := Y xor (Shift_Left (Y, S)  and B_Mask);
+      Y := Y xor (Shift_Left (Y, S) and B_Mask);
       Y := Y xor (Shift_Left (Y, T) and C_Mask);
       Y := Y xor Shift_Right (Y, L);
 
@@ -243,7 +241,7 @@ package body System.Random_Numbers is
       --  integers. Assuming that Real'Machine_Radix = 2, it can deliver all
       --  machine values of type Real (as implied by Real'Machine_Mantissa and
       --  Real'Machine_Emin), which is not true of the standard method (to
-      --  which we fall back for non-binary radix): computing Real(<random
+      --  which we fall back for nonbinary radix): computing Real(<random
       --  integer>) / (<max random integer>+1). To do so, we first extract an
       --  (M-1)-bit significand (where M is Real'Machine_Mantissa), and then
       --  decide on a normalized exponent by repeated coin flips, decrementing
@@ -410,7 +408,7 @@ package body System.Random_Numbers is
             --  Ignore different-size warnings here since GNAT's handling
             --  is correct.
 
-            pragma Warnings ("Z");  -- better to use msg string! ???
+            pragma Warnings ("Z");
             function Conv_To_Unsigned is
                new Unchecked_Conversion (Result_Subtype'Base, Unsigned_64);
             function Conv_To_Result is
@@ -484,14 +482,8 @@ package body System.Random_Numbers is
    -----------
 
    procedure Reset (Gen : Generator) is
-      Clock              : constant Time := Calendar.Clock;
-      Duration_Since_Y2K : constant Duration := Clock - Y2K;
-
-      X : constant Unsigned_32 :=
-            Unsigned_32'Mod (Unsigned_64 (Duration_Since_Y2K) * 64);
-
    begin
-      Init (Gen, X);
+      Init (Gen, Unsigned_32'Mod (Random_Seed.Get_Seed));
    end Reset;
 
    procedure Reset (Gen : Generator; Initiator : Integer_32) is
@@ -506,7 +498,6 @@ package body System.Random_Numbers is
 
    procedure Reset (Gen : Generator; Initiator : Integer) is
    begin
-      pragma Warnings (Off, "condition is always *");
       --  This is probably an unnecessary precaution against future change, but
       --  since the test is a static expression, no extra code is involved.
 
@@ -525,8 +516,6 @@ package body System.Random_Numbers is
             Reset (Gen, Initialization_Vector'(Init0, Init1));
          end;
       end if;
-
-      pragma Warnings (On, "condition is always *");
    end Reset;
 
    procedure Reset (Gen : Generator; Initiator : Initialization_Vector) is
@@ -700,4 +689,5 @@ package body System.Random_Numbers is
    begin
       return State_Val'Value (S (Start .. Start + Image_Numeral_Length - 1));
    end Extract_Value;
+
 end System.Random_Numbers;

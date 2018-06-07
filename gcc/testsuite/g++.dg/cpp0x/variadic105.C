@@ -1,5 +1,5 @@
 // PR c++/47289
-// { dg-options -std=c++0x }
+// { dg-do compile { target c++11 } }
 // { dg-prune-output "note" }
 
 template <template <typename... __ARGS> class _F, typename... _ARGS>
@@ -20,5 +20,6 @@ struct call_sum {
 
 int main() {
   // This shouldn't be an error; this is bug 35722.
-  reverse<call_sum>(1,2);	// { dg-bogus "no match" "" { xfail *-*-* } }
+  reverse<call_sum>(1,2);	// { dg-bogus "no match" "" }
+  // { dg-bogus "sorry, unimplemented" "candidate explanation" { target *-*-* } 6 }
 }

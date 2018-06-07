@@ -4,22 +4,21 @@
 
 package runtime
 
+import "unsafe"
+
 // The Error interface identifies a run time error.
 type Error interface {
-	String() string
+	error
 
 	// RuntimeError is a no-op function but
-	// serves to distinguish types that are runtime
-	// errors from ordinary os.Errors: a type is a
-	// runtime error if it has a RuntimeError method.
+	// serves to distinguish types that are run time
+	// errors from ordinary errors: a type is a
+	// run time error if it has a RuntimeError method.
 	RuntimeError()
 }
 
 // A TypeAssertionError explains a failed type assertion.
 type TypeAssertionError struct {
-	interfaceType   *Type // interface had this type
-	concreteType    *Type // concrete value had this type
-	assertedType    *Type // asserted type
 	interfaceString string
 	concreteString  string
 	assertedString  string
@@ -28,12 +27,12 @@ type TypeAssertionError struct {
 
 func (*TypeAssertionError) RuntimeError() {}
 
-func (e *TypeAssertionError) String() string {
+func (e *TypeAssertionError) Error() string {
 	inter := e.interfaceString
 	if inter == "" {
 		inter = "interface"
 	}
-	if e.concreteType == nil {
+	if e.concreteString == "" {
 		return "interface conversion: " + inter + " is nil, not " + e.assertedString
 	}
 	if e.missingMethod == "" {
@@ -44,40 +43,10 @@ func (e *TypeAssertionError) String() string {
 		": missing method " + e.missingMethod
 }
 
-// Concrete returns the type of the concrete value in the failed type assertion.
-// If the interface value was nil, Concrete returns nil.
-func (e *TypeAssertionError) Concrete() *Type {
-	return e.concreteType
-}
-
-// Asserted returns the type incorrectly asserted by the type assertion.
-func (e *TypeAssertionError) Asserted() *Type {
-	return e.assertedType
-}
-
-// If the type assertion is to an interface type, MissingMethod returns the
-// name of a method needed to satisfy that interface type but not implemented
-// by Concrete.  If there are multiple such methods,
-// MissingMethod returns one; which one is unspecified.
-// If the type assertion is not to an interface type, MissingMethod returns an empty string.
-func (e *TypeAssertionError) MissingMethod() string {
-	return e.missingMethod
-}
-
 // For calling from C.
-func NewTypeAssertionError(pt1, pt2, pt3 *Type, ps1, ps2, ps3 *string, pmeth *string, ret *interface{}) {
-	var t1, t2, t3 *Type
+func NewTypeAssertionError(ps1, ps2, ps3 *string, pmeth *string, ret *interface{}) {
 	var s1, s2, s3, meth string
 
-	if pt1 != nil {
-		t1 = pt1
-	}
-	if pt2 != nil {
-		t2 = pt2
-	}
-	if pt3 != nil {
-		t3 = pt3
-	}
 	if ps1 != nil {
 		s1 = *ps1
 	}
@@ -90,7 +59,39 @@ func NewTypeAssertionError(pt1, pt2, pt3 *Type, ps1, ps2, ps3 *string, pmeth *st
 	if pmeth != nil {
 		meth = *pmeth
 	}
-	*ret = &TypeAssertionError{t1, t2, t3, s1, s2, s3, meth}
+
+	// For gccgo, strip out quoted strings.
+	s1 = unquote(s1)
+	s2 = unquote(s2)
+	s3 = unquote(s3)
+
+	*ret = &TypeAssertionError{s1, s2, s3, meth}
+}
+
+// Remove quoted strings from gccgo reflection strings.
+func unquote(s string) string {
+	ls := len(s)
+	var i int
+	for i = 0; i < ls; i++ {
+		if s[i] == '\t' {
+			break
+		}
+	}
+	if i == ls {
+		return s
+	}
+	var q bool
+	r := make([]byte, len(s))
+	j := 0
+	for i = 0; i < ls; i++ {
+		if s[i] == '\t' {
+			q = !q
+		} else if !q {
+			r[j] = s[i]
+			j++
+		}
+	}
+	return string(r[:j])
 }
 
 // An errorString represents a runtime error described by a single string.
@@ -98,31 +99,57 @@ type errorString string
 
 func (e errorString) RuntimeError() {}
 
-func (e errorString) String() string {
+func (e errorString) Error() string {
 	return "runtime error: " + string(e)
 }
 
+// An errorCString represents a runtime error described by a single C string.
+// Not "type errorCString uintptr" because of http://golang.org/issue/7084.
+type errorCString struct{ cstr uintptr }
+
+func (e errorCString) RuntimeError() {}
+
+func (e errorCString) Error() string {
+	return "runtime error: " + gostringnocopy((*byte)(unsafe.Pointer(e.cstr)))
+}
+
 // For calling from C.
-func NewErrorString(s string, ret *interface{}) {
-	*ret = errorString(s)
+func NewErrorCString(s uintptr, ret *interface{}) {
+	*ret = errorCString{s}
+}
+
+// plainError represents a runtime error described a string without
+// the prefix "runtime error: " after invoking errorString.Error().
+// See Issue #14965.
+type plainError string
+
+func (e plainError) RuntimeError() {}
+
+func (e plainError) Error() string {
+	return string(e)
 }
 
 type stringer interface {
 	String() string
 }
 
-func typestring(interface{}) string
+func typestring(x interface{}) string {
+	e := efaceOf(&x)
+	return *e._type.string
+}
 
 // For calling from C.
 // Prints an argument passed to panic.
 // There's room for arbitrary complexity here, but we keep it
 // simple and handle just a few important cases: int, string, and Stringer.
-func Printany(i interface{}) {
+func printany(i interface{}) {
 	switch v := i.(type) {
 	case nil:
 		print("nil")
 	case stringer:
 		print(v.String())
+	case error:
+		print(v.Error())
 	case int:
 		print(v)
 	case string:
@@ -130,4 +157,9 @@ func Printany(i interface{}) {
 	default:
 		print("(", typestring(i), ") ", i)
 	}
+}
+
+// called from generated code
+func panicwrap(pkg, typ, meth string) {
+	panic(plainError("value method " + pkg + "." + typ + "." + meth + " called using nil *" + typ + " pointer"))
 }

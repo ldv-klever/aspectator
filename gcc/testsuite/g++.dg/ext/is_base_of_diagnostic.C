@@ -1,7 +1,7 @@
 class A
 { };
 
-class B;
+class B; // { dg-message "forward declaration" }
 
 union C
 { };

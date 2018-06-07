@@ -1,7 +1,6 @@
 // Reference-counted versatile string base -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -314,7 +313,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       __rc_string_base(const __rc_string_base& __rcs);
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
       __rc_string_base(__rc_string_base&& __rcs)
       : _M_dataplus(__rcs._M_dataplus)
       { __rcs._M_data(_S_empty_rep._M_refcopy()); }
@@ -355,7 +354,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       void
       _M_clear()
-      { _M_erase(size_type(0), _M_length()); }
+      {
+	_M_dispose();
+	_M_data(_S_empty_rep._M_refcopy());
+      }
 
       bool
       _M_compare(const __rc_string_base&) const
@@ -461,7 +463,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 				  __alloc);
 
       if (_M_info._M_length)
-	_S_copy(__r->_M_refdata(), _M_refdata(), _M_info._M_length);
+	__rc_string_base::_S_copy(__r->_M_refdata(), _M_refdata(), _M_info._M_length);
 
       __r->_M_set_length(_M_info._M_length);
       return __r->_M_refdata();
@@ -569,7 +571,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	// Check for out_of_range and length_error exceptions.
 	_Rep* __r = _Rep::_S_create(__dnew, size_type(0), __a);
 	__try
-	  { _S_copy_chars(__r->_M_refdata(), __beg, __end); }
+	  { __rc_string_base::_S_copy_chars(__r->_M_refdata(), __beg, __end); }
 	__catch(...)
 	  {
 	    __r->_M_destroy(__a);
@@ -590,7 +592,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       // Check for out_of_range and length_error exceptions.
       _Rep* __r = _Rep::_S_create(__n, size_type(0), __a);
       if (__n)
-	_S_assign(__r->_M_refdata(), __n, __c);
+	__rc_string_base::_S_assign(__r->_M_refdata(), __n, __c);
 
       __r->_M_set_length(__n);
       return __r->_M_refdata();
@@ -659,11 +661,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 				  _M_capacity(), _M_get_allocator());
 
       if (__pos)
-	_S_copy(__r->_M_refdata(), _M_data(), __pos);
+	this->_S_copy(__r->_M_refdata(), _M_data(), __pos);
       if (__s && __len2)
-	_S_copy(__r->_M_refdata() + __pos, __s, __len2);
+	this->_S_copy(__r->_M_refdata() + __pos, __s, __len2);
       if (__how_much)
-	_S_copy(__r->_M_refdata() + __pos + __len2,
+	this->_S_copy(__r->_M_refdata() + __pos + __len2,
 		_M_data() + __pos + __len1, __how_much);
 
       _M_dispose();
@@ -685,9 +687,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 				      _M_get_allocator());
 
 	  if (__pos)
-	    _S_copy(__r->_M_refdata(), _M_data(), __pos);
+	    this->_S_copy(__r->_M_refdata(), _M_data(), __pos);
 	  if (__how_much)
-	    _S_copy(__r->_M_refdata() + __pos,
+	    this->_S_copy(__r->_M_refdata() + __pos,
 		    _M_data() + __pos + __n, __how_much);
 
 	  _M_dispose();
@@ -696,7 +698,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       else if (__how_much && __n)
 	{
 	  // Work in-place.
-	  _S_move(_M_data() + __pos,
+	  this->_S_move(_M_data() + __pos,
 		  _M_data() + __pos + __n, __how_much);
 	}
 

@@ -1,7 +1,6 @@
 /* elfos.h  --  operating system specific defines to be used when
    targeting GCC for some generic ELF system
-   Copyright (C) 1991, 1994, 1995, 1999, 2000, 2001, 2002, 2003, 2004,
-   2007, 2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 1991-2017 Free Software Foundation, Inc.
    Based on svr4.h contributed by Ron Guilmette (rfg@netcom.com).
 
 This file is part of GCC.
@@ -83,10 +82,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 /* Output #ident as a .ident.  */
 
-#define ASM_OUTPUT_IDENT(FILE, NAME) \
-  fprintf (FILE, "%s\"%s\"\n", IDENT_ASM_OP, NAME);
-
-#define IDENT_ASM_OP "\t.ident\t"
+#undef TARGET_ASM_OUTPUT_IDENT
+#define TARGET_ASM_OUTPUT_IDENT default_asm_output_ident_directive
 
 #undef  SET_ASM_OP
 #define SET_ASM_OP	"\t.set\t"
@@ -102,7 +99,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #undef  ASM_OUTPUT_SKIP
 #define ASM_OUTPUT_SKIP(FILE, SIZE) \
-   fprintf ((FILE), "%s"HOST_WIDE_INT_PRINT_UNSIGNED"\n",\
+   fprintf ((FILE), "%s" HOST_WIDE_INT_PRINT_UNSIGNED "\n",\
 	    SKIP_ASM_OP, (SIZE))
 
 /* This is how to store into the string LABEL
@@ -117,7 +114,11 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL, PREFIX, NUM)		\
   do								\
     {								\
-      sprintf (LABEL, "*.%s%u", PREFIX, (unsigned) (NUM));	\
+      char *__p;						\
+      (LABEL)[0] = '*';						\
+      (LABEL)[1] = '.';						\
+      __p = stpcpy (&(LABEL)[2], PREFIX);			\
+      sprint_ul (__p, (unsigned long) (NUM));			\
     }								\
   while (0)
 
@@ -166,7 +167,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
     {									\
       fprintf ((FILE), "%s", COMMON_ASM_OP);				\
       assemble_name ((FILE), (NAME));					\
-      fprintf ((FILE), ","HOST_WIDE_INT_PRINT_UNSIGNED",%u\n",		\
+      fprintf ((FILE), "," HOST_WIDE_INT_PRINT_UNSIGNED ",%u\n",		\
 	       (SIZE), (ALIGN) / BITS_PER_UNIT);			\
     }									\
   while (0)
@@ -283,10 +284,26 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
   while (0)
 #endif
 
+/* Write the extra assembler code needed to declare the name of a
+   cold function partition properly. Some svr4 assemblers need to also
+   have something extra said about the function's return value.  We
+   allow for that here.  */
+
+#ifndef ASM_DECLARE_COLD_FUNCTION_NAME
+#define ASM_DECLARE_COLD_FUNCTION_NAME(FILE, NAME, DECL)	\
+  do								\
+    {								\
+      ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "function");	\
+      ASM_DECLARE_RESULT (FILE, DECL_RESULT (DECL));		\
+      ASM_OUTPUT_FUNCTION_LABEL (FILE, NAME, DECL);		\
+    }								\
+  while (0)
+#endif
+
 /* Write the extra assembler code needed to declare an object properly.  */
 
 #ifdef HAVE_GAS_GNU_UNIQUE_OBJECT
-#define USE_GNU_UNIQUE_OBJECT 1
+#define USE_GNU_UNIQUE_OBJECT flag_gnu_unique
 #else
 #define USE_GNU_UNIQUE_OBJECT 0
 #endif
@@ -312,7 +329,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 	  && (DECL) && DECL_SIZE (DECL))				\
 	{								\
 	  size_directive_output = 1;					\
-	  size = int_size_in_bytes (TREE_TYPE (DECL));			\
+	  size = tree_to_uhwi (DECL_SIZE_UNIT (DECL));			\
 	  ASM_OUTPUT_SIZE_DIRECTIVE (FILE, NAME, size);			\
 	}								\
 									\
@@ -340,7 +357,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 	  && !size_directive_output)				\
 	{							\
 	  size_directive_output = 1;				\
-	  size = int_size_in_bytes (TREE_TYPE (DECL));		\
+	  size = tree_to_uhwi (DECL_SIZE_UNIT (DECL));		\
 	  ASM_OUTPUT_SIZE_DIRECTIVE (FILE, name, size);		\
 	}							\
     }								\
@@ -349,6 +366,17 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 /* This is how to declare the size of a function.  */
 #ifndef ASM_DECLARE_FUNCTION_SIZE
 #define ASM_DECLARE_FUNCTION_SIZE(FILE, FNAME, DECL)		\
+  do								\
+    {								\
+      if (!flag_inhibit_size_directive)				\
+	ASM_OUTPUT_MEASURED_SIZE (FILE, FNAME);			\
+    }								\
+  while (0)
+#endif
+
+/* This is how to declare the size of a cold function partition.  */
+#ifndef ASM_DECLARE_COLD_FUNCTION_SIZE
+#define ASM_DECLARE_COLD_FUNCTION_SIZE(FILE, FNAME, DECL)	\
   do								\
     {								\
       if (!flag_inhibit_size_directive)				\
@@ -371,7 +399,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    the i386) don't know about that.  Also, we don't use \v
    since some versions of gas, such as 2.2 did not accept it.  */
 
-#define ESCAPES \
+#define ELF_ASCII_ESCAPES \
 "\1\1\1\1\1\1\1\1btn\1fr\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\
 \0\0\"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
 \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\\\0\0\0\
@@ -393,7 +421,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    should define this to zero.
 */
 
-#define STRING_LIMIT	((unsigned) 256)
+#define ELF_STRING_LIMIT	((unsigned) 256)
 
 #define STRING_ASM_OP	"\t.string\t"
 
@@ -405,36 +433,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    comma separated lists of numbers).  */
 
 #define ASM_OUTPUT_LIMITED_STRING(FILE, STR)		\
-  do							\
-    {							\
-      register const unsigned char *_limited_str =	\
-	(const unsigned char *) (STR);			\
-      register unsigned ch;				\
-							\
-      fprintf ((FILE), "%s\"", STRING_ASM_OP);		\
-							\
-      for (; (ch = *_limited_str); _limited_str++)	\
-        {						\
-	  register int escape;				\
-							\
-	  switch (escape = ESCAPES[ch])			\
-	    {						\
-	    case 0:					\
-	      putc (ch, (FILE));			\
-	      break;					\
-	    case 1:					\
-	      fprintf ((FILE), "\\%03o", ch);		\
-	      break;					\
-	    default:					\
-	      putc ('\\', (FILE));			\
-	      putc (escape, (FILE));			\
-	      break;					\
-	    }						\
-        }						\
-							\
-      fprintf ((FILE), "\"\n");				\
-    }							\
-  while (0)
+  default_elf_asm_output_limited_string ((FILE), (STR))
 
 /* The routine used to output sequences of byte values.  We use a special
    version of this for most svr4 targets because doing so makes the
@@ -444,76 +443,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    STRING_LIMIT) we output those using ASM_OUTPUT_LIMITED_STRING.  */
 
 #undef  ASM_OUTPUT_ASCII
-#define ASM_OUTPUT_ASCII(FILE, STR, LENGTH)				\
-  do									\
-    {									\
-      const unsigned char *_ascii_bytes =				\
-	(const unsigned char *) (STR);					\
-      const unsigned char *limit = _ascii_bytes + (LENGTH);		\
-      const unsigned char *last_null = NULL;				\
-      unsigned bytes_in_chunk = 0;					\
-									\
-      for (; _ascii_bytes < limit; _ascii_bytes++)			\
-        {								\
-	  const unsigned char *p;					\
-									\
-	  if (bytes_in_chunk >= 60)					\
-	    {								\
-	      fprintf ((FILE), "\"\n");					\
-	      bytes_in_chunk = 0;					\
-	    }								\
-									\
-	  if (_ascii_bytes > last_null)					\
-	    {								\
-	      for (p = _ascii_bytes; p < limit && *p != '\0'; p++)	\
-		continue;						\
-	      last_null = p;						\
-	    }								\
-	  else								\
-	    p = last_null;						\
-									\
-	  if (p < limit && (p - _ascii_bytes) <= (long)STRING_LIMIT)	\
-	    {								\
-	      if (bytes_in_chunk > 0)					\
-		{							\
-		  fprintf ((FILE), "\"\n");				\
-		  bytes_in_chunk = 0;					\
-		}							\
-									\
-	      ASM_OUTPUT_LIMITED_STRING ((FILE), _ascii_bytes);		\
-	      _ascii_bytes = p;						\
-	    }								\
-	  else								\
-	    {								\
-	      register int escape;					\
-	      register unsigned ch;					\
-									\
-	      if (bytes_in_chunk == 0)					\
-		fprintf ((FILE), "%s\"", ASCII_DATA_ASM_OP);		\
-									\
-	      switch (escape = ESCAPES[ch = *_ascii_bytes])		\
-		{							\
-		case 0:							\
-		  putc (ch, (FILE));					\
-		  bytes_in_chunk++;					\
-		  break;						\
-		case 1:							\
-		  fprintf ((FILE), "\\%03o", ch);			\
-		  bytes_in_chunk += 4;					\
-		  break;						\
-		default:						\
-		  putc ('\\', (FILE));					\
-		  putc (escape, (FILE));				\
-		  bytes_in_chunk += 2;					\
-		  break;						\
-		}							\
-	    }								\
-	}								\
-									\
-      if (bytes_in_chunk > 0)						\
-        fprintf ((FILE), "\"\n");					\
-    }									\
-  while (0)
+#define ASM_OUTPUT_ASCII(FILE, STR, LENGTH)			\
+  default_elf_asm_output_ascii ((FILE), (STR), (LENGTH));
 
 /* Allow the use of the -frecord-gcc-switches switch via the
    elf_record_gcc_switches function defined in varasm.c.  */
@@ -529,3 +460,6 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME) \
   default_elf_asm_output_external (FILE, DECL, NAME)
 #endif
+
+#undef TARGET_LIBC_HAS_FUNCTION
+#define TARGET_LIBC_HAS_FUNCTION no_c99_libc_has_function

@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2007-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -45,7 +45,8 @@
 #include <parallel/features.h>
 #include <parallel/parallel.h>
 #include <parallel/losertree.h>
-#if _GLIBCXX_ASSERTIONS
+#include <parallel/multiseq_selection.h>
+#if _GLIBCXX_PARALLEL_ASSERTIONS
 #include <parallel/checkers.h>
 #endif
 
@@ -54,6 +55,12 @@
 
 namespace __gnu_parallel
 {
+  template<typename _RAIter1, typename _RAIter2, typename _OutputIterator,
+	   typename _DifferenceTp, typename _Compare>
+    _OutputIterator
+    __merge_advance(_RAIter1&, _RAIter1, _RAIter2&, _RAIter2,
+		    _OutputIterator, _DifferenceTp, _Compare);
+
   /** @brief _Iterator wrapper supporting an implicit supremum at the end
    *         of the sequence, dominating all comparisons.
    *
@@ -249,7 +256,7 @@ namespace __gnu_parallel
       if (__length == 0)
 	return __target;
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
       _DifferenceTp __orig_length = __length;
 #endif
 
@@ -303,7 +310,7 @@ namespace __gnu_parallel
     __finish:
       ;
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
     _GLIBCXX_PARALLEL_ASSERT(
 	((_RAIter1)__seq0 - __seqs_begin[0].first) +
 	((_RAIter1)__seq1 - __seqs_begin[1].first) +
@@ -590,7 +597,7 @@ namespace __gnu_parallel
 
       for (_SeqNumber __t = 0; __t < __k; ++__t)
 	{
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
           _GLIBCXX_PARALLEL_ASSERT(__seqs_begin[__t].first
                                    != __seqs_begin[__t].second);
 #endif
@@ -601,7 +608,7 @@ namespace __gnu_parallel
 
       _SeqNumber __source;
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
       _DifferenceType __i = 0;
 #endif
 
@@ -611,7 +618,7 @@ namespace __gnu_parallel
           // Take out.
           __source = __lt.__get_min_source();
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
           _GLIBCXX_PARALLEL_ASSERT(0 <= __source && __source < __k);
           _GLIBCXX_PARALLEL_ASSERT(__i == 0
               || !__comp(*(__seqs_begin[__source].first), *(__target - 1)));
@@ -620,7 +627,7 @@ namespace __gnu_parallel
           // Feed.
           *(__target++) = *(__seqs_begin[__source].first++);
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
           ++__i;
 #endif
           // Replace from same __source.
@@ -634,10 +641,7 @@ namespace __gnu_parallel
   /** @brief Multi-way merging procedure for a high branching factor,
    *         requiring sentinels to exist.
    *
-   * @param __stable The value must the same as for the used LoserTrees.
-   * @param UnguardedLoserTree _Loser Tree variant to use for the unguarded
-   *   merging.
-   * @param GuardedLoserTree _Loser Tree variant to use for the guarded
+   * @tparam UnguardedLoserTree _Loser Tree variant to use for the unguarded
    *   merging.
    *
    * @param __seqs_begin Begin iterator of iterator pair input sequence.
@@ -686,7 +690,7 @@ namespace __gnu_parallel
       __target_end = multiway_merge_loser_tree_unguarded<UnguardedLoserTree>
 	(__seqs_begin, __seqs_end, __target, __sentinel, __length, __comp);
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
       _GLIBCXX_PARALLEL_ASSERT(__target_end == __target + __length);
       _GLIBCXX_PARALLEL_ASSERT(__is_sorted(__target, __target_end, __comp));
 #endif
@@ -904,7 +908,6 @@ namespace __gnu_parallel
    *  @param __comp Comparator.
    *  @param __length Maximum length to merge, possibly larger than the
    *  number of elements available.
-   *  @param __stable Stable merging incurs a performance penalty.
    *  @param __sentinel The sequences have __a __sentinel element.
    *  @return End iterator of output sequence. */
   template<bool __stable,
@@ -933,7 +936,7 @@ namespace __gnu_parallel
       typedef typename std::iterator_traits<_RAIter1>::value_type
 	_ValueType;
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
       for (_RAIterIterator __s = __seqs_begin; __s != __seqs_end; ++__s)
 	{
           _GLIBCXX_PARALLEL_ASSERT(__is_sorted((*__s).first,
@@ -987,7 +990,7 @@ namespace __gnu_parallel
 	    (__seqs_begin, __seqs_end, __target, __sentinel, __length, __comp);
 	  break;
 	}
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
       _GLIBCXX_PARALLEL_ASSERT(
 	__is_sorted(__target, __target + __length, __comp));
 #endif
@@ -1045,11 +1048,12 @@ namespace __gnu_parallel
 	_ValueType;
 
       // __k sequences.
-      _SeqNumber __k = static_cast<_SeqNumber>(__seqs_end - __seqs_begin);
+      const _SeqNumber __k
+	= static_cast<_SeqNumber>(__seqs_end - __seqs_begin);
 
-      _ThreadIndex __num_threads = omp_get_num_threads();
+      const _ThreadIndex __num_threads = omp_get_num_threads();
 
-      _DifferenceType __num_samples =
+      const _DifferenceType __num_samples =
 	__gnu_parallel::_Settings::get().merge_oversampling * __num_threads;
 
       _ValueType* __samples = static_cast<_ValueType*>
@@ -1096,6 +1100,10 @@ namespace __gnu_parallel
 	      __pieces[__slab][__seq].second =
 		_GLIBCXX_PARALLEL_LENGTH(__seqs_begin[__seq]);
 	  }
+
+      for (_SeqNumber __s = 0; __s < __k; ++__s)
+	for (_DifferenceType __i = 0; __i < __num_samples; ++__i)
+	  __samples[__s * __num_samples + __i].~_ValueType();
       ::operator delete(__samples);
     }
 
@@ -1139,7 +1147,7 @@ namespace __gnu_parallel
 
       _DifferenceType* __borders =
 	new _DifferenceType[__num_threads + 1];
-      equally_split(__length, __num_threads, __borders);
+      __equally_split(__length, __num_threads, __borders);
 
       for (_ThreadIndex __s = 0; __s < (__num_threads - 1); ++__s)
 	{
@@ -1194,7 +1202,9 @@ namespace __gnu_parallel
    *
    * Must not be called if the number of sequences is 1.
    *
-   * @param _Splitter functor to split input (either __exact or sampling based)
+   * @tparam _Splitter functor to split input (either __exact or sampling based)
+   * @tparam __stable Stable merging incurs a performance penalty.
+   * @tparam __sentinel Ignored.
    *
    * @param __seqs_begin Begin iterator of iterator pair input sequence.
    * @param __seqs_end End iterator of iterator pair input sequence.
@@ -1202,8 +1212,6 @@ namespace __gnu_parallel
    * @param __comp Comparator.
    * @param __length Maximum length to merge, possibly larger than the
    * number of elements available.
-   * @param __stable Stable merging incurs a performance penalty.
-   * @param __sentinel Ignored.
    * @return End iterator of output sequence.
    */
   template<bool __stable,
@@ -1222,7 +1230,7 @@ namespace __gnu_parallel
                             _Compare __comp,
                             _ThreadIndex __num_threads)
       {
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
 	_GLIBCXX_PARALLEL_ASSERT(__seqs_end - __seqs_begin > 1);
 #endif
 
@@ -1258,10 +1266,10 @@ namespace __gnu_parallel
 	__length = std::min<_DifferenceTp>(__length, __total_length);
 
 	if (__total_length == 0 || __k == 0)
-	{
-          delete[] __ne_seqs;
-          return __target;
-	}
+	  {
+	    delete[] __ne_seqs;
+	    return __target;
+	  }
 
 	std::vector<std::pair<_DifferenceType, _DifferenceType> >* __pieces;
 
@@ -1310,7 +1318,7 @@ namespace __gnu_parallel
 	  delete[] __chunks;
 	} // parallel
 
-#if _GLIBCXX_ASSERTIONS
+#if _GLIBCXX_PARALLEL_ASSERTIONS
 	_GLIBCXX_PARALLEL_ASSERT(
           __is_sorted(__target, __target + __length, __comp));
 #endif
@@ -1384,11 +1392,11 @@ namespace __gnu_parallel
    * @post return __value - __target = min(__length, number of elements in all
    *    sequences).
    *
-   * @param _RAIterPairIterator iterator over sequence
+   * @tparam _RAIterPairIterator iterator over sequence
    *    of pairs of iterators
-   * @param _RAIterOut iterator over target sequence
-   * @param _DifferenceTp difference type for the sequence
-   * @param _Compare strict weak ordering type to compare elements
+   * @tparam _RAIterOut iterator over target sequence
+   * @tparam _DifferenceTp difference type for the sequence
+   * @tparam _Compare strict weak ordering type to compare elements
    *    in sequences
    *
    * @param __seqs_begin  __begin of sequence __sequence
@@ -1748,11 +1756,11 @@ namespace __gnu_parallel
    *
    * @see stable_multiway_merge_sentinels
    *
-   * @param _RAIterPairIterator iterator over sequence
+   * @tparam _RAIterPairIterator iterator over sequence
    *    of pairs of iterators
-   * @param _RAIterOut iterator over target sequence
-   * @param _DifferenceTp difference type for the sequence
-   * @param _Compare strict weak ordering type to compare elements
+   * @tparam _RAIterOut iterator over target sequence
+   * @tparam _DifferenceTp difference type for the sequence
+   * @tparam _Compare strict weak ordering type to compare elements
    *    in sequences
    *
    * @param __seqs_begin  __begin of sequence __sequence

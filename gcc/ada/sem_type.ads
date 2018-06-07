@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -73,7 +73,7 @@ package Sem_Type is
 
    No_Interp : constant Interp := (Empty, Empty, Empty);
 
-   subtype Interp_Index is Int;
+   type Interp_Index is new Int;
 
    ---------------------
    -- Error Reporting --
@@ -124,7 +124,7 @@ package Sem_Type is
    --  denotes whether an interpretation has been disabled by an abstract
    --  operator. Add_One_Interp includes semantic processing to deal with
    --  adding entries that hide one another etc.
-
+   --
    --  For operators, the legality of the operation depends on the visibility
    --  of T and its scope. If the operator is an equality or comparison, T is
    --  always Boolean, and we use Opnd_Type, which is a candidate type for one
@@ -148,7 +148,7 @@ package Sem_Type is
    --  The end of the list of interpretations is signalled by It.Nam = Empty.
 
    procedure Remove_Interp (I : in out Interp_Index);
-   --  Remove an interpretation that his hidden by another, or that does not
+   --  Remove an interpretation that is hidden by another, or that does not
    --  match the context. The value of I on input was set by a call to either
    --  Get_First_Interp or Get_Next_Interp and references the interpretation
    --  to be removed. The only allowed use of the exit value of I is as input
@@ -158,13 +158,15 @@ package Sem_Type is
    procedure Save_Interps (Old_N : Node_Id; New_N : Node_Id);
    --  If an overloaded node is rewritten during semantic analysis, its
    --  possible interpretations must be linked to the copy. This procedure
-   --  transfers the overload information from Old_N, the old node, to
-   --  New_N, its new copy. It has no effect in the non-overloaded case.
+   --  transfers the overload information (Is_Overloaded flag, and list of
+   --  interpretations) from Old_N, the old node, to New_N, its new copy.
+   --  It has no effect in the non-overloaded case.
 
    function Covers (T1, T2 : Entity_Id) return Boolean;
    --  This is the basic type compatibility routine. T1 is the expected type,
    --  imposed by context, and T2 is the actual type. The processing reflects
-   --  both the definition of type coverage and the rules for operand matching.
+   --  both the definition of type coverage and the rules for operand matching;
+   --  that is, this does not exactly match the RM definition of "covers".
 
    function Disambiguate
      (N      : Node_Id;
@@ -217,9 +219,23 @@ package Sem_Type is
    --  but conceptually the resolution of the actual takes place in the
    --  enclosing context and no special disambiguation rules should be applied.
 
-   function Is_Ancestor (T1, T2 : Entity_Id) return Boolean;
+   function Is_Ancestor
+     (T1            : Entity_Id;
+      T2            : Entity_Id;
+      Use_Full_View : Boolean := False) return Boolean;
    --  T1 is a tagged type (not class-wide). Verify that it is one of the
-   --  ancestors of type T2 (which may or not be class-wide).
+   --  ancestors of type T2 (which may or not be class-wide). If Use_Full_View
+   --  is True then the full-view of private parents is used when climbing
+   --  through the parents of T2.
+   --
+   --  Note: For analysis purposes the flag Use_Full_View must be set to False
+   --  (otherwise we break the privacy contract since this routine returns true
+   --  for hidden ancestors of private types). For expansion purposes this flag
+   --  is generally set to True since the expander must know with precision the
+   --  ancestors of a tagged type. For example, if a private type derives from
+   --  an interface type then the interface may not be an ancestor of its full
+   --  view since the full-view is only required to cover the interface (RM 7.3
+   --  (7.3/2))) and this knowledge affects construction of dispatch tables.
 
    function Is_Progenitor
      (Iface : Entity_Id;
@@ -248,6 +264,9 @@ package Sem_Type is
    function Valid_Boolean_Arg (T : Entity_Id) return Boolean;
    --  A valid argument of a boolean operator is either some boolean type, or a
    --  one-dimensional array of boolean type.
+
+   procedure Write_Interp (It : Interp);
+   --  Debugging procedure to display an Interp
 
    procedure Write_Interp_Ref (Map_Ptr : Int);
    --  Debugging procedure to display entry in Interp_Map. Would not be needed

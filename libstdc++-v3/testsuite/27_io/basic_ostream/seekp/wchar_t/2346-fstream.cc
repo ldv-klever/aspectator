@@ -1,4 +1,4 @@
-// Copyright (C) 2005, 2006, 2007, 2009 Free Software Foundation
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,6 +15,8 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
+// { dg-require-fileio "" }
+
 // 27.6.2.4  basic_ostream seek members  [lib.ostream.seeks]
 // @require@ %-*.tst %-*.txt
 // @diff@ %-*.tst %-*.txt
@@ -30,8 +32,6 @@ const int times = 10;
 
 void write_rewind(std::wiostream& stream)
 {
-  bool test __attribute__((unused)) = true;
-
   for (int j = 0; j < times; j++) 
     {
       std::streampos begin = stream.tellp();
@@ -46,8 +46,6 @@ void write_rewind(std::wiostream& stream)
 
 void check_contents(std::wiostream& stream)
 {
-  bool test __attribute__((unused)) = true;
-
   stream.clear();
   stream.seekg(0, std::wios::beg);
   int i = 0;

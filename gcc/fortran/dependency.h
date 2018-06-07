@@ -1,6 +1,5 @@
 /* Header for dependency analysis
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 2000-2017 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of GCC.
@@ -20,14 +19,13 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 /****************************** Enums *********************************/
-typedef enum
+enum gfc_dep_check
 {
   NOT_ELEMENTAL,        /* Not elemental case: normal dependency check.  */
   ELEM_CHECK_VARIABLE,  /* Test whether variables overlap.  */
   ELEM_DONT_CHECK_VARIABLE  /* Test whether variables overlap only if used 
 			       in an expression.  */
-}
-gfc_dep_check;
+};
 
 /*********************** Functions prototypes **************************/
 
@@ -37,11 +35,9 @@ gfc_expr *gfc_get_noncopying_intrinsic_argument (gfc_expr *);
 int gfc_check_fncall_dependency (gfc_expr *, sym_intent, gfc_symbol *,
 				 gfc_actual_arglist *, gfc_dep_check);
 int gfc_check_dependency (gfc_expr *, gfc_expr *, bool);
-int gfc_is_same_range (gfc_array_ref *, gfc_array_ref *, int, int);
 int gfc_expr_is_one (gfc_expr *, int);
 
 int gfc_dep_resolver(gfc_ref *, gfc_ref *, gfc_reverse *);
 int gfc_are_equivalenced_arrays (gfc_expr *, gfc_expr *);
 
-bool gfc_are_identical_variables (gfc_expr *, gfc_expr *);
-
+gfc_expr * gfc_discard_nops (gfc_expr *);

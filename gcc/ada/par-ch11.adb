@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,8 +34,8 @@ package body Ch11 is
 
    --  Local functions, used only in this chapter
 
-   function P_Exception_Handler  return Node_Id;
-   function P_Exception_Choice   return Node_Id;
+   function P_Exception_Handler return Node_Id;
+   function P_Exception_Choice  return Node_Id;
 
    ---------------------------------
    -- 11.1  Exception Declaration --
@@ -56,11 +56,28 @@ package body Ch11 is
    --  Error_Recovery : Cannot raise Error_Resync
 
    function P_Handled_Sequence_Of_Statements return Node_Id is
-      Handled_Stmt_Seq_Node : Node_Id;
+      Handled_Stmt_Seq_Node  : Node_Id;
+      Seq_Is_Hidden_In_SPARK : Boolean;
+      Hidden_Region_Start    : Source_Ptr;
 
    begin
       Handled_Stmt_Seq_Node :=
         New_Node (N_Handled_Sequence_Of_Statements, Token_Ptr);
+
+      --  In SPARK, a HIDE directive can be placed at the beginning of a
+      --  package initialization, thus hiding the sequence of statements (and
+      --  possible exception handlers) from SPARK tool-set. No violation of the
+      --  SPARK restriction should be issued on nodes in a hidden part, which
+      --  is obtained by marking such hidden parts.
+
+      if Token = Tok_SPARK_Hide then
+         Seq_Is_Hidden_In_SPARK := True;
+         Hidden_Region_Start    := Token_Ptr;
+         Scan; -- past HIDE directive
+      else
+         Seq_Is_Hidden_In_SPARK := False;
+      end if;
+
       Set_Statements
         (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Sreq));
 
@@ -68,6 +85,10 @@ package body Ch11 is
          Scan; -- past EXCEPTION
          Set_Exception_Handlers
            (Handled_Stmt_Seq_Node, Parse_Exception_Handlers);
+      end if;
+
+      if Seq_Is_Hidden_In_SPARK then
+         Set_Hidden_Part_In_SPARK (Hidden_Region_Start, Token_Ptr);
       end if;
 
       return Handled_Stmt_Seq_Node;
@@ -116,12 +137,14 @@ package body Ch11 is
 
             Scan; -- past :
             Change_Identifier_To_Defining_Identifier (Choice_Param_Node);
+            Warn_If_Standard_Redefinition (Choice_Param_Node);
             Set_Choice_Parameter (Handler_Node, Choice_Param_Node);
 
          elsif Token = Tok_Others then
             Error_Msg_AP -- CODEFIX
               ("missing "":""");
             Change_Identifier_To_Defining_Identifier (Choice_Param_Node);
+            Warn_If_Standard_Redefinition (Choice_Param_Node);
             Set_Choice_Parameter (Handler_Node, Choice_Param_Node);
 
          else
@@ -176,11 +199,39 @@ package body Ch11 is
          return Error;
    end P_Exception_Choice;
 
+   ----------------------------
+   -- 11.3  Raise Expression --
+   ----------------------------
+
+   --  RAISE_EXPRESSION ::= raise [exception_NAME [with string_EXPRESSION]]
+
+   --  The caller has verified that the initial token is RAISE
+
+   --  Error recovery: can raise Error_Resync
+
+   function P_Raise_Expression return Node_Id is
+      Raise_Node : Node_Id;
+
+   begin
+      Error_Msg_Ada_2012_Feature ("raise expression", Token_Ptr);
+      Raise_Node := New_Node (N_Raise_Expression, Token_Ptr);
+      Scan; -- past RAISE
+
+      Set_Name (Raise_Node, P_Name);
+
+      if Token = Tok_With then
+         Scan; -- past WITH
+         Set_Expression (Raise_Node, P_Expression);
+      end if;
+
+      return Raise_Node;
+   end P_Raise_Expression;
+
    ---------------------------
    -- 11.3  Raise Statement --
    ---------------------------
 
-   --  RAISE_STATEMENT ::= raise [exception_NAME];
+   --  RAISE_STATEMENT ::= raise [exception_NAME with string_EXPRESSION];
 
    --  The caller has verified that the initial token is RAISE
 
@@ -229,10 +280,26 @@ package body Ch11 is
    --  Error recovery: cannot raise Error_Resync
 
    function Parse_Exception_Handlers return List_Id is
-      Handler       : Node_Id;
-      Handlers_List : List_Id;
+      Handler                    : Node_Id;
+      Handlers_List              : List_Id;
+      Handler_Is_Hidden_In_SPARK : Boolean;
+      Hidden_Region_Start        : Source_Ptr;
 
    begin
+      --  In SPARK, a HIDE directive can be placed at the beginning of a
+      --  sequence of exception handlers for a subprogram implementation, thus
+      --  hiding the exception handlers from SPARK tool-set. No violation of
+      --  the SPARK restriction should be issued on nodes in a hidden part,
+      --  which is obtained by marking such hidden parts.
+
+      if Token = Tok_SPARK_Hide then
+         Handler_Is_Hidden_In_SPARK := True;
+         Hidden_Region_Start        := Token_Ptr;
+         Scan; -- past HIDE directive
+      else
+         Handler_Is_Hidden_In_SPARK := False;
+      end if;
+
       Handlers_List := New_List;
       P_Pragmas_Opt (Handlers_List);
 
@@ -251,6 +318,10 @@ package body Ch11 is
 
             exit when Token /= Tok_When;
          end loop;
+      end if;
+
+      if Handler_Is_Hidden_In_SPARK then
+         Set_Hidden_Part_In_SPARK (Hidden_Region_Start, Token_Ptr);
       end if;
 
       return Handlers_List;

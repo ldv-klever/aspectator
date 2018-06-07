@@ -24,7 +24,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "diagnostic-core.h"
 #include "tree-iterator.h"
 #include "tree.h"
-#include "c-tree.h"
+#include "c/c-tree.h"
 
 #include "ldv-convert.h"
 #include "ldv-cbe-core.h"
@@ -35,7 +35,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_OP_FIRST(t) TREE_OPERAND (t, 0)
 #define LDV_OP_SECOND(t) TREE_OPERAND (t, 1)
 #define LDV_OP_THIRD(t) TREE_OPERAND (t, 2)
-#define LDV_TREE_NODE_NAME(t) (tree_code_name[(int) TREE_CODE (t)])
+#define LDV_TREE_NODE_NAME(t) (get_tree_code_name(TREE_CODE (t)))
 
 
 bool ldv_disable_anon_enum_spec;
@@ -1058,42 +1058,48 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
     {
     case CONVERT_EXPR:
     case NOP_EXPR:
-      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
-
-      if ((type = TREE_TYPE (t)))
+      if ((type = TREE_TYPE (t)) && (!TYPE_NAME (type) || DECL_P (TYPE_NAME (type)) || TREE_CODE (type) != INTEGER_TYPE))
         {
-          /* It was noticed that on x86 (32 bit) architecture there is a "problem"
-             with __builtin_va_start and similar functions because of their
-             parameters have reference type. Thus in their calls casting to
-             reference type is performed. But we wouldn't like to introduce
-             references in C so just ignore this casting at all. 
-             In addition we wouldn't like to introduce casts for bitfields since
-             artificial types that haven't names are used for them. */
-          if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
+          LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
+
+          if ((type = TREE_TYPE (t)))
             {
-              LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+              /* It was noticed that on x86 (32 bit) architecture there is a "problem"
+                with __builtin_va_start and similar functions because of their
+                parameters have reference type. Thus in their calls casting to
+                reference type is performed. But we wouldn't like to introduce
+                references in C so just ignore this casting at all.
+                In addition we wouldn't like to introduce casts for bitfields since
+                artificial types that haven't names are used for them. */
+              if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
+                {
+                  LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
 
-              if ((op1 = LDV_OP_FIRST (t)))
-                LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
+                  if ((op1 = LDV_OP_FIRST (t)))
+                    LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
+                  else
+                    LDV_WARN ("can't find the first operand of cast expression");
+
+                  break;
+                }
               else
-                LDV_WARN ("can't find the first operand of cast expression");
-
-              break;
+                LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
             }
           else
-            LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
+            LDV_WARN ("can't find type name of cast expression");
+
+          /* TODO: This code is now unreachangle when type != TREE_TYPE (t). Fix it*/
+          if ((op1 = LDV_OP_FIRST (t)))
+            LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
+          else
+            LDV_WARN ("can't find the first operand of cast expression");
+
+          LDV_CAST_EXPR_LOCATION (cast_expr) = ldv_convert_location (t);
+
+          break;
         }
-      else
-        LDV_WARN ("can't find type name of cast expression");
 
-      if ((op1 = LDV_OP_FIRST (t)))
-        LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
-      else
-        LDV_WARN ("can't find the first operand of cast expression");
-
-      LDV_CAST_EXPR_LOCATION (cast_expr) = ldv_convert_location (t);
-
-      break;
+      t = LDV_OP_FIRST (t);
 
     default:
       LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
@@ -2612,8 +2618,8 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
           break;
         }
 
-      bitpos = tree_low_cst (op3, 0);
-      size = tree_low_cst (TYPE_SIZE (type), 0);
+      bitpos = tree_to_shwi (op3);
+      size = tree_to_shwi (TYPE_SIZE (type));
 
       if (bitpos % size)
         {

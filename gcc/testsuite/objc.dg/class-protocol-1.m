@@ -3,7 +3,7 @@
 /* { dg-do compile } */
 
 #include <objc/objc.h>
-#include <objc/objc-api.h>
+#include "../objc-obj-c++-shared/runtime.h"
 
 @protocol MyProto1
 +(void)doItClass1;
@@ -187,9 +187,9 @@ testForwardeDeclared1(void)
   [cls doItInstance7];      /* { dg-warning "no .\\+doItInstance7. method found" } */
 
   [clsP7 doItClass7];       /* { dg-warning "not found in protocol" } */
-  /* { dg-warning "no .\\+doItClass7. method found" "" { target *-*-* } 189 } */
+  /* { dg-warning "no .\\+doItClass7. method found" "" { target *-*-* } .-1 } */
   [clsP7 doItInstance7];    /* { dg-warning "not found in protocol" } */
-  /* { dg-warning "no .\\+doItInstance7. method found" "" { target *-*-* } 191 } */
+  /* { dg-warning "no .\\+doItInstance7. method found" "" { target *-*-* } .-1 } */
 
   [MyClass1 doItClass7];    /* { dg-warning "may not respond" } */
   [MyClass1 doItInstance7]; /* { dg-warning "may not respond" } */

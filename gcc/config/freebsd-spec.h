@@ -1,6 +1,5 @@
 /* Base configuration file for all FreeBSD targets.
-   Copyright (C) 1999, 2000, 2001, 2004, 2005, 2007, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1999-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -67,8 +66,9 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
   "%{!shared: \
      %{pg:gcrt1.o%s} %{!pg:%{p:gcrt1.o%s} \
 		       %{!p:%{profile:gcrt1.o%s} \
-			 %{!profile:crt1.o%s}}}} \
-   crti.o%s %{!shared:crtbegin.o%s} %{shared:crtbeginS.o%s}"
+			 %{!profile: \
+                            %{pie: Scrt1.o%s;:crt1.o%s}}}}} \
+   crti.o%s %{static:crtbeginT.o%s;shared|pie:crtbeginS.o%s;:crtbegin.o%s}"
 
 /* Provide a ENDFILE_SPEC appropriate for FreeBSD.  Here we tack on
    the magical crtend.o file (see crtstuff.c) which provides part of 
@@ -77,7 +77,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 	`crtn.o'.  */
 
 #define FBSD_ENDFILE_SPEC \
-  "%{!shared:crtend.o%s} %{shared:crtendS.o%s} crtn.o%s"
+  "%{shared|pie:crtendS.o%s;:crtend.o%s} crtn.o%s"
 
 /* Provide a LIB_SPEC appropriate for FreeBSD as configured and as
    required by the user-land thread model.  Before __FreeBSD_version
@@ -134,11 +134,6 @@ is built with the --enable-threads configure-time option.}		\
 #define FBSD_DYNAMIC_LINKER "/libexec/ld-elf.so.1"
 #endif
 
-#if defined(HAVE_LD_EH_FRAME_HDR)
-#define LINK_EH_SPEC "%{!static:--eh-frame-hdr} "
-#endif
-
-/* Use --as-needed -lgcc_s for eh support.  */
-#ifdef HAVE_LD_AS_NEEDED
-#define USE_LD_AS_NEEDED 1
-#endif
+/* NOTE: The freebsd-spec.h header is included also for various
+   non-FreeBSD powerpc targets, thus it should never define macros
+   other than FBSD_* prefixed ones, or USING_CONFIG_FREEBSD_SPEC.  */

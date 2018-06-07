@@ -86,6 +86,7 @@ extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
 extern char *ldv_cpp_get_body_text (ldv_ab_ptr);
 extern char *ldv_cpp_get_file_name (ldv_file_ptr);
 extern char *ldv_cpp_get_id_name (ldv_id_ptr);
+extern char *ldv_cpp_itoa (unsigned int n);
 
 extern char *ldv_get_str (ldv_str_ptr);
 

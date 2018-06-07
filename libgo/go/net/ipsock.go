@@ -1,236 +1,266 @@
-// Copyright 2009 The Go Authors.  All rights reserved.
+// Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// IP sockets
+// Internet protocol family sockets
 
 package net
 
 import (
-	"os"
-	"syscall"
+	"context"
 )
 
-// Should we try to use the IPv4 socket interface if we're
-// only dealing with IPv4 sockets?  As long as the host system
-// understands IPv6, it's okay to pass IPv4 addresses to the IPv6
-// interface.  That simplifies our code and is most general.
-// Unfortunately, we need to run on kernels built without IPv6 support too.
-// So probe the kernel to figure it out.
-func kernelSupportsIPv6() bool {
-	// FreeBSD does not support this sort of interface.
-	if syscall.OS == "freebsd" {
-		return false
+// BUG(rsc,mikio): On DragonFly BSD and OpenBSD, listening on the
+// "tcp" and "udp" networks does not listen for both IPv4 and IPv6
+// connections. This is due to the fact that IPv4 traffic will not be
+// routed to an IPv6 socket - two separate sockets are required if
+// both address families are to be supported.
+// See inet6(4) for details.
+
+var (
+	// supportsIPv4 reports whether the platform supports IPv4
+	// networking functionality.
+	supportsIPv4 bool
+
+	// supportsIPv6 reports whether the platform supports IPv6
+	// networking functionality.
+	supportsIPv6 bool
+
+	// supportsIPv4map reports whether the platform supports
+	// mapping an IPv4 address inside an IPv6 address at transport
+	// layer protocols. See RFC 4291, RFC 4038 and RFC 3493.
+	supportsIPv4map bool
+)
+
+// An addrList represents a list of network endpoint addresses.
+type addrList []Addr
+
+// isIPv4 returns true if the Addr contains an IPv4 address.
+func isIPv4(addr Addr) bool {
+	switch addr := addr.(type) {
+	case *TCPAddr:
+		return addr.IP.To4() != nil
+	case *UDPAddr:
+		return addr.IP.To4() != nil
+	case *IPAddr:
+		return addr.IP.To4() != nil
 	}
-	fd, e := syscall.Socket(syscall.AF_INET6, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
-	if fd >= 0 {
-		closesocket(fd)
-	}
-	return e == 0
+	return false
 }
 
-var preferIPv4 = !kernelSupportsIPv6()
-
-// TODO(rsc): if syscall.OS == "linux", we're supposd to read
-// /proc/sys/net/core/somaxconn,
-// to take advantage of kernels that have raised the limit.
-func listenBacklog() int { return syscall.SOMAXCONN }
-
-// Internet sockets (TCP, UDP)
-
-// A sockaddr represents a TCP or UDP network address that can
-// be converted into a syscall.Sockaddr.
-type sockaddr interface {
-	Addr
-	sockaddr(family int) (syscall.Sockaddr, os.Error)
-	family() int
+// first returns the first address which satisfies strategy, or if
+// none do, then the first address of any kind.
+func (addrs addrList) first(strategy func(Addr) bool) Addr {
+	for _, addr := range addrs {
+		if strategy(addr) {
+			return addr
+		}
+	}
+	return addrs[0]
 }
 
-func internetSocket(net string, laddr, raddr sockaddr, socktype, proto int, mode string, toAddr func(syscall.Sockaddr) Addr) (fd *netFD, err os.Error) {
-	// Figure out IP version.
-	// If network has a suffix like "tcp4", obey it.
-	var oserr os.Error
-	family := syscall.AF_INET6
-	switch net[len(net)-1] {
-	case '4':
-		family = syscall.AF_INET
-	case '6':
-		// nothing to do
-	default:
-		// Otherwise, guess.
-		// If the addresses are IPv4 and we prefer IPv4, use 4; else 6.
-		if preferIPv4 &&
-			(laddr == nil || laddr.family() == syscall.AF_INET) &&
-			(raddr == nil || raddr.family() == syscall.AF_INET) {
-			family = syscall.AF_INET
+// partition divides an address list into two categories, using a
+// strategy function to assign a boolean label to each address.
+// The first address, and any with a matching label, are returned as
+// primaries, while addresses with the opposite label are returned
+// as fallbacks. For non-empty inputs, primaries is guaranteed to be
+// non-empty.
+func (addrs addrList) partition(strategy func(Addr) bool) (primaries, fallbacks addrList) {
+	var primaryLabel bool
+	for i, addr := range addrs {
+		label := strategy(addr)
+		if i == 0 || label == primaryLabel {
+			primaryLabel = label
+			primaries = append(primaries, addr)
+		} else {
+			fallbacks = append(fallbacks, addr)
 		}
-	}
-
-	var la, ra syscall.Sockaddr
-	if laddr != nil {
-		if la, oserr = laddr.sockaddr(family); oserr != nil {
-			goto Error
-		}
-	}
-	if raddr != nil {
-		if ra, oserr = raddr.sockaddr(family); oserr != nil {
-			goto Error
-		}
-	}
-	fd, oserr = socket(net, family, socktype, proto, la, ra, toAddr)
-	if oserr != nil {
-		goto Error
-	}
-	return fd, nil
-
-Error:
-	addr := raddr
-	if mode == "listen" {
-		addr = laddr
-	}
-	return nil, &OpError{mode, net, addr, oserr}
-}
-
-func getip(fd int, remote bool) (ip []byte, port int, ok bool) {
-	// No attempt at error reporting because
-	// there are no possible errors, and the
-	// caller won't report them anyway.
-	var sa syscall.Sockaddr
-	if remote {
-		sa, _ = syscall.Getpeername(fd)
-	} else {
-		sa, _ = syscall.Getsockname(fd)
-	}
-	switch sa := sa.(type) {
-	case *syscall.SockaddrInet4:
-		return sa.Addr[0:], sa.Port, true
-	case *syscall.SockaddrInet6:
-		return sa.Addr[0:], sa.Port, true
 	}
 	return
 }
 
-type InvalidAddrError string
-
-func (e InvalidAddrError) String() string  { return string(e) }
-func (e InvalidAddrError) Timeout() bool   { return false }
-func (e InvalidAddrError) Temporary() bool { return false }
-
-
-func ipToSockaddr(family int, ip IP, port int) (syscall.Sockaddr, os.Error) {
-	switch family {
-	case syscall.AF_INET:
-		if len(ip) == 0 {
-			ip = IPv4zero
+// filterAddrList applies a filter to a list of IP addresses,
+// yielding a list of Addr objects. Known filters are nil, ipv4only,
+// and ipv6only. It returns every address when the filter is nil.
+// The result contains at least one address when error is nil.
+func filterAddrList(filter func(IPAddr) bool, ips []IPAddr, inetaddr func(IPAddr) Addr, originalAddr string) (addrList, error) {
+	var addrs addrList
+	for _, ip := range ips {
+		if filter == nil || filter(ip) {
+			addrs = append(addrs, inetaddr(ip))
 		}
-		if ip = ip.To4(); ip == nil {
-			return nil, InvalidAddrError("non-IPv4 address")
-		}
-		s := new(syscall.SockaddrInet4)
-		for i := 0; i < IPv4len; i++ {
-			s.Addr[i] = ip[i]
-		}
-		s.Port = port
-		return s, nil
-	case syscall.AF_INET6:
-		if len(ip) == 0 {
-			ip = IPzero
-		}
-		// IPv4 callers use 0.0.0.0 to mean "announce on any available address".
-		// In IPv6 mode, Linux treats that as meaning "announce on 0.0.0.0",
-		// which it refuses to do.  Rewrite to the IPv6 all zeros.
-		if p4 := ip.To4(); p4 != nil && p4[0] == 0 && p4[1] == 0 && p4[2] == 0 && p4[3] == 0 {
-			ip = IPzero
-		}
-		if ip = ip.To16(); ip == nil {
-			return nil, InvalidAddrError("non-IPv6 address")
-		}
-		s := new(syscall.SockaddrInet6)
-		for i := 0; i < IPv6len; i++ {
-			s.Addr[i] = ip[i]
-		}
-		s.Port = port
-		return s, nil
 	}
-	return nil, InvalidAddrError("unexpected socket family")
+	if len(addrs) == 0 {
+		return nil, &AddrError{Err: errNoSuitableAddress.Error(), Addr: originalAddr}
+	}
+	return addrs, nil
 }
 
-// Split "host:port" into "host" and "port".
-// Host cannot contain colons unless it is bracketed.
-func splitHostPort(hostport string) (host, port string, err os.Error) {
+// ipv4only reports whether addr is an IPv4 address.
+func ipv4only(addr IPAddr) bool {
+	return addr.IP.To4() != nil
+}
+
+// ipv6only reports whether addr is an IPv6 address except IPv4-mapped IPv6 address.
+func ipv6only(addr IPAddr) bool {
+	return len(addr.IP) == IPv6len && addr.IP.To4() == nil
+}
+
+// SplitHostPort splits a network address of the form "host:port",
+// "[host]:port" or "[ipv6-host%zone]:port" into host or
+// ipv6-host%zone and port. A literal address or host name for IPv6
+// must be enclosed in square brackets, as in "[::1]:80",
+// "[ipv6-host]:http" or "[ipv6-host%zone]:80".
+func SplitHostPort(hostport string) (host, port string, err error) {
+	const (
+		missingPort   = "missing port in address"
+		tooManyColons = "too many colons in address"
+	)
+	addrErr := func(addr, why string) (host, port string, err error) {
+		return "", "", &AddrError{Err: why, Addr: addr}
+	}
+	j, k := 0, 0
+
 	// The port starts after the last colon.
 	i := last(hostport, ':')
 	if i < 0 {
-		err = &AddrError{"missing port in address", hostport}
-		return
+		return addrErr(hostport, missingPort)
 	}
 
-	host, port = hostport[0:i], hostport[i+1:]
-
-	// Can put brackets around host ...
-	if len(host) > 0 && host[0] == '[' && host[len(host)-1] == ']' {
-		host = host[1 : len(host)-1]
-	} else {
-		// ... but if there are no brackets, no colons.
-		if byteIndex(host, ':') >= 0 {
-			err = &AddrError{"too many colons in address", hostport}
-			return
+	if hostport[0] == '[' {
+		// Expect the first ']' just before the last ':'.
+		end := byteIndex(hostport, ']')
+		if end < 0 {
+			return addrErr(hostport, "missing ']' in address")
 		}
+		switch end + 1 {
+		case len(hostport):
+			// There can't be a ':' behind the ']' now.
+			return addrErr(hostport, missingPort)
+		case i:
+			// The expected result.
+		default:
+			// Either ']' isn't followed by a colon, or it is
+			// followed by a colon that is not the last one.
+			if hostport[end+1] == ':' {
+				return addrErr(hostport, tooManyColons)
+			}
+			return addrErr(hostport, missingPort)
+		}
+		host = hostport[1:end]
+		j, k = 1, end+1 // there can't be a '[' resp. ']' before these positions
+	} else {
+		host = hostport[:i]
+		if byteIndex(host, ':') >= 0 {
+			return addrErr(hostport, tooManyColons)
+		}
+		if byteIndex(host, '%') >= 0 {
+			return addrErr(hostport, "missing brackets in address")
+		}
+	}
+	if byteIndex(hostport[j:], '[') >= 0 {
+		return addrErr(hostport, "unexpected '[' in address")
+	}
+	if byteIndex(hostport[k:], ']') >= 0 {
+		return addrErr(hostport, "unexpected ']' in address")
+	}
+
+	port = hostport[i+1:]
+	return host, port, nil
+}
+
+func splitHostZone(s string) (host, zone string) {
+	// The IPv6 scoped addressing zone identifier starts after the
+	// last percent sign.
+	if i := last(s, '%'); i > 0 {
+		host, zone = s[:i], s[i+1:]
+	} else {
+		host = s
 	}
 	return
 }
 
-// Join "host" and "port" into "host:port".
-// If host contains colons, will join into "[host]:port".
-func joinHostPort(host, port string) string {
-	// If host has colons, have to bracket it.
-	if byteIndex(host, ':') >= 0 {
+// JoinHostPort combines host and port into a network address of the
+// form "host:port" or, if host contains a colon or a percent sign,
+// "[host]:port".
+func JoinHostPort(host, port string) string {
+	// If host has colons or a percent sign, have to bracket it.
+	if byteIndex(host, ':') >= 0 || byteIndex(host, '%') >= 0 {
 		return "[" + host + "]:" + port
 	}
 	return host + ":" + port
 }
 
-// Convert "host:port" into IP address and port.
-func hostPortToIP(net, hostport string) (ip IP, iport int, err os.Error) {
-	host, port, err := splitHostPort(hostport)
-	if err != nil {
-		goto Error
-	}
-
-	var addr IP
-	if host != "" {
-		// Try as an IP address.
-		addr = ParseIP(host)
-		if addr == nil {
-			// Not an IP address.  Try as a DNS name.
-			_, addrs, err1 := LookupHost(host)
-			if err1 != nil {
-				err = err1
-				goto Error
+// internetAddrList resolves addr, which may be a literal IP
+// address or a DNS name, and returns a list of internet protocol
+// family addresses. The result contains at least one address when
+// error is nil.
+func (r *Resolver) internetAddrList(ctx context.Context, net, addr string) (addrList, error) {
+	var (
+		err        error
+		host, port string
+		portnum    int
+	)
+	switch net {
+	case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6":
+		if addr != "" {
+			if host, port, err = SplitHostPort(addr); err != nil {
+				return nil, err
 			}
-			addr = ParseIP(addrs[0])
-			if addr == nil {
-				// should not happen
-				err = &AddrError{"LookupHost returned invalid address", addrs[0]}
-				goto Error
+			if portnum, err = r.LookupPort(ctx, net, port); err != nil {
+				return nil, err
 			}
 		}
+	case "ip", "ip4", "ip6":
+		if addr != "" {
+			host = addr
+		}
+	default:
+		return nil, UnknownNetworkError(net)
+	}
+	inetaddr := func(ip IPAddr) Addr {
+		switch net {
+		case "tcp", "tcp4", "tcp6":
+			return &TCPAddr{IP: ip.IP, Port: portnum, Zone: ip.Zone}
+		case "udp", "udp4", "udp6":
+			return &UDPAddr{IP: ip.IP, Port: portnum, Zone: ip.Zone}
+		case "ip", "ip4", "ip6":
+			return &IPAddr{IP: ip.IP, Zone: ip.Zone}
+		default:
+			panic("unexpected network: " + net)
+		}
+	}
+	if host == "" {
+		return addrList{inetaddr(IPAddr{})}, nil
 	}
 
-	p, i, ok := dtoi(port, 0)
-	if !ok || i != len(port) {
-		p, err = LookupPort(net, port)
+	// Try as a literal IP address, then as a DNS name.
+	var ips []IPAddr
+	if ip := parseIPv4(host); ip != nil {
+		ips = []IPAddr{{IP: ip}}
+	} else if ip, zone := parseIPv6(host, true); ip != nil {
+		ips = []IPAddr{{IP: ip, Zone: zone}}
+	} else {
+		// Try as a DNS name.
+		ips, err = r.LookupIPAddr(ctx, host)
 		if err != nil {
-			goto Error
+			return nil, err
 		}
 	}
-	if p < 0 || p > 0xFFFF {
-		err = &AddrError{"invalid port", port}
-		goto Error
+
+	var filter func(IPAddr) bool
+	if net != "" && net[len(net)-1] == '4' {
+		filter = ipv4only
 	}
+	if net != "" && net[len(net)-1] == '6' {
+		filter = ipv6only
+	}
+	return filterAddrList(filter, ips, inetaddr, host)
+}
 
-	return addr, p, nil
-
-Error:
-	return nil, 0, err
+func loopbackIP(net string) IP {
+	if net != "" && net[len(net)-1] == '6' {
+		return IPv6loopback
+	}
+	return IP{127, 0, 0, 1}
 }

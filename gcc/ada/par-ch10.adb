@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -114,6 +114,7 @@ package body Ch10 is
       Config_Pragmas     : List_Id;
       P                  : Node_Id;
       SR_Present         : Boolean;
+      No_Body            : Boolean;
 
       Cunit_Error_Flag : Boolean := False;
       --  This flag is set True if we have to scan for a compilation unit
@@ -145,12 +146,16 @@ package body Ch10 is
 
       SR_Present := False;
 
+      --  If we see a pragma No_Body, remember not to complain about no body
+
+      No_Body := False;
+
       if Token = Tok_Pragma then
          Save_Scan_State (Scan_State);
          Item := P_Pragma;
 
          if Item = Error
-           or else Pragma_Name (Item) /= Name_Source_Reference
+           or else Pragma_Name_Unmapped (Item) /= Name_Source_Reference
          then
             Restore_Scan_State (Scan_State);
 
@@ -179,8 +184,14 @@ package body Ch10 is
          Save_Scan_State (Scan_State);
          Item := P_Pragma;
 
+         if Item /= Error and then Pragma_Name_Unmapped (Item) = Name_No_Body
+         then
+            No_Body := True;
+         end if;
+
          if Item = Error
-           or else not Is_Configuration_Pragma_Name (Pragma_Name (Item))
+           or else
+             not Is_Configuration_Pragma_Name (Pragma_Name_Unmapped (Item))
          then
             Restore_Scan_State (Scan_State);
             exit;
@@ -301,7 +312,13 @@ package body Ch10 is
 
          else
             if Operating_Mode = Check_Syntax and then Token = Tok_EOF then
-               Error_Msg_SC ("?file contains no compilation units");
+
+               --  Do not complain if there is a pragma No_Body
+
+               if not No_Body then
+                  Error_Msg_SC ("??file contains no compilation units");
+               end if;
+
             else
                Error_Msg_SC ("compilation unit expected");
                Cunit_Error_Flag := True;
@@ -345,7 +362,7 @@ package body Ch10 is
                (File_Name (Current_Source_File)) = Expect_Body
          then
             Error_Msg_BC -- CODEFIX
-              ("keyword BODY expected here [see file name]");
+              ("keyword BODY expected here '[see file name']");
             Restore_Scan_State (Scan_State);
             Set_Unit (Comp_Unit_Node, P_Package (Pf_Pbod_Pexp));
          else
@@ -494,14 +511,12 @@ package body Ch10 is
 
       --  Another error from which it is hard to recover
 
-      if Nkind (Unit_Node) = N_Subprogram_Body_Stub
-        or else Nkind (Unit_Node) = N_Package_Body_Stub
-      then
+      if Nkind_In (Unit_Node, N_Subprogram_Body_Stub, N_Package_Body_Stub) then
          Cunit_Error_Flag := True;
          return Error;
       end if;
 
-      --  Only try this if we got an OK unit!
+      --  Only try this if we got an OK unit
 
       if Unit_Node /= Error then
          if Nkind (Unit_Node) = N_Subunit then
@@ -512,10 +527,10 @@ package body Ch10 is
             Unit_Node := Specification (Unit_Node);
          end if;
 
-         if Nkind (Unit_Node) = N_Package_Declaration
-           or else Nkind (Unit_Node) = N_Subprogram_Declaration
-           or else Nkind (Unit_Node) = N_Subprogram_Body
-           or else Nkind (Unit_Node) = N_Subprogram_Renaming_Declaration
+         if Nkind_In (Unit_Node, N_Package_Declaration,
+                                 N_Subprogram_Declaration,
+                                 N_Subprogram_Body,
+                                 N_Subprogram_Renaming_Declaration)
          then
             Unit_Node := Specification (Unit_Node);
 
@@ -526,28 +541,34 @@ package body Ch10 is
             end if;
          end if;
 
-         if Nkind (Unit_Node) = N_Task_Body
-           or else Nkind (Unit_Node) = N_Protected_Body
-           or else Nkind (Unit_Node) = N_Task_Type_Declaration
-           or else Nkind (Unit_Node) = N_Protected_Type_Declaration
-           or else Nkind (Unit_Node) = N_Single_Task_Declaration
-           or else Nkind (Unit_Node) = N_Single_Protected_Declaration
+         if Nkind_In (Unit_Node, N_Task_Body,
+                                 N_Protected_Body,
+                                 N_Task_Type_Declaration,
+                                 N_Protected_Type_Declaration,
+                                 N_Single_Task_Declaration,
+                                 N_Single_Protected_Declaration)
          then
             Name_Node := Defining_Identifier (Unit_Node);
 
-         elsif Nkind (Unit_Node) = N_Function_Instantiation
-           or else Nkind (Unit_Node) = N_Function_Specification
-           or else Nkind (Unit_Node) = N_Generic_Function_Renaming_Declaration
-           or else Nkind (Unit_Node) = N_Generic_Package_Renaming_Declaration
-           or else Nkind (Unit_Node) = N_Generic_Procedure_Renaming_Declaration
-           or else Nkind (Unit_Node) = N_Package_Body
-           or else Nkind (Unit_Node) = N_Package_Instantiation
-           or else Nkind (Unit_Node) = N_Package_Renaming_Declaration
-           or else Nkind (Unit_Node) = N_Package_Specification
-           or else Nkind (Unit_Node) = N_Procedure_Instantiation
-           or else Nkind (Unit_Node) = N_Procedure_Specification
+         elsif Nkind_In (Unit_Node, N_Function_Instantiation,
+                                    N_Function_Specification,
+                                    N_Generic_Function_Renaming_Declaration,
+                                    N_Generic_Package_Renaming_Declaration,
+                                    N_Generic_Procedure_Renaming_Declaration)
+          or else
+               Nkind_In (Unit_Node, N_Package_Body,
+                                    N_Package_Instantiation,
+                                    N_Package_Renaming_Declaration,
+                                    N_Package_Specification,
+                                    N_Procedure_Instantiation,
+                                    N_Procedure_Specification)
          then
             Name_Node := Defining_Unit_Name (Unit_Node);
+
+         elsif Nkind (Unit_Node) = N_Expression_Function then
+            Error_Msg_SP
+              ("expression function cannot be used as compilation unit");
+            return Comp_Unit_Node;
 
          --  Anything else is a serious error, abandon scan
 
@@ -558,7 +579,7 @@ package body Ch10 is
          Set_Sloc (Comp_Unit_Node, Sloc (Name_Node));
          Set_Sloc (Aux_Decls_Node (Comp_Unit_Node), Sloc (Name_Node));
 
-         --  Set Entity field in file table. Easier now that we have name!
+         --  Set Entity field in file table. Easier now that we have name.
          --  Note that this is also skipped if we had a bad unit
 
          if Nkind (Name_Node) = N_Defining_Program_Unit_Name then
@@ -577,12 +598,12 @@ package body Ch10 is
 
       else
          Cunit_Error_Flag := True;
-         Set_Fatal_Error (Current_Source_Unit);
+         Set_Fatal_Error (Current_Source_Unit, Error_Detected);
       end if;
 
       --  Clear away any missing semicolon indication, we are done with that
       --  unit, so what's done is done, and we don't want anything hanging
-      --  around from the attempt to parse it!
+      --  around from the attempt to parse it.
 
       SIS_Entry_Active := False;
 
@@ -707,7 +728,7 @@ package body Ch10 is
          --  cascaded messages in some situations.
 
          else
-            if not Fatal_Error (Current_Source_Unit) then
+            if Fatal_Error (Current_Source_Unit) /= Error_Detected then
                if Token in Token_Class_Cunit then
                   Error_Msg_SC
                     ("end of file expected, " &
@@ -739,7 +760,7 @@ package body Ch10 is
       --  An error resync is a serious bomb, so indicate result unit no good
 
       when Error_Resync =>
-         Set_Fatal_Error (Current_Source_Unit);
+         Set_Fatal_Error (Current_Source_Unit, Error_Detected);
          return Error;
    end P_Compilation_Unit;
 

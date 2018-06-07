@@ -7,25 +7,23 @@
 --                                   S p e c                                --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---          Copyright (C) 1995-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2015, Free Software Foundation, Inc.         --
 --                                                                          --
--- GNARL is free software; you can  redistribute it  and/or modify it under --
+-- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University. It is --
 -- now maintained by Ada Core Technologies Inc. in cooperation with Florida --
@@ -33,7 +31,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This is the FreeBSD PTHREADS version of this package
+--  This is the FreeBSD (POSIX Threads) version of this package
 
 --  This package encapsulates all direct interfaces to OS services
 --  that are needed by the tasking run-time (libgnarl).
@@ -199,12 +197,15 @@ package System.OS_Interface is
 
    type timespec is private;
 
-   function nanosleep (rqtp, rmtp : access timespec)  return int;
+   function nanosleep (rqtp, rmtp : access timespec) return int;
    pragma Import (C, nanosleep, "nanosleep");
 
-   type clockid_t is private;
+   type clockid_t is new int;
 
-   CLOCK_REALTIME : constant clockid_t;
+   function clock_getres
+     (clock_id : clockid_t;
+      res      : access timespec) return int;
+   pragma Import (C, clock_getres, "clock_getres");
 
    function clock_gettime
      (clock_id : clockid_t;
@@ -290,6 +291,14 @@ package System.OS_Interface is
    PTHREAD_SCOPE_PROCESS : constant := 0;
    PTHREAD_SCOPE_SYSTEM  : constant := 2;
 
+   --  Read/Write lock not supported on freebsd. To add support both types
+   --  pthread_rwlock_t and pthread_rwlockattr_t must properly be defined
+   --  with the associated routines pthread_rwlock_[init/destroy] and
+   --  pthread_rwlock_[rdlock/wrlock/unlock].
+
+   subtype pthread_rwlock_t     is pthread_mutex_t;
+   subtype pthread_rwlockattr_t is pthread_mutexattr_t;
+
    -----------
    -- Stack --
    -----------
@@ -313,18 +322,14 @@ package System.OS_Interface is
    --  No alternate signal stack is used on this platform
 
    Stack_Base_Available : constant Boolean := False;
-   --  Indicates whether the stack base is available on this target. This
-   --  allows us to share s-osinte.adb between all the FSU run time. Note that
-   --  this value can only be true if pthread_t has a complete definition that
-   --  corresponds exactly to the C header files.
+   --  Indicates whether the stack base is available on this target
 
    function Get_Stack_Base (thread : pthread_t) return Address;
    pragma Inline (Get_Stack_Base);
    --  returns the stack base of the specified thread. Only call this function
    --  when Stack_Base_Available is True.
 
-   function Get_Page_Size return size_t;
-   function Get_Page_Size return Address;
+   function Get_Page_Size return int;
    pragma Import (C, Get_Page_Size, "getpagesize");
    --  Returns the size of a page
 
@@ -635,9 +640,6 @@ private
       ts_nsec : long;
    end record;
    pragma Convention (C, timespec);
-
-   type clockid_t is new int;
-   CLOCK_REALTIME : constant clockid_t := 0;
 
    type pthread_t           is new System.Address;
    type pthread_attr_t      is new System.Address;

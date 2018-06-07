@@ -1,6 +1,8 @@
-// Copyright 2010 The Go Authors.  All rights reserved.
+// Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+// +build darwin dragonfly freebsd linux nacl netbsd openbsd plan9 solaris
 
 // Unix cryptographically secure pseudorandom number
 // generator.
@@ -8,45 +10,81 @@
 package rand
 
 import (
+	"bufio"
 	"crypto/aes"
+	"crypto/cipher"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 )
 
+const urandomDevice = "/dev/urandom"
+
 // Easy implementation: read from /dev/urandom.
 // This is sufficient on Linux, OS X, and FreeBSD.
 
-func init() { Reader = &devReader{name: "/dev/urandom"} }
+func init() {
+	if runtime.GOOS == "plan9" {
+		Reader = newReader(nil)
+	} else {
+		Reader = &devReader{name: urandomDevice}
+	}
+}
 
 // A devReader satisfies reads by reading the file named name.
 type devReader struct {
 	name string
-	f    *os.File
+	f    io.Reader
 	mu   sync.Mutex
 }
 
-func (r *devReader) Read(b []byte) (n int, err os.Error) {
+// altGetRandom if non-nil specifies an OS-specific function to get
+// urandom-style randomness.
+var altGetRandom func([]byte) (ok bool)
+
+func (r *devReader) Read(b []byte) (n int, err error) {
+	if altGetRandom != nil && r.name == urandomDevice && altGetRandom(b) {
+		return len(b), nil
+	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.f == nil {
-		f, err := os.Open(r.name, os.O_RDONLY, 0)
+		f, err := os.Open(r.name)
 		if f == nil {
-			r.mu.Unlock()
 			return 0, err
 		}
-		r.f = f
+		if runtime.GOOS == "plan9" {
+			r.f = f
+		} else {
+			r.f = bufio.NewReader(hideAgainReader{f})
+		}
 	}
-	r.mu.Unlock()
 	return r.f.Read(b)
 }
 
+var isEAGAIN func(error) bool // set by eagain.go on unix systems
+
+// hideAgainReader masks EAGAIN reads from /dev/urandom.
+// See golang.org/issue/9205
+type hideAgainReader struct {
+	r io.Reader
+}
+
+func (hr hideAgainReader) Read(p []byte) (n int, err error) {
+	n, err = hr.r.Read(p)
+	if err != nil && isEAGAIN != nil && isEAGAIN(err) {
+		err = nil
+	}
+	return
+}
+
 // Alternate pseudo-random implementation for use on
-// systems without a reliable /dev/urandom.  So far we
-// haven't needed it.
+// systems without a reliable /dev/urandom.
 
 // newReader returns a new pseudorandom generator that
-// seeds itself by reading from entropy.  If entropy == nil,
+// seeds itself by reading from entropy. If entropy == nil,
 // the generator seeds itself by reading from the system's
 // random number generator, typically /dev/random.
 // The Read method on the returned reader always returns
@@ -64,12 +102,12 @@ func newReader(entropy io.Reader) io.Reader {
 type reader struct {
 	mu                   sync.Mutex
 	budget               int // number of bytes that can be generated
-	cipher               *aes.Cipher
+	cipher               cipher.Block
 	entropy              io.Reader
 	time, seed, dst, key [aes.BlockSize]byte
 }
 
-func (r *reader) Read(b []byte) (n int, err os.Error) {
+func (r *reader) Read(b []byte) (n int, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	n = len(b)
@@ -98,7 +136,7 @@ func (r *reader) Read(b []byte) (n int, err os.Error) {
 		// t = encrypt(time)
 		// dst = encrypt(t^seed)
 		// seed = encrypt(t^dst)
-		ns := time.Nanoseconds()
+		ns := time.Now().UnixNano()
 		r.time[0] = byte(ns >> 56)
 		r.time[1] = byte(ns >> 48)
 		r.time[2] = byte(ns >> 40)

@@ -4,25 +4,21 @@
    Use of this source code is governed by a BSD-style
    license that can be found in the LICENSE file.  */
 
-#include "go-alloc.h"
+#include "runtime.h"
+#include "arch.h"
+#include "malloc.h"
 #include "go-type.h"
-#include "interface.h"
 
-/* Implement unsafe.NewArray.  */
+/* Implement unsafe_NewArray, called from the reflect package.  */
 
-void *NewArray (struct __go_empty_interface type, int n)
-  asm ("libgo_unsafe.unsafe.NewArray");
+void *unsafe_NewArray (const struct __go_type_descriptor *, intgo)
+  __asm__ (GOSYM_PREFIX "reflect.unsafe_NewArray");
 
 /* The dynamic type of the argument will be a pointer to a type
    descriptor.  */
 
 void *
-NewArray (struct __go_empty_interface type, int n)
+unsafe_NewArray (const struct __go_type_descriptor *descriptor, intgo n)
 {
-  const struct __go_type_descriptor *descriptor;
-
-  /* FIXME: We should check __type_descriptor to verify that this is
-     really a type descriptor.  */
-  descriptor = (const struct __go_type_descriptor *) type.__object;
-  return __go_alloc (descriptor->__size * n);
+  return runtime_cnewarray (descriptor, n);
 }

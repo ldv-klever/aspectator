@@ -5,24 +5,27 @@
 /* { dg-options "-fconstant-string-class=Foo" } */
 /* { dg-options "-mno-constant-cfstrings -fconstant-string-class=Foo" { target *-*-darwin* } } */
 
-#include "../../objc-obj-c++-shared/Object1.h"
+#ifdef __NEXT_RUNTIME__
+#include <Foundation/NSObject.h>
+#define OBJECT NSObject
+#else
+#include <objc/Object.h>
+#define OBJECT Object
+#endif
+#include "../../objc-obj-c++-shared/objc-test-suite-types.h"
 
-@interface Foo: Object {
+@interface Foo: OBJECT {
   char *cString;
   unsigned int len;
 }
 + (id)description;
 @end
 
-@interface Bar: Object
+@interface Bar: OBJECT
 + (Foo *) getString: (int) which;
 @end
 
-#ifdef NEXT_OBJC_USE_NEW_INTERFACE
-Class _FooClassReference;
-#else
-struct objc_class _FooClassReference;
-#endif
+TNS_STRING_REF_T _FooClassReference;  /* Only used by NeXT.  */
 
 @implementation Bar
 + (Foo *) getString: (int) which {

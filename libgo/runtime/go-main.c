@@ -8,17 +8,15 @@
 
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifdef HAVE_FPU_CONTROL_H
 #include <fpu_control.h>
 #endif
 
-#include "go-alloc.h"
-#include "array.h"
-#include "go-signal.h"
-#include "go-string.h"
-
 #include "runtime.h"
+#include "array.h"
+#include "arch.h"
 #include "malloc.h"
 
 #undef int
@@ -31,59 +29,32 @@
 
 extern char **environ;
 
-extern struct __go_open_array Args asm ("libgo_os.os.Args");
+/* A copy of _end that a shared library can reasonably refer to.  */
+uintptr __go_end;
 
-extern struct __go_open_array Envs asm ("libgo_os.os.Envs");
-
-/* These functions are created for the main package.  */
-extern void __go_init_main (void);
-extern void real_main (void) asm ("main.main");
+extern byte _end[];
 
 /* The main function.  */
 
 int
 main (int argc, char **argv)
 {
-  int i;
-  struct __go_string *values;
+  runtime_isarchive = false;
 
-  runtime_mallocinit ();
-  __go_gc_goroutine_init (&argc);
+  if (runtime_isstarted)
+    return 0;
+  runtime_isstarted = true;
 
-  Args.__count = argc;
-  Args.__capacity = argc;
-  values = __go_alloc (argc * sizeof (struct __go_string));
-  for (i = 0; i < argc; ++i)
-    {
-      values[i].__data = (unsigned char *) argv[i];
-      values[i].__length = __builtin_strlen (argv[i]);
-    }
-  Args.__values = values;
+  if (runtime_iscgo)
+    setIsCgo ();
 
-  for (i = 0; environ[i] != NULL; ++i)
-    ;
-  Envs.__count = i;
-  Envs.__capacity = i;
-  values = __go_alloc (i * sizeof (struct __go_string));
-  for (i = 0; environ[i] != NULL; ++i)
-    {
-      values[i].__data = (unsigned char *) environ[i];
-      values[i].__length = __builtin_strlen (environ[i]);
-    }
-  Envs.__values = values;
-
-  __initsig ();
-
-#if defined(HAVE_SRANDOM)
-  srandom ((unsigned int) time (NULL));
-#else
-  srand ((unsigned int) time (NULL));
-#endif
-  __go_init_main ();
-
-  __go_enable_gc ();
-
-  real_main ();
-
-  return 0;
+  __go_end = (uintptr)_end;
+  runtime_cpuinit ();
+  runtime_check ();
+  runtime_args (argc, (byte **) argv);
+  runtime_osinit ();
+  runtime_schedinit ();
+  __go_go (runtime_main, NULL);
+  runtime_mstart (runtime_m ());
+  abort ();
 }

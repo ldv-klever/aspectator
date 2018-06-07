@@ -8,10 +8,10 @@ template <class T> struct A {
 };
 
 class B {
-  template <class T> class X {};	// { dg-error "private" }
+  template <class T> class X {};	// { dg-message "private" }
 };
 
 int main()
 {
-  A<B> ab;				// { dg-message "instantiated" }
+  A<B> ab;				// { dg-message "required" }
 }

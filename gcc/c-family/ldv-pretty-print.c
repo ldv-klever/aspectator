@@ -20,7 +20,25 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "diagnostic-core.h"
+#include "hash-set.h"
+#include "machmode.h"
+#include "vec.h"
+#include "double-int.h"
+#include "input.h"
+#include "alias.h"
+#include "symtab.h"
+#include "options.h"
+#include "wide-int.h"
+#include "inchash.h"
+#include "tree.h"
+#include "stor-layout.h"
+#include "attribs.h"
+#include "intl.h"
+#include "c-pretty-print.h"
+#include "tree-pretty-print.h"
+#include "tree-iterator.h"
+#include "diagnostic.h"
+#include "wide-int-print.h"
 
 #include "ldv-convert.h"
 #include "ldv-cbe-core.h"
@@ -32,7 +50,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
    Note that this requires semicolon! */
 #define LDV_PRETTY_PRINT_WARN(indent_level, msg) do { LDV_WARN (msg); ldv_c_backend_print (indent_level, true, "/* LDV: %s: %d: %s */", __FILE__, __LINE__, msg); } while (0)
 /* Free memory of second argument is first argument is true. */
-#define LDV_XDELETE_ON_PRINTING(ptr) (ldv_free_on_printing ? XDELETE (ptr) : true)
+#define LDV_XDELETE_ON_PRINTING(ptr) if (ldv_free_on_printing) XDELETE (ptr)
 
 /* This ugly global variable is to implement a workaround for #3692.
    Please, replace it with a parameter of a structure type to be passed for all
@@ -2528,7 +2546,10 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
   if ((line = LDV_LOCATION_LINE (location)))
     ldv_c_backend_print (0, true, "%d", line);
   else
-    LDV_PRETTY_PRINT_WARN (0, "line for line directive was not printed");
+    {
+      ldv_c_backend_print (0, true, "0");
+      LDV_PRETTY_PRINT_WARN (0, "line for line directive was not printed");
+    }
 
   if ((file = LDV_LOCATION_FILE (location)))
     ldv_c_backend_print (0, true, "\"%s\"", file);

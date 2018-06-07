@@ -1,4 +1,4 @@
-// Copyright (C) 2010 Free Software Foundation, Inc.
+// Copyright (C) 2010-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,10 +15,10 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// 20.7.11 Function template bind
+// 20.8.9 Function template bind
 
-// { dg-do compile }
-// { dg-options "-std=gnu++0x" }
+// { dg-options "-fno-show-column" }
+// { dg-do compile { target c++11 } }
 
 #include <functional>
 
@@ -29,10 +29,8 @@ int inc(int& i) { return ++i; }
 void test01()
 {
   const int dummy = 0;
-  std::bind(&inc, _1)(0);               // { dg-error  ""}
-  std::bind(&inc, std::ref(dummy))();  // { dg-error  ""}
-  std::bind(&inc, dummy)();  // { dg-error  ""}
-  std::bind(&inc, 0)();  // { dg-error  ""}
+  std::bind(&inc, _1)(0);               // { dg-error  "no match" }
+  std::bind(&inc, std::ref(dummy))();	// { dg-error  "no match" }
 }
 
 struct Inc
@@ -46,14 +44,15 @@ struct Inc
 void test02()
 {
   const int dummy = 0;
-  std::bind(Inc(), _1)(dummy);                  // { dg-error  ""}
-  std::bind(&Inc::f, Inc(), std::ref(dummy))(); // { dg-error  ""}
+  std::bind(Inc(), _1)(dummy);                  // { dg-error  "no match" }
+  std::bind(&Inc::f, Inc(), std::ref(dummy))(); // { dg-error  "no match" }
 }
+
+// Ignore the reasons for deduction/substitution failure in the headers.
+// { dg-prune-output "/include/(functional|bits/invoke.h):" }
 
 int main()
 {
   test01();
   test02();
 }
-
-// { dg-excess-errors "" }

@@ -1,7 +1,6 @@
 // SGI's rope class implementation -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 2001-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -58,7 +57,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   using std::basic_ostream;
   using std::__throw_length_error;
   using std::_Destroy;
-  using std::uninitialized_fill_n;
+  using std::__uninitialized_fill_n_a;
 
   // Set buf_start, buf_end, and buf_ptr appropriately, filling tmp_buf
   // if necessary.  Assumes _M_path_end[leaf_index] and leaf_pos are correct.
@@ -380,7 +379,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    _Rope_RopeLeaf<_CharT, _Alloc>* __l
 	      = (_Rope_RopeLeaf<_CharT, _Alloc>*)this;
 	    __l->_Rope_RopeLeaf<_CharT, _Alloc>::~_Rope_RopeLeaf();
-	    _L_deallocate(__l, 1);
+	    this->_L_deallocate(__l, 1);
 	    break;
 	  }
 	case __detail::_S_concat:
@@ -389,7 +388,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	      = (_Rope_RopeConcatenation<_CharT, _Alloc>*)this;
 	    __c->_Rope_RopeConcatenation<_CharT, _Alloc>::
 	      ~_Rope_RopeConcatenation();
-	    _C_deallocate(__c, 1);
+	    this->_C_deallocate(__c, 1);
 	    break;
 	  }
 	case __detail::_S_function:
@@ -397,7 +396,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    _Rope_RopeFunction<_CharT, _Alloc>* __f
 	      = (_Rope_RopeFunction<_CharT, _Alloc>*)this;
 	    __f->_Rope_RopeFunction<_CharT, _Alloc>::~_Rope_RopeFunction();
-	    _F_deallocate(__f, 1);
+	    this->_F_deallocate(__f, 1);
 	    break;
 	  }
 	case __detail::_S_substringfn:
@@ -406,7 +405,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	      (_Rope_RopeSubstring<_CharT, _Alloc>*)this;
 	    __ss->_Rope_RopeSubstring<_CharT, _Alloc>::
 	      ~_Rope_RopeSubstring();
-	    _S_deallocate(__ss, 1);
+	    this->_S_deallocate(__ss, 1);
 	    break;
 	  }
 	}
@@ -430,7 +429,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     {
       size_t __old_len = __r->_M_size;
       _CharT* __new_data = (_CharT*)
-	_Data_allocate(_S_rounded_up_size(__old_len + __len));
+	rope::_Data_allocate(_S_rounded_up_size(__old_len + __len));
       _RopeLeaf* __result;
 
       uninitialized_copy_n(__r->_M_data, __old_len, __new_data);
@@ -511,7 +510,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    }
 	  __catch(...)
 	    {
-	      _C_deallocate(__result,1);
+	      rope::_C_deallocate(__result,1);
 	      __throw_exception_again;
 	    }
 	  // In case of exception, we need to deallocate
@@ -814,7 +813,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    if (__result_len > __lazy_threshold)
 	      goto lazy;
 	    __section = (_CharT*)
-	      _Data_allocate(_S_rounded_up_size(__result_len));
+	      rope::_Data_allocate(_S_rounded_up_size(__result_len));
 	    __try
 	      {	(*(__f->_M_fn))(__start, __result_len, __section); }
 	    __catch(...)
@@ -1118,7 +1117,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  printf("NULL\n");
 	  return;
 	}
-      if (_S_concat == __r->_M_tag)
+      if (__detail::_S_concat == __r->_M_tag)
 	{
 	  _RopeConcatenation* __c = (_RopeConcatenation*)__r;
 	  _RopeRep* __left = __c->_M_left;
@@ -1224,7 +1223,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #endif
 		__result = _S_concat(__forest[__i], __result);
 		__forest[__i]->_M_unref_nonnil();
-#if !defined(__GC) && defined(__EXCEPTIONS)
+#if !defined(__GC) && __cpp_exceptions
 		__forest[__i] = 0;
 #endif
 	      }

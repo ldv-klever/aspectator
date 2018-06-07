@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2000-2010, AdaCore                     --
+--                     Copyright (C) 2000-2016, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -35,7 +33,7 @@ with System;              use System;
 with System.OS_Constants; use System.OS_Constants;
 with Ada.Calendar;        use Ada.Calendar;
 
-with GNAT.IO;
+with GNAT.IO;      use GNAT.IO;
 with GNAT.OS_Lib;  use GNAT.OS_Lib;
 with GNAT.Regpat;  use GNAT.Regpat;
 
@@ -106,17 +104,22 @@ package body GNAT.Expect is
    pragma Import (C, Create_Pipe, "__gnat_pipe");
 
    function Poll
-     (Fds     : System.Address;
-      Num_Fds : Integer;
-      Timeout : Integer;
-      Is_Set  : System.Address) return Integer;
+     (Fds          : System.Address;
+      Num_Fds      : Integer;
+      Timeout      : Integer;
+      Dead_Process : access Integer;
+      Is_Set       : System.Address) return Integer;
    pragma Import (C, Poll, "__gnat_expect_poll");
-   --  Check whether there is any data waiting on the file descriptor
-   --  Out_fd, and wait if there is none, at most Timeout milliseconds
+   --  Check whether there is any data waiting on the file descriptors
+   --  Fds, and wait if there is none, at most Timeout milliseconds
    --  Returns -1 in case of error, 0 if the timeout expired before
    --  data became available.
    --
-   --  Out_Is_Set is set to 1 if data was available, 0 otherwise.
+   --  Is_Set is an array of the same size as FDs and elements are set to 1 if
+   --  data is available for the corresponding File Descriptor, 0 otherwise.
+   --
+   --  If a process dies, then Dead_Process is set to the index of the
+   --  corresponding file descriptor.
 
    function Waitpid (Pid : Process_Id) return Integer;
    pragma Import (C, Waitpid, "__gnat_waitpid");
@@ -355,10 +358,14 @@ package body GNAT.Expect is
          Expect_Internal (Descriptors, N, Timeout_Tmp, Full_Buffer);
 
          case N is
-            when Expect_Internal_Error | Expect_Process_Died =>
+            when Expect_Internal_Error
+               | Expect_Process_Died
+            =>
                raise Process_Died;
 
-            when Expect_Timeout | Expect_Full_Buffer =>
+            when Expect_Full_Buffer
+               | Expect_Timeout
+            =>
                Result := N;
                return;
 
@@ -511,10 +518,14 @@ package body GNAT.Expect is
          Expect_Internal (Descriptors, N, Timeout, Full_Buffer);
 
          case N is
-            when Expect_Internal_Error | Expect_Process_Died =>
+            when Expect_Internal_Error
+               | Expect_Process_Died
+            =>
                raise Process_Died;
 
-            when Expect_Timeout | Expect_Full_Buffer =>
+            when Expect_Full_Buffer
+               | Expect_Timeout
+            =>
                Result := N;
                return;
 
@@ -573,10 +584,14 @@ package body GNAT.Expect is
          Expect_Internal (Descriptors, N, Timeout, Full_Buffer);
 
          case N is
-            when Expect_Internal_Error | Expect_Process_Died =>
+            when Expect_Internal_Error
+               | Expect_Process_Died
+            =>
                raise Process_Died;
 
-            when Expect_Timeout | Expect_Full_Buffer =>
+            when Expect_Full_Buffer
+               | Expect_Timeout
+            =>
                Result := N;
                return;
 
@@ -634,7 +649,7 @@ package body GNAT.Expect is
          --  Buffer used for input. This is allocated only once, not for
          --  every iteration of the loop
 
-         D : Integer;
+         D : aliased Integer;
          --  Index in Descriptors
 
       begin
@@ -642,7 +657,7 @@ package body GNAT.Expect is
 
          loop
             Num_Descriptors :=
-              Poll (Fds'Address, Fds_Count, Timeout, Is_Set'Address);
+              Poll (Fds'Address, Fds_Count, Timeout, D'Access, Is_Set'Address);
 
             case Num_Descriptors is
 
@@ -650,6 +665,12 @@ package body GNAT.Expect is
 
                when -1 =>
                   Result := Expect_Internal_Error;
+
+                  if D /= 0 then
+                     Close (Descriptors (D).Input_Fd);
+                     Descriptors (D).Input_Fd := Invalid_FD;
+                  end if;
+
                   return;
 
                --  Timeout?
@@ -680,6 +701,7 @@ package body GNAT.Expect is
                            --  ??? Note that ddd tries again up to three times
                            --  in that case. See LiterateA.C:174
 
+                           Close (Descriptors (D).Input_Fd);
                            Descriptors (D).Input_Fd := Invalid_FD;
                            Result := Expect_Process_Died;
                            return;
@@ -688,7 +710,6 @@ package body GNAT.Expect is
                            --  If there is no limit to the buffer size
 
                            if Descriptors (D).Buffer_Size = 0 then
-
                               declare
                                  Tmp : String_Access := Descriptors (D).Buffer;
 
@@ -718,7 +739,7 @@ package body GNAT.Expect is
                               --  Add what we read to the buffer
 
                               if Descriptors (D).Buffer_Index + N >
-                                Descriptors (D).Buffer_Size
+                                   Descriptors (D).Buffer_Size
                               then
                                  --  If the user wants to know when we have
                                  --  read more than the buffer can contain.
@@ -814,7 +835,7 @@ package body GNAT.Expect is
    is
       Buffer_Size     : constant Integer := 8192;
       Num_Descriptors : Integer;
-      N               : Integer;
+      N               : aliased Integer;
       Is_Set          : aliased Integer;
       Buffer          : aliased String (1 .. Buffer_Size);
 
@@ -828,7 +849,11 @@ package body GNAT.Expect is
 
       loop
          Num_Descriptors :=
-           Poll (Descriptor.Output_Fd'Address, 1, Timeout, Is_Set'Address);
+           Poll (Descriptor.Output_Fd'Address,
+                 1,
+                 Timeout,
+                 N'Access,
+                 Is_Set'Address);
 
          case Num_Descriptors is
 
@@ -895,7 +920,8 @@ package body GNAT.Expect is
 
    begin
       Non_Blocking_Spawn
-        (Process, Command, Arguments, Err_To_Out => Err_To_Out);
+        (Process, Command, Arguments, Err_To_Out => Err_To_Out,
+         Buffer_Size => 0);
 
       if Input'Length > 0 then
          Send (Process, Input);
@@ -912,7 +938,7 @@ package body GNAT.Expect is
          --  This loop runs until the call to Expect raises Process_Died
 
          loop
-            Expect (Process, Result, ".+");
+            Expect (Process, Result, ".+", Timeout => -1);
 
             declare
                NOutput : String_Access;
@@ -928,7 +954,7 @@ package body GNAT.Expect is
                   NOutput (Output'Range) := Output.all;
                   Free (Output);
 
-                  --  Here if current buffer size is OK
+               --  Here if current buffer size is OK
 
                else
                   NOutput := Output;
@@ -946,6 +972,7 @@ package body GNAT.Expect is
       end;
 
       if Last = 0 then
+         Free (Output);
          return "";
       end if;
 
@@ -1056,16 +1083,17 @@ package body GNAT.Expect is
       Command_With_Path : String_Access;
 
    begin
-      --  Create the rest of the pipes
-
-      Set_Up_Communications
-        (Descriptor, Err_To_Out, Pipe1'Access, Pipe2'Access, Pipe3'Access);
-
       Command_With_Path := Locate_Exec_On_Path (Command);
 
       if Command_With_Path = null then
          raise Invalid_Process;
       end if;
+
+      --  Create the rest of the pipes once we know we will be able to
+      --  execute the process.
+
+      Set_Up_Communications
+        (Descriptor, Err_To_Out, Pipe1'Access, Pipe2'Access, Pipe3'Access);
 
       --  Fork a new process
 
@@ -1331,17 +1359,22 @@ package body GNAT.Expect is
 
       Portable_Execvp (Pid.Pid'Access, Cmd & ASCII.NUL, Args);
 
-      --  The following commands are not executed on Unix systems, and are only
-      --  required for Windows systems. We are now in the parent process.
+      --  The following lines are only required for Windows systems and will
+      --  not be executed on Unix systems, but we use the same condition as
+      --  above to avoid warnings on uninitialized variables on Unix systems.
+      --  We are now in the parent process.
 
-      --  Restore the old descriptors
+      if No_Fork_On_Target then
 
-      Dup2 (Input,  GNAT.OS_Lib.Standin);
-      Dup2 (Output, GNAT.OS_Lib.Standout);
-      Dup2 (Error,  GNAT.OS_Lib.Standerr);
-      Close (Input);
-      Close (Output);
-      Close (Error);
+         --  Restore the old descriptors
+
+         Dup2 (Input,  GNAT.OS_Lib.Standin);
+         Dup2 (Output, GNAT.OS_Lib.Standout);
+         Dup2 (Error,  GNAT.OS_Lib.Standerr);
+         Close (Input);
+         Close (Output);
+         Close (Error);
+      end if;
    end Set_Up_Child_Communications;
 
    ---------------------------
@@ -1366,6 +1399,8 @@ package body GNAT.Expect is
       end if;
 
       if Create_Pipe (Pipe2) /= 0 then
+         Close (Pipe1.Input);
+         Close (Pipe1.Output);
          return;
       end if;
 
@@ -1390,7 +1425,7 @@ package body GNAT.Expect is
          --  Create a separate pipe for standard error
 
          if Create_Pipe (Pipe3) /= 0 then
-            return;
+            Pipe3.all := Pipe2.all;
          end if;
       end if;
 

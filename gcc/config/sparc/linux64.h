@@ -1,6 +1,5 @@
 /* Definitions for 64-bit SPARC running Linux-based GNU systems with ELF.
-   Copyright 1996, 1997, 1998, 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-   2009, 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 1996-2017 Free Software Foundation, Inc.
    Contributed by David S. Miller (davem@caip.rutgers.edu)
 
 This file is part of GCC.
@@ -22,7 +21,7 @@ along with GCC; see the file COPYING3.  If not see
 #define TARGET_OS_CPP_BUILTINS()		\
   do						\
     {						\
-      LINUX_TARGET_OS_CPP_BUILTINS();		\
+      GNU_USER_TARGET_OS_CPP_BUILTINS();	\
       if (TARGET_ARCH64)			\
         builtin_define ("_LONGLONG");		\
       if (TARGET_ARCH32				\
@@ -31,18 +30,13 @@ along with GCC; see the file COPYING3.  If not see
     }						\
   while (0)
 
-#if TARGET_CPU_DEFAULT == TARGET_CPU_v9 \
-    || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc \
-    || TARGET_CPU_DEFAULT == TARGET_CPU_ultrasparc3 \
-    || TARGET_CPU_DEFAULT == TARGET_CPU_niagara \
-    || TARGET_CPU_DEFAULT == TARGET_CPU_niagara2
-/* A 64 bit v9 compiler with stack-bias,
-   in a Medium/Low code model environment.  */
-
+/* On Linux, the combination sparc64-* --with-cpu=v8 is supported and
+   selects a 32-bit compiler.  */
+#if defined(TARGET_64BIT_DEFAULT) && TARGET_CPU_DEFAULT >= TARGET_CPU_v9
 #undef TARGET_DEFAULT
 #define TARGET_DEFAULT \
-  (MASK_V9 + MASK_PTR64 + MASK_64BIT /* + MASK_HARD_QUAD */ \
-   + MASK_STACK_BIAS + MASK_APP_REGS + MASK_FPU + MASK_LONG_DOUBLE_128)
+  (MASK_V9 + MASK_PTR64 + MASK_64BIT + MASK_STACK_BIAS + \
+   MASK_APP_REGS + MASK_FPU + MASK_LONG_DOUBLE_128)
 #endif
 
 /* This must be v9a not just v9 because by default we enable
@@ -59,10 +53,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef	ENDFILE_SPEC
 #define ENDFILE_SPEC \
   "%{shared|pie:crtendS.o%s;:crtend.o%s} crtn.o%s\
-   %{ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
-
-#undef TARGET_VERSION
-#define TARGET_VERSION fprintf (stderr, " (sparc64 GNU/Linux with ELF)");
+   %{Ofast|ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
 
 /* The default code model.  */
 #undef SPARC_DEFAULT_CMODEL
@@ -78,14 +69,6 @@ along with GCC; see the file COPYING3.  If not see
    SPARC ABI says that long double is 4 words.  */
 #undef LONG_DOUBLE_TYPE_SIZE
 #define LONG_DOUBLE_TYPE_SIZE (TARGET_LONG_DOUBLE_128 ? 128 : 64)
-
-/* Define this to set long double type size to use in libgcc2.c, which can
-   not depend on target_flags.  */
-#if defined(__arch64__) || defined(__LONG_DOUBLE_128__)
-#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 128
-#else
-#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 64
-#endif
 
 #undef CPP_SUBTARGET_SPEC
 #define CPP_SUBTARGET_SPEC "\
@@ -113,19 +96,19 @@ along with GCC; see the file COPYING3.  If not see
   { "link_arch_default", LINK_ARCH_DEFAULT_SPEC },	  \
   { "link_arch",	 LINK_ARCH_SPEC },
 
-#define LINK_ARCH32_SPEC "-m elf32_sparc -Y P,%R/usr/lib %{shared:-shared} \
+#define LINK_ARCH32_SPEC "-m elf32_sparc %{shared:-shared} \
   %{!shared: \
     %{!static: \
       %{rdynamic:-export-dynamic} \
-      -dynamic-linker " LINUX_DYNAMIC_LINKER32 "} \
+      -dynamic-linker " GNU_USER_DYNAMIC_LINKER32 "} \
       %{static:-static}} \
 "
 
-#define LINK_ARCH64_SPEC "-m elf64_sparc -Y P,%R/usr/lib64 %{shared:-shared} \
+#define LINK_ARCH64_SPEC "-m elf64_sparc %{shared:-shared} \
   %{!shared: \
     %{!static: \
       %{rdynamic:-export-dynamic} \
-      -dynamic-linker " LINUX_DYNAMIC_LINKER64 "} \
+      -dynamic-linker " GNU_USER_DYNAMIC_LINKER64 "} \
       %{static:-static}} \
 "
 
@@ -141,9 +124,24 @@ along with GCC; see the file COPYING3.  If not see
 #undef  LINK_SPEC
 #define LINK_SPEC "\
 %(link_arch) \
-%{mlittle-endian:-EL} \
 %{!mno-relax:%{!r:-relax}} \
 "
+
+/* -mcpu=native handling only makes sense with compiler running on
+   a SPARC chip.  */
+#if defined(__sparc__) && defined(__linux__)
+extern const char *host_detect_local_cpu (int argc, const char **argv);
+# define EXTRA_SPEC_FUNCTIONS						\
+  { "local_cpu_detect", host_detect_local_cpu },
+
+# define MCPU_MTUNE_NATIVE_SPECS					\
+   " %{mcpu=native:%<mcpu=native %:local_cpu_detect(cpu)}"		\
+   " %{mtune=native:%<mtune=native %:local_cpu_detect(tune)}"
+#else
+# define MCPU_MTUNE_NATIVE_SPECS ""
+#endif
+
+#define DRIVER_SELF_SPECS MCPU_MTUNE_NATIVE_SPECS
 
 #undef	CC1_SPEC
 #if DEFAULT_ARCH32_P
@@ -158,28 +156,50 @@ along with GCC; see the file COPYING3.  If not see
 %{m32:%{m64:%emay not use both -m32 and -m64}} \
 %{m32:-mptr32 -mno-stack-bias %{!mlong-double-128:-mlong-double-64} \
   %{!mcpu*:-mcpu=cypress}} \
+%{mv8plus:-mptr32 -mno-stack-bias %{!mlong-double-128:-mlong-double-64} \
+  %{!mcpu*:-mcpu=v9}} \
 %{!m32:%{!mcpu*:-mcpu=ultrasparc}} \
 %{!mno-vis:%{!m32:%{!mcpu=v9:-mvis}}} \
 "
 #endif
 
 /* Support for a compile-time default CPU, et cetera.  The rules are:
-   --with-cpu is ignored if -mcpu is specified.
-   --with-tune is ignored if -mtune is specified.
+   --with-cpu is ignored if -mcpu is specified; likewise --with-cpu-32
+     and --with-cpu-64.
+   --with-tune is ignored if -mtune is specified; likewise --with-tune-32
+     and --with-tune-64.
    --with-float is ignored if -mhard-float, -msoft-float, -mfpu, or -mno-fpu
      are specified.
    In the SPARC_BI_ARCH compiler we cannot pass %{!mcpu=*:-mcpu=%(VALUE)}
    here, otherwise say -mcpu=v7 would be passed even when -m64.
-   CC1_SPEC above takes care of this instead.  */
+   CC1_SPEC above takes care of this instead.
+
+   Note that the order of the cpu* and tune* options matters: the
+   config.gcc file always sets with_cpu to some value, even if the
+   user didn't use --with-cpu when invoking the configure script.
+   This value is based on the target name.  Therefore we have to make
+   sure that --with-cpu-32 takes precedence to --with-cpu in < v9
+   systems, and that --with-cpu-64 takes precedence to --with-cpu in
+   >= v9 systems.  As for the tune* options, in some platforms
+   config.gcc also sets a default value for it if the user didn't use
+   --with-tune when invoking the configure script.  */
 #undef OPTION_DEFAULT_SPECS
 #if DEFAULT_ARCH32_P
 #define OPTION_DEFAULT_SPECS \
+  {"cpu_32", "%{!m64:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
+  {"cpu_64", "%{m64:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
   {"cpu", "%{!m64:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
+  {"tune_32", "%{!m64:%{!mtune=*:-mtune=%(VALUE)}}" }, \
+  {"tune_64", "%{m64:%{!mtune=*:-mtune=%(VALUE)}}" }, \
   {"tune", "%{!mtune=*:-mtune=%(VALUE)}" }, \
   {"float", "%{!msoft-float:%{!mhard-float:%{!mfpu:%{!mno-fpu:-m%(VALUE)-float}}}}" }
 #else
 #define OPTION_DEFAULT_SPECS \
+  {"cpu_32", "%{m32:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
+  {"cpu_64", "%{!m32:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
   {"cpu", "%{!m32:%{!mcpu=*:-mcpu=%(VALUE)}}" }, \
+  {"tune_32", "%{m32:%{!mtune=*:-mtune=%(VALUE)}}" },	\
+  {"tune_64", "%{!m32:%{!mtune=*:-mtune=%(VALUE)}}" },	\
   {"tune", "%{!mtune=*:-mtune=%(VALUE)}" }, \
   {"float", "%{!msoft-float:%{!mhard-float:%{!mfpu:%{!mno-fpu:-m%(VALUE)-float}}}}" }
 #endif
@@ -197,9 +217,8 @@ along with GCC; see the file COPYING3.  If not see
   %{!shared: \
     %{!static: \
       %{rdynamic:-export-dynamic} \
-      -dynamic-linker " LINUX_DYNAMIC_LINKER64 "} \
+      -dynamic-linker " GNU_USER_DYNAMIC_LINKER64 "} \
     %{static:-static}} \
-%{mlittle-endian:-EL} \
 %{!mno-relax:%{!r:-relax}} \
 "
 
@@ -209,9 +228,8 @@ along with GCC; see the file COPYING3.  If not see
 #undef ASM_SPEC
 #define ASM_SPEC "\
 -s \
-%{fpic|fPIC|fpie|fPIE:-K PIC} \
+%{" FPIE_OR_FPIC_SPEC ":-K PIC} \
 %{!.c:%{findirect-dispatch:-K PIC}} \
-%{mlittle-endian:-EL} \
 %(asm_cpu) %(asm_arch) %(asm_relax)"
 
 #undef ASM_OUTPUT_ALIGNED_LOCAL
@@ -228,15 +246,6 @@ do {									\
 
 #undef  LOCAL_LABEL_PREFIX
 #define LOCAL_LABEL_PREFIX  "."
-
-/* This is how to store into the string LABEL
-   the symbol_ref name of an internal numbered label where
-   PREFIX is the class of label and NUM is the number within the class.
-   This is suitable for output with `assemble_name'.  */
-
-#undef  ASM_GENERATE_INTERNAL_LABEL
-#define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
-  sprintf (LABEL, "*.L%s%ld", PREFIX, (long)(NUM))
 
 /* DWARF bits.  */
 
@@ -263,14 +272,6 @@ do {									\
 
 /* Static stack checking is supported by means of probes.  */
 #define STACK_CHECK_STATIC_BUILTIN 1
-
-#define MD_UNWIND_SUPPORT "config/sparc/linux-unwind.h"
-
-/* Linux currently uses RMO in uniprocessor mode, which is equivalent to
-   TMO, and TMO in multiprocessor mode.  But they reserve the right to
-   change their minds.  */
-#undef SPARC_RELAXED_ORDERING
-#define SPARC_RELAXED_ORDERING true
 
 #undef NEED_INDICATE_EXEC_STACK
 #define NEED_INDICATE_EXEC_STACK 1

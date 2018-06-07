@@ -1,7 +1,8 @@
-/* Copyright (C) 2008, 2009, 2011 Free Software Foundation, Inc.
+/* Copyright (C) 2008-2017 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>.
 
-   This file is part of the GNU OpenMP Library (libgomp).
+   This file is part of the GNU Offloading and Multi Processing Library
+   (libgomp).
 
    Libgomp is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -34,28 +35,36 @@
 
 #define FUTEX_WAIT	0
 #define FUTEX_WAKE	1
-#define FUTEX_PRIVATE_FLAG	128L
+#define FUTEX_PRIVATE_FLAG	128
 
 #ifdef HAVE_ATTRIBUTE_VISIBILITY
 # pragma GCC visibility push(hidden)
 #endif
 
-extern long int gomp_futex_wait, gomp_futex_wake;
+extern int gomp_futex_wait, gomp_futex_wake;
 
 #include <futex.h>
 
-static inline void do_wait (int *addr, int val)
+static inline int do_spin (int *addr, int val)
 {
   unsigned long long i, count = gomp_spin_count_var;
 
-  if (__builtin_expect (gomp_managed_threads > gomp_available_cpus, 0))
+  if (__builtin_expect (__atomic_load_n (&gomp_managed_threads,
+                                         MEMMODEL_RELAXED)
+                        > gomp_available_cpus, 0))
     count = gomp_throttled_spin_count_var;
   for (i = 0; i < count; i++)
-    if (__builtin_expect (*addr != val, 0))
-      return;
+    if (__builtin_expect (__atomic_load_n (addr, MEMMODEL_RELAXED) != val, 0))
+      return 0;
     else
       cpu_relax ();
-  futex_wait (addr, val);
+  return 1;
+}
+
+static inline void do_wait (int *addr, int val)
+{
+  if (do_spin (addr, val))
+    futex_wait (addr, val);
 }
 
 #ifdef HAVE_ATTRIBUTE_VISIBILITY

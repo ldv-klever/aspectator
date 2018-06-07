@@ -1,7 +1,60 @@
-# Prerequisites for GCC are added to sources during building.
-gmp/
-mpc/
-mpfr/
-# Bison grammar rules.
+# Bison grammar rules
 gcc/ldv-aspect-parser.output
 
+*.diff
+*.patch
+*.orig
+*.rej
+
+*~
+.#*
+*#
+
+*.flt
+*.gmo
+*.info
+*.la
+*.lo
+*.o
+*.pyc
+*.tmp
+
+.deps
+.libs
+
+autom4te.cache
+config.cache
+config.h
+config.intl
+config.log
+config.status
+libtool
+POTFILES
+*-POTFILES
+
+TAGS
+TAGS.sub
+
+.local.vimrc
+.lvimrc
+
+.clang-format
+
+.gdbinit
+.gdb_history
+
+# ignore core files, but not java/net/protocol/core/
+core
+!core/
+
+lost+found
+
+# ignore ./contrib/gcc_update output
+LAST_UPDATED
+REVISION
+
+# ignore in-tree prerequisites
+/mpfr*
+/mpc*
+/gmp*
+/isl*

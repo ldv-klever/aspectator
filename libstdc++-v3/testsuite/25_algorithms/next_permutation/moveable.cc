@@ -1,6 +1,6 @@
-// { dg-options "-std=gnu++0x" }
+// { dg-do run { target c++11 } }
 
-// Copyright (C) 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2009-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -19,10 +19,6 @@
 
 // 25.3.9 [lib.alg.permutation.generators]
 
-// XXX FIXME:  parallel-mode should deal correctly with moveable-only types
-// per C++0x, at minimum smoothly fall back to serial.
-#undef _GLIBCXX_PARALLEL
-
 #include <algorithm>
 #include <testsuite_hooks.h>
 #include <testsuite_iterators.h>
@@ -38,8 +34,6 @@ typedef test_container<rvalstruct, bidirectional_iterator_wrapper> Container;
 void
 test1()
 {
-  bool test __attribute__((unused)) = true;
-
   // Note: The standard is unclear on what should happen in this case.
   // This seems the only really sensible behaviour, and what is done.
   rvalstruct array[] = {0};
@@ -50,8 +44,6 @@ test1()
 void
 test2()
 {
-  bool test __attribute__((unused)) = true;
-
   rvalstruct array[] = {0};
   Container con(array, array + 1);
   VERIFY( !next_permutation(con.begin(), con.end()) );
@@ -60,8 +52,6 @@ test2()
 void
 test3()
 {
-  bool test __attribute__((unused)) = true;
-
   rvalstruct array[] = {0, 3};
   Container con(array, array + 2);
   VERIFY( next_permutation(con.begin(), con.end()) );
@@ -73,8 +63,6 @@ test3()
 void
 test4()
 {
-  bool test __attribute__((unused)) = true;
-
   int array[6] = {0, 1, 2, 3, 4, 5};
   for(int i = 0 ; i < 719; ++i)
     {
@@ -82,8 +70,13 @@ test4()
       std::copy(array, array + 6, temp_array);
       Container con(temp_array, temp_array + 6);
       VERIFY( next_permutation(array, array + 6) );
+
+// XXX FIXME:  parallel-mode should deal correctly with moveable-only types
+// per C++0x, at minimum smoothly fall back to serial.
+#ifndef _GLIBCXX_PARALLEL
       VERIFY( std::lexicographical_compare(temp_array, temp_array + 6, 
 					   array, array + 6) );
+#endif
     }
   VERIFY( !next_permutation(array,array + 6) );
   for(int i = 0; i < 6; ++i)
@@ -97,8 +90,6 @@ are_ordered(const rvalstruct& lhs, const rvalstruct& rhs)
 void
 test5()
 {
-  bool test __attribute__((unused)) = true;
-
   int array[6] = {0, 1, 2, 3, 4, 5};
   for(int i = 0 ; i < 719; ++i)
     {
@@ -106,8 +97,13 @@ test5()
       std::copy(array, array + 6, temp_array);
       Container con(temp_array, temp_array + 6);
       VERIFY( next_permutation(array, array + 6, are_ordered) );
+
+// XXX FIXME:  parallel-mode should deal correctly with moveable-only types
+// per C++0x, at minimum smoothly fall back to serial.
+#ifndef _GLIBCXX_PARALLEL
       VERIFY( std::lexicographical_compare(temp_array, temp_array + 6,
 					   array, array + 6, are_ordered) );
+#endif
     }
   VERIFY( !next_permutation(array,array + 6, are_ordered) );
   for(int i = 0; i < 6; ++i)

@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -fdump-tree-vrp1" } */
+/* { dg-options "-O2 -fdump-tree-vrp1 -fno-tree-ccp" } */
 
 int
 foo (unsigned int i, unsigned int j)
@@ -13,4 +13,3 @@ foo (unsigned int i, unsigned int j)
 }
 
 /* { dg-final { scan-tree-dump-times "return 1;" 1 "vrp1" } } */
-/* { dg-final { cleanup-tree-dump "vrp1" } } */

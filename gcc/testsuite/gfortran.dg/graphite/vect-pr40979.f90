@@ -1,5 +1,6 @@
 ! { dg-do compile }
 ! { dg-require-effective-target vect_double }
+! { dg-additional-options "-msse2" { target { { i?86-*-* x86_64-*-* } && ilp32 } } }
 
 module mqc_m
 integer, parameter, private :: longreal = selected_real_kind(15,90)
@@ -23,4 +24,3 @@ contains
 end module mqc_m
 
 ! { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } }
-! { dg-final { cleanup-tree-dump "vect" } }

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// +build rtems
+
 package net
 
 import (
@@ -9,7 +11,7 @@ import (
 	"syscall"
 )
 
-func selfConnectedTCPSocket() (pr, pw *os.File, err os.Error) {
+func selfConnectedTCPSocket() (pr, pw *os.File, err error) {
 	// See ../syscall/exec.go for description of ForkLock.
 	syscall.ForkLock.RLock()
 	sockfd, e := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
@@ -49,7 +51,7 @@ func selfConnectedTCPSocket() (pr, pw *os.File, err os.Error) {
 	return fd, fd, nil
 }
 
-func newPollServer() (s *pollServer, err os.Error) {
+func newPollServer() (s *pollServer, err error) {
 	s = new(pollServer)
 	s.cr = make(chan *netFD, 1)
 	s.cw = make(chan *netFD, 1)
@@ -68,7 +70,7 @@ func newPollServer() (s *pollServer, err os.Error) {
 	if s.poll, err = newpollster(); err != nil {
 		goto Error
 	}
-	if err = s.poll.AddFD(s.pr.Fd(), 'r', true); err != nil {
+	if _, err = s.poll.AddFD(s.pr.Fd(), 'r', true); err != nil {
 		s.poll.Close()
 		goto Error
 	}

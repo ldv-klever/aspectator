@@ -1,9 +1,8 @@
-// { dg-do compile }
-// { dg-options "-std=gnu++0x" }
+// { dg-do compile { target c++11 } }
 
 // 2007-07-10  Paolo Carlini  <pcarlini@suse.de>
 //
-// Copyright (C) 2007, 2009 Free Software Foundation, Inc.
+// Copyright (C) 2007-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -27,8 +26,9 @@ template<class T, class A1, class A2>
   std::shared_ptr<T>
   factory(A1&& a1, A2&& a2)
   {
-    return std::shared_ptr<T>(new T(std::forward<A1>(a1),
-				    std::forward<A2>(a2))); // { dg-error "no matching function" }
+    return std::shared_ptr<T>(
+	new T(std::forward<A1>(a1), // { dg-error "rvalue" }
+              std::forward<A2>(a2)));
   }
 
 struct A
@@ -38,7 +38,8 @@ struct A
 
 void g()
 {
-  std::shared_ptr<A> sp1 = factory<A>(2, 1.414); // { dg-error "instantiated from here" }
+  std::shared_ptr<A> sp1 = factory<A>(2, 1.414); // { dg-error "required from here" }
 }
 
-// { dg-excess-errors "" }
+// Discard a bogus warning showing up with -Wall.
+// { dg-prune-output "control reaches end of" }

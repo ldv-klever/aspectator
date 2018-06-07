@@ -2,8 +2,10 @@
 /* { dg-options "-O1 -mtune=amdfam10 -fexpensive-optimizations -fgcse -foptimize-register-move -freorder-blocks -fschedule-insns2 -funswitch-loops -fgcse-las -fselective-scheduling2 -fsel-sched-pipelining -funroll-all-loops" } */
 
 typedef char uint8_t;
-typedef uint32_t;
-typedef vo_frame_t;
+typedef int uint32_t;
+typedef int vo_frame_t;
+__extension__ typedef __SIZE_TYPE__ size_t;
+
 struct vo_frame_s
 {
     uint8_t base[3];
@@ -43,9 +45,9 @@ mpeg2dec_accel_t;
 static int bitstream_init (picture_t * picture, void *start)
 {
   picture->bitstream_ptr = start;
-  return (int) (long) start;
+  return (int) (size_t) start;
 }
-static slice_xvmc_init (picture_t * picture, int code)
+static void slice_xvmc_init (picture_t * picture, int code)
 {
   int offset;
   struct vo_frame_s *forward_reference_frame;
@@ -56,7 +58,7 @@ static slice_xvmc_init (picture_t * picture, int code)
     picture->f_motion.ref
       [0]
       [0]
-      = (char) (long) (forward_reference_frame->base + (offset ? picture->pitches[0] : 0));
+      = (char) (size_t) (forward_reference_frame->base + (offset ? picture->pitches[0] : 0));
   picture->f_motion.ref[0][1] = (offset);
   if (picture->picture_structure)
       picture->pitches[0] <<= picture->pitches[1] <<= 1;
@@ -91,7 +93,7 @@ void
 mpeg2_xvmc_slice
   (mpeg2dec_accel_t * accel, picture_t * picture, int code, uint8_t buffer,int mba_inc)
 {
-  xine_xvmc_t * xvmc = (xine_xvmc_t *) (long) bitstream_init (picture, (void *) (long) buffer);
+  xine_xvmc_t * xvmc = (xine_xvmc_t *) (size_t) bitstream_init (picture, (void *) (size_t) buffer);
   slice_xvmc_init (picture, code);
     while (1)
       {

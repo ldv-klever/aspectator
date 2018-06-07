@@ -1,32 +1,25 @@
 // -*- C++ -*-
 //
-// Copyright (C) 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2009-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
-// software; you can redistribute it and/or modify it under the terms
-// of the GNU General Public License as published by the Free Software
-// Foundation; either version 2, or (at your option) any later
-// version.
+// software; you can redistribute it and/or modify it under the
+// terms of the GNU General Public License as published by the
+// Free Software Foundation; either version 3, or (at your option)
+// any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 
-// This library is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// General Public License for more details.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// You should have received a copy of the GNU General Public License
-// along with this library; see the file COPYING.  If not, write to
-// the Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-// MA 02111-1307, USA.
-
-// As a special exception, you may use this file as part of a free
-// software library without restriction.  Specifically, if other files
-// instantiate templates or use macros or inline functions from this
-// file, or you compile this file and link it with other files to
-// produce an executable, this file does not by itself cause the
-// resulting executable to be covered by the GNU General Public
-// License.  This exception does not however invalidate any other
-// reasons why the executable file might be covered by the GNU General
-// Public License.
+// You should have received a copy of the GNU General Public License along
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 /** @file profile/impl/profiler_container_size.h
  *  @brief Diagnostics for container sizes.
@@ -50,26 +43,11 @@ namespace __gnu_profile
   : public __object_info_base 
   {
   public:
-    __container_size_info()
-    : _M_init(0), _M_max(0), _M_min(0), _M_total(0), _M_item_min(0),
-      _M_item_max(0), _M_item_total(0), _M_count(0), _M_resize(0), _M_cost(0) 
-    { }
-
-    __container_size_info(const __container_size_info& __o)
-    : __object_info_base(__o), _M_init(__o._M_init), _M_max(__o._M_max),
-      _M_min(__o._M_min), _M_total(__o._M_total),
-      _M_item_min(__o._M_item_min), _M_item_max(__o._M_item_max),
-      _M_item_total(__o._M_item_total), _M_count(__o._M_count),
-      _M_resize(__o._M_resize), _M_cost(__o._M_cost)
-    { }
-
-    __container_size_info(__stack_t __stack, std::size_t __num)
-    : __object_info_base(__stack), _M_init(__num), _M_max(__num),
+    __container_size_info(__stack_t __stack)
+    : __object_info_base(__stack), _M_init(0), _M_max(0),
       _M_min(0), _M_total(0), _M_item_min(0), _M_item_max(0),
       _M_item_total(0), _M_count(0), _M_resize(0), _M_cost(0)
     { }
-
-    virtual ~__container_size_info() { }
 
     void
     __write(FILE* __f) const
@@ -94,8 +72,16 @@ namespace __gnu_profile
     }
 
     void
+    __init(std::size_t __num)
+    {
+      _M_init = __num;
+      _M_max = __num;
+    }
+
+    void
     __merge(const __container_size_info& __o)
     {
+      __object_info_base::__merge(__o);
       _M_init        = std::max(_M_init, __o._M_init);
       _M_max         = std::max(_M_max, __o._M_max);
       _M_item_max    = std::max(_M_item_max, __o._M_item_max);
@@ -124,6 +110,7 @@ namespace __gnu_profile
 	  _M_min = std::min(_M_min, __num);
 	  _M_item_min = std::min(_M_item_min, __inum);
 	}
+
       _M_total += __num;
       _M_item_total += __inum;
       _M_count += 1;
@@ -156,7 +143,6 @@ namespace __gnu_profile
     std::size_t _M_cost;
   };
 
-
   /** @brief A container size instrumentation line in the stack table.  */
   class __container_size_stack_info
   : public __container_size_info
@@ -165,7 +151,6 @@ namespace __gnu_profile
     __container_size_stack_info(const __container_size_info& __o)
     : __container_size_info(__o) { }
   };
-
   
   /** @brief Container size instrumentation trace producer.  */
   class __trace_container_size
@@ -178,43 +163,22 @@ namespace __gnu_profile
     : __trace_base<__container_size_info, __container_size_stack_info>() { };
 
     // Insert a new node at construct with object, callstack and initial size. 
-    void
-    __insert(const __object_t __obj, __stack_t __stack, std::size_t __num)
-    { __add_object(__obj, __container_size_info(__stack, __num)); }
-
-    // XXX Undefined?
-    void
-    __construct(const void* __obj, std::size_t __inum);
-  
-    // Call at destruction/clean to set container final size.
-    void
-    __destruct(const void* __obj, std::size_t __num, std::size_t __inum)
+    __container_size_info*
+    __insert(__stack_t __stack, std::size_t __num)
     {
-      if (!__is_on())
-	return;
-
-      __object_t __obj_handle = static_cast<__object_t>(__obj);
-
-      __container_size_info* __object_info = __get_object_info(__obj_handle);
-      if (!__object_info)
-	return;
-
-      __object_info->__destruct(__num, __inum);
-      __retire_object(__obj_handle);
+      __container_size_info* __ret =  __add_object(__stack);
+      if (__ret)
+	__ret->__init(__num);
+      return __ret;
     }
 
-    // Call at resize to set resize/cost information.
+    // Call at destruction/clean to set container final size.
     void
-    __resize(const void* __obj, int __from, int __to)
+    __destruct(__container_size_info* __obj_info,
+	       std::size_t __num, std::size_t __inum)
     {
-      if (!__is_on())
-	return;
-
-      __container_size_info* __object_info = __get_object_info(__obj);
-      if (!__object_info)
-	return;
-
-      __object_info->__resize(__from, __to);
+      __obj_info->__destruct(__num, __inum);
+      __retire_object(__obj_info);
     }
   };
 

@@ -1,4 +1,4 @@
-// Copyright 2010 The Go Authors.  All rights reserved.
+// Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
 )
 
 // A Writer implements convenience methods for writing
@@ -27,7 +26,7 @@ var crnl = []byte{'\r', '\n'}
 var dotcrnl = []byte{'.', '\r', '\n'}
 
 // PrintfLine writes the formatted output followed by \r\n.
-func (w *Writer) PrintfLine(format string, args ...interface{}) os.Error {
+func (w *Writer) PrintfLine(format string, args ...interface{}) error {
 	w.closeDot()
 	fmt.Fprintf(w.W, format, args...)
 	w.W.Write(crnl)
@@ -37,7 +36,7 @@ func (w *Writer) PrintfLine(format string, args ...interface{}) os.Error {
 // DotWriter returns a writer that can be used to write a dot-encoding to w.
 // It takes care of inserting leading dots when necessary,
 // translating line-ending \n into \r\n, and adding the final .\r\n line
-// when the DotWriter is closed.  The caller should close the
+// when the DotWriter is closed. The caller should close the
 // DotWriter before the next call to a method on w.
 //
 // See the documentation for Reader's DotReader method for details about dot-encoding.
@@ -64,7 +63,7 @@ const (
 	wstateData             // writing data in middle of line
 )
 
-func (d *dotWriter) Write(b []byte) (n int, err os.Error) {
+func (d *dotWriter) Write(b []byte) (n int, err error) {
 	bw := d.w.W
 	for n < len(b) {
 		c := b[n]
@@ -100,7 +99,7 @@ func (d *dotWriter) Write(b []byte) (n int, err os.Error) {
 	return
 }
 
-func (d *dotWriter) Close() os.Error {
+func (d *dotWriter) Close() error {
 	if d.w.dot == d {
 		d.w.dot = nil
 	}

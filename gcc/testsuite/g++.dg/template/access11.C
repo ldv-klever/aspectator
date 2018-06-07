@@ -5,7 +5,7 @@
 // Access checking during explicit instantiation.
 
 class A {
-  typedef int X;		// { dg-error "private" }
+  typedef int X;		// { dg-message "private" }
 };
 
 class X {
@@ -21,4 +21,4 @@ template <typename T> struct X::Y {
   typename T::X x;		// { dg-error "this context" }
 };
 
-template struct X::Y<A>;	// { dg-message "instantiated from here" }
+template struct X::Y<A>;	// { dg-message "required from here" }

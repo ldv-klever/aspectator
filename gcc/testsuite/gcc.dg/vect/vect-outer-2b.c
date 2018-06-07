@@ -37,5 +37,4 @@ int main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "strided access in outer loop." 1 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
+/* { dg-final { scan-tree-dump-times "grouped access in outer loop" 1 "vect" } } */

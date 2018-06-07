@@ -2,7 +2,7 @@
 template <class T >
 struct S
 {
-  S() : S() {} // { dg-error "base" }
-};
+  S() : S() {} // { dg-message "delegating constructors" }
+}; // { dg-error "delegates to itself" "" { target *-*-* } .-1 }
 
-S<int> s; // { dg-message "instantiated" }
+S<int> s;

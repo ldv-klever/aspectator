@@ -2,7 +2,7 @@
    as a def.  */
 
 /* { dg-do compile } */
-/* { dg-options "-O -fdump-tree-optimized" } */
+/* { dg-options "-O -fdump-tree-optimized-nouid" } */
 
 void f()
 {
@@ -14,4 +14,3 @@ void f()
 
 /* { dg-final { scan-tree-dump-times "42" 1 "optimized" } } */
 /* { dg-final { scan-tree-dump-times "63" 1 "optimized" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

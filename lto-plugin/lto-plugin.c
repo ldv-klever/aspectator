@@ -1,5 +1,5 @@
 /* LTO plugin for gold and/or GNU ld.
-   Copyright (C) 2009, 2010 Free Software Foundation, Inc.
+   Copyright (C) 2009-2017 Free Software Foundation, Inc.
    Contributed by Rafael Avila de Espindola (espindola@google.com).
 
 This program is free software; you can redistribute it and/or modify
@@ -39,6 +39,7 @@ along with this program; see the file COPYING3.  If not see
 #include <stdint.h>
 #endif
 #include <assert.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,6 +63,14 @@ along with this program; see the file COPYING3.  If not see
 #include "simple-object.h"
 #include "plugin-api.h"
 
+/* We need to use I64 instead of ll width-specifier on native Windows.
+   The reason for this is that older MS-runtimes don't support the ll.  */
+#ifdef __MINGW32__
+#define PRI_LL "I64"
+#else
+#define PRI_LL "ll"
+#endif
+
 /* Handle opening elf files on hosts, such as Windows, that may use
    text file handling that will break binary access.  */
 #ifndef O_BINARY
@@ -77,15 +86,18 @@ along with this program; see the file COPYING3.  If not see
 
 #define LTO_SECTION_PREFIX	".gnu.lto_.symtab"
 #define LTO_SECTION_PREFIX_LEN	(sizeof (LTO_SECTION_PREFIX) - 1)
+#define OFFLOAD_SECTION		".gnu.offload_lto_.opts"
+#define OFFLOAD_SECTION_LEN	(sizeof (OFFLOAD_SECTION) - 1)
 
 /* The part of the symbol table the plugin has to keep track of. Note that we
    must keep SYMS until all_symbols_read is called to give the linker time to
-   copy the symbol information. */
+   copy the symbol information. 
+   The id must be 64bit to minimze collisions. */
 
 struct sym_aux
 {
   uint32_t slot;
-  unsigned id;
+  unsigned long long id;
   unsigned next_conflict;
 };
 
@@ -94,13 +106,14 @@ struct plugin_symtab
   int nsyms;
   struct sym_aux *aux;
   struct ld_plugin_symbol *syms;
-  unsigned id;
+  unsigned long long id;
 };
 
 /* Encapsulates object file data during symbol scan.  */
 struct plugin_objfile
 {
   int found;
+  int offload;
   simple_object_read *objfile;
   struct plugin_symtab *out;
   const struct ld_plugin_input_file *file;
@@ -116,6 +129,14 @@ struct plugin_file_info
   struct plugin_symtab conflicts;
 };
 
+/* List item with name of the file with offloading.  */
+
+struct plugin_offload_file
+{
+  char *name;
+  struct plugin_offload_file *next;
+};
+
 /* Until ASM_OUTPUT_LABELREF can be hookized and decoupled from
    stdio file streams, we do simple label translation here.  */
 
@@ -129,7 +150,7 @@ enum symbol_style
 static char *arguments_file_name;
 static ld_plugin_register_claim_file register_claim_file;
 static ld_plugin_register_all_symbols_read register_all_symbols_read;
-static ld_plugin_get_symbols get_symbols;
+static ld_plugin_get_symbols get_symbols, get_symbols_v2;
 static ld_plugin_register_cleanup register_cleanup;
 static ld_plugin_add_input_file add_input_file;
 static ld_plugin_add_input_library add_input_library;
@@ -138,6 +159,17 @@ static ld_plugin_add_symbols add_symbols;
 
 static struct plugin_file_info *claimed_files = NULL;
 static unsigned int num_claimed_files = 0;
+
+/* List of files with offloading.  */
+static struct plugin_offload_file *offload_files;
+/* Last file in the list.  */
+static struct plugin_offload_file *offload_files_last;
+/* Last non-archive file in the list.  */
+static struct plugin_offload_file *offload_files_last_obj;
+/* Last LTO file in the list.  */
+static struct plugin_offload_file *offload_files_last_lto;
+/* Total number of files with offloading.  */
+static unsigned num_offload_files;
 
 static char **output_files = NULL;
 static unsigned int num_output_files = 0;
@@ -151,6 +183,8 @@ static unsigned int num_pass_through_items;
 static char debug;
 static char nop;
 static char *resolution_file = NULL;
+static enum ld_plugin_output_file_type linker_output;
+static int linker_output_set;
 
 /* The version of gold being used, or -1 if not gold.  The number is
    MAJOR * 100 + MINOR.  */
@@ -300,20 +334,19 @@ translate (char *data, char *end, struct plugin_symtab *out)
    resolution. */
 
 static void
-free_1 (void)
+free_1 (struct plugin_file_info *files, unsigned num_files)
 {
   unsigned int i;
-  for (i = 0; i < num_claimed_files; i++)
+  for (i = 0; i < num_files; i++)
     {
-      struct plugin_file_info *info = &claimed_files[i];
+      struct plugin_file_info *info = &files[i];
       struct plugin_symtab *symtab = &info->symtab;
       unsigned int j;
       for (j = 0; j < symtab->nsyms; j++)
 	{
 	  struct ld_plugin_symbol *s = &symtab->syms[j];
 	  free (s->name);
-	  if (s->comdat_key)
-	    free (s->comdat_key);
+	  free (s->comdat_key);
 	}
       free (symtab->syms);
       symtab->syms = NULL;
@@ -342,8 +375,15 @@ free_2 (void)
   claimed_files = NULL;
   num_claimed_files = 0;
 
-  if (arguments_file_name)
-    free (arguments_file_name);
+  while (offload_files)
+    {
+      struct plugin_offload_file *ofld = offload_files;
+      offload_files = offload_files->next;
+      free (ofld);
+    }
+  num_offload_files = 0;
+
+  free (arguments_file_name);
   arguments_file_name = NULL;
 }
 
@@ -361,7 +401,8 @@ dump_symtab (FILE *f, struct plugin_symtab *symtab)
       
       assert (resolution != LDPR_UNKNOWN);
 
-      fprintf (f, "%u %x %s %s\n", (unsigned int) slot, symtab->aux[j].id,
+      fprintf (f, "%u %" PRI_LL "x %s %s\n",
+               (unsigned int) slot, symtab->aux[j].id,
 	       lto_resolution_str[resolution], 
 	       symtab->syms[j].name);
     }
@@ -443,7 +484,12 @@ write_resolution (void)
       struct plugin_symtab *symtab = &info->symtab;
       struct ld_plugin_symbol *syms = symtab->syms;
 
-      get_symbols (info->handle, symtab->nsyms, syms);
+      /* Version 2 of API supports IRONLY_EXP resolution that is
+         accepted by GCC-4.7 and newer.  */
+      if (get_symbols_v2)
+        get_symbols_v2 (info->handle, symtab->nsyms, syms);
+      else
+        get_symbols (info->handle, symtab->nsyms, syms);
 
       finish_conflict_resolution (symtab, &info->conflicts);
 
@@ -591,10 +637,11 @@ static enum ld_plugin_status
 all_symbols_read_handler (void)
 {
   unsigned i;
-  unsigned num_lto_args = num_claimed_files + lto_wrapper_num_args + 1;
+  unsigned num_lto_args = num_claimed_files + lto_wrapper_num_args + 3;
   char **lto_argv;
+  const char *linker_output_str = NULL;
   const char **lto_arg_ptr;
-  if (num_claimed_files == 0)
+  if (num_claimed_files + num_offload_files == 0)
     return LDPS_OK;
 
   if (nop)
@@ -609,10 +656,59 @@ all_symbols_read_handler (void)
 
   write_resolution ();
 
-  free_1 ();
+  free_1 (claimed_files, num_claimed_files);
 
   for (i = 0; i < lto_wrapper_num_args; i++)
     *lto_arg_ptr++ = lto_wrapper_argv[i];
+
+  assert (linker_output_set);
+  switch (linker_output)
+    {
+    case LDPO_REL:
+      linker_output_str = "-flinker-output=rel";
+      break;
+    case LDPO_DYN:
+      linker_output_str = "-flinker-output=dyn";
+      break;
+    case LDPO_PIE:
+      linker_output_str = "-flinker-output=pie";
+      break;
+    case LDPO_EXEC:
+      linker_output_str = "-flinker-output=exec";
+      break;
+    default:
+      message (LDPL_FATAL, "unsupported linker output %i", linker_output);
+      break;
+    }
+  *lto_arg_ptr++ = xstrdup (linker_output_str);
+
+  if (num_offload_files > 0)
+    {
+      FILE *f;
+      char *arg;
+      char *offload_objects_file_name;
+      struct plugin_offload_file *ofld;
+
+      offload_objects_file_name = make_temp_file (".ofldlist");
+      check (offload_objects_file_name, LDPL_FATAL,
+	     "Failed to generate a temporary file name");
+      f = fopen (offload_objects_file_name, "w");
+      check (f, LDPL_FATAL, "could not open file with offload objects");
+      fprintf (f, "%u\n", num_offload_files);
+
+      /* Skip the dummy item at the start of the list.  */
+      ofld = offload_files->next;
+      while (ofld)
+	{
+	  fprintf (f, "%s\n", ofld->name);
+	  ofld = ofld->next;
+	}
+      fclose (f);
+
+      arg = concat ("-foffload-objects=", offload_objects_file_name, NULL);
+      check (arg, LDPL_FATAL, "could not allocate");
+      *lto_arg_ptr++ = arg;
+    }
 
   for (i = 0; i < num_claimed_files; i++)
     {
@@ -741,7 +837,7 @@ resolve_conflicts (struct plugin_symtab *t, struct plugin_symtab *conflicts)
   conflicts->syms = xmalloc (sizeof (struct ld_plugin_symbol) * outlen);
   conflicts->aux = xmalloc (sizeof (struct sym_aux) * outlen);
 
-  /* Move all duplicate symbols into the auxillary conflicts table. */
+  /* Move all duplicate symbols into the auxiliary conflicts table. */
   out = 0;
   for (i = 0; i < t->nsyms; i++) 
     {
@@ -761,7 +857,7 @@ resolve_conflicts (struct plugin_symtab *t, struct plugin_symtab *conflicts)
 	    {
 	      SWAP (struct ld_plugin_symbol, *orig, *s);
 	      SWAP (uint32_t, orig_aux->slot, aux->slot);
-	      SWAP (unsigned, orig_aux->id, aux->id);
+	      SWAP (unsigned long long, orig_aux->id, aux->id);
 	      /* Don't swap conflict chain pointer */
 	    } 
 
@@ -804,30 +900,62 @@ process_symtab (void *data, const char *name, off_t offset, off_t length)
 {
   struct plugin_objfile *obj = (struct plugin_objfile *)data;
   char *s;
-  char *secdata;
+  char *secdatastart, *secdata;
 
   if (strncmp (name, LTO_SECTION_PREFIX, LTO_SECTION_PREFIX_LEN) != 0)
     return 1;
 
   s = strrchr (name, '.');
   if (s)
-    sscanf (s, ".%x", &obj->out->id);
-  secdata = xmalloc (length);
+    sscanf (s, ".%" PRI_LL "x", &obj->out->id);
+  secdata = secdatastart = xmalloc (length);
   offset += obj->file->offset;
-  if (offset != lseek (obj->file->fd, offset, SEEK_SET)
-	|| length != read (obj->file->fd, secdata, length))
+  if (offset != lseek (obj->file->fd, offset, SEEK_SET))
+    goto err;
+
+  do
     {
-      if (message)
-	message (LDPL_FATAL, "%s: corrupt object file", obj->file->name);
-      /* Force claim_file_handler to abandon this file.  */
-      obj->found = 0;
-      free (secdata);
+      ssize_t got = read (obj->file->fd, secdata, length);
+      if (got == 0)
+	break;
+      else if (got > 0)
+	{
+	  secdata += got;
+	  length -= got;
+	}
+      else if (errno != EINTR)
+	goto err;
+    }
+  while (length > 0);
+  if (length > 0)
+    goto err;
+
+  translate (secdatastart, secdata, obj->out);
+  obj->found++;
+  free (secdatastart);
+  return 1;
+
+err:
+  if (message)
+    message (LDPL_FATAL, "%s: corrupt object file", obj->file->name);
+  /* Force claim_file_handler to abandon this file.  */
+  obj->found = 0;
+  free (secdatastart);
+  return 0;
+}
+
+/* Find an offload section of an object file.  */
+
+static int
+process_offload_section (void *data, const char *name, off_t offset, off_t len)
+{
+  if (!strncmp (name, OFFLOAD_SECTION, OFFLOAD_SECTION_LEN))
+    {
+      struct plugin_objfile *obj = (struct plugin_objfile *) data;
+      obj->offload = 1;
       return 0;
     }
 
-  translate (secdata, secdata + length, obj->out);
-  obj->found++;
-  free (secdata);
   return 1;
 }
 
@@ -847,17 +975,16 @@ claim_file_handler (const struct ld_plugin_input_file *file, int *claimed)
 
   if (file->offset != 0)
     {
-      char *objname;
       /* We pass the offset of the actual file, not the archive header.
          Can't use PRIx64, because that's C99, so we have to print the
-	 64-bit hex int as two 32-bit ones. */
+	 64-bit hex int as two 32-bit ones.  Use xasprintf instead of
+	 asprintf because asprintf doesn't work as expected on some older
+	 mingw32 hosts.  */
       int lo, hi;
       lo = file->offset & 0xffffffff;
       hi = ((int64_t)file->offset >> 32) & 0xffffffff;
-      int t = hi ? asprintf (&objname, "%s@0x%x%08x", file->name, lo, hi)
-		: asprintf (&objname, "%s@0x%x", file->name, lo);
-      check (t >= 0, LDPL_FATAL, "asprintf failed");
-      lto_file.name = objname;
+      lto_file.name = hi ? xasprintf ("%s@0x%x%08x", file->name, hi, lo)
+      			 : xasprintf ("%s@0x%x", file->name, lo);
     }
   else
     {
@@ -868,6 +995,7 @@ claim_file_handler (const struct ld_plugin_input_file *file, int *claimed)
   *claimed = 0;
   obj.file = file;
   obj.found = 0;
+  obj.offload = 0;
   obj.out = &lto_file.symtab;
   errmsg = NULL;
   obj.objfile = simple_object_start_read (file->fd, file->offset, LTO_SEGMENT_NAME,
@@ -889,22 +1017,93 @@ claim_file_handler (const struct ld_plugin_input_file *file, int *claimed)
       goto err;
     }
 
-  if (obj.found == 0)
+  if (obj.objfile)
+    simple_object_find_sections (obj.objfile, process_offload_section,
+				 &obj, &err);
+
+  if (obj.found == 0 && obj.offload == 0)
     goto err;
 
   if (obj.found > 1)
     resolve_conflicts (&lto_file.symtab, &lto_file.conflicts);
 
-  status = add_symbols (file->handle, lto_file.symtab.nsyms,
-			lto_file.symtab.syms);
-  check (status == LDPS_OK, LDPL_FATAL, "could not add symbols");
+  if (obj.found > 0)
+    {
+      status = add_symbols (file->handle, lto_file.symtab.nsyms,
+			    lto_file.symtab.syms);
+      check (status == LDPS_OK, LDPL_FATAL, "could not add symbols");
 
-  *claimed = 1;
-  num_claimed_files++;
-  claimed_files =
-    xrealloc (claimed_files,
-	      num_claimed_files * sizeof (struct plugin_file_info));
-  claimed_files[num_claimed_files - 1] = lto_file;
+      num_claimed_files++;
+      claimed_files =
+	xrealloc (claimed_files,
+		  num_claimed_files * sizeof (struct plugin_file_info));
+      claimed_files[num_claimed_files - 1] = lto_file;
+
+      *claimed = 1;
+    }
+
+  if (offload_files == NULL)
+    {
+      /* Add dummy item to the start of the list.  */
+      offload_files = xmalloc (sizeof (struct plugin_offload_file));
+      offload_files->name = NULL;
+      offload_files->next = NULL;
+      offload_files_last = offload_files;
+    }
+
+  /* If this is an LTO file without offload, and it is the first LTO file, save
+     the pointer to the last offload file in the list.  Further offload LTO
+     files will be inserted after it, if any.  */
+  if (*claimed && obj.offload == 0 && offload_files_last_lto == NULL)
+    offload_files_last_lto = offload_files_last;
+
+  if (obj.offload == 1)
+    {
+      /* Add file to the list.  The order must be exactly the same as the final
+	 order after recompilation and linking, otherwise host and target tables
+	 with addresses wouldn't match.  If a static library contains both LTO
+	 and non-LTO objects, ld and gold link them in a different order.  */
+      struct plugin_offload_file *ofld
+	= xmalloc (sizeof (struct plugin_offload_file));
+      ofld->name = lto_file.name;
+      ofld->next = NULL;
+
+      if (*claimed && offload_files_last_lto == NULL && file->offset != 0
+	  && gold_version == -1)
+	{
+	  /* ld only: insert first LTO file from the archive after the last real
+	     object file immediately preceding the archive, or at the begin of
+	     the list if there was no real objects before archives.  */
+	  if (offload_files_last_obj != NULL)
+	    {
+	      ofld->next = offload_files_last_obj->next;
+	      offload_files_last_obj->next = ofld;
+	    }
+	  else
+	    {
+	      ofld->next = offload_files->next;
+	      offload_files->next = ofld;
+	    }
+	}
+      else if (*claimed && offload_files_last_lto != NULL)
+	{
+	  /* Insert LTO file after the last LTO file in the list.  */
+	  ofld->next = offload_files_last_lto->next;
+	  offload_files_last_lto->next = ofld;
+	}
+      else
+	/* Add non-LTO file or first non-archive LTO file to the end of the
+	   list.  */
+	offload_files_last->next = ofld;
+
+      if (ofld->next == NULL)
+	offload_files_last = ofld;
+      if (file->offset == 0)
+	offload_files_last_obj = ofld;
+      if (*claimed)
+	offload_files_last_lto = ofld;
+      num_offload_files++;
+    }
 
   goto cleanup;
 
@@ -988,6 +1187,9 @@ onload (struct ld_plugin_tv *tv)
 	case LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK:
 	  register_all_symbols_read = p->tv_u.tv_register_all_symbols_read;
 	  break;
+	case LDPT_GET_SYMBOLS_V2:
+	  get_symbols_v2 = p->tv_u.tv_get_symbols;
+	  break;
 	case LDPT_GET_SYMBOLS:
 	  get_symbols = p->tv_u.tv_get_symbols;
 	  break;
@@ -1005,6 +1207,10 @@ onload (struct ld_plugin_tv *tv)
 	  break;
 	case LDPT_GOLD_VERSION:
 	  gold_version = p->tv_u.tv_val;
+	  break;
+	case LDPT_LINKER_OUTPUT:
+	  linker_output = (enum ld_plugin_output_file_type) p->tv_u.tv_val;
+	  linker_output_set = 1;
 	  break;
 	default:
 	  break;
@@ -1032,6 +1238,13 @@ onload (struct ld_plugin_tv *tv)
       check (status == LDPS_OK, LDPL_FATAL,
 	     "could not register the all_symbols_read callback");
     }
+
+  /* Support -fno-use-linker-plugin by failing to load the plugin
+     for the case where it is auto-loaded by BFD.  */
+  char *collect_gcc_options = getenv ("COLLECT_GCC_OPTIONS");
+  if (collect_gcc_options
+      && strstr (collect_gcc_options, "'-fno-use-linker-plugin'"))
+    return LDPS_ERR;
 
   return LDPS_OK;
 }

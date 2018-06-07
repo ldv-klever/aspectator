@@ -9,6 +9,7 @@ class A
 {
 public:
   int data;
+  virtual float distraction (float f);
   virtual int foo (int i);
 };
 
@@ -23,6 +24,12 @@ class C : public A
 public:
   virtual int foo (int i);
 };
+
+float A::distraction (float f)
+{
+  f += 6.2;
+  return f/2;
+}
 
 int A::foo (int i)
 {
@@ -59,5 +66,3 @@ int main (int argc, char *argv[])
 
 /* { dg-final { scan-ipa-dump "Discovered a virtual call to a known target.*B::foo"  "cp"  } } */
 /* { dg-final { scan-tree-dump-times "OBJ_TYPE_REF" 0 "optimized"} } */
-/* { dg-final { cleanup-ipa-dump "cp" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

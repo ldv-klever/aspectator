@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,36 +33,19 @@ with Types; use Types;
 
 package Sem_Warn is
 
-   -------------------
-   -- Warning Flags --
-   -------------------
-
-   --  These flags are activated or deactivated by -gnatw switches and control
-   --  whether warnings of a given class will be generated or not.
-
-   --  Note: most of these flags are still in opt, but the plan is to move them
-   --  here as time goes by.
-
-   Warn_On_Record_Holes : Boolean := False;
-   --  Warn when explicit record component clauses leave uncovered holes (gaps)
-   --  in a record layout. Off by default, set by -gnatw.h (but not -gnatwa).
-
-   Warn_On_Overridden_Size : Boolean := False;
-   --  Warn when explicit record component clause or array component_size
-   --  clause specifies a size that overrides a size for the type which was
-   --  set with an explicit size clause. Off by default, set by -gnatw.s (but
-   --  not -gnatwa).
-
    ------------------------
    -- Warnings Off Table --
    ------------------------
 
    type Warnings_Off_Entry is record
       N : Node_Id;
-      --  A pragma Warnings (Off, ent) node
+      --  A pragma Warnings (Off, ent [,Reason]) node
 
       E : Entity_Id;
       --  The entity involved
+
+      R : String_Id;
+      --  Warning reason if present, or null if not (not currently used)
    end record;
 
    --  An entry is made in the following table for any valid Pragma Warnings
@@ -84,22 +67,6 @@ package Sem_Warn is
 
    procedure Initialize;
    --  Initialize this package for new compilation
-
-   function Set_Warning_Switch (C : Character) return Boolean;
-   --  This function sets the warning switch or switches corresponding to the
-   --  given character. It is used to process a -gnatw switch on the command
-   --  line, or a character in a string literal in pragma Warnings. Returns
-   --  True for valid warning character C, False for invalid character.
-
-   function Set_Dot_Warning_Switch (C : Character) return Boolean;
-   --  This function sets the warning switch or switches corresponding to the
-   --  given character preceded by a dot. Used to process a -gnatw. switch on
-   --  the command line or .C in a string literal in pragma Warnings. Returns
-   --  True for valid warning character C, False for invalid character.
-
-   procedure Set_GNAT_Mode_Warnings;
-   --  This is called in -gnatg mode to set the warnings for gnat mode. It is
-   --  also used to set the proper warning statuses for -gnatw.g.
 
    ------------------------------------------
    -- Routines to Handle Unused References --
@@ -163,7 +130,7 @@ package Sem_Warn is
    --  the end of the compilation process (see body of this routine for a
    --  discussion of why this is done). This procedure outputs the warnings.
    --  Note: this should be called before Output_Unreferenced_Messages, since
-   --  if we have an IN OUT warning, that's the one we want to see!
+   --  if we have an IN OUT warning, that's the one we want to see.
 
    procedure Output_Obsolescent_Entity_Warnings (N : Node_Id; E : Entity_Id);
    --  N is a reference to obsolescent entity E, for which appropriate warning
@@ -234,7 +201,9 @@ package Sem_Warn is
    procedure Warn_On_Overlapping_Actuals (Subp : Entity_Id; N : Node_Id);
    --  Called on a subprogram call. Checks whether an IN OUT actual that is
    --  not by-copy may overlap with another actual, thus leading to aliasing
-   --  in the body of the called subprogram.
+   --  in the body of the called subprogram. This is indeed a warning in Ada
+   --  versions prior to Ada 2012, but, unless Opt.Error_To_Warning is set by
+   --  use of debug flag -gnatd.E, this is illegal and generates an error.
 
    procedure Warn_On_Suspicious_Index (Name : Entity_Id; X : Node_Id);
    --  This is called after resolving an indexed component or a slice. Name
@@ -244,6 +213,14 @@ package Sem_Warn is
    --  the index is of the form of a literal or Name'Length [- literal], then
    --  a warning is generated that the subscripting operation is possibly
    --  incorrectly assuming a lower bound of 1.
+
+   procedure Warn_On_Suspicious_Update (N : Node_Id);
+   --  N is a semantically analyzed attribute reference Prefix'Update. Issue
+   --  a warning if Warn_On_Suspicious_Contract is set, and N is the left-hand
+   --  side or right-hand side of an equality or inequality of the form:
+   --    Prefix = Prefix'Update(...)
+   --  or
+   --    Prefix'Update(...) = Prefix
 
    procedure Warn_On_Unassigned_Out_Parameter
      (Return_Node : Node_Id;
@@ -261,7 +238,7 @@ package Sem_Warn is
    --  should only be made if at least one of the flags Warn_On_Modified_Unread
    --  or Warn_On_All_Unread_Out_Parameters is True, and if Ent is in the
    --  extended main source unit. N is Empty for the end of block call
-   --  (warning message says value unreferenced), or the it is the node for
+   --  (warning message says value unreferenced), or it is the node for
    --  an overwriting assignment (warning message points to this assignment).
 
    procedure Warn_On_Useless_Assignments (E : Entity_Id);
@@ -269,5 +246,19 @@ package Sem_Warn is
    --  Called at the end of a block or subprogram. Scans the entities of the
    --  block or subprogram to see if there are any variables for which useless
    --  assignments were made (assignments whose values were never read).
+
+   ----------------------
+   -- Utility Routines --
+   ----------------------
+
+   function Has_Junk_Name (E : Entity_Id) return Boolean;
+   --  Return True if the entity name contains any of the following substrings:
+   --    discard
+   --    dummy
+   --    ignore
+   --    junk
+   --    unused
+   --  Used to suppress warnings on names matching these patterns. The contents
+   --  of Name_Buffer and Name_Len are destroyed by this call.
 
 end Sem_Warn;

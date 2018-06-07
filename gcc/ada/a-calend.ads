@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -33,7 +33,13 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package Ada.Calendar is
+package Ada.Calendar with
+  SPARK_Mode,
+  Abstract_State => (Clock_Time with Synchronous,
+                                     External => (Async_Readers,
+                                                  Async_Writers)),
+  Initializes    => Clock_Time
+is
 
    type Time is private;
 
@@ -49,7 +55,9 @@ package Ada.Calendar is
 
    subtype Day_Duration is Duration range 0.0 .. 86_400.0;
 
-   function Clock return Time;
+   function Clock return Time with
+     Volatile_Function,
+     Global => Clock_Time;
    --  The returned time value is the number of nanoseconds since the start
    --  of Ada time (1901-01-01 00:00:00.0 UTC). If leap seconds are enabled,
    --  the result will contain all elapsed leap seconds since the start of
@@ -108,6 +116,11 @@ package Ada.Calendar is
    Time_Error : exception;
 
 private
+   --  Mark the private part as SPARK_Mode Off to avoid accounting for variable
+   --  Invalid_Time_Zone_Offset in abstract state.
+
+   pragma SPARK_Mode (Off);
+
    pragma Inline (Clock);
 
    pragma Inline (Year);
@@ -147,7 +160,7 @@ private
    --  00:00:00.0 UTC - 2399-12-31-23:59:59.999999999 UTC).
 
    ------------------
-   -- Leap seconds --
+   -- Leap Seconds --
    ------------------
 
    --  Due to Earth's slowdown, the astronomical time is not as precise as the
@@ -185,7 +198,7 @@ private
    --  modification.
 
    ------------------------------
-   -- Non-leap centennial years --
+   -- Non-leap Centennial Years --
    ------------------------------
 
    --  Over the range of Ada time, centennial years 2100, 2200 and 2300 are
@@ -193,15 +206,26 @@ private
    --  of year - 4 to year + 4. Internally, routines Split and Time_Of add or
    --  subtract a "fake" February 29 to facilitate the arithmetic involved.
 
-   --  The underlying type of Time has been chosen to be a 64 bit signed
-   --  integer number since it allows for easier processing of sub seconds
-   --  and arithmetic.
+   ------------------------
+   -- Local Declarations --
+   ------------------------
 
-   type Time_Rep is range -2 ** 63 .. +2 ** 63 - 1;
+   type Time_Rep is new Long_Long_Integer;
    type Time is new Time_Rep;
+   --  The underlying type of Time has been chosen to be a 64 bit signed
+   --  integer number since it allows for easier processing of sub-seconds
+   --  and arithmetic. We use Long_Long_Integer to allow this unit to compile
+   --  when using custom target configuration files where the max integer is
+   --  32 bits. This is useful for static analysis tools such as SPARK or
+   --  CodePeer.
+   --
+   --  Note: the reason we have two separate types here is to avoid problems
+   --  with overloading ambiguities in the body if we tried to use Time as an
+   --  internal computational type.
 
    Days_In_Month : constant array (Month_Number) of Day_Number :=
                      (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);
+   --  Days in month for non-leap year, leap year case is adjusted in code
 
    Invalid_Time_Zone_Offset : Long_Integer;
    pragma Import (C, Invalid_Time_Zone_Offset, "__gnat_invalid_tzoff");
@@ -209,7 +233,11 @@ private
    function Is_Leap (Year : Year_Number) return Boolean;
    --  Determine whether a given year is leap
 
-   --  The following packages provide a target independent interface to the
+   ----------------------------------------------------------
+   -- Target-Independent Interface to Children of Calendar --
+   ----------------------------------------------------------
+
+   --  The following packages provide a target-independent interface to the
    --  children of Calendar - Arithmetic, Conversions, Delays, Formatting and
    --  Time_Zones.
 
@@ -306,21 +334,25 @@ private
       --  within the range of 0 .. 6 (Monday .. Sunday).
 
       procedure Split
-        (Date      : Time;
-         Year      : out Year_Number;
-         Month     : out Month_Number;
-         Day       : out Day_Number;
-         Day_Secs  : out Day_Duration;
-         Hour      : out Integer;
-         Minute    : out Integer;
-         Second    : out Integer;
-         Sub_Sec   : out Duration;
-         Leap_Sec  : out Boolean;
-         Is_Ada_05 : Boolean;
-         Time_Zone : Long_Integer);
-      --  Split a time value into its components. Set Is_Ada_05 to use the
-      --  local time zone (the value in Time_Zone is ignored) when splitting
-      --  a time value.
+        (Date        : Time;
+         Year        : out Year_Number;
+         Month       : out Month_Number;
+         Day         : out Day_Number;
+         Day_Secs    : out Day_Duration;
+         Hour        : out Integer;
+         Minute      : out Integer;
+         Second      : out Integer;
+         Sub_Sec     : out Duration;
+         Leap_Sec    : out Boolean;
+         Use_TZ      : Boolean;
+         Is_Historic : Boolean;
+         Time_Zone   : Long_Integer);
+      pragma Export (Ada, Split, "__gnat_split");
+      --  Split a time value into its components. If flag Is_Historic is set,
+      --  this routine would try to use to the best of the OS's abilities the
+      --  time zone offset that was or will be in effect on Date. Set Use_TZ
+      --  to use the local time zone (the value in Time_Zone is ignored) when
+      --  splitting a time value.
 
       function Time_Of
         (Year         : Year_Number;
@@ -331,16 +363,20 @@ private
          Minute       : Integer;
          Second       : Integer;
          Sub_Sec      : Duration;
-         Leap_Sec     : Boolean := False;
-         Use_Day_Secs : Boolean := False;
-         Is_Ada_05    : Boolean := False;
-         Time_Zone    : Long_Integer := 0) return Time;
+         Leap_Sec     : Boolean;
+         Use_Day_Secs : Boolean;
+         Use_TZ       : Boolean;
+         Is_Historic  : Boolean;
+         Time_Zone    : Long_Integer) return Time;
+      pragma Export (Ada, Time_Of, "__gnat_time_of");
       --  Given all the components of a date, return the corresponding time
       --  value. Set Use_Day_Secs to use the value in Day_Secs, otherwise the
       --  day duration will be calculated from Hour, Minute, Second and Sub_
-      --  Sec. Set Is_Ada_05 to use the local time zone (the value in formal
-      --  Time_Zone is ignored) when building a time value and to verify the
-      --  validity of a requested leap second.
+      --  Sec. If flag Is_Historic is set, this routine would try to use to the
+      --  best of the OS's abilities the time zone offset that was or will be
+      --  in effect on the input date. Set Use_TZ to use the local time zone
+      --  (the value in formal Time_Zone is ignored) when building a time value
+      --  and to verify the validity of a requested leap second.
 
    end Formatting_Operations;
 
@@ -351,7 +387,8 @@ private
    package Time_Zones_Operations is
 
       function UTC_Time_Offset (Date : Time) return Long_Integer;
-      --  Return the offset in seconds from UTC
+      --  Return (in seconds) the difference between the local time zone and
+      --  UTC time at a specific historic date.
 
    end Time_Zones_Operations;
 

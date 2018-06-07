@@ -5,11 +5,11 @@
 
 class Q {
 	template<class T>
-	class X {		// { dg-error "" } Q::X private
+	class X {		// { dg-message "" } Q::X private
 	};
 };
 template<template<class> class XX>
 class Y {
 	XX<int> x_;
 };
-Y<Q::X> y;			// { dg-error "" } instantiated from here
+Y<Q::X> y;			// { dg-error "" } required from here

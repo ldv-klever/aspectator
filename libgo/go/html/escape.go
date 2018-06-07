@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package html provides functions for escaping and unescaping HTML text.
 package html
 
 import (
-	"bytes"
 	"strings"
-	"utf8"
+	"unicode/utf8"
 )
 
-// These replacements permit compatibility with old numeric entities that 
+// These replacements permit compatibility with old numeric entities that
 // assumed Windows-1252 encoding.
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#consume-a-character-reference
-var replacementTable = [...]int{
+var replacementTable = [...]rune{
 	'\u20AC', // First entry is what 0x80 should be replaced with.
 	'\u0081',
 	'\u201A',
@@ -46,7 +46,7 @@ var replacementTable = [...]int{
 	'\u009D',
 	'\u017E',
 	'\u0178', // Last entry is 0x9F.
-	// 0x00->'\uFFFD' is handled programmatically. 
+	// 0x00->'\uFFFD' is handled programmatically.
 	// 0x0D->'\u000D' is a no-op.
 }
 
@@ -54,6 +54,8 @@ var replacementTable = [...]int{
 // corresponding "<" to b[dst:], returning the incremented dst and src cursors.
 // Precondition: b[src] == '&' && dst <= src.
 func unescapeEntity(b []byte, dst, src int) (dst1, src1 int) {
+	const attribute = false
+
 	// http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#consume-a-character-reference
 
 	// i starts at 1 because we already know that s[0] == '&'.
@@ -77,23 +79,23 @@ func unescapeEntity(b []byte, dst, src int) (dst1, src1 int) {
 			i++
 		}
 
-		x := 0
+		x := '\x00'
 		for i < len(s) {
 			c = s[i]
 			i++
 			if hex {
 				if '0' <= c && c <= '9' {
-					x = 16*x + int(c) - '0'
+					x = 16*x + rune(c) - '0'
 					continue
 				} else if 'a' <= c && c <= 'f' {
-					x = 16*x + int(c) - 'a' + 10
+					x = 16*x + rune(c) - 'a' + 10
 					continue
 				} else if 'A' <= c && c <= 'F' {
-					x = 16*x + int(c) - 'A' + 10
+					x = 16*x + rune(c) - 'A' + 10
 					continue
 				}
 			} else if '0' <= c && c <= '9' {
-				x = 10*x + int(c) - '0'
+				x = 10*x + rune(c) - '0'
 				continue
 			}
 			if c != ';' {
@@ -121,12 +123,11 @@ func unescapeEntity(b []byte, dst, src int) (dst1, src1 int) {
 	// Consume the maximum number of characters possible, with the
 	// consumed characters matching one of the named references.
 
-	// TODO(nigeltao): unescape("&notit;") should be "¬it;"
 	for i < len(s) {
 		c := s[i]
 		i++
 		// Lower-cased characters are more common in entities, so we check for them first.
-		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' {
+		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' {
 			continue
 		}
 		if c != ';' {
@@ -135,12 +136,26 @@ func unescapeEntity(b []byte, dst, src int) (dst1, src1 int) {
 		break
 	}
 
-	entityName := string(s[1:i])
-	if x := entity[entityName]; x != 0 {
+	entityName := s[1:i]
+	if len(entityName) == 0 {
+		// No-op.
+	} else if attribute && entityName[len(entityName)-1] != ';' && len(s) > i && s[i] == '=' {
+		// No-op.
+	} else if x := entity[string(entityName)]; x != 0 {
 		return dst + utf8.EncodeRune(b[dst:], x), src + i
-	} else if x := entity2[entityName]; x[0] != 0 { // Check if it's a two-character entity.
+	} else if x := entity2[string(entityName)]; x[0] != 0 {
 		dst1 := dst + utf8.EncodeRune(b[dst:], x[0])
 		return dst1 + utf8.EncodeRune(b[dst1:], x[1]), src + i
+	} else if !attribute {
+		maxLen := len(entityName) - 1
+		if maxLen > longestEntityWithoutSemicolon {
+			maxLen = longestEntityWithoutSemicolon
+		}
+		for j := maxLen; j > 1; j-- {
+			if x := entity[string(entityName[:j])]; x != 0 {
+				return dst + utf8.EncodeRune(b[dst:], x), src + j + 1
+			}
+		}
 	}
 
 	dst1, src1 = dst+i, src+i
@@ -148,77 +163,51 @@ func unescapeEntity(b []byte, dst, src int) (dst1, src1 int) {
 	return dst1, src1
 }
 
-// unescape unescapes b's entities in-place, so that "a&lt;b" becomes "a<b".
-func unescape(b []byte) []byte {
-	for i, c := range b {
-		if c == '&' {
-			dst, src := unescapeEntity(b, i, i)
-			for src < len(b) {
-				c := b[src]
-				if c == '&' {
-					dst, src = unescapeEntity(b, dst, src)
-				} else {
-					b[dst] = c
-					dst, src = dst+1, src+1
-				}
-			}
-			return b[0:dst]
-		}
-	}
-	return b
-}
-
-const escapedChars = `&'<>"`
-
-func escape(buf *bytes.Buffer, s string) {
-	i := strings.IndexAny(s, escapedChars)
-	for i != -1 {
-		buf.WriteString(s[0:i])
-		var esc string
-		switch s[i] {
-		case '&':
-			esc = "&amp;"
-		case '\'':
-			esc = "&apos;"
-		case '<':
-			esc = "&lt;"
-		case '>':
-			esc = "&gt;"
-		case '"':
-			esc = "&quot;"
-		default:
-			panic("unrecognized escape character")
-		}
-		s = s[i+1:]
-		buf.WriteString(esc)
-		i = strings.IndexAny(s, escapedChars)
-	}
-	buf.WriteString(s)
-}
+var htmlEscaper = strings.NewReplacer(
+	`&`, "&amp;",
+	`'`, "&#39;", // "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+	`<`, "&lt;",
+	`>`, "&gt;",
+	`"`, "&#34;", // "&#34;" is shorter than "&quot;".
+)
 
 // EscapeString escapes special characters like "<" to become "&lt;". It
-// escapes only five such characters: amp, apos, lt, gt and quot.
+// escapes only five such characters: <, >, &, ' and ".
 // UnescapeString(EscapeString(s)) == s always holds, but the converse isn't
 // always true.
 func EscapeString(s string) string {
-	if strings.IndexAny(s, escapedChars) == -1 {
-		return s
-	}
-	buf := bytes.NewBuffer(nil)
-	escape(buf, s)
-	return buf.String()
+	return htmlEscaper.Replace(s)
 }
 
 // UnescapeString unescapes entities like "&lt;" to become "<". It unescapes a
 // larger range of entities than EscapeString escapes. For example, "&aacute;"
-// unescapes to "á", as does "&#225;" and "&xE1;".
+// unescapes to "á", as does "&#225;" and "&#xE1;".
 // UnescapeString(EscapeString(s)) == s always holds, but the converse isn't
 // always true.
 func UnescapeString(s string) string {
-	for _, c := range s {
-		if c == '&' {
-			return string(unescape([]byte(s)))
-		}
+	i := strings.IndexByte(s, '&')
+
+	if i < 0 {
+		return s
 	}
-	return s
+
+	b := []byte(s)
+	dst, src := unescapeEntity(b, i, i)
+	for len(s[src:]) > 0 {
+		if s[src] == '&' {
+			i = 0
+		} else {
+			i = strings.IndexByte(s[src:], '&')
+		}
+		if i < 0 {
+			dst += copy(b[dst:], s[src:])
+			break
+		}
+
+		if i > 0 {
+			copy(b[dst:], s[src:src+i])
+		}
+		dst, src = unescapeEntity(b, dst+i, src+i)
+	}
+	return string(b[:dst])
 }

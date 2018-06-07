@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,6 +33,7 @@ with System.Img_LLU;        use System.Img_LLU;
 with System.Img_Uns;        use System.Img_Uns;
 with System.Powten_Table;   use System.Powten_Table;
 with System.Unsigned_Types; use System.Unsigned_Types;
+with System.Float_Control;
 
 package body System.Img_Real is
 
@@ -92,9 +93,10 @@ package body System.Img_Real is
       --  output of -0.0 on targets where this is the case). We can of
       --  course still see a -0.0 on a target where Signed_Zeroes is
       --  False (since this attribute refers to the proper handling of
-      --  negative zeroes, not to their existence).
+      --  negative zeroes, not to their existence). We do not generate
+      --  a blank for positive infinity, since we output an explicit +.
 
-      if not Is_Negative (V)
+      if (not Is_Negative (V) and then V <= Long_Long_Float'Last)
         or else (not Long_Long_Float'Signed_Zeros and then V = -0.0)
       then
          S (1) := ' ';
@@ -143,29 +145,16 @@ package body System.Img_Real is
       Aft  : Natural;
       Exp  : Natural)
    is
-      procedure Reset;
-      pragma Import (C, Reset, "__gnat_init_float");
-      --  We import the floating-point processor reset routine so that we can
-      --  be sure the floating-point processor is properly set for conversion
-      --  calls (see description of Reset in GNAT.Float_Control (g-flocon.ads).
-      --  This is notably need on Windows, where calls to the operating system
-      --  randomly reset the processor into 64-bit mode.
-
       NFrac : constant Natural := Natural'Max (Aft, 1);
       Sign  : Character;
-      X     : aliased Long_Long_Float;
-      --  This is declared aliased because the expansion of X'Valid passes
-      --  X by access and JGNAT requires all access parameters to be aliased.
-      --  The Valid attribute probably needs to be handled via a different
-      --  expansion for JGNAT, and this use of aliased should be removed
-      --  once Valid is handled properly. ???
+      X     : Long_Long_Float;
       Scale : Integer;
       Expon : Integer;
 
       Field_Max : constant := 255;
       --  This should be the same value as Ada.[Wide_]Text_IO.Field'Last.
       --  It is not worth dragging in Ada.Text_IO to pick up this value,
-      --  since it really should never be necessary to change it!
+      --  since it really should never be necessary to change it.
 
       Digs : String (1 .. 2 * Field_Max + 16);
       --  Array used to hold digits of converted integer value. This is a
@@ -476,7 +465,13 @@ package body System.Img_Real is
    --  Start of processing for Set_Image_Real
 
    begin
-      Reset;
+      --  We call the floating-point processor reset routine so that we can
+      --  be sure the floating-point processor is properly set for conversion
+      --  calls. This is notably need on Windows, where calls to the operating
+      --  system randomly reset the processor into 64-bit mode.
+
+      System.Float_Control.Reset;
+
       Scale := 0;
 
       --  Deal with invalid values first,
@@ -487,7 +482,7 @@ package body System.Img_Real is
          --  an invalid bit pattern resulting from erroneous execution
          --  (caused by using uninitialized variables for example).
 
-         --  No matter what, we'll at least get reasonable behaviour,
+         --  No matter what, we'll at least get reasonable behavior,
          --  converting to infinity or some other value, or causing an
          --  exception to be raised is fine.
 

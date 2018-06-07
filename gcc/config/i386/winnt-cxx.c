@@ -1,6 +1,6 @@
 /* Target support for C++ classes on Windows.
    Contributed by Danny Smith (dannysmith@users.sourceforge.net)
-   Copyright (C) 2005, 2007, 2009, 2010  Free Software Foundation, Inc.
+   Copyright (C) 2005-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,13 +21,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
 #include "cp/cp-tree.h" /* This is why we're a separate module.  */
-#include "flags.h"
-#include "tm_p.h"
-#include "diagnostic-core.h"
-#include "hashtab.h"
+#include "stringpool.h"
+#include "attribs.h"
 
 bool
 i386_pe_type_dllimport_p (tree decl)
@@ -65,6 +61,13 @@ i386_pe_type_dllexport_p (tree decl)
   if (TREE_CODE (TREE_TYPE (decl)) == METHOD_TYPE
       && DECL_ARTIFICIAL (decl) && !DECL_THUNK_P (decl))
     return false;
+  if (TREE_CODE (decl) == FUNCTION_DECL
+      && DECL_DECLARED_INLINE_P (decl))
+    {
+      if (DECL_REALLY_EXTERN (decl)
+	  || !flag_keep_inline_dllexport)
+	return false;
+    }
   return true;
 }
 
@@ -97,6 +100,20 @@ i386_pe_adjust_class_at_definition (tree t)
  
   if (lookup_attribute ("dllexport", TYPE_ATTRIBUTES (t)) != NULL_TREE)
     {
+      tree tmv = TYPE_MAIN_VARIANT (t);
+
+      /* Make sure that we set dllexport attribute to typeinfo's
+	 base declaration, as otherwise it would fail to be exported as
+	 it isn't a class-member.  */
+      if (tmv != NULL_TREE
+	  && CLASSTYPE_TYPEINFO_VAR (tmv) != NULL_TREE)
+	{
+	  tree na, ti_decl = CLASSTYPE_TYPEINFO_VAR (tmv);
+	  na = tree_cons (get_identifier ("dllexport"), NULL_TREE,
+			  NULL_TREE);
+	  decl_attributes (&ti_decl, na, 0);
+	}
+
       /* Check static VAR_DECL's.  */
       for (member = TYPE_FIELDS (t); member; member = DECL_CHAIN (member))
 	if (TREE_CODE (member) == VAR_DECL)     

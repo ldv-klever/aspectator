@@ -1,6 +1,5 @@
 /* FR30 specific functions.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2005, 2007, 2008, 2009,
-   2010 Free Software Foundation, Inc.
+   Copyright (C) 1998-2017 Free Software Foundation, Inc.
    Contributed by Cygnus Solutions.
 
    This file is part of GCC.
@@ -24,25 +23,20 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "target.h"
 #include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"
-#include "conditions.h"
-#include "insn-attr.h"
-#include "flags.h"
-#include "recog.h"
 #include "tree.h"
+#include "df.h"
+#include "memmodel.h"
+#include "emit-rtl.h"
+#include "stor-layout.h"
+#include "varasm.h"
 #include "output.h"
 #include "expr.h"
-#include "obstack.h"
-#include "except.h"
-#include "function.h"
-#include "df.h"
-#include "diagnostic-core.h"
-#include "tm_p.h"
-#include "target.h"
+#include "builtins.h"
+
+/* This file should be included last.  */
 #include "target-def.h"
 
 /*}}}*/
@@ -114,23 +108,23 @@ static struct fr30_frame_info 	current_frame_info;
 /* Zero structure to initialize current_frame_info.  */
 static struct fr30_frame_info 	zero_frame_info;
 
-static void fr30_setup_incoming_varargs (CUMULATIVE_ARGS *, enum machine_mode,
+static void fr30_setup_incoming_varargs (cumulative_args_t, machine_mode,
 					 tree, int *, int);
-static bool fr30_must_pass_in_stack (enum machine_mode, const_tree);
-static int fr30_arg_partial_bytes (CUMULATIVE_ARGS *, enum machine_mode,
+static bool fr30_must_pass_in_stack (machine_mode, const_tree);
+static int fr30_arg_partial_bytes (cumulative_args_t, machine_mode,
 				   tree, bool);
-static rtx fr30_function_arg (CUMULATIVE_ARGS *, enum machine_mode,
+static rtx fr30_function_arg (cumulative_args_t, machine_mode,
 			      const_tree, bool);
-static void fr30_function_arg_advance (CUMULATIVE_ARGS *, enum machine_mode,
+static void fr30_function_arg_advance (cumulative_args_t, machine_mode,
 				       const_tree, bool);
 static bool fr30_frame_pointer_required (void);
 static rtx fr30_function_value (const_tree, const_tree, bool);
-static rtx fr30_libcall_value (enum machine_mode, const_rtx);
+static rtx fr30_libcall_value (machine_mode, const_rtx);
 static bool fr30_function_value_regno_p (const unsigned int);
 static bool fr30_can_eliminate (const int, const int);
 static void fr30_asm_trampoline_template (FILE *);
 static void fr30_trampoline_init (rtx, tree, rtx);
-static int fr30_num_arg_regs (enum machine_mode, const_tree);
+static int fr30_num_arg_regs (machine_mode, const_tree);
 
 #define FRAME_POINTER_MASK 	(1 << (FRAME_POINTER_REGNUM))
 #define RETURN_POINTER_MASK 	(1 << (RETURN_POINTER_REGNUM))
@@ -150,13 +144,6 @@ static int fr30_num_arg_regs (enum machine_mode, const_tree);
 #if UNITS_PER_WORD == 4
 #define WORD_ALIGN(SIZE) (((SIZE) + 3) & ~3)
 #endif
-
-/* Implement TARGET_OPTION_OPTIMIZATION_TABLE.  */
-static const struct default_options fr30_option_optimization_table[] =
-  {
-    { OPT_LEVELS_1_PLUS, OPT_fomit_frame_pointer, NULL, 1 },
-    { OPT_LEVELS_NONE, 0, NULL, 0 }
-  };
 
 /* Initialize the GCC target structure.  */
 #undef  TARGET_ASM_ALIGNED_HI_OP
@@ -193,16 +180,13 @@ static const struct default_options fr30_option_optimization_table[] =
 #undef TARGET_CAN_ELIMINATE
 #define TARGET_CAN_ELIMINATE fr30_can_eliminate
 
+#undef TARGET_LRA_P
+#define TARGET_LRA_P hook_bool_void_false
+
 #undef TARGET_ASM_TRAMPOLINE_TEMPLATE
 #define TARGET_ASM_TRAMPOLINE_TEMPLATE fr30_asm_trampoline_template
 #undef TARGET_TRAMPOLINE_INIT
 #define TARGET_TRAMPOLINE_INIT fr30_trampoline_init
-
-#undef TARGET_EXCEPT_UNWIND_INFO
-#define TARGET_EXCEPT_UNWIND_INFO sjlj_except_unwind_info
-
-#undef TARGET_OPTION_OPTIMIZATION_TABLE
-#define TARGET_OPTION_OPTIMIZATION_TABLE fr30_option_optimization_table
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -467,12 +451,14 @@ fr30_expand_epilogue (void)
    ARG_REGS_USED_SO_FAR has *not* been updated for the last named argument
    which has type TYPE and mode MODE, and we rely on this fact.  */
 void
-fr30_setup_incoming_varargs (CUMULATIVE_ARGS *arg_regs_used_so_far,
-			     enum machine_mode mode,
+fr30_setup_incoming_varargs (cumulative_args_t arg_regs_used_so_far_v,
+			     machine_mode mode,
 			     tree type ATTRIBUTE_UNUSED,
 			     int *pretend_size,
 			     int second_time ATTRIBUTE_UNUSED)
 {
+  CUMULATIVE_ARGS *arg_regs_used_so_far
+    = get_cumulative_args (arg_regs_used_so_far_v);
   int size;
 
   /* All BLKmode values are passed by reference.  */
@@ -480,9 +466,10 @@ fr30_setup_incoming_varargs (CUMULATIVE_ARGS *arg_regs_used_so_far,
 
   /* ??? This run-time test as well as the code inside the if
      statement is probably unnecessary.  */
-  if (targetm.calls.strict_argument_naming (arg_regs_used_so_far))
+  if (targetm.calls.strict_argument_naming (arg_regs_used_so_far_v))
     /* If TARGET_STRICT_ARGUMENT_NAMING returns true, then the last named
        arg must not be treated as an anonymous arg.  */
+    /* ??? This is a pointer increment, which makes no sense.  */
     arg_regs_used_so_far += fr30_num_arg_regs (mode, type);
 
   size = FR30_NUM_ARG_REGS - (* arg_regs_used_so_far);
@@ -679,7 +666,7 @@ fr30_print_operand (FILE *file, rtx x, int code)
 	  break;
 	  
 	case SYMBOL_REF:
-	  output_address (x0);
+	  output_address (VOIDmode, x0);
 	  break;
 	  
 	default:
@@ -694,16 +681,15 @@ fr30_print_operand (FILE *file, rtx x, int code)
       /* We handle SFmode constants here as output_addr_const doesn't.  */
       if (GET_MODE (x) == SFmode)
 	{
-	  REAL_VALUE_TYPE d;
 	  long l;
 
-	  REAL_VALUE_FROM_CONST_DOUBLE (d, x);
-	  REAL_VALUE_TO_TARGET_SINGLE (d, l);
+	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (x), l);
 	  fprintf (file, "0x%08lx", l);
 	  break;
 	}
 
-      /* Fall through.  Let output_addr_const deal with it.  */
+      /* FALLTHRU */
+      /* Let output_addr_const deal with it.  */
     default:
       output_addr_const (file, x);
       break;
@@ -727,7 +713,7 @@ fr30_function_value (const_tree valtype,
 /* Implements TARGET_LIBCALL_VALUE.  */
 
 static rtx
-fr30_libcall_value (enum machine_mode mode,
+fr30_libcall_value (machine_mode mode,
 		    const_rtx fun ATTRIBUTE_UNUSED)
 {
   return gen_rtx_REG (mode, RETURN_VALUE_REGNUM);
@@ -747,7 +733,7 @@ fr30_function_value_regno_p (const unsigned int regno)
    in registers.  */
 
 static bool
-fr30_must_pass_in_stack (enum machine_mode mode, const_tree type)
+fr30_must_pass_in_stack (machine_mode mode, const_tree type)
 {
   if (mode == BLKmode)
     return true;
@@ -759,7 +745,7 @@ fr30_must_pass_in_stack (enum machine_mode mode, const_tree type)
 /* Compute the number of word sized registers needed to hold a
    function argument of mode INT_MODE and tree type TYPE.  */
 static int
-fr30_num_arg_regs (enum machine_mode mode, const_tree type)
+fr30_num_arg_regs (machine_mode mode, const_tree type)
 {
   int size;
 
@@ -782,9 +768,11 @@ fr30_num_arg_regs (enum machine_mode mode, const_tree type)
    parameters to the function.  */
 
 static int
-fr30_arg_partial_bytes (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+fr30_arg_partial_bytes (cumulative_args_t cum_v, machine_mode mode,
 			tree type, bool named)
 {
+  CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
+
   /* Unnamed arguments, i.e. those that are prototyped as ...
      are always passed on the stack.
      Also check here to see if all the argument registers are full.  */
@@ -804,9 +792,11 @@ fr30_arg_partial_bytes (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 }
 
 static rtx
-fr30_function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+fr30_function_arg (cumulative_args_t cum_v, machine_mode mode,
 		   const_tree type, bool named)
 {
+  CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
+
   if (!named
       || fr30_must_pass_in_stack (mode, type)
       || *cum >= FR30_NUM_ARG_REGS)
@@ -824,17 +814,17 @@ fr30_function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode,
    the stack.  The compiler knows how to track the amount of stack space used
    for arguments without any special help.  */
 static void
-fr30_function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+fr30_function_arg_advance (cumulative_args_t cum, machine_mode mode,
 			   const_tree type, bool named)
 {
-  *cum += named * fr30_num_arg_regs (mode, type);
+  *get_cumulative_args (cum) += named * fr30_num_arg_regs (mode, type);
 }
 
 /*}}}*/
 /*{{{  Operand predicates */ 
 
 #ifndef Mmode
-#define Mmode enum machine_mode
+#define Mmode machine_mode
 #endif
 
 /* Returns true iff all the registers in the operands array
@@ -879,14 +869,10 @@ fr30_check_multiple_regs (rtx *operands, int num_operands, int descending)
 int
 fr30_const_double_is_zero (rtx operand)
 {
-  REAL_VALUE_TYPE d;
-
   if (operand == NULL || GET_CODE (operand) != CONST_DOUBLE)
     return 0;
 
-  REAL_VALUE_FROM_CONST_DOUBLE (d, operand);
-
-  return REAL_VALUES_EQUAL (d, dconst0);
+  return real_equal (CONST_DOUBLE_REAL_VALUE (operand), &dconst0);
 }
 
 /*}}}*/
@@ -906,7 +892,7 @@ fr30_move_double (rtx * operands)
   rtx dest = operands[0];
   enum rtx_code src_code = GET_CODE (src);
   enum rtx_code dest_code = GET_CODE (dest);
-  enum machine_mode mode = GET_MODE (dest);
+  machine_mode mode = GET_MODE (dest);
   rtx val;
 
   start_sequence ();
@@ -920,13 +906,12 @@ fr30_move_double (rtx * operands)
 	  /* We normally copy the low-numbered register first.  However, if
 	     the first register of operand 0 is the same as the second register
 	     of operand 1, we must copy in the opposite order.  */
-	  emit_insn (gen_rtx_SET (VOIDmode,
-				  operand_subword (dest, reverse, TRUE, mode),
+	  emit_insn (gen_rtx_SET (operand_subword (dest, reverse, TRUE, mode),
 				  operand_subword (src,  reverse, TRUE, mode)));
 	  
-	  emit_insn (gen_rtx_SET (VOIDmode,
-			      operand_subword (dest, !reverse, TRUE, mode),
-			      operand_subword (src,  !reverse, TRUE, mode)));
+	  emit_insn
+	    (gen_rtx_SET (operand_subword (dest, !reverse, TRUE, mode),
+			  operand_subword (src,  !reverse, TRUE, mode)));
 	}
       else if (src_code == MEM)
 	{
@@ -938,27 +923,24 @@ fr30_move_double (rtx * operands)
 	  gcc_assert (GET_CODE (addr) == REG);
 	  
 	  /* Copy the address before clobbering it.  See PR 34174.  */
-	  emit_insn (gen_rtx_SET (SImode, dest1, addr));
-	  emit_insn (gen_rtx_SET (VOIDmode, dest0,
-				  adjust_address (src, SImode, 0)));
-	  emit_insn (gen_rtx_SET (SImode, dest1,
-				  plus_constant (dest1, UNITS_PER_WORD)));
+	  emit_insn (gen_rtx_SET (dest1, addr));
+	  emit_insn (gen_rtx_SET (dest0, adjust_address (src, SImode, 0)));
+	  emit_insn (gen_rtx_SET (dest1, plus_constant (SImode, dest1,
+							UNITS_PER_WORD)));
 
 	  new_mem = gen_rtx_MEM (SImode, dest1);
 	  MEM_COPY_ATTRIBUTES (new_mem, src);
 	      
-	  emit_insn (gen_rtx_SET (VOIDmode, dest1, new_mem));
+	  emit_insn (gen_rtx_SET (dest1, new_mem));
 	}
       else if (src_code == CONST_INT || src_code == CONST_DOUBLE)
 	{
 	  rtx words[2];
 	  split_double (src, &words[0], &words[1]);
-	  emit_insn (gen_rtx_SET (VOIDmode,
-				  operand_subword (dest, 0, TRUE, mode),
+	  emit_insn (gen_rtx_SET (operand_subword (dest, 0, TRUE, mode),
 				  words[0]));
       
-	  emit_insn (gen_rtx_SET (VOIDmode,
-				  operand_subword (dest, 1, TRUE, mode),
+	  emit_insn (gen_rtx_SET (operand_subword (dest, 1, TRUE, mode),
 				  words[1]));
 	}
     }
@@ -977,8 +959,7 @@ fr30_move_double (rtx * operands)
 
       if (REGNO (addr) == STACK_POINTER_REGNUM
 	  || REGNO (addr) == FRAME_POINTER_REGNUM)
-	emit_insn (gen_rtx_SET (VOIDmode,
-				adjust_address (dest, SImode, UNITS_PER_WORD),
+	emit_insn (gen_rtx_SET (adjust_address (dest, SImode, UNITS_PER_WORD),
 				src1));
       else
 	{

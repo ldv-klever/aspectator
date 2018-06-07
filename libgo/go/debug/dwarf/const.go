@@ -1,4 +1,4 @@
-// Copyright 2009 The Go Authors.  All rights reserved.
+// Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -178,7 +178,7 @@ func (a Attr) GoString() string {
 			return "dwarf.Attr" + s
 		}
 	}
-	return "dwarf.Attr(" + strconv.Itoa64(int64(a)) + ")"
+	return "dwarf.Attr(" + strconv.FormatInt(int64(a), 10) + ")"
 }
 
 // A format is a DWARF data encoding format.
@@ -207,6 +207,15 @@ const (
 	formRef8        format = 0x14
 	formRefUdata    format = 0x15
 	formIndirect    format = 0x16
+	// The following are new in DWARF 4.
+	formSecOffset   format = 0x17
+	formExprloc     format = 0x18
+	formFlagPresent format = 0x19
+	formRefSig8     format = 0x20
+	// Extensions for multi-file compression (.dwz)
+	// http://www.dwarfstd.org/ShowIssue.php?issue=120604.1
+	formGnuRefAlt  format = 0x1f20
+	formGnuStrpAlt format = 0x1f21
 )
 
 // A Tag is the classification (the type) of an Entry.
@@ -260,15 +269,22 @@ const (
 	TagVariantPart            Tag = 0x33
 	TagVariable               Tag = 0x34
 	TagVolatileType           Tag = 0x35
-	TagDwarfProcedure         Tag = 0x36
-	TagRestrictType           Tag = 0x37
-	TagInterfaceType          Tag = 0x38
-	TagNamespace              Tag = 0x39
-	TagImportedModule         Tag = 0x3A
-	TagUnspecifiedType        Tag = 0x3B
-	TagPartialUnit            Tag = 0x3C
-	TagImportedUnit           Tag = 0x3D
-	TagMutableType            Tag = 0x3E
+	// The following are new in DWARF 3.
+	TagDwarfProcedure  Tag = 0x36
+	TagRestrictType    Tag = 0x37
+	TagInterfaceType   Tag = 0x38
+	TagNamespace       Tag = 0x39
+	TagImportedModule  Tag = 0x3A
+	TagUnspecifiedType Tag = 0x3B
+	TagPartialUnit     Tag = 0x3C
+	TagImportedUnit    Tag = 0x3D
+	TagMutableType     Tag = 0x3E // Later removed from DWARF.
+	TagCondition       Tag = 0x3F
+	TagSharedType      Tag = 0x40
+	// The following are new in DWARF 4.
+	TagTypeUnit            Tag = 0x41
+	TagRvalueReferenceType Tag = 0x42
+	TagTemplateAlias       Tag = 0x43
 )
 
 var tagNames = [...]string{
@@ -328,6 +344,11 @@ var tagNames = [...]string{
 	TagPartialUnit:            "PartialUnit",
 	TagImportedUnit:           "ImportedUnit",
 	TagMutableType:            "MutableType",
+	TagCondition:              "Condition",
+	TagSharedType:             "SharedType",
+	TagTypeUnit:               "TypeUnit",
+	TagRvalueReferenceType:    "RvalueReferenceType",
+	TagTemplateAlias:          "TemplateAlias",
 }
 
 func (t Tag) String() string {
@@ -347,7 +368,7 @@ func (t Tag) GoString() string {
 			return "dwarf.Tag" + s
 		}
 	}
-	return "dwarf.Tag(" + strconv.Itoa64(int64(t)) + ")"
+	return "dwarf.Tag(" + strconv.FormatInt(int64(t), 10) + ")"
 }
 
 // Location expression operators.
@@ -430,4 +451,32 @@ const (
 	encUnsigned       = 0x07
 	encUnsignedChar   = 0x08
 	encImaginaryFloat = 0x09
+)
+
+// Statement program standard opcode encodings.
+const (
+	lnsCopy           = 1
+	lnsAdvancePC      = 2
+	lnsAdvanceLine    = 3
+	lnsSetFile        = 4
+	lnsSetColumn      = 5
+	lnsNegateStmt     = 6
+	lnsSetBasicBlock  = 7
+	lnsConstAddPC     = 8
+	lnsFixedAdvancePC = 9
+
+	// DWARF 3
+	lnsSetPrologueEnd   = 10
+	lnsSetEpilogueBegin = 11
+	lnsSetISA           = 12
+)
+
+// Statement program extended opcode encodings.
+const (
+	lneEndSequence = 1
+	lneSetAddress  = 2
+	lneDefineFile  = 3
+
+	// DWARF 4
+	lneSetDiscriminator = 4
 )

@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-Os -fipa-cp -fdump-ipa-cp -fno-early-inlining -fdump-tree-optimized"  } */
+/* { dg-options "-Os -fipa-cp -fdump-ipa-cp -fno-early-inlining -fdump-tree-optimized -fno-ipa-icf"  } */
 
 int array[100];
 
@@ -43,6 +43,7 @@ i_can_not_be_propagated_fully2 (int *a)
   i_can_not_be_propagated_fully (a);
   i_can_not_be_propagated_fully (a);
 }
+int
 main()
 {
   i_can_be_propagated_fully2 (array);
@@ -51,11 +52,9 @@ main()
   i_can_not_be_propagated_fully2 (array);
 }
 
-/* { dg-final { scan-ipa-dump-times "versioned function i_can_be_propagated_fully2" 1 "cp"  } } */
-/* { dg-final { scan-ipa-dump-times "versioned function i_can_be_propagated_fully " 1 "cp"  } } */
-/* { dg-final { scan-ipa-dump-not "versioned function i_can_not_be_propagated_fully2" "cp"  } } */
-/* { dg-final { scan-ipa-dump-not "versioned function i_can_not_be_propagated_fully " "cp"  } } */
+/* { dg-final { scan-ipa-dump-times "Creating a specialized node of i_can_be_propagated_fully2" 1 "cp"  } } */
+/* { dg-final { scan-ipa-dump-times "Creating a specialized node of i_can_be_propagated_fully/" 1 "cp"  } } */
+/* { dg-final { scan-ipa-dump-not "Creating a specialized node of i_can_not_be_propagated_fully2" "cp"  } } */
+/* { dg-final { scan-ipa-dump-not "Creating a specialized node of i_can_not_be_propagated_fully/" "cp"  } } */
 /* { dg-final { scan-tree-dump-not "i_can_be_propagated_fully " "optimized"  } } */
 /* { dg-final { scan-tree-dump-not "i_can_be_propagated_fully2 " "optimized"  } } */
-/* { dg-final { cleanup-ipa-dump "cp" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

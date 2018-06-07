@@ -1,5 +1,4 @@
-// { dg-options "-std=c++0x" }
-#include <cassert>
+// { dg-do compile { target c++11 } }
 
 int main() {
   int i = 0;

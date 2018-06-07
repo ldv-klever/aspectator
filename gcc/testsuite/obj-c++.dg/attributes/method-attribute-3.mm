@@ -1,8 +1,8 @@
 /* { dg-do compile } */
 
-#include "../../objc-obj-c++-shared/Object1.h"
+#include "../../objc-obj-c++-shared/TestsuiteObject.h"
 
-@interface obj : Object {
+@interface obj : TestsuiteObject {
 @public 
   int var;
 }
@@ -20,5 +20,5 @@ int foo (void)
 {
   obj *p = [obj new];
   
-  return [p vargsn:0];  /* { dg-warning "'vargsn:' is deprecated .declared at" } */
+  return [p vargsn:0];  /* { dg-warning "'vargsn:' is deprecated" } */
 }

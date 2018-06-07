@@ -1,6 +1,6 @@
-// { dg-options "-std=gnu++0x" }
+// { dg-do run { target c++11 } }
 
-// Copyright (C) 2011 Free Software Foundation, Inc.
+// Copyright (C) 2011-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -19,10 +19,6 @@
 
 #undef _GLIBCXX_CONCEPT_CHECKS
 
-// XXX FIXME:  parallel-mode should deal correctly with moveable-only types
-// per C++0x, at minimum smoothly fall back to serial.
-#undef _GLIBCXX_PARALLEL
-
 #include <algorithm>
 #include <testsuite_hooks.h>
 #include <testsuite_iterators.h>
@@ -37,8 +33,6 @@ typedef test_container<V, random_access_iterator_wrapper> Container;
 void
 test01()
 {
-  bool test __attribute__((unused)) = true;
-
   V s1[] = { 10, 20, 1, 11, 2, 12, 3, 13, 4, 14, 5, 15, 6, 16, 7, 
 	     17, 8, 18, 9, 19 };
   const int N = sizeof(s1) / sizeof(V);
@@ -53,8 +47,6 @@ test01()
 void
 test02()
 {
-  bool test __attribute__((unused)) = true;
-
   V s1[] = { 10, 20, 1, 11, 2, 12, 3, 13, 4, 14, 5, 15, 6, 16, 7, 
 	     17, 8, 18, 9, 19 };
   const int N = sizeof(s1) / sizeof(V);
@@ -69,8 +61,6 @@ test02()
 void
 test03()
 {
-  bool test __attribute__((unused)) = true;
-
   V vvs[] = { 2, 0 };
   std::make_heap(vvs, vvs + 2);
   std::sort_heap(vvs, vvs + 2);

@@ -1,4 +1,4 @@
-Copyright (C) 2000, 2003 Free Software Foundation, Inc.
+Copyright (C) 2000-2017 Free Software Foundation, Inc.
 
 This file is intended to contain a few notes about writing C code
 within GCC so that it compiles without error on the full range of
@@ -6,7 +6,7 @@ compilers GCC needs to be able to compile on.
 
 The problem is that many ISO-standard constructs are not accepted by
 either old or buggy compilers, and we keep getting bitten by them.
-This knowledge until know has been sparsely spread around, so I
+This knowledge until now has been sparsely spread around, so I
 thought I'd collect it in one useful place.  Please add and correct
 any problems as you come across them.
 
@@ -20,14 +20,6 @@ http://gcc.gnu.org/codingconventions.html
 
 String literals
 ---------------
-
-Irix6 "cc -n32" and OSF4 "cc" have problems with constant string
-initializers with parens around it, e.g.
-
-const char string[] = ("A string");
-
-This is unfortunate since this is what the GNU gettext macro N_
-produces.  You need to find a different way to code it.
 
 Some compilers like MSVC++ have fairly low limits on the maximum
 length of a string literal; 509 is the lowest we've come across.  You
@@ -51,14 +43,28 @@ foo (bar, )
 needs to be coded in some other way.
 
 
-free and realloc
-----------------
+Avoid unnecessary test before free
+----------------------------------
 
-Some implementations crash upon attempts to free or realloc the null
-pointer.  Thus if mem might be null, you need to write
+Since SunOS 4 stopped being a reasonable portability target,
+(which happened around 2007) there has been no need to guard
+against "free (NULL)".  Thus, any guard like the following
+constitutes a redundant test:
 
-  if (mem)
-    free (mem);
+  if (P)
+    free (P);
+
+It is better to avoid the test.[*]
+Instead, simply free P, regardless of whether it is NULL.
+
+[*] However, if your profiling exposes a test like this in a
+performance-critical loop, say where P is nearly always NULL, and
+the cost of calling free on a NULL pointer would be prohibitively
+high, consider using __builtin_expect, e.g., like this:
+
+  if (__builtin_expect (ptr != NULL, 0))
+    free (ptr);
+
 
 
 Trigraphs
@@ -194,4 +200,3 @@ o Passing incorrect types to fprintf and friends.
 
 o Adding a function declaration for a module declared in another file to
   a .c file instead of to a .h file.
-

@@ -11,16 +11,15 @@ template <template <class> class TT> void f()
 {
 	TT<int> y;
 	y = 0; // { dg-error "no match" }
-	// { dg-message "candidate" "candidate note" { target *-*-* } 13 }
 }
 
 template <class T> struct C
 {
-	void g() { f<A<T>::template B>(); } // { dg-message "instantiated" }
+	void g() { f<A<T>::template B>(); } // { dg-message "required" }
 };
 
 int main()
 {
 	C<int> c;
-	c.g(); // { dg-message "instantiated" }
+	c.g(); // { dg-message "required" }
 }

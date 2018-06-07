@@ -1,8 +1,8 @@
-// { dg-options "-std=gnu++0x" }
+// { dg-do run { target c++11 } }
 
 // 2010-10-27  Paolo Carlini  <paolo.carlini@oracle.com> 
 //
-// Copyright (C) 2010 Free Software Foundation, Inc.
+// Copyright (C) 2010-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -26,9 +26,21 @@
 #include <testsuite_hooks.h>
 #include <testsuite_rvalref.h>
 
+namespace
+{
+  template <typename _Tp>
+    std::size_t
+    get_nb_bucket_elems(const std::unordered_multiset<_Tp>& us)
+    {
+      std::size_t nb = 0;
+      for (std::size_t b = 0; b != us.bucket_count(); ++b)
+	nb += us.bucket_size(b);
+      return nb;
+    }
+}
+
 void test01()
 {
-  bool test __attribute__((unused)) = true;
   using __gnu_test::rvalstruct;
 
   typedef std::unordered_multiset<rvalstruct> Set;
@@ -37,6 +49,7 @@ void test01()
 
   Set::iterator i = s.insert(rvalstruct(1));
   VERIFY( s.size() == 1 );
+  VERIFY( get_nb_bucket_elems(s) == 1 );
   VERIFY( std::distance(s.begin(), s.end()) == 1 );
   VERIFY( i == s.begin() );
   VERIFY( (*i).val == 1 );
@@ -44,7 +57,6 @@ void test01()
 
 void test02()
 {
-  bool test __attribute__((unused)) = true;
   using __gnu_test::rvalstruct;
 
   typedef std::unordered_multiset<rvalstruct> Set;
@@ -54,6 +66,7 @@ void test02()
   s.insert(rvalstruct(2));
   Set::iterator i = s.insert(rvalstruct(2));
   VERIFY( s.size() == 2 );
+  VERIFY( get_nb_bucket_elems(s) == 2 );
   VERIFY( std::distance(s.begin(), s.end()) == 2 );
   VERIFY( (*i).val == 2 );
   

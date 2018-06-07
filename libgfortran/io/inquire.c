@@ -1,5 +1,4 @@
-/* Copyright (C) 2002, 2003, 2005, 2007, 2009, 2010, 2011
-   Free Software Foundation, Inc.
+/* Copyright (C) 2002-2017 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of the GNU Fortran runtime library (libgfortran).
@@ -31,30 +30,27 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include <string.h>
 
 
-static const char undefined[] = "UNDEFINED";
+static const char yes[] = "YES", no[] = "NO", undefined[] = "UNDEFINED";
 
 
 /* inquire_via_unit()-- Inquiry via unit number.  The unit might not exist. */
 
 static void
-inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
+inquire_via_unit (st_parameter_inquire *iqp, gfc_unit *u)
 {
   const char *p;
   GFC_INTEGER_4 cf = iqp->common.flags;
 
-  if ((cf & IOPARM_INQUIRE_HAS_EXIST) != 0)
-    {
-      *iqp->exist = (iqp->common.unit >= 0
-		     && iqp->common.unit <= GFC_INTEGER_4_HUGE);
+  if (iqp->common.unit == GFC_INTERNAL_UNIT ||
+	iqp->common.unit == GFC_INTERNAL_UNIT4 ||
+	(u != NULL && u->internal_unit_kind != 0))
+    generate_error (&iqp->common, LIBERROR_INQUIRE_INTERNAL_UNIT, NULL);
 
-      if ((cf & IOPARM_INQUIRE_HAS_FILE) == 0)
-	{
-	  if (!(*iqp->exist))
-	    *iqp->common.iostat = LIBERROR_BAD_UNIT;
-	  *iqp->exist = *iqp->exist
-			&& (*iqp->common.iostat != LIBERROR_BAD_UNIT);
-	}
-    }
+  if ((cf & IOPARM_INQUIRE_HAS_EXIST) != 0)
+    *iqp->exist = (u != NULL &&
+		   iqp->common.unit != GFC_INTERNAL_UNIT &&
+		   iqp->common.unit != GFC_INTERNAL_UNIT4)
+		|| (iqp->common.unit >= 0);
 
   if ((cf & IOPARM_INQUIRE_HAS_OPENED) != 0)
     *iqp->opened = (u != NULL);
@@ -81,10 +77,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 		memset (&iqp->name[tmplen], ' ', iqp->name_len - tmplen);
 	    }
 	  else /* If ttyname does not work, go with the default.  */
-	    fstrcpy (iqp->name, iqp->name_len, u->file, u->file_len);
+	    cf_strcpy (iqp->name, iqp->name_len, u->filename);
 	}
       else
-	fstrcpy (iqp->name, iqp->name_len, u->file, u->file_len);
+	cf_strcpy (iqp->name, iqp->name_len, u->filename);
 #elif defined __MINGW32__
       if (u->unit_number == options.stdin_unit)
 	fstrcpy (iqp->name, iqp->name_len, "CONIN$", sizeof("CONIN$"));
@@ -93,9 +89,9 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
       else if (u->unit_number == options.stderr_unit)
 	fstrcpy (iqp->name, iqp->name_len, "CONERR$", sizeof("CONERR$"));
       else
-	fstrcpy (iqp->name, iqp->name_len, u->file, u->file_len);
+	cf_strcpy (iqp->name, iqp->name_len, u->filename);
 #else
-    fstrcpy (iqp->name, iqp->name_len, u->file, u->file_len);
+      cf_strcpy (iqp->name, iqp->name_len, u->filename);
 #endif
     }
 
@@ -131,10 +127,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	  {
 	  case ACCESS_DIRECT:
 	  case ACCESS_STREAM:
-	    p = "NO";
+	    p = no;
 	    break;
 	  case ACCESS_SEQUENTIAL:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad access");
@@ -152,10 +148,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	  {
 	  case ACCESS_SEQUENTIAL:
 	  case ACCESS_STREAM:
-	    p = "NO";
+	    p = no;
 	    break;
 	  case ACCESS_DIRECT:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad access");
@@ -192,10 +188,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	switch (u->flags.form)
 	  {
 	  case FORM_FORMATTED:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  case FORM_UNFORMATTED:
-	    p = "NO";
+	    p = no;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad form");
@@ -212,10 +208,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	switch (u->flags.form)
 	  {
 	  case FORM_FORMATTED:
-	    p = "NO";
+	    p = no;
 	    break;
 	  case FORM_UNFORMATTED:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad form");
@@ -267,10 +263,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	switch (u->flags.pad)
 	  {
 	  case PAD_YES:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  case PAD_NO:
-	    p = "NO";
+	    p = no;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad pad");
@@ -337,10 +333,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	    switch (u->flags.async)
 	    {
 	      case ASYNC_YES:
-		p = "YES";
+		p = yes;
 		break;
 	      case ASYNC_NO:
-		p = "NO";
+		p = no;
 		break;
 	      default:
 		internal_error (&iqp->common, "inquire_via_unit(): Bad async");
@@ -409,7 +405,83 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	  if (u == NULL)
 	    *iqp->size = -1;
 	  else
-	    *iqp->size = file_size (u->file, (gfc_charlen_type) u->file_len);
+	    {
+	      sflush (u->s);
+	      *iqp->size = ssize (u->s);
+	    }
+	}
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_IQSTREAM) != 0)
+	{
+	  if (u == NULL)
+	    p = "UNKNOWN";
+	  else
+	    switch (u->flags.access)
+	      {
+	      case ACCESS_SEQUENTIAL:
+	      case ACCESS_DIRECT:
+		p = no;
+		break;
+	      case ACCESS_STREAM:
+		p = yes;
+		break;
+	      default:
+		internal_error (&iqp->common, "inquire_via_unit(): Bad pad");
+	      }
+    
+	  cf_strcpy (iqp->iqstream, iqp->iqstream_len, p);
+	}
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_SHARE) != 0)
+	{
+	  if (u == NULL)
+	    p = "UNKNOWN";
+	  else
+	    switch (u->flags.share)
+	      {
+		case SHARE_DENYRW:
+		  p = "DENYRW";
+		  break;
+		case SHARE_DENYNONE:
+		  p = "DENYNONE";
+		  break;
+		case SHARE_UNSPECIFIED:
+		  p = "NODENY";
+		  break;
+		default:
+		  internal_error (&iqp->common,
+		      "inquire_via_unit(): Bad share");
+		  break;
+	      }
+
+	  cf_strcpy (iqp->share, iqp->share_len, p);
+	}
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_CC) != 0)
+	{
+	  if (u == NULL)
+	    p = "UNKNOWN";
+	  else
+	    switch (u->flags.cc)
+	      {
+		case CC_FORTRAN:
+		  p = "FORTRAN";
+		  break;
+		case CC_LIST:
+		  p = "LIST";
+		  break;
+		case CC_NONE:
+		  p = "NONE";
+		  break;
+		case CC_UNSPECIFIED:
+		  p = "UNKNOWN";
+		  break;
+		default:
+		  internal_error (&iqp->common, "inquire_via_unit(): Bad cc");
+		  break;
+	      }
+
+	  cf_strcpy (iqp->cc, iqp->cc_len, p);
 	}
     }
 
@@ -418,24 +490,36 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
       if (u == NULL || u->flags.access == ACCESS_DIRECT)
         p = undefined;
       else
-        switch (u->flags.position)
-          {
-             case POSITION_REWIND:
-               p = "REWIND";
-               break;
-             case POSITION_APPEND:
-               p = "APPEND";
-               break;
-             case POSITION_ASIS:
-               p = "ASIS";
-               break;
-             default:
-               /* if not direct access, it must be
-                  either REWIND, APPEND, or ASIS.
-                  ASIS seems to be the best default */
-               p = "ASIS";
-               break;
-          }
+	{
+	  /* If the position is unspecified, check if we can figure
+	     out whether it's at the beginning or end.  */
+	  if (u->flags.position == POSITION_UNSPECIFIED)
+	    {
+	      gfc_offset cur = stell (u->s);
+	      if (cur == 0)
+		u->flags.position = POSITION_REWIND;
+	      else if (cur != -1 && (ssize (u->s) == cur))
+		u->flags.position = POSITION_APPEND;
+	    }
+	  switch (u->flags.position)
+	    {
+	    case POSITION_REWIND:
+	      p = "REWIND";
+	      break;
+	    case POSITION_APPEND:
+	      p = "APPEND";
+	      break;
+	    case POSITION_ASIS:
+	      p = "ASIS";
+	      break;
+	    default:
+	      /* If the position has changed and is not rewind or
+		 append, it must be set to a processor-dependent
+		 value.  */
+	      p = "UNSPECIFIED";
+	      break;
+	    }
+	}
       cf_strcpy (iqp->position, iqp->position_len, p);
     }
 
@@ -464,25 +548,19 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 
   if ((cf & IOPARM_INQUIRE_HAS_READ) != 0)
     {
-      p = (u == NULL) ? inquire_read (NULL, 0) :
-	inquire_read (u->file, u->file_len);
-
+      p = (!u || u->flags.action == ACTION_WRITE) ? no : yes;
       cf_strcpy (iqp->read, iqp->read_len, p);
     }
 
   if ((cf & IOPARM_INQUIRE_HAS_WRITE) != 0)
     {
-      p = (u == NULL) ? inquire_write (NULL, 0) :
-	inquire_write (u->file, u->file_len);
-
+      p = (!u || u->flags.action == ACTION_READ) ? no : yes;
       cf_strcpy (iqp->write, iqp->write_len, p);
     }
 
   if ((cf & IOPARM_INQUIRE_HAS_READWRITE) != 0)
     {
-      p = (u == NULL) ? inquire_readwrite (NULL, 0) :
-	inquire_readwrite (u->file, u->file_len);
-
+      p = (!u || u->flags.action != ACTION_READWRITE) ? no : yes;
       cf_strcpy (iqp->readwrite, iqp->readwrite_len, p);
     }
 
@@ -494,6 +572,7 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	switch (u->flags.delim)
 	  {
 	  case DELIM_NONE:
+	  case DELIM_UNSPECIFIED:
 	    p = "NONE";
 	    break;
 	  case DELIM_QUOTE:
@@ -517,10 +596,10 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 	switch (u->flags.pad)
 	  {
 	  case PAD_NO:
-	    p = "NO";
+	    p = no;
 	    break;
 	  case PAD_YES:
-	    p = "YES";
+	    p = yes;
 	    break;
 	  default:
 	    internal_error (&iqp->common, "inquire_via_unit(): Bad pad");
@@ -555,7 +634,7 @@ inquire_via_unit (st_parameter_inquire *iqp, gfc_unit * u)
 
 
 /* inquire_via_filename()-- Inquiry via filename.  This subroutine is
- * only used if the filename is *not* connected to a unit number. */
+   only used if the filename is *not* connected to a unit number. */
 
 static void
 inquire_via_filename (st_parameter_inquire *iqp)
@@ -644,6 +723,15 @@ inquire_via_filename (st_parameter_inquire *iqp)
 
       if ((cf2 & IOPARM_INQUIRE_HAS_SIZE) != 0)
 	*iqp->size = file_size (iqp->file, iqp->file_len);
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_IQSTREAM) != 0)
+	cf_strcpy (iqp->iqstream, iqp->iqstream_len, "UNKNOWN");
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_SHARE) != 0)
+	cf_strcpy (iqp->share, iqp->share_len, "UNKNOWN");
+
+      if ((cf2 & IOPARM_INQUIRE_HAS_CC) != 0)
+	cf_strcpy (iqp->cc, iqp->cc_len, "UNKNOWN");
     }
 
   if ((cf & IOPARM_INQUIRE_HAS_POSITION) != 0)

@@ -147,8 +147,10 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
           break;
 
         case LDV_PP_INFUNC:
+          /* TODO: Fix me someday
           if (i_kind == LDV_I_VAR && i_match->i_var->func_context && ldv_match_func_signature (i_match->i_var->func_context, c_pointcut->p_pointcut->pp_signature->pps_declaration))
             return true;
+          */
 
           break;
 
@@ -241,6 +243,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   ldv_i_match_ptr match = NULL;
   ldv_i_macro_ptr macro = NULL;
   const struct line_map *map = NULL;
+  const line_map_ordinary *ord_map = NULL;
   int i, j;
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
@@ -267,6 +270,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
 
   /* Obtain current location like in cpp_diagnostic() from errors.c. */
   map = linemap_lookup (pfile->line_table, pfile->cur_token[-1].src_loc);
+  ord_map = linemap_check_ordinary (map);
 
   /* Understand whether a macro function or a macro definition is given. */
   if (node->value.macro->fun_like)
@@ -277,8 +281,18 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   /* Remember a macro name and a name of file containing a given macro. */
   macro->macro_name = ldv_create_id ();
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
-  macro->file_path = map->to_file;
-  macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
+
+  if (map != NULL)
+    {
+      macro->file_path = ORDINARY_MAP_FILE_NAME (ord_map);
+      macro->line = SOURCE_LINE(ord_map, pfile->cur_token[-1].src_loc);
+    }
+  else
+    {
+      macro->file_path = "<built-in>";
+      macro->line = 0;
+    }
+
   macro->macro_param = NULL;
 
   /* Remember macro parameters. */

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,8 +29,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Powten_Table; use System.Powten_Table;
-with System.Val_Util;     use System.Val_Util;
+with System.Powten_Table;  use System.Powten_Table;
+with System.Val_Util;      use System.Val_Util;
+with System.Float_Control;
 
 package body System.Val_Real is
 
@@ -43,14 +44,6 @@ package body System.Val_Real is
       Ptr : not null access Integer;
       Max : Integer) return Long_Long_Float
    is
-      procedure Reset;
-      pragma Import (C, Reset, "__gnat_init_float");
-      --  We import the floating-point processor reset routine so that we can
-      --  be sure the floating-point processor is properly set for conversion
-      --  calls (see description of Reset in GNAT.Float_Control (g-flocon.ads).
-      --  This is notably need on Windows, where calls to the operating system
-      --  randomly reset the processor into 64-bit mode.
-
       P : Integer;
       --  Local copy of string pointer
 
@@ -89,10 +82,6 @@ package body System.Val_Real is
       --  necessarily required in a case like this where the result is not
       --  a machine number, but it is certainly a desirable behavior.
 
-      procedure Bad_Based_Value;
-      pragma No_Return (Bad_Based_Value);
-      --  Raise exception for bad based value
-
       procedure Scanf;
       --  Scans integer literal value starting at current character position.
       --  For each digit encountered, Uval is multiplied by 10.0, and the new
@@ -101,16 +90,6 @@ package body System.Val_Real is
       --  longest possible syntactically valid numeral is scanned out, and on
       --  return P points past the last character. On entry, the current
       --  character is known to be a digit, so a numeral is definitely present.
-
-      ---------------------
-      -- Bad_Based_Value --
-      ---------------------
-
-      procedure Bad_Based_Value is
-      begin
-         raise Constraint_Error with
-           "invalid based literal for 'Value";
-      end Bad_Based_Value;
 
       -----------
       -- Scanf --
@@ -173,7 +152,20 @@ package body System.Val_Real is
    --  Start of processing for System.Scan_Real
 
    begin
-      Reset;
+      --  We do not tolerate strings with Str'Last = Positive'Last
+
+      if Str'Last = Positive'Last then
+         raise Program_Error with
+           "string upper bound is Positive'Last, not supported";
+      end if;
+
+      --  We call the floating-point processor reset routine so that we can
+      --  be sure the floating-point processor is properly set for conversion
+      --  calls. This is notably need on Windows, where calls to the operating
+      --  system randomly reset the processor into 64-bit mode.
+
+      System.Float_Control.Reset;
+
       Scan_Sign (Str, Ptr, Max, Minus, Start);
       P := Ptr.all;
       Ptr.all := Start;
@@ -195,13 +187,13 @@ package body System.Val_Real is
       --  Any other initial character is an error
 
       else
-         raise Constraint_Error with
-           "invalid character in 'Value string";
+         Bad_Value (Str);
       end if;
 
-      --  Deal with based case
+      --  Deal with based case. We reognize either the standard '#' or the
+      --  allowed alternative replacement ':' (see RM J.2(3)).
 
-      if P < Max and then (Str (P) = ':' or else Str (P) = '#') then
+      if P < Max and then (Str (P) = '#' or else Str (P) = ':') then
          declare
             Base_Char : constant Character := Str (P);
             Digit     : Natural;
@@ -234,7 +226,7 @@ package body System.Val_Real is
 
             loop
                if P > Max then
-                  Bad_Based_Value;
+                  Bad_Value (Str);
 
                elsif Str (P) in Digs then
                   Digit := Character'Pos (Str (P)) - Character'Pos ('0');
@@ -248,7 +240,7 @@ package body System.Val_Real is
                     Character'Pos (Str (P)) - (Character'Pos ('a') - 10);
 
                else
-                  Bad_Based_Value;
+                  Bad_Value (Str);
                end if;
 
                --  Save up trailing zeroes after the decimal point
@@ -282,7 +274,7 @@ package body System.Val_Real is
                P := P + 1;
 
                if P > Max then
-                  Bad_Based_Value;
+                  Bad_Value (Str);
 
                elsif Str (P) = '_' then
                   Scan_Underscore (Str, P, Ptr, Max, True);
@@ -297,7 +289,7 @@ package body System.Val_Real is
                      After_Point := 1;
 
                      if P > Max then
-                        Bad_Based_Value;
+                        Bad_Value (Str);
                      end if;
                   end if;
 
@@ -355,9 +347,10 @@ package body System.Val_Real is
             Scale := Scale - Maxpow;
          end loop;
 
-         if Scale > 0 then
-            Uval := Uval * Powten (Scale);
-         end if;
+         --  Note that we still know that Scale > 0, since the loop
+         --  above leaves Scale in the range 1 .. Maxpow.
+
+         Uval := Uval * Powten (Scale);
 
       elsif Scale < 0 then
          while (-Scale) > Maxpow loop
@@ -365,15 +358,16 @@ package body System.Val_Real is
             Scale := Scale + Maxpow;
          end loop;
 
-         if Scale < 0 then
-            Uval := Uval / Powten (-Scale);
-         end if;
+         --  Note that we still know that Scale < 0, since the loop
+         --  above leaves Scale in the range -Maxpow .. -1.
+
+         Uval := Uval / Powten (-Scale);
       end if;
 
       --  Here is where we check for a bad based number
 
       if Bad_Base then
-         Bad_Based_Value;
+         Bad_Value (Str);
 
       --  If OK, then deal with initial minus sign, note that this processing
       --  is done even if Uval is zero, so that -0.0 is correctly interpreted.
@@ -392,12 +386,30 @@ package body System.Val_Real is
    ----------------
 
    function Value_Real (Str : String) return Long_Long_Float is
-      V : Long_Long_Float;
-      P : aliased Integer := Str'First;
    begin
-      V := Scan_Real (Str, P'Access, Str'Last);
-      Scan_Trailing_Blanks (Str, P);
-      return V;
+      --  We have to special case Str'Last = Positive'Last because the normal
+      --  circuit ends up setting P to Str'Last + 1 which is out of bounds. We
+      --  deal with this by converting to a subtype which fixes the bounds.
+
+      if Str'Last = Positive'Last then
+         declare
+            subtype NT is String (1 .. Str'Length);
+         begin
+            return Value_Real (NT (Str));
+         end;
+
+      --  Normal case where Str'Last < Positive'Last
+
+      else
+         declare
+            V : Long_Long_Float;
+            P : aliased Integer := Str'First;
+         begin
+            V := Scan_Real (Str, P'Access, Str'Last);
+            Scan_Trailing_Blanks (Str, P);
+            return V;
+         end;
+      end if;
    end Value_Real;
 
 end System.Val_Real;

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -25,6 +25,7 @@
 
 with Hostparm; use Hostparm;
 with Opt;      use Opt;
+with Output;   use Output;
 
 package body Stylesw is
 
@@ -160,7 +161,15 @@ package body Stylesw is
       Add ('A', Style_Check_Array_Attribute_Index);
       Add ('b', Style_Check_Blanks_At_End);
       Add ('B', Style_Check_Boolean_And_Or);
-      Add ('c', Style_Check_Comments);
+
+      if Style_Check_Comments then
+         if Style_Check_Comments_Spacing = 2 then
+            Add ('c', Style_Check_Comments);
+         elsif Style_Check_Comments_Spacing = 1 then
+            Add ('C', Style_Check_Comments);
+         end if;
+      end if;
+
       Add ('d', Style_Check_DOS_Line_Terminator);
       Add ('e', Style_Check_End_Labels);
       Add ('f', Style_Check_Form_Feeds);
@@ -297,7 +306,6 @@ package body Stylesw is
 
          if On then
             case C is
-
             when '+' =>
                null;
 
@@ -322,6 +330,11 @@ package body Stylesw is
 
             when 'c' =>
                Style_Check_Comments              := True;
+               Style_Check_Comments_Spacing      := 2;
+
+            when 'C' =>
+               Style_Check_Comments              := True;
+               Style_Check_Comments_Spacing      := 1;
 
             when 'd' =>
                Style_Check_DOS_Line_Terminator   := True;
@@ -453,16 +466,19 @@ package body Stylesw is
                null;
 
             when others =>
-               Err_Col := Err_Col - 1;
-               Bad_Style_Switch ("invalid style switch: " & C);
-               return;
+               if Ignore_Unrecognized_VWY_Switches then
+                  Write_Line ("unrecognized switch -gnaty" & C & " ignored");
+               else
+                  Err_Col := Err_Col - 1;
+                  Bad_Style_Switch ("invalid style switch");
+                  return;
+               end if;
             end case;
 
          --  Turning switches off
 
          else
             case C is
-
             when '+' =>
                On := True;
 
@@ -484,7 +500,7 @@ package body Stylesw is
             when 'B' =>
                Style_Check_Boolean_And_Or        := False;
 
-            when 'c' =>
+            when 'c' | 'C' =>
                Style_Check_Comments              := False;
 
             when 'd' =>
@@ -530,6 +546,9 @@ package body Stylesw is
             when 'o' =>
                Style_Check_Order_Subprograms     := False;
 
+            when 'O' =>
+               Style_Check_Missing_Overriding    := False;
+
             when 'p' =>
                Style_Check_Pragma_Casing         := False;
 
@@ -555,9 +574,13 @@ package body Stylesw is
                null;
 
             when others =>
-               Err_Col := Err_Col - 1;
-               Bad_Style_Switch ("invalid style switch: " & C);
-               return;
+               if Ignore_Unrecognized_VWY_Switches then
+                  Write_Line ("unrecognized switch -gnaty-" & C & " ignored");
+               else
+                  Err_Col := Err_Col - 1;
+                  Bad_Style_Switch ("invalid style switch");
+                  return;
+               end if;
             end case;
          end if;
       end loop;

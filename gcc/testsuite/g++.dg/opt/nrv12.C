@@ -1,7 +1,6 @@
-/* Verify that gimple-level NRV is occurring even for RESULT_DECLs.  *./
-/* { dg-do compile { target i?86-*-* x86_64-*-* } } */
+/* Verify that gimple-level NRV is occurring even for RESULT_DECLs.  */
+/* { dg-do compile { target { { i?86-*-* x86_64-*-* } && ia32 } } } */
 /* { dg-options "-O -fdump-tree-optimized" } */
-/* { dg-require-effective-target ilp32 } */
 
 struct P
 {
@@ -22,4 +21,3 @@ P foo (P x)
 }
 
 /* { dg-final { scan-tree-dump-times "return slot optimization" 1 "optimized" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

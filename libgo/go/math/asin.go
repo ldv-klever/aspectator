@@ -4,7 +4,6 @@
 
 package math
 
-
 /*
 	Floating-point arcsine and arccosine.
 
@@ -12,12 +11,20 @@ package math
 	after appropriate range reduction.
 */
 
-// Asin returns the arcsine of x.
+// Asin returns the arcsine, in radians, of x.
 //
 // Special cases are:
 //	Asin(±0) = ±0
 //	Asin(x) = NaN if x < -1 or x > 1
+
+//extern asin
+func libc_asin(float64) float64
+
 func Asin(x float64) float64 {
+	return libc_asin(x)
+}
+
+func asin(x float64) float64 {
 	if x == 0 {
 		return x // special case
 	}
@@ -43,8 +50,18 @@ func Asin(x float64) float64 {
 	return temp
 }
 
-// Acos returns the arccosine of x.
+// Acos returns the arccosine, in radians, of x.
 //
 // Special case is:
 //	Acos(x) = NaN if x < -1 or x > 1
-func Acos(x float64) float64 { return Pi/2 - Asin(x) }
+
+//extern acos
+func libc_acos(float64) float64
+
+func Acos(x float64) float64 {
+	return libc_acos(x)
+}
+
+func acos(x float64) float64 {
+	return Pi/2 - Asin(x)
+}

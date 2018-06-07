@@ -3,7 +3,7 @@
 // { dg-options "-fno-objc-call-cxx-cdtors" }
 // { dg-xfail-run-if "Needs OBJC2 ABI" { *-*-darwin* && { lp64 && { ! objc2 } } } { "-fnext-runtime" } { "" } } 
 
-#include "../objc-obj-c++-shared/Object1.h"
+#include "../objc-obj-c++-shared/TestsuiteObject.m"
 #include <stdlib.h>
 #define CHECK_IF(expr) if(!(expr)) abort()
 
@@ -17,10 +17,10 @@ struct cxx_struct {
   }
 };
 
-@interface Manip : Object {
+@interface Manip : TestsuiteObject {
   int c;
   cxx_struct s;   // { dg-warning "user-defined destructor" }
-                  // { dg-warning "constructors and destructors will not be invoked" "" { target *-*-* } 22 }
+                  // { dg-warning "constructors and destructors will not be invoked" "" { target *-*-* } .-1 }
 }
 - (void) manipulate_ivars;
 @end
@@ -40,4 +40,4 @@ int main (void)
   [obj manipulate_ivars];
   [obj free];
 }
-#include "../objc-obj-c++-shared/Object1-implementation.h"
+

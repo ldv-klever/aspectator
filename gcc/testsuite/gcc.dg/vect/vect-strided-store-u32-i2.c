@@ -39,7 +39,6 @@ int main (void)
 }
 
 /* Needs interleaving support.  */
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { target { vect_interleave } } } } */
-/* { dg-final { scan-tree-dump-times "vectorized 0 loops" 1 "vect" { xfail { vect_interleave } } } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { target { vect_interleave || vect_strided2 } } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 0 loops" 1 "vect" { xfail { vect_interleave || vect_strided2 } } } } */
 

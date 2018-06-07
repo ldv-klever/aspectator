@@ -6,7 +6,7 @@
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---            Copyright (C) 2008-2010, Free Software Foundation, Inc.       --
+--            Copyright (C) 2008-2015, Free Software Foundation, Inc.       --
 --                                                                          --
 -- GNARL is free software;  you can redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -43,6 +43,7 @@ package System.VxWorks.Ext is
 
    type t_id is new Long_Integer;
    subtype int is Interfaces.C.int;
+   subtype unsigned is Interfaces.C.unsigned;
 
    type Interrupt_Handler is access procedure (parameter : System.Address);
    pragma Convention (C, Interrupt_Handler);
@@ -52,7 +53,7 @@ package System.VxWorks.Ext is
    function Int_Lock return int;
    pragma Convention (C, Int_Lock);
 
-   function Int_Unlock return int;
+   function Int_Unlock (Old : int) return int;
    pragma Convention (C, Int_Unlock);
 
    function Interrupt_Connect
@@ -72,7 +73,7 @@ package System.VxWorks.Ext is
    pragma Convention (C, semDelete);
 
    function Task_Cont (tid : t_id) return int;
-   pragma Import (C, Task_Cont, "taskCont");
+   pragma Convention (C, Task_Cont);
 
    function Task_Stop (tid : t_id) return int;
    pragma Convention (C, Task_Stop);
@@ -99,6 +100,11 @@ package System.VxWorks.Ext is
    function taskCpuAffinitySet (tid : t_id; CPU : int) return int;
    pragma Convention (C, taskCpuAffinitySet);
    --  For SMP run-times set the CPU affinity.
+   --  For uniprocessor systems return ERROR status.
+
+   function taskMaskAffinitySet (tid : t_id; CPU_Set : unsigned) return int;
+   pragma Convention (C, taskMaskAffinitySet);
+   --  For SMP run-times set the CPU mask affinity.
    --  For uniprocessor systems return ERROR status.
 
 end System.VxWorks.Ext;

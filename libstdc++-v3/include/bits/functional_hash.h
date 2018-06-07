@@ -1,6 +1,6 @@
 // functional_hash.h header -*- C++ -*-
 
-// Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2007-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -55,72 +55,132 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /// Primary class template hash.
   template<typename _Tp>
-    struct hash : public __hash_base<size_t, _Tp>
+    struct hash;
+
+  template<typename _Tp, typename = void>
+    struct __poison_hash
+    {
+      static constexpr bool __enable_hash_call = false;
+    private:
+      // Private rather than deleted to be non-trivially-copyable.
+      __poison_hash(__poison_hash&&);
+      ~__poison_hash();
+    };
+
+  template<typename _Tp>
+    struct __poison_hash<_Tp, __void_t<decltype(hash<_Tp>()(declval<_Tp>()))>>
+    {
+      static constexpr bool __enable_hash_call = true;
+    };
+
+  // Helper struct for SFINAE-poisoning non-enum types.
+  template<typename _Tp, bool = is_enum<_Tp>::value>
+    struct __hash_enum
+    {
+    private:
+      // Private rather than deleted to be non-trivially-copyable.
+      __hash_enum(__hash_enum&&);
+      ~__hash_enum();
+    };
+
+  // Helper struct for hash with enum types.
+  template<typename _Tp>
+    struct __hash_enum<_Tp, true> : public __hash_base<size_t, _Tp>
     {
       size_t
-      operator()(_Tp __val) const;
+      operator()(_Tp __val) const noexcept
+      {
+       using __type = typename underlying_type<_Tp>::type;
+       return hash<__type>{}(static_cast<__type>(__val));
+      }
     };
+
+  /// Primary class template hash, usable for enum types only.
+  // Use with non-enum types still SFINAES.
+  template<typename _Tp>
+    struct hash : __hash_enum<_Tp>
+    { };
 
   /// Partial specializations for pointer types.
   template<typename _Tp>
     struct hash<_Tp*> : public __hash_base<size_t, _Tp*>
     {
       size_t
-      operator()(_Tp* __p) const
+      operator()(_Tp* __p) const noexcept
       { return reinterpret_cast<size_t>(__p); }
     };
 
   // Explicit specializations for integer types.
 #define _Cxx_hashtable_define_trivial_hash(_Tp) 	\
   template<>						\
-    inline size_t					\
-    hash<_Tp>::operator()(_Tp __val) const		\
-    { return static_cast<size_t>(__val); }
+    struct hash<_Tp> : public __hash_base<size_t, _Tp>  \
+    {                                                   \
+      size_t                                            \
+      operator()(_Tp __val) const noexcept              \
+      { return static_cast<size_t>(__val); }            \
+    };
 
   /// Explicit specialization for bool.
-  _Cxx_hashtable_define_trivial_hash(bool);
+  _Cxx_hashtable_define_trivial_hash(bool)
 
   /// Explicit specialization for char.
-  _Cxx_hashtable_define_trivial_hash(char);
+  _Cxx_hashtable_define_trivial_hash(char)
 
   /// Explicit specialization for signed char.
-  _Cxx_hashtable_define_trivial_hash(signed char);
+  _Cxx_hashtable_define_trivial_hash(signed char)
 
   /// Explicit specialization for unsigned char.
-  _Cxx_hashtable_define_trivial_hash(unsigned char);
+  _Cxx_hashtable_define_trivial_hash(unsigned char)
 
   /// Explicit specialization for wchar_t.
-  _Cxx_hashtable_define_trivial_hash(wchar_t);
+  _Cxx_hashtable_define_trivial_hash(wchar_t)
 
   /// Explicit specialization for char16_t.
-  _Cxx_hashtable_define_trivial_hash(char16_t);
+  _Cxx_hashtable_define_trivial_hash(char16_t)
 
   /// Explicit specialization for char32_t.
-  _Cxx_hashtable_define_trivial_hash(char32_t);
+  _Cxx_hashtable_define_trivial_hash(char32_t)
 
   /// Explicit specialization for short.
-  _Cxx_hashtable_define_trivial_hash(short);
+  _Cxx_hashtable_define_trivial_hash(short)
 
   /// Explicit specialization for int.
-  _Cxx_hashtable_define_trivial_hash(int);
+  _Cxx_hashtable_define_trivial_hash(int)
 
   /// Explicit specialization for long.
-  _Cxx_hashtable_define_trivial_hash(long);
+  _Cxx_hashtable_define_trivial_hash(long)
 
   /// Explicit specialization for long long.
-  _Cxx_hashtable_define_trivial_hash(long long);
+  _Cxx_hashtable_define_trivial_hash(long long)
 
   /// Explicit specialization for unsigned short.
-  _Cxx_hashtable_define_trivial_hash(unsigned short);
+  _Cxx_hashtable_define_trivial_hash(unsigned short)
 
   /// Explicit specialization for unsigned int.
-  _Cxx_hashtable_define_trivial_hash(unsigned int);
+  _Cxx_hashtable_define_trivial_hash(unsigned int)
 
   /// Explicit specialization for unsigned long.
-  _Cxx_hashtable_define_trivial_hash(unsigned long);
+  _Cxx_hashtable_define_trivial_hash(unsigned long)
 
   /// Explicit specialization for unsigned long long.
-  _Cxx_hashtable_define_trivial_hash(unsigned long long);
+  _Cxx_hashtable_define_trivial_hash(unsigned long long)
+
+#ifdef __GLIBCXX_TYPE_INT_N_0
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_0)
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_0 unsigned)
+#endif
+#ifdef __GLIBCXX_TYPE_INT_N_1
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_1)
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_1 unsigned)
+#endif
+#ifdef __GLIBCXX_TYPE_INT_N_2
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_2)
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_2 unsigned)
+#endif
+#ifdef __GLIBCXX_TYPE_INT_N_3
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_3)
+  _Cxx_hashtable_define_trivial_hash(__GLIBCXX_TYPE_INT_N_3 unsigned)
+#endif
 
 #undef _Cxx_hashtable_define_trivial_hash
 
@@ -142,6 +202,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       { return hash(&__val, sizeof(__val), __hash); }
   };
 
+  // A hash function similar to FNV-1a (see PR59406 for how it differs).
   struct _Fnv_hash_impl
   {
     static size_t
@@ -162,28 +223,50 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /// Specialization for float.
   template<>
-    inline size_t
-    hash<float>::operator()(float __val) const
+    struct hash<float> : public __hash_base<size_t, float>
     {
-      // 0 and -0 both hash to zero.
-      return __val != 0.0f ? std::_Hash_impl::hash(__val) : 0;
-    }
+      size_t
+      operator()(float __val) const noexcept
+      {
+	// 0 and -0 both hash to zero.
+	return __val != 0.0f ? std::_Hash_impl::hash(__val) : 0;
+      }
+    };
 
   /// Specialization for double.
   template<>
-    inline size_t
-    hash<double>::operator()(double __val) const
+    struct hash<double> : public __hash_base<size_t, double>
     {
-      // 0 and -0 both hash to zero.
-      return __val != 0.0 ? std::_Hash_impl::hash(__val) : 0;
-    }
+      size_t
+      operator()(double __val) const noexcept
+      {
+	// 0 and -0 both hash to zero.
+	return __val != 0.0 ? std::_Hash_impl::hash(__val) : 0;
+      }
+    };
 
   /// Specialization for long double.
   template<>
-    _GLIBCXX_PURE size_t
-    hash<long double>::operator()(long double __val) const;
+    struct hash<long double>
+    : public __hash_base<size_t, long double>
+    {
+      _GLIBCXX_PURE size_t
+      operator()(long double __val) const noexcept;
+    };
 
   // @} group hashes
+
+  // Hint about performance of hash functor. If not fast the hash-based
+  // containers will cache the hash code.
+  // Default behavior is to consider that hashers are fast unless specified
+  // otherwise.
+  template<typename _Hash>
+    struct __is_fast_hash : public std::true_type
+    { };
+
+  template<>
+    struct __is_fast_hash<hash<long double>> : public std::false_type
+    { };
 
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace

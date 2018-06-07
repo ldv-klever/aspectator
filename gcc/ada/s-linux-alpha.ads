@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---             Copyright (C) 2009, Free Software Foundation, Inc.           --
+--          Copyright (C) 2009-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -39,6 +39,27 @@ with Interfaces.C;
 
 package System.Linux is
    pragma Preelaborate;
+
+   ----------
+   -- Time --
+   ----------
+
+   subtype long        is Interfaces.C.long;
+   subtype suseconds_t is Interfaces.C.long;
+   subtype time_t      is Interfaces.C.long;
+   subtype clockid_t   is Interfaces.C.int;
+
+   type timespec is record
+      tv_sec  : time_t;
+      tv_nsec : long;
+   end record;
+   pragma Convention (C, timespec);
+
+   type timeval is record
+      tv_sec  : time_t;
+      tv_usec : suseconds_t;
+   end record;
+   pragma Convention (C, timeval);
 
    -----------
    -- Errno --
@@ -110,10 +131,5 @@ package System.Linux is
 
    SA_SIGINFO  : constant := 16#40#;
    SA_ONSTACK  : constant := 16#01#;
-
-   type pthread_mutex_t is record
-      dum0, dum1, dum2, dum3, dum4 : Interfaces.C.unsigned_long;
-   end record;
-   pragma Convention (C, pthread_mutex_t);
 
 end System.Linux;

@@ -7,7 +7,6 @@ package iotest
 import (
 	"io"
 	"log"
-	"os"
 )
 
 type writeLogger struct {
@@ -15,7 +14,7 @@ type writeLogger struct {
 	w      io.Writer
 }
 
-func (l *writeLogger) Write(p []byte) (n int, err os.Error) {
+func (l *writeLogger) Write(p []byte) (n int, err error) {
 	n, err = l.w.Write(p)
 	if err != nil {
 		log.Printf("%s %x: %v", l.prefix, p[0:n], err)
@@ -37,7 +36,7 @@ type readLogger struct {
 	r      io.Reader
 }
 
-func (l *readLogger) Read(p []byte) (n int, err os.Error) {
+func (l *readLogger) Read(p []byte) (n int, err error) {
 	n, err = l.r.Read(p)
 	if err != nil {
 		log.Printf("%s %x: %v", l.prefix, p[0:n], err)
@@ -49,7 +48,7 @@ func (l *readLogger) Read(p []byte) (n int, err os.Error) {
 
 // NewReadLogger returns a reader that behaves like r except
 // that it logs (using log.Print) each read to standard error,
-// printing the prefix and the hexadecimal data written.
+// printing the prefix and the hexadecimal data read.
 func NewReadLogger(prefix string, r io.Reader) io.Reader {
 	return &readLogger{prefix, r}
 }

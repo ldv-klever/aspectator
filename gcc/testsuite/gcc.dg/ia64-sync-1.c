@@ -1,7 +1,7 @@
 /* { dg-do run } */
 /* { dg-require-effective-target sync_int_long } */
 /* { dg-options } */
-/* { dg-options "-march=i486" { target { { i?86-*-* x86_64-*-* } && ilp32 } } } */
+/* { dg-options "-march=i486" { target { { i?86-*-* x86_64-*-* } && ia32 } } } */
 /* { dg-options "-mcpu=v9" { target sparc*-*-* } } */
 
 /* { dg-message "note: '__sync_fetch_and_nand' changed semantics in GCC 4.4" "" { target *-*-* } 0 } */
@@ -13,6 +13,7 @@ __extension__ typedef __SIZE_TYPE__ size_t;
 
 extern void abort (void);
 extern void *memcpy (void *, const void *, size_t);
+extern int memcmp (const void *, const void *, size_t);
 
 static int AI[12];
 static int init_noret_si[12] = { 0, 0, 0, 1, 0, 0, 0 , 0  , -1, 0, 0, -1 };

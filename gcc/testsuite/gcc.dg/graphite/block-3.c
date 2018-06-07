@@ -1,4 +1,5 @@
 /* { dg-require-effective-target size32plus } */
+/* { dg-require-effective-target run_expensive_tests }  PR testsuite/48283 */
 /* { dg-timeout-factor 4.0 } */
 
 #define DEBUG 0
@@ -16,7 +17,7 @@ foo (void)
 {
   int i, j, k;
 
-  /* These loops contain too few iterations to be blocked by 64.  */
+  /* These loops contain too few iterations to be blocked.  */
   for (i = 0; i < 24; i++)
     for (j = 0; j < 24; j++)
       for (k = 0; k < 24; k++)
@@ -57,5 +58,4 @@ main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "will be loop blocked" 1 "graphite" } } */
-/* { dg-final { cleanup-tree-dump "graphite" } } */
+/* { dg-final { scan-tree-dump "tiled by" "graphite" } } */

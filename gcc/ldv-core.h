@@ -25,7 +25,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-cpp-core.h"
 
 /* Print source code location and call GCC fatal_error. */
-#define LDV_FATAL_ERROR fprintf (stderr, "LDV: %s: %d: fatal error took place here\n", __FILE__, __LINE__); fatal_error
+#define LDV_FATAL_ERROR fprintf (stderr, "LDV: %s: %d: fatal error took place here\n", __FILE__, __LINE__); internal_error
 /* Obtain a pointer to a string end. */
 #define LDV_STR_END(str) (str + (strlen (str) - 1))
 /* Obtain an offset to a string end. */

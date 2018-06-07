@@ -1,9 +1,10 @@
 // PR c++/46736
-// { dg-options -std=c++0x }
+// { dg-do compile { target c++11 } }
 
 struct U {
   U();
-  U(U const&);
+private:
+  U(U const&);			// { dg-message "private" }
 };
 
 struct X {
@@ -12,8 +13,8 @@ struct X {
   X(X&&);
 };
 
-X::X(X&&)=default;		// { dg-error "implicitly deleted" }
-// { dg-error "does not have a move constructor" "" { target *-*-* } 15 }
+X::X(X&&)=default;		// { dg-message "implicitly deleted" }
+// { dg-prune-output "within this context" }
 
 X f() {
   return X();

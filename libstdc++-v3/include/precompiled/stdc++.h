@@ -1,7 +1,6 @@
 // C++ includes used for precompiling -*- C++ -*-
 
-// Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-// Free Software Foundation, Inc.
+// Copyright (C) 2003-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -49,13 +48,15 @@
 #include <cstring>
 #include <ctime>
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
 #include <ccomplex>
 #include <cfenv>
 #include <cinttypes>
+#include <cstdalign>
 #include <cstdbool>
 #include <cstdint>
 #include <ctgmath>
+#include <cuchar>
 #include <cwchar>
 #include <cwctype>
 #endif
@@ -94,10 +95,11 @@
 #include <valarray>
 #include <vector>
 
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
+#if __cplusplus >= 201103L
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <codecvt>
 #include <condition_variable>
 #include <forward_list>
 #include <future>
@@ -106,6 +108,7 @@
 #include <random>
 #include <ratio>
 #include <regex>
+#include <scoped_allocator>
 #include <system_error>
 #include <thread>
 #include <tuple>
@@ -113,4 +116,8 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#endif
+
+#if __cplusplus >= 201402L
+#include <shared_mutex>
 #endif

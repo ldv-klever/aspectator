@@ -1,5 +1,6 @@
 // More auto/decltype mangling tests.
-// { dg-options "-std=c++0x" }
+// { dg-do compile { target c++11 } }
+// { dg-options "-fabi-version=0" }
 
 template <class T>
 struct B
@@ -58,6 +59,6 @@ int main()
   A<int>().h(1);
   // { dg-final { scan-assembler  "_ZN1AIiE1jIiEEDTplfp_clL_Z1xvEEET_" } }
   A<int>().j(1);
-  // { dg-final { scan-assembler  "_Z1gIIidEEDTcl1fspplfp_Li1EEEDpT_" } }  
+  // { dg-final { scan-assembler  "_Z1gIJidEEDTcl1fspplfp_Li1EEEDpT_" } }
   g(42, 1.0);
 }

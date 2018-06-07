@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2005, 2006, 2009 Free Software Foundation, Inc.
+// Copyright (C) 2005-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the terms
@@ -113,8 +113,8 @@ namespace __gnu_pbds
 
 	  const std::string store_hash_desc =
             store_hash_string_form<Cntnr::store_hash>::desc();
-	  
-	  return make_xml_tag("type", "value", "gp_hash_table", 
+
+	  return make_xml_tag("type", "value", "gp_hash_table",
 			      comb_probe_fn_desc + probe_fn_desc + resize_policy_desc + store_hash_desc);
 	}
       };
@@ -139,14 +139,14 @@ namespace __gnu_pbds
 	  const std::string node_update_str =
             make_xml_tag("Node_Update",
 			 "value",(tree_supports_order_statistics<Cntnr>::value ?
-	 "tree_order_statistics_node_update" : "null_tree_node_update"));
+	 "tree_order_statistics_node_update" : "null_node_update"));
 
 	  return make_xml_tag("type", "value", "tree", category_str + node_update_str);
 	}
       };
 
       template<typename Cntnr>
-      struct ds_string_form<Cntnr, __gnu_pbds::rb_tree_tag> 
+      struct ds_string_form<Cntnr, __gnu_pbds::rb_tree_tag>
       : private tree_ds_string_form<Cntnr>
       {
       private:
@@ -163,7 +163,7 @@ namespace __gnu_pbds
       };
 
       template<typename Cntnr>
-      struct ds_string_form<Cntnr, __gnu_pbds::splay_tree_tag> 
+      struct ds_string_form<Cntnr, __gnu_pbds::splay_tree_tag>
       : private tree_ds_string_form<Cntnr>
       {
       private:
@@ -180,7 +180,7 @@ namespace __gnu_pbds
       };
 
       template<typename Cntnr>
-      struct ds_string_form<Cntnr, __gnu_pbds::ov_tree_tag> 
+      struct ds_string_form<Cntnr, __gnu_pbds::ov_tree_tag>
       : private tree_ds_string_form<Cntnr>
       {
       private:
@@ -239,7 +239,7 @@ namespace __gnu_pbds
 	  else if (trie_supports_prefix_search<Cntnr>::value)
 	    s = "trie_prefix_search_node_update";
 	  else
-            s = "null_trie_node_update";
+            s = "null_node_update";
 	  std::string node_s = make_xml_tag("Node_Update", "value", s);
 	  return make_xml_tag("type", "value", "trie", category_s + node_s);
 	}

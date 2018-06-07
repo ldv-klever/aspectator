@@ -20,17 +20,59 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "input.h"
 #include "tm.h"
-
-/* Tree conceptions. */
+#include "intl.h"
+#include "hash-set.h"
+#include "vec.h"
+#include "symtab.h"
+#include "input.h"
+#include "alias.h"
+#include "double-int.h"
+#include "machmode.h"
+#include "inchash.h"
 #include "tree.h"
-
-/* For lookup_name function. */
-#include "c-lang.h"
-
-/* For error functions. */
-#include "diagnostic-core.h"
+#include "fold-const.h"
+#include "print-tree.h"
+#include "stor-layout.h"
+#include "varasm.h"
+#include "attribs.h"
+#include "stringpool.h"
+#include "tree-inline.h"
+#include "flags.h"
+#include "hashtab.h"
+#include "hash-set.h"
+#include "vec.h"
+#include "machmode.h"
+#include "hard-reg-set.h"
+#include "function.h"
 #include "toplev.h"
+#include "tm_p.h"
+#include "cpplib.h"
+#include "target.h"
+#include "debug.h"
+#include "opts.h"
+#include "timevar.h"
+#include "c-family/c-common.h"
+#include "c-family/c-objc.h"
+#include "c-family/c-pragma.h"
+#include "c-family/c-ubsan.h"
+#include "langhooks.h"
+#include "tree-iterator.h"
+#include "diagnostic-core.h"
+#include "dumpfile.h"
+#include "hash-map.h"
+#include "is-a.h"
+#include "plugin-api.h"
+#include "ipa-ref.h"
+#include "cgraph.h"
+#include "hash-table.h"
+#include "langhooks-def.h"
+#include "plugin.h"
+#include "c-family/c-ada-spec.h"
+#include "cilk.h"
+#include "builtins.h"
+#include "c/c-lang.h"
 
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-types.h"
@@ -1434,7 +1476,7 @@ ldv_print_file_path (const char* path)
 
   ldv_padding_cur = LDV_PADDING_NONE;
 
-  occurrence = strstr(path, ".prepared");
+  occurrence = (char*)strstr(path, ".prepared");
   if (occurrence)
     *occurrence = '\0';
   ldv_print_str (path);

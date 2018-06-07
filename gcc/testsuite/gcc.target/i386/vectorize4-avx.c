@@ -3,6 +3,7 @@
 
 
 extern double sqrt (double __x);
+void
 calc_freq (int *dest)
 {
   float tmp_out[257];
@@ -11,4 +12,4 @@ calc_freq (int *dest)
     dest[i] = sqrt (tmp_out[i]);
 }
 
-/* { dg-final { scan-assembler "vsqrtpd\[ \\t\]+\[^\n\]*%ymm" { xfail *-*-* } } } */
+/* { dg-final { scan-assembler "vsqrtpd\[ \\t\]+\[^\n\]*%ymm" } } */

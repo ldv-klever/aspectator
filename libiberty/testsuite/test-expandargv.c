@@ -1,5 +1,5 @@
 /* expandargv test program,
-   Copyright (C) 2006 Free Software Foundation, Inc.
+   Copyright (C) 2006-2017 Free Software Foundation, Inc.
    Written by Carlos O'Donell <carlos@codesourcery.com>
 
    This file is part of the libiberty library, which is part of GCC.
@@ -39,6 +39,9 @@
 #endif
 #ifdef HAVE_STRING_H
 #include <string.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
 #endif
 
 #ifndef EXIT_SUCCESS
@@ -189,7 +192,7 @@ writeout_test (int test, const char * test_data)
 {
   char filename[256];
   FILE *fd;
-  size_t len;
+  size_t len, sys_fwrite;
   char * parse;
 
   /* Unique filename per test */
@@ -204,11 +207,14 @@ writeout_test (int test, const char * test_data)
   if (parse == NULL)
     fatal_error (__LINE__, "Failed to malloc parse.", errno);
       
-  memcpy (parse, test_data, sizeof (char) * len);
+  memcpy (parse, test_data, sizeof (char) * (len + 1));
   /* Run all possible replaces */
   run_replaces (parse);
 
-  fwrite (parse, len, sizeof (char), fd);
+  sys_fwrite = fwrite (parse, sizeof (char), len, fd);
+  if (sys_fwrite != len)
+    fatal_error (__LINE__, "Failed to write to test file.", errno);
+
   free (parse);
   fclose (fd);
 }

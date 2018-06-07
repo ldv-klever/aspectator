@@ -1,32 +1,25 @@
 // -*- C++ -*-
 //
-// Copyright (C) 2009, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2009-2017 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
-// software; you can redistribute it and/or modify it under the terms
-// of the GNU General Public License as published by the Free Software
-// Foundation; either version 2, or (at your option) any later
-// version.
+// software; you can redistribute it and/or modify it under the
+// terms of the GNU General Public License as published by the
+// Free Software Foundation; either version 3, or (at your option)
+// any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 
-// This library is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// General Public License for more details.
+// Under Section 7 of GPL version 3, you are granted additional
+// permissions described in the GCC Runtime Library Exception, version
+// 3.1, as published by the Free Software Foundation.
 
-// You should have received a copy of the GNU General Public License
-// along with this library; see the file COPYING.  If not, write to
-// the Free Software Foundation, 59 Temple Place - Suite 330, Boston,
-// MA 02111-1307, USA.
-
-// As a special exception, you may use this file as part of a free
-// software library without restriction.  Specifically, if other files
-// instantiate templates or use macros or inline functions from this
-// file, or you compile this file and link it with other files to
-// produce an executable, this file does not by itself cause the
-// resulting executable to be covered by the GNU General Public
-// License.  This exception does not however invalidate any other
-// reasons why the executable file might be covered by the GNU General
-// Public License.
+// You should have received a copy of the GNU General Public License along
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 /** @file profile/impl/profiler_list_to_slist.h
  *  @brief Diagnostics for list to slist.
@@ -47,18 +40,9 @@ namespace __gnu_profile
   : public __object_info_base
   {
   public:
-    __list2slist_info()
-    : _M_rewind(false), _M_operations(0) { }
-  
     __list2slist_info(__stack_t __stack)
     : __object_info_base(__stack), _M_rewind(false), _M_operations(0) { }
 
-    virtual ~__list2slist_info() { }
-
-    __list2slist_info(const __list2slist_info& __o)
-    : __object_info_base(__o), _M_rewind(__o._M_rewind),
-      _M_operations(__o._M_operations) { }
-  
     // XXX: the magnitude should be multiplied with a constant factor F,
     // where F is 1 when the malloc size class of list nodes is different
     // from the malloc size class of slist nodes.  When they fall into the same
@@ -77,9 +61,6 @@ namespace __gnu_profile
     }
     
     void
-    __merge(const __list2slist_info&) { }
-
-    void
     __write(FILE* __f) const
     { std::fprintf(__f, "%s\n", _M_rewind ? "invalid" : "valid"); }
 
@@ -91,7 +72,7 @@ namespace __gnu_profile
     __opr_rewind()
     {
       _M_rewind = true;
-      _M_valid = false;
+      __set_invalid();
     }
 
     void
@@ -126,37 +107,8 @@ namespace __gnu_profile
     { __id = "list-to-slist"; }
 
     void
-    __opr_rewind(const void* __obj)
-    {
-      __list2slist_info* __res = __get_object_info(__obj);
-      if (__res)
-	__res->__opr_rewind();
-    }
-
-    void
-    __record_operation(const void* __obj)
-    {
-      __list2slist_info* __res = __get_object_info(__obj);
-      if (__res)
-	__res->__record_operation();
-    }
-
-    void
-    __insert(const __object_t __obj, __stack_t __stack)
-    { __add_object(__obj, __list2slist_info(__stack)); }
-  
-    void
-    __destruct(const void* __obj)
-    {
-      if (!__is_on())
-	return;
-
-      __list2slist_info* __res = __get_object_info(__obj);
-      if (!__res)
-	return;
-
-      __retire_object(__obj);
-    }
+    __destruct(__list2slist_info* __obj_info)
+    { __retire_object(__obj_info); }
   };
 
 
@@ -165,50 +117,51 @@ namespace __gnu_profile
   { _GLIBCXX_PROFILE_DATA(_S_list_to_slist) = new __trace_list_to_slist(); }
 
   inline void
+  __trace_list_to_slist_free()
+  { delete _GLIBCXX_PROFILE_DATA(_S_list_to_slist); }
+
+  inline void
   __trace_list_to_slist_report(FILE* __f, __warning_vector_t& __warnings)
+  { __trace_report(_GLIBCXX_PROFILE_DATA(_S_list_to_slist), __f, __warnings); }
+
+  inline __list2slist_info*
+  __trace_list_to_slist_construct()
   {
-    if (_GLIBCXX_PROFILE_DATA(_S_list_to_slist))
-      {
-	_GLIBCXX_PROFILE_DATA(_S_list_to_slist)->
-	  __collect_warnings(__warnings);
-	_GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__write(__f);
-      }
+    if (!__profcxx_init())
+      return 0;
+
+    if (!__reentrance_guard::__get_in())
+      return 0;
+
+    __reentrance_guard __get_out;
+    return _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__add_object(__get_stack());
   }
 
   inline void
-  __trace_list_to_slist_rewind(const void* __obj) 
+  __trace_list_to_slist_rewind(__list2slist_info* __obj_info) 
   {
-    if (!__profcxx_init())
+    if (!__obj_info)
       return;
 
-    _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__opr_rewind(__obj);
+    __obj_info->__opr_rewind();
   }
 
   inline void
-  __trace_list_to_slist_operation(const void* __obj) 
+  __trace_list_to_slist_operation(__list2slist_info* __obj_info) 
   {
-    if (!__profcxx_init())
+    if (!__obj_info)
       return;
 
-    _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__record_operation(__obj);
+    __obj_info->__record_operation();
   }
 
   inline void
-  __trace_list_to_slist_construct(const void* __obj)
+  __trace_list_to_slist_destruct(__list2slist_info* __obj_info)
   {
-    if (!__profcxx_init())
+    if (!__obj_info)
       return;
 
-    _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__insert(__obj, __get_stack());
-  }
-
-  inline void
-  __trace_list_to_slist_destruct(const void* __obj)
-  {
-    if (!__profcxx_init())
-      return;
-
-    _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__destruct(__obj);
+    _GLIBCXX_PROFILE_DATA(_S_list_to_slist)->__destruct(__obj_info);
   }
 
 } // namespace __gnu_profile

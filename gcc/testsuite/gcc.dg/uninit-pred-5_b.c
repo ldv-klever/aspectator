@@ -1,13 +1,14 @@
 /* { dg-do compile } */
-/* { dg-options "-Wuninitialized -O2" } */
+/* { dg-options "-Wuninitialized -Wno-attributes -O2" } */
 
 int g;
 int bar();
 int blah(int);
 void t(int);
 
+static int
 __attribute__((always_inline)) 
-int foo (int n, int* v, int r)
+foo (int n, int* v, int r)
 {
   int flag = 0;
   if (r > n)

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 2008-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 2008-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -35,8 +35,31 @@
 --  PLEASE DO NOT add any with-clauses to this package or remove the pragma
 --  Preelaborate. This package is designed to be a bottom-level (leaf) package
 
+with Interfaces.C;
+
 package System.Linux is
    pragma Preelaborate;
+
+   ----------
+   -- Time --
+   ----------
+
+   subtype long        is Interfaces.C.long;
+   subtype suseconds_t is Interfaces.C.long;
+   subtype time_t      is Interfaces.C.long;
+   subtype clockid_t   is Interfaces.C.int;
+
+   type timespec is record
+      tv_sec  : time_t;
+      tv_nsec : long;
+   end record;
+   pragma Convention (C, timespec);
+
+   type timeval is record
+      tv_sec  : time_t;
+      tv_usec : suseconds_t;
+   end record;
+   pragma Convention (C, timeval);
 
    -----------
    -- Errno --
@@ -100,20 +123,5 @@ package System.Linux is
 
    SA_SIGINFO  : constant := 16#04#;
    SA_ONSTACK  : constant := 16#08000000#;
-
-   type struct_pthread_fast_lock is record
-      status   : Long_Integer;
-      spinlock : Integer;
-   end record;
-   pragma Convention (C, struct_pthread_fast_lock);
-
-   type pthread_mutex_t is record
-      m_reserved : Integer;
-      m_count    : Integer;
-      m_owner    : System.Address;
-      m_kind     : Integer;
-      m_lock     : struct_pthread_fast_lock;
-   end record;
-   pragma Convention (C, pthread_mutex_t);
 
 end System.Linux;

@@ -1,5 +1,5 @@
 # Configure script for libada.
-#   Copyright 2003, 2004, 2009 Free Software Foundation, Inc.
+#   Copyright (C) 2003-2017 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 sinclude(../config/acx.m4)
 sinclude(../config/multi.m4)
 sinclude(../config/override.m4)
+sinclude(../config/picflag.m4)
 sinclude(../config/unwind_ipinfo.m4)
 
 AC_INIT
@@ -118,14 +119,15 @@ esac
 ], [enable_shared=yes])
 AC_SUBST([enable_shared])
 
+GCC_PICFLAG
+AC_SUBST([PICFLAG])
+
 # These must be passed down, or are needed by gcc/libgcc.mvars
 AC_PROG_AWK
 AC_PROG_LN_S
 
 # Determine what to build for 'gnatlib'
-if test $build = $target \
-   && test ${enable_shared} = yes ; then
-  # Note that build=target is almost certainly the wrong test; FIXME
+if test ${enable_shared} = yes; then
   default_gnatlib_target="gnatlib-shared"
 else
   default_gnatlib_target="gnatlib-plain"
@@ -134,17 +136,15 @@ AC_SUBST([default_gnatlib_target])
 
 # Check for _Unwind_GetIPInfo
 GCC_CHECK_UNWIND_GETIPINFO
-have_getipinfo=
 if test x$have_unwind_getipinfo = xyes; then
   have_getipinfo=-DHAVE_GETIPINFO
+else
+  have_getipinfo=
 fi
-AC_SUBST(have_getipinfo)
+AC_SUBST([have_getipinfo])
 
-warn_cflags=
-if test "x$GCC" = "xyes"; then
-  warn_cflags='$(GCC_WARN_CFLAGS)'
-fi
-AC_SUBST(warn_cflags)
+# Determine what GCC version number to use in filesystem paths.
+GCC_BASE_VER
 
 # Output: create a Makefile.
 AC_CONFIG_FILES([Makefile])

@@ -1,6 +1,7 @@
 // Runtime test for noexcept-specification.
-// { dg-options "-std=c++0x -Wnoexcept" }
-// { dg-do run }
+// { dg-options "-Wnoexcept" }
+// { dg-do run { target nonpic } }
+// { dg-require-effective-target c++11 }
 
 #include <exception>
 #include <cstdlib>
@@ -36,19 +37,6 @@ void f2(T a) noexcept (noexcept (f (a)))
 
 struct A { A() { } };		// { dg-warning "does not throw" }
 
-// throw(int) overrides noexcept(false) in either order.
-void h() throw (int, std::bad_exception);
-void h() noexcept (false)
-{
-  throw 1.0;
-}
-
-void i() noexcept (false);
-void i() throw (int, std::bad_exception)
-{
-  throw 1.0;
-}
-
 int main()
 {
   // noexcept(false) allows throw.
@@ -56,10 +44,6 @@ int main()
   // noexcept(noexcept(A())) == noexcept(false).
   try { f(A()); } catch (int) { }
   try { f2(A()); } catch (int) { }
-
-  std::set_unexpected (my_unexpected);
-  try { h(); } catch (std::bad_exception) { }
-  try { i(); } catch (std::bad_exception) { }
 
   std::set_terminate (my_terminate);
   // noexcept(noexcept(int())) == noexcept(true).

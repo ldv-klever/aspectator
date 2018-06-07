@@ -7,7 +7,7 @@
 --                                 S p e c                                  --
 --                            (Compiler Version)                            --
 --                                                                          --
---          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -49,6 +49,9 @@ package System is
    --  Note that we take advantage of the implementation permission to make
    --  this unit Pure instead of Preelaborable; see RM 13.7.1(15). In Ada
    --  2005, this is Pure in any case (AI-362).
+
+   pragma No_Elaboration_Code_All;
+   --  Allow the use of that restriction in units that WITH this unit
 
    type Name is (SYSTEM_NAME_GNAT);
    System_Name : constant Name := SYSTEM_NAME_GNAT;
@@ -123,11 +126,11 @@ private
    -- System Implementation Parameters --
    --------------------------------------
 
-   --  These parameters provide information about the target that is used
-   --  by the compiler. They are in the private part of System, where they
-   --  can be accessed using the special circuitry in the Targparm unit
-   --  whose source should be consulted for more detailed descriptions
-   --  of the individual switch values.
+   --  These parameters provide information about the target that is used by
+   --  the compiler. They are in the private part of System, where they can be
+   --  accessed using the special circuitry in the Targparm unit whose source
+   --  should be consulted for more detailed descriptions of the individual
+   --  switch values.
 
    --  This version of system.ads is used only for building the compiler.
    --  We really ought to use the proper target system (i.e. the one that
@@ -148,13 +151,11 @@ private
    Frontend_Layout           : constant Boolean := False;
    Machine_Overflows         : constant Boolean := False;
    Machine_Rounds            : constant Boolean := True;
-   OpenVMS                   : constant Boolean := False;
    Preallocated_Stacks       : constant Boolean := False;
    Signed_Zeros              : constant Boolean := True;
    Stack_Check_Default       : constant Boolean := False;
    Stack_Check_Probes        : constant Boolean := False;
    Stack_Check_Limits        : constant Boolean := False;
-   Support_64_Bit_Divides    : constant Boolean := True;
    Support_Aggregates        : constant Boolean := True;
    Support_Composite_Assign  : constant Boolean := True;
    Support_Composite_Compare : constant Boolean := True;
@@ -162,14 +163,16 @@ private
    Always_Compatible_Rep     : constant Boolean := True;
    Suppress_Standard_Library : constant Boolean := False;
    Use_Ada_Main_Program_Name : constant Boolean := False;
+   Frontend_Exceptions       : constant Boolean := True;
    ZCX_By_Default            : constant Boolean := False;
-   GCC_ZCX_Support           : constant Boolean := False;
 
-   --  Obsolete entries, to be removed eventually (bootstrap issues!)
+   --  Obsolete entries, to be removed eventually (bootstrap issues)
 
    Front_End_ZCX_Support     : constant Boolean := False;
    High_Integrity_Mode       : constant Boolean := False;
    Long_Shifts_Inlined       : constant Boolean := True;
    Functions_Return_By_DSP   : constant Boolean := False;
+   Support_64_Bit_Divides    : constant Boolean := True;
+   GCC_ZCX_Support           : constant Boolean := False;
 
 end System;

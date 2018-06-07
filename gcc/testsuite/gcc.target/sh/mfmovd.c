@@ -1,7 +1,8 @@
-/* { dg-do compile { target "sh*-*-*" } } */
+/* Verify that we generate fmov.d instructions to move doubles when -mfmovd 
+   option is enabled.  */
+/* { dg-do compile { target { double_fpu } } }  */
 /* { dg-options "-mfmovd" } */
-/* { dg-skip-if "No double precision FPU support" { "sh*-*-*" } "-m2a-nofpu -m2a-single-only -m4-nofpu -m4-single-only -m4a-nofpu -m4a-single-only" { "" } }  */
-/* { dg-final { scan-assembler "fmov.d"} }  */
+/* { dg-final { scan-assembler "fmov.d" } } */
 
 extern double g;
 
@@ -11,3 +12,9 @@ f (double d)
   g = d;
 }
 
+extern float h;
+
+void f2 ()
+{
+  h = g;
+}

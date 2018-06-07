@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// SHA1 hash algorithm.  See RFC 3174.
+// SHA1 hash algorithm. See RFC 3174.
 
 package sha1
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
 	"testing"
@@ -18,6 +19,7 @@ type sha1Test struct {
 }
 
 var golden = []sha1Test{
+	{"76245dbf96f661bd221046197ab8b9f063f11bad", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"},
 	{"da39a3ee5e6b4b0d3255bfef95601890afd80709", ""},
 	{"86f7e437faa5a7fce15d1ddcb9eaeaea377667b8", "a"},
 	{"da23614e02469a0d7c7bd1bdab5c9c474b1904dc", "ab"},
@@ -54,20 +56,90 @@ var golden = []sha1Test{
 func TestGolden(t *testing.T) {
 	for i := 0; i < len(golden); i++ {
 		g := golden[i]
+		s := fmt.Sprintf("%x", Sum([]byte(g.in)))
+		if s != g.out {
+			t.Fatalf("Sum function: sha1(%s) = %s want %s", g.in, s, g.out)
+		}
 		c := New()
-		for j := 0; j < 3; j++ {
-			if j < 2 {
+		for j := 0; j < 4; j++ {
+			var sum []byte
+			switch j {
+			case 0, 1:
 				io.WriteString(c, g.in)
-			} else {
+				sum = c.Sum(nil)
+			case 2:
 				io.WriteString(c, g.in[0:len(g.in)/2])
-				c.Sum()
+				c.Sum(nil)
 				io.WriteString(c, g.in[len(g.in)/2:])
+				sum = c.Sum(nil)
+			case 3:
+				io.WriteString(c, g.in[0:len(g.in)/2])
+				c.(*digest).ConstantTimeSum(nil)
+				io.WriteString(c, g.in[len(g.in)/2:])
+				sum = c.(*digest).ConstantTimeSum(nil)
 			}
-			s := fmt.Sprintf("%x", c.Sum())
+			s := fmt.Sprintf("%x", sum)
 			if s != g.out {
 				t.Fatalf("sha1[%d](%s) = %s want %s", j, g.in, s, g.out)
 			}
 			c.Reset()
 		}
 	}
+}
+
+func TestSize(t *testing.T) {
+	c := New()
+	if got := c.Size(); got != Size {
+		t.Errorf("Size = %d; want %d", got, Size)
+	}
+}
+
+func TestBlockSize(t *testing.T) {
+	c := New()
+	if got := c.BlockSize(); got != BlockSize {
+		t.Errorf("BlockSize = %d; want %d", got, BlockSize)
+	}
+}
+
+// Tests that blockGeneric (pure Go) and block (in assembly for some architectures) match.
+func TestBlockGeneric(t *testing.T) {
+	for i := 1; i < 30; i++ { // arbitrary factor
+		gen, asm := New().(*digest), New().(*digest)
+		buf := make([]byte, BlockSize*i)
+		rand.Read(buf)
+		blockGeneric(gen, buf)
+		block(asm, buf)
+		if *gen != *asm {
+			t.Errorf("For %#v block and blockGeneric resulted in different states", buf)
+		}
+	}
+}
+
+var bench = New()
+var buf = make([]byte, 8192)
+
+func benchmarkSize(b *testing.B, size int) {
+	b.SetBytes(int64(size))
+	sum := make([]byte, bench.Size())
+	for i := 0; i < b.N; i++ {
+		bench.Reset()
+		bench.Write(buf[:size])
+		bench.Sum(sum[:0])
+	}
+}
+
+func BenchmarkHash8Bytes(b *testing.B) {
+	benchmarkSize(b, 8)
+}
+
+func BenchmarkHash320Bytes(b *testing.B) {
+	benchmarkSize(b, 320)
+}
+
+func BenchmarkHash1K(b *testing.B) {
+	benchmarkSize(b, 1024)
+}
+
+func BenchmarkHash8K(b *testing.B) {
+	benchmarkSize(b, 8192)
 }
