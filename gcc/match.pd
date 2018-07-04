@@ -3074,6 +3074,10 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 
 /* For unsigned operands, -1 / B < A checks whether A * B would overflow.
    Simplify it to __builtin_mul_overflow (A, B, <unused>).  */
+
+/* LDV extension beginning. */
+
+/* This hurts Aspectator and C-backend too much.
 (for cmp (lt ge)
      out (ne eq)
  (simplify
@@ -3081,6 +3085,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
   (if (TYPE_UNSIGNED (TREE_TYPE (@0)) && !VECTOR_TYPE_P (TREE_TYPE (@0)))
    (with { tree t = TREE_TYPE (@0), cpx = build_complex_type (t); }
     (out (imagpart (IFN_MUL_OVERFLOW:cpx @0 @1)) { build_zero_cst (t); })))))
+*/
+
+/* LDV extension end. */
 
 /* Simplification of math builtins.  These rules must all be optimizations
    as well as IL simplifications.  If there is a possibility that the new
