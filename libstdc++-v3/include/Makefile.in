@@ -1763,6 +1763,8 @@ ${pch3_output}: ${pch3_source} ${pch2_output}
 @GLIBCXX_HOSTED_TRUE@install-data-local: install-headers
 @GLIBCXX_HOSTED_FALSE@install-data-local: install-freestanding-headers
 
+.NOTPARALLEL: install-headers
+
 # This is a subset of the full install-headers rule.  We only need <ciso646>,
 # <cstddef>, <cfloat>, <limits>, <climits>, <cstdint>, <cstdlib>, <new>,
 # <typeinfo>, <exception>, <initializer_list>, <cstdalign>, <cstdarg>,
