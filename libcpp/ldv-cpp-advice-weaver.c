@@ -341,9 +341,22 @@ ldv_get_aspect_pattern_value_or_string (ldv_aspect_pattern_param_ptr param)
 FILE *
 ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr param)
 {
+  FILE *aspect_pattern_param_file_stream = NULL;
+  struct flock lock;
+
   /* Open file for write in append mode to avoid overwriting of already printed
      data. */
-  return ldv_open_file_stream (ldv_get_aspect_pattern_value_or_string (param), "a+");
+  aspect_pattern_param_file_stream = ldv_open_file_stream (ldv_get_aspect_pattern_value_or_string (param), "a+");
+
+  /* Lock file for other writers. */
+  memset (&lock, 0, sizeof(lock));
+  lock.l_type = F_WRLCK;
+  if (fcntl (fileno(aspect_pattern_param_file_stream), F_SETLKW, &lock) == -1)
+    {
+      LDV_CPP_FATAL_ERROR ("can't lock file");
+    }
+
+  return aspect_pattern_param_file_stream;
 }
 
 void

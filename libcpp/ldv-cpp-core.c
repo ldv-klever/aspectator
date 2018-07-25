@@ -941,9 +941,9 @@ void
 ldv_close_file_stream (FILE *file_stream)
 {
   if (fclose (file_stream))
-  {
-    LDV_CPP_FATAL_ERROR ("can't close file stream");
-  }
+    {
+      LDV_CPP_FATAL_ERROR ("can't close file stream");
+    }
 }
 
 void
