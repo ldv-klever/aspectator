@@ -32,8 +32,6 @@ extern const char *ldv_get_aspect_pattern_value_or_string (ldv_aspect_pattern_pa
 
 extern FILE *ldv_open_aspect_pattern_param_file_stream (ldv_aspect_pattern_param_ptr);
 
-extern void ldv_print_initializer (FILE *, unsigned int, ldv_i_initializer_ptr);
-extern void ldv_print_var_init_values (FILE *, ldv_i_initializer_ptr);
 extern void ldv_print_query_result (FILE *, const char *, ldv_list_ptr);
 
 extern void ldv_print_macro (ldv_i_macro_ptr);

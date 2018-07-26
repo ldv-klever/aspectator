@@ -156,6 +156,7 @@ static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_name (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
 static const char *ldv_print_file_path (const char*);
+static void ldv_print_initializer (ldv_i_initializer_ptr, ldv_text_ptr, unsigned int);
 static const char *ldv_print_line_number (unsigned int);
 static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
@@ -169,6 +170,7 @@ static bool ldv_print_space_after_pointer_star (void);
 static void ldv_print_str (const char *);
 static void ldv_print_str_without_padding (const char *);
 static void ldv_print_types_typedefs (ldv_ab_ptr, bool);
+static void ldv_print_var_init_values (ldv_i_initializer_ptr, ldv_text_ptr);
 static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
 static void ldv_weave_func_source (ldv_i_func_ptr, ldv_ppk);
 static void ldv_weave_var_source (ldv_i_var_ptr, ldv_ppk);
@@ -369,6 +371,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   bool is_number = false;
   const char *func_arg = NULL;
   int func_arg_size;
+  ldv_text_ptr ldv_text = NULL;
 
   if (!strcmp (pattern->name, "arg"))
     text = ldv_copy_str (ldv_get_param_name (pattern->arg_numb));
@@ -600,6 +603,20 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     text = ldv_copy_str (pattern->value);
   else if (!strcmp (pattern->name, "arg_sign"))
     text = ldv_copy_str (ldv_get_arg_sign (pattern->arg_numb));
+  else if (!strcmp (pattern->name, "var_init_list"))
+    {
+      ldv_text = ldv_create_text ();
+      ldv_print_initializer(ldv_var_initializer, ldv_text, 0);
+      text = ldv_copy_str (ldv_get_text (ldv_text));
+      ldv_free_text (ldv_text);
+    }
+  else if (!strcmp (pattern->name, "var_init_values"))
+    {
+      ldv_text = ldv_create_text ();
+      ldv_print_var_init_values(ldv_var_initializer, ldv_text);
+      text = ldv_copy_str (ldv_get_text (ldv_text));
+      ldv_free_text (ldv_text);
+    }
 
   if (text)
     {
@@ -1096,26 +1113,6 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_print_query_result (file_stream, ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
                   ldv_close_file_stream (file_stream);
                 }
-              else if (!strcmp (pattern->name, "fprintf_var_init_list"))
-                {
-                  /* First parameter specifies file where information request
-                     result to be printed. */
-                  pattern_params = pattern->params;
-                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-
-                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
-                  ldv_print_initializer (file_stream, 0, ldv_var_initializer);
-                  ldv_close_file_stream (file_stream);
-                }
-              else if (!strcmp (pattern->name, "fprintf_var_init_values"))
-                {
-                  pattern_params = pattern->params;
-                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-
-                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
-                  ldv_print_var_init_values(file_stream, ldv_var_initializer);
-                  ldv_close_file_stream (file_stream);
-                }
               else
                 {
                   LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
@@ -1482,6 +1479,68 @@ ldv_print_file_path (const char* path)
   ldv_print_str (path);
 
   return ldv_get_text (ldv_text_printed);
+}
+
+void
+ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializer_text, unsigned int indent_level)
+{
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
+  const char *indent_spaces = "";
+  const char *next_level_indent_spaces = "";
+
+  /* Indentation spaces to be printed before particular initializers. It looks
+     like spaces function use the same pointer for different strings. So copy
+     obtained string for safety. */
+  if (indent_level)
+    indent_spaces = ldv_copy_str (spaces (2 * indent_level));
+
+  next_level_indent_spaces = ldv_copy_str (spaces (2 * (indent_level + 1)));
+
+  ldv_puts_text (indent_spaces, initializer_text);
+  ldv_puts_text ("value:", initializer_text);
+
+  if (initializer->non_struct_or_array_initializer)
+    {
+      ldv_putc_text (' ', initializer_text);
+      ldv_puts_text (initializer->non_struct_or_array_initializer, initializer_text);
+      ldv_putc_text ('\n', initializer_text);
+    }
+  else
+    {
+      ldv_putc_text ('\n', initializer_text);
+
+      if (initializer->struct_initializer)
+        {
+          for (struct_field_initializer_list = initializer->struct_initializer
+            ; struct_field_initializer_list
+            ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+            {
+              struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+              ldv_puts_text (next_level_indent_spaces, initializer_text);
+              ldv_puts_text ("field declaration: ", initializer_text);
+              ldv_puts_text (struct_field_initializer->decl, initializer_text);
+              ldv_putc_text ('\n', initializer_text);
+              ldv_print_initializer (struct_field_initializer->initializer, initializer_text, indent_level + 1);
+            }
+        }
+      else
+        {
+          for (array_elem_initializer_list = initializer->array_initializer
+            ; array_elem_initializer_list
+            ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+            {
+              array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+              ldv_puts_text (next_level_indent_spaces, initializer_text);
+              ldv_puts_text ("array element index: ", initializer_text);
+              ldv_puts_text (ldv_itoa (array_elem_initializer->index), initializer_text);
+              ldv_putc_text ('\n', initializer_text);
+              ldv_print_initializer (array_elem_initializer->initializer, initializer_text, indent_level + 1);
+            }
+        }
+    }
 }
 
 const char *
@@ -1993,6 +2052,46 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
     }
 
   ldv_isstorage_class_and_function_specifiers_needed = true;
+}
+
+void
+ldv_print_var_init_values (ldv_i_initializer_ptr initializer, ldv_text_ptr initializer_text)
+{
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
+
+  if (initializer->non_struct_or_array_initializer)
+    {
+      ldv_puts_text ("||", initializer_text);
+      ldv_puts_text (initializer->non_struct_or_array_initializer, initializer_text);
+      ldv_putc_text (':', initializer_text);
+      ldv_puts_text (ldv_itoa (initializer->is_func_ptr), initializer_text);
+    }
+  else
+    {
+      if (initializer->struct_initializer)
+        {
+          for (struct_field_initializer_list = initializer->struct_initializer
+            ; struct_field_initializer_list
+            ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+            {
+              struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+              ldv_print_var_init_values (struct_field_initializer->initializer, initializer_text);
+            }
+        }
+      else
+        {
+          for (array_elem_initializer_list = initializer->array_initializer
+            ; array_elem_initializer_list
+            ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+            {
+              array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+              ldv_print_var_init_values (array_elem_initializer->initializer, initializer_text);
+            }
+        }
+    }
 }
 
 void
