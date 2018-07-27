@@ -242,8 +242,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_macro_ptr macro = NULL;
-  const struct line_map *map = NULL;
-  const line_map_ordinary *ord_map = NULL;
+  const line_map_ordinary *map = NULL;
   int i, j;
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
@@ -268,9 +267,6 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   match->pp_kind = pp_kind;
   match->i_macro = macro;
 
-  /* Obtain current location like in cpp_diagnostic() from errors.c. */
-  map = linemap_lookup (pfile->line_table, pfile->cur_token[-1].src_loc);
-  ord_map = linemap_check_ordinary (map);
 
   /* Understand whether a macro function or a macro definition is given. */
   if (node->value.macro->fun_like)
@@ -282,17 +278,15 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   macro->macro_name = ldv_create_id ();
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
 
-  if (map != NULL)
-    {
-      macro->file_path = ORDINARY_MAP_FILE_NAME (ord_map);
-      macro->line = SOURCE_LINE(ord_map, pfile->cur_token[-1].src_loc);
-    }
-  else
-    {
-      macro->file_path = "<built-in>";
-      macro->line = 0;
-    }
+  map = LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table);
 
+  /* Skip built-in macro definitions. Anyway because of there isn't appropriate
+   * weaving for them above their instrumentation or querying is broken. */
+  if (!LINEMAP_LINE (map))
+    return;
+
+  macro->file_path = LINEMAP_FILE (map);
+  macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
   macro->macro_param = NULL;
 
   /* Remember macro parameters. */
