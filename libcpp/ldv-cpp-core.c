@@ -343,16 +343,30 @@ ldv_cpp_get_id_name (ldv_id_ptr id)
 char *
 ldv_cpp_itoa (unsigned int n)
 {
-  int int_digits, order;
+  unsigned int int_digits = 1, order = 10;
   char *str = NULL;
 
   /* Obtain the number of digits that are contained in unsigned integer
      number. */
-  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
+  for (;;) {
+    if (order > UINT_MAX / 10)
+      {
+        int_digits++;
+        break;
+      }
+
+    if (n / order >= 1)
+      {
+        int_digits++;
+        order *= 10;
+      }
+    else
+      break;
+  }
 
   str = XCNEWVEC (char, (int_digits + 1));
 
-  sprintf (str, "%d", n);
+  sprintf (str, "%u", n);
 
   return str;
 }
