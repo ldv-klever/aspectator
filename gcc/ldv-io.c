@@ -488,6 +488,11 @@ ldv_make_includes (void)
 void
 ldv_open_instrumented_file_stream (void)
 {
+  if (!ldv_output_fname)
+    {
+      LDV_FATAL_ERROR ("specify output file name by means of environment variable LDV_OUT");
+    }
+
   if ((ldv_instrumented_file_stream = fopen (ldv_output_fname, "w")) == NULL)
     {
       LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
