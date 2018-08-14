@@ -1502,7 +1502,10 @@ ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializ
   ldv_puts_text (indent_spaces, initializer_text);
   ldv_puts_text ("value:", initializer_text);
 
-  if (initializer->non_struct_or_array_initializer)
+  /* We miss large intializers of global variables. */
+  if (!initializer)
+    ldv_puts_text (" too large\n", initializer_text);
+  else if (initializer->non_struct_or_array_initializer)
     {
       ldv_putc_text (' ', initializer_text);
       ldv_puts_text (initializer->non_struct_or_array_initializer, initializer_text);

@@ -292,6 +292,17 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
 
   if (TREE_CODE (initializer_tree) == CONSTRUCTOR)
     {
+      /* Do not deal with very large initializers like:
+       * https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/lib/stackdepot.c?id=cd11016e5f5212c13c0cec7384a525edc93b4921#n150
+       * Such the initializers most likely do not hold anything useful for
+       * users. For instance, in mentioned case all initializer values are
+       * just NULL filled by specific GCC construction "...". We likely can
+       * support large initializers as well but some optimizations are
+       * necessary since otherwise it can take too much time uselessly.
+       */
+      if (CONSTRUCTOR_NELTS (initializer_tree) > (2 << 10))
+          return NULL;
+
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (initializer_tree), ix, index, value)
         {
           if (TREE_CODE (index) == FIELD_DECL)
