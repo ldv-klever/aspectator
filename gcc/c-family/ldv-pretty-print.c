@@ -2509,7 +2509,7 @@ static void
 ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr location)
 {
   const char *file;
-  unsigned int line;
+  unsigned int line = LDV_LOCATION_LINE (location);
 
   /* Don't print line directives if they are unneeded. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_NO))
@@ -2518,7 +2518,7 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
   /* Print just required entities if this is specified. */
   if (ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_USEFUL))
     {
-      if ((line = LDV_LOCATION_LINE (location)) && ldv_c_backend_is_current_line (line))
+      if (ldv_c_backend_is_current_line (line))
         goto free_location;
     }
   else if (!ldv_c_backend_is_lines_level (LDV_C_BACKEND_LINES_LEVEL_ALL))
@@ -2543,13 +2543,9 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
 
   ldv_c_backend_print (0, true, "#line");
 
-  if ((line = LDV_LOCATION_LINE (location)))
-    ldv_c_backend_print (0, true, "%d", line);
-  else
-    {
-      ldv_c_backend_print (0, true, "0");
-      LDV_PRETTY_PRINT_WARN (0, "line for line directive was not printed");
-    }
+  /* Line is either normal line from some source file or 0 for built-in stuff,
+   * e.g. for artificial return expressions added by GCC for function main. */
+  ldv_c_backend_print (0, true, "%d", line);
 
   if ((file = LDV_LOCATION_FILE (location)))
     ldv_c_backend_print (0, true, "\"%s\"", file);
