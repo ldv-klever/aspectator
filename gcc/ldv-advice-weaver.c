@@ -137,6 +137,7 @@ static void ldv_diag_primitive_pointcut (ldv_pp_ptr, FILE *);
 static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr);
 static ldv_pps_decl_ptr ldv_diag_replace_return_type (ldv_pps_decl_ptr);
 static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
+static char *ldv_get_actual_arg_func_names (void);
 static const char *ldv_get_arg_name (unsigned int);
 static const char *ldv_get_arg_sign (unsigned int);
 static const char *ldv_get_arg_type_name (unsigned int);
@@ -406,6 +407,12 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
         }
       else
         text = ldv_copy_str (func_arg);
+    }
+  else if (!strcmp (pattern->name, "actual_arg_func_names"))
+    {
+      text = ldv_get_actual_arg_func_names ();
+      if (!text)
+          text = "NULL";
     }
   else if (!strcmp (pattern->name, "arg_numb"))
     {
@@ -701,6 +708,53 @@ ldv_get_arg_size (unsigned int arg_numb)
     }
 
   LDV_FATAL_ERROR ("required argument size has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+}
+
+char *
+ldv_get_actual_arg_func_names (void)
+{
+  unsigned int i;
+  char *i_str;
+  ldv_list_ptr func_arg_info_list = NULL;
+  ldv_func_arg_info_ptr func_arg_info = NULL;
+  ldv_str_ptr actual_arg_func_names = NULL;
+  char *res = NULL;
+
+  /* Walk through function arguments to find appropriate.
+   * Result will look like:
+   *   actual_arg_func_name1=func_name1, actual_arg_func_name3=actual_arg_func_name3
+   */
+  for (i = 1, func_arg_info_list = ldv_func_arg_info_list
+    ; func_arg_info_list
+    ; i++, func_arg_info_list = ldv_list_get_next (func_arg_info_list))
+    {
+      func_arg_info = (ldv_func_arg_info_ptr) ldv_list_get_data (func_arg_info_list);
+
+      if (func_arg_info->func_arg_info_kind == LDV_FUNC_ARG_INFO_FUNC_NAME)
+        {
+          if (actual_arg_func_names)
+            ldv_puts_string (", ", actual_arg_func_names);
+          else
+            actual_arg_func_names = ldv_create_string ();
+
+          ldv_puts_string ("actual_arg_func_name", actual_arg_func_names);
+
+          i_str = ldv_itoa (i);
+          ldv_puts_string (i_str, actual_arg_func_names);
+          free (i_str);
+
+          ldv_putc_string ('=', actual_arg_func_names);
+          ldv_puts_string (func_arg_info->func_name, actual_arg_func_names);
+        }
+    }
+
+  if (actual_arg_func_names)
+    {
+      res = ldv_copy_str (ldv_get_str (actual_arg_func_names));
+      ldv_free_str (actual_arg_func_names);
+    }
+
+  return res;
 }
 
 const char *
