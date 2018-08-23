@@ -1567,10 +1567,10 @@ ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializ
     }
   else
     {
-      ldv_putc_text ('\n', initializer_text);
-
       if (initializer->struct_initializer)
         {
+          ldv_putc_text ('\n', initializer_text);
+
           for (struct_field_initializer_list = initializer->struct_initializer
             ; struct_field_initializer_list
             ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
@@ -1583,8 +1583,10 @@ ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializ
               ldv_print_initializer (struct_field_initializer->initializer, initializer_text, indent_level + 1);
             }
         }
-      else
+      else if (initializer->array_initializer)
         {
+          ldv_putc_text ('\n', initializer_text);
+
           for (array_elem_initializer_list = initializer->array_initializer
             ; array_elem_initializer_list
             ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
@@ -1597,6 +1599,8 @@ ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializ
               ldv_print_initializer (array_elem_initializer->initializer, initializer_text, indent_level + 1);
             }
         }
+      else
+        ldv_puts_text (" {}\n", initializer_text);
     }
 }
 
