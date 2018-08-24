@@ -4115,6 +4115,8 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
   tree func_addr, func;
   call_expr_arg_iterator func_arg_iterator;
   tree expr_decl, expr_decl_type, expr_decl_initial;
+  unsigned HOST_WIDE_INT ix;
+  tree index, value;
 
   postfix_expr = XCNEW (struct ldv_postfix_expr);
 
@@ -4228,6 +4230,14 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
       LDV_POSTFIX_EXPR_LOCATION (postfix_expr) = ldv_convert_location (t);
 
       break;
+
+    case CONSTRUCTOR:
+      /* For transparent unions there is constructor of one element referencing particular fields of those unions
+         and actual function arguments casted to these unions from normal types. */
+      if (CONSTRUCTOR_ELTS (t) && CONSTRUCTOR_NELTS (t) == 1)
+        FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (t), ix, index, value)
+          if (TREE_CODE (index) == FIELD_DECL && TYPE_TRANSPARENT_AGGR (DECL_FIELD_CONTEXT (index)))
+            return ldv_convert_postfix_expr (value, recursion_limit);
 
     default:
       LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FIRST;
