@@ -721,9 +721,6 @@ ldv_free_info_var (ldv_i_var_ptr var)
 
   ldv_free_info_type (var->type);
 
-  if (var->initializer)
-    ldv_free_info_initializer (var->initializer);
-
   free (var->decl);
 
   free (var);

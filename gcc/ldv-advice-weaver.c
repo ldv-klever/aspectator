@@ -113,7 +113,7 @@ static ldv_pps_decl_ptr ldv_func_ret_type_decl = NULL;
 static ldv_text_ptr ldv_func_va_init = NULL;
 static const char *ldv_var_name = NULL;
 static const char *ldv_var_type_name = NULL;
-static ldv_i_initializer_ptr ldv_var_initializer = NULL;
+static tree ldv_var_initializer_tree = NULL;
 static bool ldv_isstatic_specifier_needed = true;
 static bool ldv_isstorage_class_and_function_specifiers_needed = true;
 static ldv_list_ptr ldv_name_weaved_list = NULL;
@@ -373,6 +373,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   const char *func_arg = NULL;
   int func_arg_size;
   ldv_text_ptr ldv_text = NULL;
+  ldv_i_initializer_ptr ldv_var_initializer = NULL;
 
   if (!strcmp (pattern->name, "arg"))
     text = ldv_copy_str (ldv_get_param_name (pattern->arg_numb));
@@ -613,16 +614,26 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "var_init_list"))
     {
       ldv_text = ldv_create_text ();
-      ldv_print_initializer(ldv_var_initializer, ldv_text, 0);
+      ldv_var_initializer = ldv_convert_initializer_to_internal (ldv_var_initializer_tree);
+
+      ldv_print_initializer (ldv_var_initializer, ldv_text, 0);
       text = ldv_copy_str (ldv_get_text (ldv_text));
+
       ldv_free_text (ldv_text);
+      if (ldv_var_initializer)
+        ldv_free_info_initializer (ldv_var_initializer);
     }
   else if (!strcmp (pattern->name, "var_init_values"))
     {
       ldv_text = ldv_create_text ();
-      ldv_print_var_init_values(ldv_var_initializer, ldv_text);
+      ldv_var_initializer = ldv_convert_initializer_to_internal (ldv_var_initializer_tree);
+
+      ldv_print_var_init_values (ldv_var_initializer, ldv_text);
       text = ldv_copy_str (ldv_get_text (ldv_text));
+
       ldv_free_text (ldv_text);
+      if (ldv_var_initializer)
+        ldv_free_info_initializer (ldv_var_initializer);
     }
 
   if (text)
@@ -2214,7 +2225,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
         ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
-      ldv_var_initializer = ldv_i_match->i_var->initializer;
+      /* Convert void * to tree. */
+      ldv_var_initializer_tree = (tree) ldv_i_match->i_var->initializer;
 
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
@@ -2222,7 +2234,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_decl = NULL;
       ldv_var_name = NULL;
       ldv_var_type_name = NULL;
-      ldv_var_initializer = NULL;
+      ldv_var_initializer_tree = NULL;
 
       return;
     }
