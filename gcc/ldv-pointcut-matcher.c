@@ -669,6 +669,10 @@ ldv_match_expr (tree t, tree context)
 
           break;
 
+        /* Ignore ERROR_MARK node to avoid multiple error messages for one error.*/
+        case ERROR_MARK:
+          break;
+
         default:
           LDV_CONVERT_WARN (t);
         }
