@@ -568,6 +568,8 @@ ldv_match_expr (tree t, tree context)
 
         /* It has one operand. */
         case INDIRECT_REF:
+        case REALPART_EXPR:
+        case IMAGPART_EXPR:
           ldv_match_expr (LDV_OP1, t);
 
           break;
