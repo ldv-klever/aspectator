@@ -1202,6 +1202,20 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 	     funlike_invocation_p and by replace_args.  */
 	  delete_macro_args (buff, num_args);
 	}
+      else
+	{
+	   /* Try to match macro definition. */
+	   ldv_match_macro (pfile, node, NULL, LDV_PP_EXPAND);
+
+	   /* Weave macro expansion if macro was matched. */
+	   if (ldv_i_match)
+	     {
+	       ldv_cpp_weave ();
+
+	       /* Matching is finished. */
+	       ldv_i_match = NULL;
+	     }
+	}
 
       /* Disable the macro within its expansion.  */
       node->flags |= NODE_DISABLED;
