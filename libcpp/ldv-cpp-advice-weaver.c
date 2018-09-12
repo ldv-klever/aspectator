@@ -406,6 +406,11 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
               /* Formatted integer should be printed. */
               if (*format == 'd')
                 {
+                  if (!pattern_params)
+                    {
+                      LDV_CPP_FATAL_ERROR ("format '%%d' expects a matching integer argument");
+                    }
+
                   param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
                   fprintf (file_stream, ldv_get_str (conversion), param->integer);
                   pattern_params = ldv_list_get_next (pattern_params);
@@ -414,6 +419,11 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
               /* Formatted string should be printed. */
               else if (*format == 's')
                 {
+                  if (!pattern_params)
+                    {
+                      LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument");
+                    }
+
                   param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
                   fprintf (file_stream, ldv_get_str (conversion), param->string);
                   pattern_params = ldv_list_get_next (pattern_params);
