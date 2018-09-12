@@ -93,16 +93,6 @@ $ bison ldv-aspect-parser.y
 #include "ldv-io.h"
 
 
-#define LDV_BODY_PATTERN_ARG                "arg"
-#define LDV_BODY_PATTERN_ARG_TYPE           "arg_type"
-#define LDV_BODY_PATTERN_ARG_SIZE           "arg_size"
-#define LDV_BODY_PATTERN_ARG_VALUE          "arg_value"
-#define LDV_BODY_PATTERN_ASPECT_FUNC_NAME   "aspect_func_name"
-#define LDV_BODY_PATTERN_FUNC_NAME          "func_name"
-#define LDV_BODY_PATTERN_PROCEED            "proceed"
-#define LDV_BODY_PATTERN_RES                "res"
-#define LDV_BODY_PATTERN_RET_TYPE           "ret_type"
-
 #define ldv_set_first_line(val)    yylloc.first_line = (val); ldv_print_info (LDV_INFO_LEX, "%d: first line is \"%d\"", __LINE__, yylloc.first_line);
 #define ldv_set_last_line(val)     yylloc.last_line = (val); ldv_print_info (LDV_INFO_LEX, "%d: last line is \"%d\"", __LINE__, yylloc.last_line);
 #define ldv_set_first_column(val)  yylloc.first_column = (val); ldv_print_info (LDV_INFO_LEX, "%d: first column is \"%d\"", __LINE__, yylloc.first_column);
