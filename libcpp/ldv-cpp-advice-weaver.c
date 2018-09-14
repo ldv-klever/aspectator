@@ -32,6 +32,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_MATCHED_BY_NAME (stderr)
 
 static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
+static char *ldv_get_actual_args (void);
 static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
 static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
 
@@ -160,6 +161,12 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
       number = ldv_list_len (arg_value_list);
       is_number = true;
     }
+  else if (!strcmp (pattern->name, "actual_args"))
+    {
+      text = ldv_get_actual_args ();
+      if (!text)
+          text = "NULL";
+    }
   else if (!strcmp (pattern->name, "path"))
     {
       text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
@@ -173,7 +180,6 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
       text = ldv_copy_str (pattern->value);
     }
 
-
   if (text)
     {
       *string = text;
@@ -186,6 +192,49 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
     }
 
   return 0;
+}
+
+char *
+ldv_get_actual_args (void)
+{
+  unsigned int i;
+  char *i_str;
+  ldv_list_ptr actual_args_list = NULL;
+  char *actual_arg = NULL;
+  ldv_str_ptr actual_args = NULL;
+  char *res = NULL;
+
+  /* Walk through macro function arguments. Result will look like:
+   *   actual_arg1=actual_arg1_value, actual_arg2=actual_arg2_value
+   */
+  for (i = 1, actual_args_list = ldv_i_match->i_macro->macro_param_value
+    ; actual_args_list
+    ; i++, actual_args_list = ldv_list_get_next (actual_args_list))
+    {
+      actual_arg = (char *) ldv_list_get_data (actual_args_list);
+
+      if (actual_args)
+        ldv_puts_string (", ", actual_args);
+      else
+        actual_args = ldv_create_string ();
+
+      ldv_puts_string ("actual_arg", actual_args);
+
+      i_str = ldv_cpp_itoa (i);
+      ldv_puts_string (i_str, actual_args);
+      free (i_str);
+
+      ldv_putc_string ('=', actual_args);
+      ldv_puts_string (actual_arg, actual_args);
+    }
+
+  if (actual_args)
+    {
+      res = ldv_copy_str (ldv_get_str (actual_args));
+      ldv_free_str (actual_args);
+    }
+
+  return res;
 }
 
 char *
