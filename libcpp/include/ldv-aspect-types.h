@@ -107,6 +107,16 @@ typedef struct ldv_primitive_pointcut_signature_macro_internal
 } ldv_primitive_pointcut_signature_macro;
 typedef ldv_primitive_pointcut_signature_macro *ldv_pps_macro_ptr;
 
+/* Primitive pointcut signature macro function parameter. */
+typedef struct ldv_primitive_pointcut_signature_macro_func_param_internal
+{
+  ldv_id_ptr name;
+  /* Like for primitive pointcut signature declaration specifiers. */
+  bool isany_params;
+  bool isvar_params;
+} ldv_primitive_pointcut_signature_macro_func_param;
+typedef ldv_primitive_pointcut_signature_macro_func_param *ldv_pps_macro_func_param_ptr;
+
 /* File primitive pointcut signature = path to file. */
 typedef struct ldv_primitive_pointcut_signature_file_internal
 {
@@ -438,6 +448,15 @@ typedef struct ldv_info_macro_internal
   unsigned int line;
 } ldv_info_macro;
 typedef ldv_info_macro *ldv_i_macro_ptr;
+
+/* Macro function parameter information. */
+typedef struct ldv_info_macro_func_param_internal
+{
+  ldv_id_ptr name;
+  bool isany_params;
+  bool isvar_params;
+} ldv_info_macro_func_param;
+typedef ldv_info_macro_func_param *ldv_i_macro_func_param_ptr;
 
 /* Parameter declaration information = parameter name (optional) + parameter type. */
 typedef struct ldv_info_param_internal

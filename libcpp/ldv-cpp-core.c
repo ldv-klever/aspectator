@@ -414,6 +414,25 @@ ldv_free_declspecs (ldv_pps_declspecs_ptr declspecs)
   free (declspecs);
 }
 
+ldv_pps_macro_func_param_ptr
+ldv_create_macro_func_param (void)
+{
+  ldv_pps_macro_func_param_ptr macro_func_param = NULL;
+
+  macro_func_param = XCNEW (ldv_primitive_pointcut_signature_macro_func_param);
+
+  return macro_func_param;
+}
+
+void
+ldv_free_macro_func_param (ldv_pps_macro_func_param_ptr macro_func_param)
+{
+  if (macro_func_param->name)
+    ldv_free_id (macro_func_param->name);
+
+  free (macro_func_param);
+}
+
 ldv_i_func_ptr
 ldv_create_info_func (void)
 {
@@ -500,21 +519,35 @@ void
 ldv_free_info_macro (ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
-  ldv_id_ptr i_macro_param = NULL;
 
   ldv_free_id (i_macro->macro_name);
 
   for (i_macro_param_list = i_macro->macro_param
     ; i_macro_param_list
     ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
-    {
-      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
-
-      ldv_free_id (i_macro_param);
-    }
+    ldv_free_info_macro_func_param ((ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_list));
 
   ldv_list_delete_all (i_macro->macro_param);
   free (i_macro);
+}
+
+ldv_i_macro_func_param_ptr
+ldv_create_info_macro_func_param (void)
+{
+  ldv_i_macro_func_param_ptr i_macro_func_param = NULL;
+
+  i_macro_func_param = XCNEW (ldv_info_macro_func_param);
+
+  return i_macro_func_param;
+}
+
+void
+ldv_free_info_macro_func_param (ldv_i_macro_func_param_ptr i_macro_func_param)
+{
+  if (i_macro_func_param->name)
+    ldv_free_id (i_macro_func_param->name);
+
+  free (i_macro_func_param);
 }
 
 ldv_i_match_ptr

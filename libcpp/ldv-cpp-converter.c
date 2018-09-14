@@ -199,8 +199,9 @@ ldv_i_macro_ptr
 ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
 {
   ldv_i_macro_ptr i_macro = NULL;
-  ldv_id_ptr pps_macro_param = NULL;
+  ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
   ldv_list_ptr macro_param_list = NULL;
+  ldv_i_macro_func_param_ptr i_macro_func_param = NULL;
 
   i_macro = ldv_create_info_macro ();
 
@@ -216,11 +217,19 @@ ldv_convert_macro_signature_to_internal (ldv_pps_macro_ptr pps_macro)
     ; macro_param_list
     ; macro_param_list = ldv_list_get_next (macro_param_list))
     {
-      pps_macro_param = (ldv_id_ptr) ldv_list_get_data (macro_param_list);
+      pps_macro_func_param = (ldv_pps_macro_func_param_ptr) ldv_list_get_data (macro_param_list);
 
-      /* Copy macro parameter name rather then keep reference to it
-         since it will be freed. */
-      ldv_list_push_back (&i_macro->macro_param, ldv_copy_id (pps_macro_param));
+      i_macro_func_param = ldv_create_info_macro_func_param ();
+
+      if (pps_macro_func_param->name)
+        /* Copy macro parameter name rather then keep reference to it
+           since it will be freed. */
+        i_macro_func_param->name = ldv_copy_id (pps_macro_func_param->name);
+
+      i_macro_func_param->isany_params = pps_macro_func_param->isany_params;
+      i_macro_func_param->isvar_params = pps_macro_func_param->isvar_params;
+
+      ldv_list_push_back (&i_macro->macro_param, i_macro_func_param);
     }
 
   return i_macro;

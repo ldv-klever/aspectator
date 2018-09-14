@@ -42,7 +42,7 @@ ldv_cpp_define (struct cpp_reader *pfile)
   char *define = NULL;
   const char *name = NULL;
   ldv_list_ptr i_macro_param_list = NULL;
-  ldv_id_ptr i_macro_param = NULL;
+  ldv_i_macro_func_param_ptr i_macro_param = NULL;
   unsigned int param_numb;
   unsigned int param_len;
   unsigned int comma_numb;
@@ -60,8 +60,8 @@ ldv_cpp_define (struct cpp_reader *pfile)
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list), ++param_numb)
         {
-          i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
-          param_len += strlen (ldv_cpp_get_id_name (i_macro_param));
+          i_macro_param = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_list);
+          param_len += strlen (ldv_cpp_get_id_name (i_macro_param->name));
         }
 
       /* A Macro function definition for cpp_define function is
@@ -78,8 +78,8 @@ ldv_cpp_define (struct cpp_reader *pfile)
         ; i_macro_param_list
         ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
         {
-          i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
-          printed_len += sprintf (define + printed_len, "%s", ldv_cpp_get_id_name (i_macro_param));
+          i_macro_param = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_list);
+          printed_len += sprintf (define + printed_len, "%s", ldv_cpp_get_id_name (i_macro_param->name));
 
           if (ldv_list_get_next (i_macro_param_list))
             printed_len += sprintf (define + printed_len, ",");

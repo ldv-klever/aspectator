@@ -807,53 +807,77 @@ macro_param: /* It's a macro function parameters, the part of macro primitive po
   LDV_ID  /* A macro function parameter is in the form: "macro_parameter_name". It's the first macro function parameter. */
     {
       ldv_list_ptr macro_param_list = NULL;
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
 
-      ldv_list_push_back (&macro_param_list, $1);
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->name = $1;
+      ldv_list_push_back (&macro_param_list, pps_macro_func_param);
 
       $$ = macro_param_list;
     }
   | macro_param ',' LDV_ID /* A macro function parameter is in the form: "macro_parameter_name". It's the last macro function parameter after read ones. */
     {
-      ldv_list_push_back (&$1, $3);
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
+
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->name = $3;
+      ldv_list_push_back (&$1, pps_macro_func_param);
 
       $$ = $1;
+    }
+  | LDV_ANY_PARAMS
+    {
+      ldv_list_ptr macro_param_list = NULL;
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
+
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->isany_params = true;
+      ldv_list_push_back (&macro_param_list, pps_macro_func_param);
+
+      $$ = macro_param_list;
     }
   | LDV_ELLIPSIS /* Single ellipsis is used as a macro parameter. */
     {
       ldv_list_ptr macro_param_list = NULL;
-      ldv_id_ptr id = ldv_create_id ();
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
 
-      ldv_puts_id ("...", id);
-
-      ldv_list_push_back (&macro_param_list, id);
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->isvar_params = true;
+      ldv_list_push_back (&macro_param_list, pps_macro_func_param);
 
       $$ = macro_param_list;
     }
   | LDV_ID LDV_ELLIPSIS /* Identifier and following ellipsis are used for named variadic parameters. */
     {
       ldv_list_ptr macro_param_list = NULL;
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
 
-      ldv_puts_id ("...", $1);
-
-      ldv_list_push_back (&macro_param_list, $1);
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->name = $1;
+      pps_macro_func_param->isvar_params = true;
+      ldv_list_push_back (&macro_param_list, pps_macro_func_param);
 
       $$ = macro_param_list;
     }
   | macro_param ',' LDV_ELLIPSIS /* Ellipsis finishes a macro parameter list. */
     {
-      ldv_id_ptr id = ldv_create_id ();
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
 
-      ldv_puts_id ("...", id);
-
-      ldv_list_push_back (&$1, id);
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      pps_macro_func_param->isvar_params = true;
+      ldv_list_push_back (&$1, pps_macro_func_param);
 
       $$ = $1;
     }
   | macro_param ',' LDV_ID LDV_ELLIPSIS /* Identifier and following ellipsis (named variadic parameters) finishes a macro parameter list. */
     {
-      ldv_puts_id ("...", $3);
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
 
-      ldv_list_push_back (&$1, $3);
+      pps_macro_func_param = ldv_create_macro_func_param ();
+      ldv_puts_id ("...", $3);
+      pps_macro_func_param->name = $3;
+      pps_macro_func_param->isvar_params = true;
+      ldv_list_push_back (&$1, pps_macro_func_param);
 
       $$ = $1;
     };

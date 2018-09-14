@@ -47,9 +47,11 @@ extern int ldv_cmp_str (ldv_id_ptr, const char *);
 extern char *ldv_copy_str (const char *);
 
 extern ldv_pps_declspecs_ptr ldv_create_declspecs (void);
+extern ldv_pps_macro_func_param_ptr ldv_create_macro_func_param (void);
 extern ldv_i_func_ptr ldv_create_info_func (void);
 extern ldv_i_initializer_ptr ldv_create_info_initializer (void);
 extern ldv_i_macro_ptr ldv_create_info_macro (void);
+extern ldv_i_macro_func_param_ptr ldv_create_info_macro_func_param (void);
 extern ldv_i_match_ptr ldv_create_info_match (void);
 extern ldv_i_param_ptr ldv_create_info_param (void);
 extern ldv_i_type_ptr ldv_create_info_type (void);
@@ -61,9 +63,11 @@ extern ldv_i_param_ptr ldv_copy_iparam (ldv_i_param_ptr);
 extern ldv_i_type_ptr ldv_copy_itype (ldv_i_type_ptr);
 
 extern void ldv_free_declspecs (ldv_pps_declspecs_ptr);
+extern void ldv_free_macro_func_param (ldv_pps_macro_func_param_ptr);
 extern void ldv_free_info_func (ldv_i_func_ptr);
 extern void ldv_free_info_initializer (ldv_i_initializer_ptr);
 extern void ldv_free_info_macro (ldv_i_macro_ptr);
+extern void ldv_free_info_macro_func_param (ldv_i_macro_func_param_ptr);
 extern void ldv_free_info_match (ldv_i_match_ptr);
 extern void ldv_free_info_param (ldv_i_param_ptr);
 extern void ldv_free_info_type (ldv_i_type_ptr);
