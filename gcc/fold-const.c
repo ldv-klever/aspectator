@@ -8080,6 +8080,12 @@ fold_truth_andor (location_t loc, enum tree_code code, tree type,
 	return fold_build2_loc (loc, code, type, arg0, tem);
     }
 
+  /* LDV extension begin. */
+
+  /* Omit these conversions since they result in complicated experssions with
+     artificial bit fields and memory references. */
+  if (!ldv_is_c_backend_enabled ())
+    {
   /* Check for the possibility of merging component references.  If our
      lhs is another similar operation, try to merge its rhs with our
      rhs.  Then try to merge our lhs and rhs.  */
@@ -8088,13 +8094,10 @@ fold_truth_andor (location_t loc, enum tree_code code, tree type,
 					 TREE_OPERAND (arg0, 1), arg1)))
     return fold_build2_loc (loc, code, type, TREE_OPERAND (arg0, 0), tem);
 
-  /* LDV extension begin. */
 
-  /* Omit this conversion since it results in complicated experssions with bit
-     fields and memory references. */
-  if (!ldv_is_c_backend_enabled ())
-    if ((tem = fold_truth_andor_1 (loc, code, type, arg0, arg1)) != 0)
-      return tem;
+  if ((tem = fold_truth_andor_1 (loc, code, type, arg0, arg1)) != 0)
+    return tem;
+    }
 
   /* LDV extension end. */
 
