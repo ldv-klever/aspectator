@@ -49,6 +49,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "substring-locations.h"
 #include "spellcheck.h"
 
+/* LDV extension begin. */
+
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 cpp_reader *parse_in;		/* Declared in c-pragma.h.  */
 
 /* Mode used to build pointers (VOIDmode means ptr_mode).  */
@@ -3109,6 +3115,12 @@ pointer_int_sum (location_t loc, enum tree_code resultcode,
       intop = convert (int_type, TREE_OPERAND (intop, 0));
     }
 
+  /* LDV extension begin. */
+
+  /* Omit this strange conversion since it results in "buf[arg]" becomes
+   * "*(buf + arg * sizeof(*buf))". */
+  if (!ldv_is_c_backend_enabled ())
+    {
   /* Convert the integer argument to a type the same size as sizetype
      so the multiply won't overflow spuriously.  */
   if (TYPE_PRECISION (TREE_TYPE (intop)) != TYPE_PRECISION (sizetype)
@@ -3127,6 +3139,9 @@ pointer_int_sum (location_t loc, enum tree_code resultcode,
     if (TREE_OVERFLOW_P (intop) && !TREE_OVERFLOW (t))
       intop = wide_int_to_tree (TREE_TYPE (intop), intop);
   }
+    }
+
+  /* LDV extension end. */
 
   /* Create the sum or difference.  */
   if (resultcode == MINUS_EXPR)
