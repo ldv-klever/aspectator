@@ -279,7 +279,6 @@ ldv_match_expr (tree t, tree context)
   tree array_size_tree = NULL_TREE;
   call_expr_arg_iterator iter;
   tree arg = NULL_TREE;
-  bool global_var_init = false;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
 

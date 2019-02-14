@@ -75,7 +75,7 @@ floating-constant:
 enum ldv_floating_constant_kind
 {
   LDV_FLOATING_CONSTANT_FIRST = 1,
-  LDV_FLOATING_CONSTANT_SECOND,
+  LDV_FLOATING_CONSTANT_SECOND
 };
 struct ldv_floating_constant
 {

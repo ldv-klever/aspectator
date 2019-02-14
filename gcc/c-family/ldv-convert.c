@@ -1102,7 +1102,11 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
           break;
         }
 
+      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
       t = LDV_OP_FIRST (t);
+      LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (t, recursion_limit);
+
+      break;
 
     default:
       LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
@@ -4246,6 +4250,8 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
           if (TREE_CODE (index) == FIELD_DECL && TYPE_TRANSPARENT_AGGR (DECL_FIELD_CONTEXT (index)))
             return ldv_convert_postfix_expr (value, recursion_limit);
 
+      break;
+
     default:
       LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FIRST;
       LDV_POSTFIX_EXPR_PRIMARY_EXPR (postfix_expr) = ldv_convert_primary_expr (t, recursion_limit);
@@ -5378,6 +5384,8 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
             LDV_WARN ("can't find type declaration");
         }
 
+      break;
+
     case RECORD_TYPE:
     case UNION_TYPE:
     case ENUMERAL_TYPE:
@@ -5390,6 +5398,8 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
         return ldv_convert_enum_spec (t, is_decl_decl_spec);
       else
         return ldv_convert_struct_or_union_spec (t, is_decl_decl_spec);
+
+      break;
 
     case FUNCTION_DECL:
     case PARM_DECL:
