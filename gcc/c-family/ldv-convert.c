@@ -1058,6 +1058,9 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
     {
     case CONVERT_EXPR:
     case NOP_EXPR:
+    case FLOAT_EXPR:
+    case FIX_TRUNC_EXPR:
+    case VIEW_CONVERT_EXPR:
       if ((type = TREE_TYPE (t)) && (!TYPE_NAME (type) || DECL_P (TYPE_NAME (type)) || TREE_CODE (type) != INTEGER_TYPE))
         {
           LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
@@ -3766,10 +3769,11 @@ ldv_convert_multiplicative_expr (tree t, unsigned int recursion_limit)
     case MULT_EXPR:
     case TRUNC_DIV_EXPR:
     case EXACT_DIV_EXPR:
+    case RDIV_EXPR:
     case TRUNC_MOD_EXPR:
       if (TREE_CODE (t) == MULT_EXPR)
         LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr) = LDV_MULTIPLICATIVE_EXPR_SECOND;
-      else if (TREE_CODE (t) == TRUNC_DIV_EXPR || TREE_CODE (t) == EXACT_DIV_EXPR)
+      else if (TREE_CODE (t) == TRUNC_DIV_EXPR || TREE_CODE (t) == EXACT_DIV_EXPR || TREE_CODE (t) == RDIV_EXPR)
         LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr) = LDV_MULTIPLICATIVE_EXPR_THIRD;
       else
         LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr) = LDV_MULTIPLICATIVE_EXPR_FOURTH;
