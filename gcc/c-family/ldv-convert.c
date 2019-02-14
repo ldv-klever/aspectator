@@ -2068,6 +2068,11 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
       else
         LDV_DIRECT_DECLARATOR_PARAM_TYPE_LIST (direct_declarator_next) = ldv_convert_param_type_list (t);
 
+      /* Function declarations (prototypes) can omit argument declarations. Use the last form of direct declarators to
+       * represent this. In other cases that form is not used. */
+      if (!LDV_DIRECT_DECLARATOR_PARAM_TYPE_LIST (direct_declarator_next))
+        LDV_DIRECT_DECLARATOR_KIND (direct_declarator_next) = LDV_DIRECT_DECLARATOR_EIGHT;
+
       if ((func_ret_type = TREE_TYPE (t)))
         switch (TREE_CODE (func_ret_type))
           {
@@ -4052,8 +4057,6 @@ ldv_convert_param_type_list (tree t)
 
   if (LDV_PARAM_TYPE_LIST_PARAM_LIST (param_type_list))
     return param_type_list;
-
-  LDV_WARN ("parameter type list wasn't converted");
 
   XDELETE (param_type_list);
 

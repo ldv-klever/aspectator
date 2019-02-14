@@ -1542,14 +1542,19 @@ ldv_print_direct_declarator (unsigned int indent_level, ldv_direct_declarator_pt
 
           ldv_c_backend_print (indent_level, false, "]");
         }
-      else if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_SEVENTH)
+      else if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_SEVENTH
+        || LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_EIGHT)
         {
           ldv_c_backend_print (indent_level, false, "(");
 
-          if ((param_type_list = LDV_DIRECT_DECLARATOR_PARAM_TYPE_LIST (direct_declarator)))
-            ldv_print_param_type_list (indent_level, param_type_list);
-          else
-            LDV_PRETTY_PRINT_WARN (indent_level, "parameter type list of direct declarator was not printed");
+          /* See comments in ldv-convert.c. */
+          if (LDV_DIRECT_DECLARATOR_KIND (direct_declarator) == LDV_DIRECT_DECLARATOR_SEVENTH)
+            {
+              if ((param_type_list = LDV_DIRECT_DECLARATOR_PARAM_TYPE_LIST (direct_declarator)))
+                ldv_print_param_type_list (indent_level, param_type_list);
+              else
+                LDV_PRETTY_PRINT_WARN (indent_level, "parameter type list of direct declarator was not printed");
+            }
 
           ldv_c_backend_print (indent_level, false, ")");
         }
