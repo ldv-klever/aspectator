@@ -30,8 +30,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-cbe-core.h"
 #include "ldv-grammar.h"
 
-
-#define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
+#define LDV_CONVERT_ERROR(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
 #define LDV_OP_FIRST(t) TREE_OPERAND (t, 0)
 #define LDV_OP_SECOND(t) TREE_OPERAND (t, 1)
 #define LDV_OP_THIRD(t) TREE_OPERAND (t, 2)
@@ -247,7 +246,7 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
                 break;
 
               default:
-                LDV_CONVERT_WARN (first_non_pointer);
+                LDV_CONVERT_ERROR (first_non_pointer);
               }
           else
             LDV_WARN ("first non pointer type isn't specified");
@@ -261,7 +260,7 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 }
 
@@ -480,7 +479,7 @@ ldv_convert_asm_arg (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return asm_arg;
@@ -522,7 +521,7 @@ ldv_convert_asm_clobbers (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ASM_CLOBBERS_KIND (asm_clobbers))
@@ -571,7 +570,7 @@ ldv_convert_asm_goto_arg (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return asm_goto_arg;
@@ -614,7 +613,7 @@ ldv_convert_asm_goto_operands (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (asm_goto_operands_next)
@@ -674,7 +673,7 @@ ldv_convert_asm_operand (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ASM_OPERAND_KIND (asm_operand))
@@ -721,7 +720,7 @@ ldv_convert_asm_operands (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (asm_operands_next)
@@ -781,7 +780,7 @@ ldv_convert_asm_statement (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return asm_statement;
@@ -808,7 +807,7 @@ ldv_convert_asm_str_literal (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return asm_str_literal;
@@ -1028,7 +1027,7 @@ ldv_convert_assignment_operator (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator))
@@ -1395,7 +1394,7 @@ ldv_convert_constant (tree t)
             }
           /*
           else
-            LDV_CONVERT_WARN (type); */
+            LDV_CONVERT_ERROR (type); */
         }
       else
         LDV_WARN ("can't find type of integer constant");
@@ -1409,7 +1408,7 @@ ldv_convert_constant (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_CONSTANT_KIND (constant))
@@ -1565,7 +1564,7 @@ ldv_convert_compound_statement (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return compound_statement;
@@ -1603,7 +1602,7 @@ ldv_convert_decl (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return decl;
@@ -1750,7 +1749,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
                 break;
 
               default:
-                LDV_CONVERT_WARN (first_non_pointer);
+                LDV_CONVERT_ERROR (first_non_pointer);
               }
           else
             LDV_WARN ("first non pointer type isn't specified");
@@ -1759,7 +1758,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 }
 
@@ -1833,7 +1832,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
             break;
 
           default:
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
           }
       else
         LDV_WARN ("can't find array type");
@@ -1877,7 +1876,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
             break;
 
           default:
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
           }
       else
         LDV_WARN ("can't find function return type");
@@ -1885,7 +1884,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 }
 /*
@@ -1958,7 +1957,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
                   break;
 
                 default:
-                  LDV_CONVERT_WARN (decl_type);
+                  LDV_CONVERT_ERROR (decl_type);
                 }
             }
         }
@@ -2037,7 +2036,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
             break;
 
           default:
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
           }
       else
         LDV_WARN ("can't find array type");
@@ -2095,7 +2094,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
             break;
 
           default:
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
           }
       else
         LDV_WARN ("can't find function return type");
@@ -2103,7 +2102,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 }
 
@@ -2157,7 +2156,7 @@ ldv_convert_designator (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_DESIGNATOR_KIND (designator))
@@ -2230,7 +2229,7 @@ ldv_convert_enum (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ENUM_ENUM_CONST (ldv_enum))
@@ -2265,7 +2264,7 @@ ldv_convert_enum_const (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ENUM_CONST_ID (enum_const))
@@ -2305,7 +2304,7 @@ ldv_convert_enum_list (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (enum_list_next)
@@ -2367,7 +2366,7 @@ ldv_convert_enum_spec (tree t, bool is_decl_decl_spec)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_TYPE_SPEC_KIND (type_spec))
@@ -2423,7 +2422,7 @@ ldv_convert_enumeration_constant (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_ENUMERATION_CONSTANT_IDENTIFIER (enumeration_constant))
@@ -2712,7 +2711,7 @@ ldv_convert_ext_decl (tree t, bool isdecl)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_EXT_DECL_KIND (ext_decl))
@@ -2776,7 +2775,7 @@ ldv_convert_floating_constant (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_FLOATING_CONSTANT_KIND (floating_constant))
@@ -2859,7 +2858,7 @@ ldv_convert_func_spec (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
       break;
     }
 
@@ -2909,7 +2908,7 @@ ldv_convert_identifier (tree t)
           if ((decl_name_str = IDENTIFIER_POINTER (decl_name)))
             LDV_IDENTIFIER_STR (identifier) = xstrdup (decl_name_str);
           else
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
         }
       else if ((decl_uid = DECL_UID (t)))
         {
@@ -2921,7 +2920,7 @@ ldv_convert_identifier (tree t)
           LDV_IDENTIFIER_STR (identifier) = decl_uid_name_str;
         }
       else
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
 
       break;
 
@@ -2929,7 +2928,7 @@ ldv_convert_identifier (tree t)
       if ((id = IDENTIFIER_POINTER (t)))
         LDV_IDENTIFIER_STR (identifier) = xstrdup (id);
       else
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
 
       break;
 
@@ -2937,7 +2936,7 @@ ldv_convert_identifier (tree t)
       if ((str = TREE_STRING_POINTER (t)))
         LDV_IDENTIFIER_STR (identifier) = xstrdup (str);
       else
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
 
       break;
 
@@ -2947,7 +2946,7 @@ ldv_convert_identifier (tree t)
           if ((enum_name_str = IDENTIFIER_POINTER (enum_name)))
             LDV_IDENTIFIER_STR (identifier) = xstrdup (enum_name_str);
           else
-            LDV_CONVERT_WARN (t);
+            LDV_CONVERT_ERROR (t);
         }
       /* Always give names to enumerations to process typedefs on anonymous
          enumerations correctly. */
@@ -2960,12 +2959,12 @@ ldv_convert_identifier (tree t)
           LDV_IDENTIFIER_STR (identifier) = enum_uid_name_str;
         }
       else
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
 
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_IDENTIFIER_STR (identifier))
@@ -3058,7 +3057,7 @@ ldv_convert_init_declarator (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_INIT_DECLARATOR_KIND (init_declarator))
@@ -3096,7 +3095,7 @@ ldv_convert_init_declarator_list (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
@@ -3273,7 +3272,7 @@ ldv_convert_integer_constant (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_INTEGER_CONSTANT_KIND (integer_constant))
@@ -3335,7 +3334,7 @@ ldv_convert_integer_suffix (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_INTEGER_SUFFIX_KIND (integer_suffix))
@@ -3377,7 +3376,7 @@ ldv_convert_jump_statement (tree t)
               break;
 
             default:
-              LDV_CONVERT_WARN (t);
+              LDV_CONVERT_ERROR (t);
             }
         }
       else
@@ -3409,7 +3408,7 @@ ldv_convert_jump_statement (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_JUMP_STATEMENT_KIND (jump_statement))
@@ -3443,7 +3442,7 @@ ldv_convert_label_decl (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_LABEL_DECL_IDENTIFIER (label_decl))
@@ -3516,7 +3515,7 @@ ldv_convert_labeled_statement (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   /* Gcc doesn't relate any statement with a given label. So generate empty
@@ -3575,7 +3574,7 @@ ldv_convert_location (tree t)
         LDV_WARN ("can't find location line for expression");
     }
   else
-    LDV_CONVERT_WARN (t);
+    LDV_CONVERT_ERROR (t);
 
   if (LDV_LOCATION_FILE (location) || LDV_LOCATION_LINE (location))
     return location;
@@ -3705,7 +3704,7 @@ ldv_convert_long_long_suffix (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_LONG_LONG_SUFFIX_KIND (long_long_suffix))
@@ -3740,7 +3739,7 @@ ldv_convert_long_suffix (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_LONG_SUFFIX_KIND (long_suffix))
@@ -3852,7 +3851,7 @@ ldv_convert_nested_decl (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_NESTED_DECL_KIND (nested_decl))
@@ -3886,7 +3885,7 @@ ldv_convert_nested_func_def (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_NESTED_FUNC_DEF_FUNC_DEF (nested_func_def))
@@ -3932,7 +3931,7 @@ ldv_convert_param_decl (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_PARAM_DECL_DECL_SPEC (param_decl))
@@ -3983,7 +3982,7 @@ ldv_convert_param_list (tree t)
           break;
 
         default:
-          LDV_CONVERT_WARN (t);
+          LDV_CONVERT_ERROR (t);
         }
     }
   /* When there is no parameters at all generate artificial void type to
@@ -4032,7 +4031,7 @@ ldv_convert_param_type_list (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (func_type)
@@ -4060,7 +4059,7 @@ ldv_convert_param_type_list (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_PARAM_TYPE_LIST_PARAM_LIST (param_type_list))
@@ -4400,7 +4399,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
       else
         {
           LDV_WARN ("expression recursion limit is reached");
-          LDV_CONVERT_WARN (t);
+          LDV_CONVERT_ERROR (t);
         }
     }
 
@@ -4562,7 +4561,7 @@ ldv_convert_selection_statement (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_SELECTION_STATEMENT_KIND (selection_statement))
@@ -4853,7 +4852,7 @@ ldv_convert_storage_class_spec (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec))
@@ -4884,12 +4883,12 @@ ldv_convert_str_literal (tree t)
       if ((str = TREE_STRING_POINTER (t)))
         LDV_STR_LITERAL_STR (str_literal) = str;
       else
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
 
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_STR_LITERAL_STR (str_literal))
@@ -4945,7 +4944,7 @@ ldv_convert_struct_decl (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) || LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl))
@@ -4985,7 +4984,7 @@ ldv_convert_struct_decl_list (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (struct_decl_list_next)
@@ -5029,7 +5028,7 @@ ldv_convert_struct_declarator (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   return struct_declarator;
@@ -5082,7 +5081,7 @@ ldv_convert_struct_or_union (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_STRUCT_OR_UNION_STRUCT_OR_UNION (struct_or_union))
@@ -5153,7 +5152,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_TYPE_SPEC_KIND (type_spec))
@@ -5245,7 +5244,7 @@ ldv_convert_type_qual (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   LDV_WARN ("type qualifier wasn't converted");
@@ -5462,7 +5461,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   LDV_WARN ("type specifier wasn't converted");
@@ -5589,7 +5588,7 @@ ldv_convert_typedef_name (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_TYPE_SPEC_KIND (type_spec))
@@ -5768,7 +5767,7 @@ ldv_convert_unary_operator (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_UNARY_OPERATOR_KIND (unary_operator))
@@ -5803,7 +5802,7 @@ ldv_convert_unsigned_suffix (tree t)
       break;
 
     default:
-      LDV_CONVERT_WARN (t);
+      LDV_CONVERT_ERROR (t);
     }
 
   if (LDV_UNSIGNED_SUFFIX_KIND (unsigned_suffix))
@@ -5999,7 +5998,7 @@ ldv_label_decl_name (tree t)
         break;
 
       default:
-        LDV_CONVERT_WARN (t);
+        LDV_CONVERT_ERROR (t);
     }
 
   LDV_WARN ("label declaration name wasn't converted");
