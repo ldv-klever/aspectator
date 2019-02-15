@@ -3568,10 +3568,7 @@ ldv_convert_location (tree t)
       else
         LDV_FATAL_ERROR ("can't find location file for expression");
 
-      if ((line = EXPR_LINENO (t)))
-        LDV_LOCATION_LINE (location) = line;
-      else
-        LDV_FATAL_ERROR ("can't find location line for expression");
+      LDV_LOCATION_LINE (location) = EXPR_LINENO (t);
     }
   else
     LDV_CONVERT_ERROR (t);
