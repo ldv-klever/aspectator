@@ -154,13 +154,13 @@ ldv_check_declarator_xor_direct_declarator (ldv_declarator_ptr declarator, ldv_d
 {
   if (!direct_declarator && !declarator)
     {
-      LDV_WARN ("neither previous direct declarator nor declarator is specified");
+      LDV_FATAL_ERROR ("neither previous direct declarator nor declarator is specified");
       return false;
     }
 
   if (direct_declarator && declarator)
     {
-      LDV_WARN ("both previous direct declarator and declarator is specified");
+      LDV_FATAL_ERROR ("both previous direct declarator and declarator is specified");
       return false;
     }
 
@@ -249,7 +249,7 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
                 LDV_CONVERT_ERROR (first_non_pointer);
               }
           else
-            LDV_WARN ("first non pointer type isn't specified");
+            LDV_FATAL_ERROR ("first non pointer type isn't specified");
         }
 
       break;
@@ -305,12 +305,12 @@ ldv_convert_additive_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_ADDITIVE_EXPR_ADDITIVE_EXPR (additive_expr) = ldv_convert_additive_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of additive expression");
+        LDV_FATAL_ERROR ("can't find the first operand of additive expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_ADDITIVE_EXPR_MULTIPLICATIVE_EXPR (additive_expr) = ldv_convert_multiplicative_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of additive expression");
+        LDV_FATAL_ERROR ("can't find the second operand of additive expression");
 
       LDV_ADDITIVE_EXPR_LOCATION (additive_expr) = ldv_convert_location (t);
 
@@ -324,7 +324,7 @@ ldv_convert_additive_expr (tree t, unsigned int recursion_limit)
   if (LDV_ADDITIVE_EXPR_KIND (additive_expr))
     return additive_expr;
 
-  LDV_WARN ("additive expression wasn't converted");
+  LDV_FATAL_ERROR ("additive expression wasn't converted");
 
   XDELETE (additive_expr);
 
@@ -360,14 +360,14 @@ ldv_convert_and_expr (tree t, unsigned int recursion_limit)
             LDV_AND_EXPR_AND_EXPR (and_expr) = ldv_convert_and_expr (op1, recursion_limit);
         }
       else
-        LDV_WARN ("can't find the first operand of and expression");
+        LDV_FATAL_ERROR ("can't find the first operand of and expression");
 
       LDV_AND_EXPR_KIND (and_expr) = LDV_AND_EXPR_SECOND;
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_AND_EXPR_EQUALITY_EXPR (and_expr) = ldv_convert_equality_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of and expression");
+        LDV_FATAL_ERROR ("can't find the second operand of and expression");
 
       LDV_AND_EXPR_LOCATION (and_expr) = ldv_convert_location (t);
 
@@ -381,7 +381,7 @@ ldv_convert_and_expr (tree t, unsigned int recursion_limit)
   if (LDV_AND_EXPR_KIND (and_expr))
     return and_expr;
 
-  LDV_WARN ("and expression wasn't converted");
+  LDV_FATAL_ERROR ("and expression wasn't converted");
 
   XDELETE (and_expr);
 
@@ -424,7 +424,7 @@ ldv_convert_arg_expr_list (tree t, unsigned int recursion_limit)
   if (arg_expr_list_next && LDV_ARG_EXPR_LIST_KIND (arg_expr_list_next))
     return arg_expr_list_next;
 
-  LDV_WARN ("argument expression list wasn't converted");
+  LDV_FATAL_ERROR ("argument expression list wasn't converted");
 
   XDELETE (arg_expr_list_next);
 
@@ -456,7 +456,7 @@ ldv_convert_asm_arg (tree t)
       if ((asm_str_literal = ASM_STRING (t)))
         LDV_ASM_ARG_ASM_STR_LITERAL (asm_arg) = ldv_convert_asm_str_literal (asm_str_literal);
       else
-        LDV_WARN ("can't find asm string literal");
+        LDV_FATAL_ERROR ("can't find asm string literal");
 
       if ((asm_operands1 = ASM_OUTPUTS (t)))
         {
@@ -516,7 +516,7 @@ ldv_convert_asm_clobbers (tree t)
       if ((asm_str_literal = TREE_VALUE (t)))
         LDV_ASM_CLOBBERS_ASM_STR_LITERAL (asm_clobbers) = ldv_convert_asm_str_literal (asm_str_literal);
       else
-        LDV_WARN ("can't find asm string literal");
+        LDV_FATAL_ERROR ("can't find asm string literal");
 
       break;
 
@@ -527,7 +527,7 @@ ldv_convert_asm_clobbers (tree t)
   if (LDV_ASM_CLOBBERS_KIND (asm_clobbers))
     return asm_clobbers;
 
-  LDV_WARN ("asm clobbers wasn't converted");
+  LDV_FATAL_ERROR ("asm clobbers wasn't converted");
 
   XDELETE (asm_clobbers);
 
@@ -554,7 +554,7 @@ ldv_convert_asm_goto_arg (tree t)
       if ((asm_str_literal = ASM_STRING (t)))
         LDV_ASM_GOTO_ARG_ASM_STR_LITERAL (asm_goto_arg) = ldv_convert_asm_str_literal (asm_str_literal);
       else
-        LDV_WARN ("can't find asm string literal");
+        LDV_FATAL_ERROR ("can't find asm string literal");
 
       if ((asm_operands = ASM_INPUTS (t)))
         LDV_ASM_GOTO_ARG_ASM_OPERANDS (asm_goto_arg) = ldv_convert_asm_operands (asm_operands);
@@ -565,7 +565,7 @@ ldv_convert_asm_goto_arg (tree t)
       if ((asm_goto_operands = ASM_LABELS (t)))
         LDV_ASM_GOTO_ARG_ASM_GOTO_OPERANDS (asm_goto_arg) = ldv_convert_asm_goto_operands (asm_goto_operands);
       else
-        LDV_WARN ("can't find asm string literal");
+        LDV_FATAL_ERROR ("can't find asm string literal");
 
       break;
 
@@ -608,7 +608,7 @@ ldv_convert_asm_goto_operands (tree t)
       if ((label_decl = TREE_VALUE (t)))
         LDV_ASM_GOTO_OPERANDS_IDENTIFIER (asm_goto_operands) = ldv_convert_identifier (label_decl);
       else
-        LDV_WARN ("can't find label declaration");
+        LDV_FATAL_ERROR ("can't find label declaration");
 
       break;
 
@@ -622,7 +622,7 @@ ldv_convert_asm_goto_operands (tree t)
   if (LDV_ASM_GOTO_OPERANDS_KIND (asm_goto_operands))
     return asm_goto_operands;
 
-  LDV_WARN ("asm goto operands wasn't converted");
+  LDV_FATAL_ERROR ("asm goto operands wasn't converted");
 
   XDELETE (asm_goto_operands);
 
@@ -660,15 +660,15 @@ ldv_convert_asm_operand (tree t)
           if ((asm_str_literal = TREE_VALUE (tree_purpose)))
             LDV_ASM_OPERAND_ASM_STR_LITERAL (asm_operand) = ldv_convert_asm_str_literal (asm_str_literal);
           else
-            LDV_WARN ("can't find asm string literal");
+            LDV_FATAL_ERROR ("can't find asm string literal");
         }
       else
-        LDV_WARN ("can't find asm string literal and identifier");
+        LDV_FATAL_ERROR ("can't find asm string literal and identifier");
 
       if ((expr = TREE_VALUE (t)))
         LDV_ASM_OPERAND_EXPR (asm_operand) = ldv_convert_expr (expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
       else
-        LDV_WARN ("can't find expression");
+        LDV_FATAL_ERROR ("can't find expression");
 
       break;
 
@@ -679,7 +679,7 @@ ldv_convert_asm_operand (tree t)
   if (LDV_ASM_OPERAND_KIND (asm_operand))
     return asm_operand;
 
-  LDV_WARN ("asm operand wasn't converted");
+  LDV_FATAL_ERROR ("asm operand wasn't converted");
 
   XDELETE (asm_operand);
 
@@ -729,7 +729,7 @@ ldv_convert_asm_operands (tree t)
   if (LDV_ASM_OPERANDS_KIND (asm_operands))
     return asm_operands;
 
-  LDV_WARN ("asm operands wasn't converted");
+  LDV_FATAL_ERROR ("asm operands wasn't converted");
 
   XDELETE (asm_operands);
 
@@ -841,7 +841,7 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
           LDV_ASSIGNMENT_EXPR_COND_EXPR (assignment_expr) = ldv_convert_cond_expr (op1, recursion_limit);
         }
       else
-        LDV_WARN ("can't find the first operand of non lvalue expression");
+        LDV_FATAL_ERROR ("can't find the first operand of non lvalue expression");
 
       break;
 
@@ -849,10 +849,10 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
       LDV_ASSIGNMENT_EXPR_KIND (assignment_expr) = LDV_ASSIGNMENT_EXPR_SECOND;
 
       if (!(op1 = LDV_OP_FIRST (t)))
-        LDV_WARN ("can't find the first operand of assignment expression");
+        LDV_FATAL_ERROR ("can't find the first operand of assignment expression");
 
       if (!(op2 = LDV_OP_SECOND (t)))
-        LDV_WARN ("can't find the second operand of assignment expression");
+        LDV_FATAL_ERROR ("can't find the second operand of assignment expression");
 
       /* This is the case for GNU extension of compound expression in primary
          expression, i.e. '({...})'. For it auxiliary artificial variable is
@@ -878,11 +878,11 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
           if (LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) > 1)
             {
               if (!(op2 = LDV_OP_SECOND (op2)))
-                LDV_WARN ("can't find the second operand of compound assignment expression");
+                LDV_FATAL_ERROR ("can't find the second operand of compound assignment expression");
             }
         }
       else
-        LDV_WARN ("can't get assignment operator of assignment expression");
+        LDV_FATAL_ERROR ("can't get assignment operator of assignment expression");
 
       if (op2)
         LDV_ASSIGNMENT_EXPR_ASSIGNMENT_EXPR (assignment_expr) = ldv_convert_assignment_expr (op2, recursion_limit);
@@ -899,7 +899,7 @@ ldv_convert_assignment_expr (tree t, unsigned int recursion_limit)
   if (LDV_ASSIGNMENT_EXPR_KIND (assignment_expr))
     return assignment_expr;
 
-  LDV_WARN ("assignment expression wasn't converted");
+  LDV_FATAL_ERROR ("assignment expression wasn't converted");
 
   XDELETE (assignment_expr);
 
@@ -937,13 +937,13 @@ ldv_convert_assignment_operator (tree t)
 
       if (!(op1 = LDV_OP_FIRST (t)))
         {
-          LDV_WARN ("can't find the first operand of assignment expression");
+          LDV_FATAL_ERROR ("can't find the first operand of assignment expression");
           break;
         }
 
       if (!(op2 = LDV_OP_SECOND (t)))
         {
-          LDV_WARN ("can't find the second operand of assignment expression");
+          LDV_FATAL_ERROR ("can't find the second operand of assignment expression");
           break;
         }
 
@@ -963,7 +963,7 @@ ldv_convert_assignment_operator (tree t)
         case BIT_IOR_EXPR:
           if (!(op21 = LDV_OP_FIRST (op2)))
             {
-              LDV_WARN ("can't find the first operand of compound assignment expression");
+              LDV_FATAL_ERROR ("can't find the first operand of compound assignment expression");
               break;
             }
 
@@ -1014,7 +1014,7 @@ ldv_convert_assignment_operator (tree t)
                   break;
 
                 default:
-                  LDV_WARN ("something strange");
+                  LDV_FATAL_ERROR ("something strange");
                 }
             }
 
@@ -1033,7 +1033,7 @@ ldv_convert_assignment_operator (tree t)
   if (LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator))
     return assignment_operator;
 
-  LDV_WARN ("assignment operator wasn't converted");
+  LDV_FATAL_ERROR ("assignment operator wasn't converted");
 
   XDELETE (assignment_operator);
 
@@ -1080,7 +1080,7 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
                   if ((op1 = LDV_OP_FIRST (t)))
                     LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
                   else
-                    LDV_WARN ("can't find the first operand of cast expression");
+                    LDV_FATAL_ERROR ("can't find the first operand of cast expression");
 
                   break;
                 }
@@ -1088,13 +1088,13 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
                 LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
             }
           else
-            LDV_WARN ("can't find type name of cast expression");
+            LDV_FATAL_ERROR ("can't find type name of cast expression");
 
           /* TODO: This code is now unreachangle when type != TREE_TYPE (t). Fix it*/
           if ((op1 = LDV_OP_FIRST (t)))
             LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
           else
-            LDV_WARN ("can't find the first operand of cast expression");
+            LDV_FATAL_ERROR ("can't find the first operand of cast expression");
 
           LDV_CAST_EXPR_LOCATION (cast_expr) = ldv_convert_location (t);
 
@@ -1115,7 +1115,7 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
   if (LDV_CAST_EXPR_KIND (cast_expr))
     return cast_expr;
 
-  LDV_WARN ("cast expression wasn't converted");
+  LDV_FATAL_ERROR ("cast expression wasn't converted");
 
   XDELETE (cast_expr);
 
@@ -1155,7 +1155,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_COND_EXPR_LOGICAL_OR_EXPR (cond_expr) = ldv_convert_logical_or_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the first operand of conditional expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         {
@@ -1168,12 +1168,12 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
             LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op2, LDV_CONVERT_EXPR_RECURSION_LIMIT);
         }
       else
-        LDV_WARN ("can't find the second operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the second operand of conditional expression");
 
       if ((op3 = LDV_OP_THIRD (t)))
         LDV_COND_EXPR_COND_EXPR (cond_expr) = ldv_convert_cond_expr (op3, recursion_limit);
       else
-        LDV_WARN ("can't find the third operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the third operand of conditional expression");
 
       LDV_COND_EXPR_LOCATION (cond_expr) = ldv_convert_location (t);
 
@@ -1187,10 +1187,10 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
         LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_FIFTH;
 
       if (!(op1 = LDV_OP_FIRST (t)))
-        LDV_WARN ("can't find the first operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the first operand of conditional expression");
 
       if (!(op2 = LDV_OP_SECOND (t)))
-        LDV_WARN ("can't find the second operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the second operand of conditional expression");
 
       if (op1 && op2)
         {
@@ -1208,7 +1208,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_COND_EXPR_EXPR (cond_expr) = ldv_convert_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of conditional expression");
+        LDV_FATAL_ERROR ("can't find the first operand of conditional expression");
 
       LDV_COND_EXPR_LOCATION (cond_expr) = ldv_convert_location (t);
 
@@ -1222,7 +1222,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
   if (LDV_COND_EXPR_KIND (cond_expr))
     return cond_expr;
 
-  LDV_WARN ("conditional expression wasn't converted");
+  LDV_FATAL_ERROR ("conditional expression wasn't converted");
 
   XDELETE (cond_expr);
 
@@ -1267,7 +1267,7 @@ ldv_convert_block_item (tree t)
   if (LDV_BLOCK_ITEM_KIND (block_item))
     return block_item;
 
-  LDV_WARN ("block item wasn't converted");
+  LDV_FATAL_ERROR ("block item wasn't converted");
 
   XDELETE (block_item);
 
@@ -1315,10 +1315,10 @@ ldv_convert_block_item_list (tree t)
                     LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list_next) = block_item;
                   }
                 else
-                  LDV_WARN ("block item wasn't converted");
+                  LDV_FATAL_ERROR ("block item wasn't converted");
               }
           else
-            LDV_WARN ("can't find statement");
+            LDV_FATAL_ERROR ("can't find statement");
         }
       break;
 
@@ -1326,13 +1326,13 @@ ldv_convert_block_item_list (tree t)
       if ((block_item = ldv_convert_block_item (t)))
         LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) = block_item;
       else
-        LDV_WARN ("block item wasn't converted");
+        LDV_FATAL_ERROR ("block item wasn't converted");
     }
 
   if (LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) || LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list))
     return block_item_list;
 
-  LDV_WARN ("block item list wasn't converted");
+  LDV_FATAL_ERROR ("block item list wasn't converted");
 
   XDELETE (block_item_list);
 
@@ -1355,7 +1355,7 @@ ldv_convert_const_expr (tree t)
   if (LDV_CONST_EXPR_COND_EXPR (const_expr))
     return const_expr;
 
-  LDV_WARN ("constant expression wasn't converted");
+  LDV_FATAL_ERROR ("constant expression wasn't converted");
 
   XDELETE (const_expr);
 
@@ -1397,7 +1397,7 @@ ldv_convert_constant (tree t)
             LDV_CONVERT_ERROR (type); */
         }
       else
-        LDV_WARN ("can't find type of integer constant");
+        LDV_FATAL_ERROR ("can't find type of integer constant");
 
       break;
 
@@ -1414,7 +1414,7 @@ ldv_convert_constant (tree t)
   if (LDV_CONSTANT_KIND (constant))
     return constant;
 
-  LDV_WARN ("constant wasn't converted");
+  LDV_FATAL_ERROR ("constant wasn't converted");
 
   XDELETE (constant);
 
@@ -1457,7 +1457,7 @@ ldv_convert_compound_statement (tree t)
             case TYPE_DECL:
               if (!DECL_NAME (block_decl))
                 if (!(block_decl_type = TREE_TYPE (block_decl)))
-                  LDV_WARN ("can't find type of type declaration");
+                  LDV_FATAL_ERROR ("can't find type of type declaration");
 
               break;
 
@@ -1495,7 +1495,7 @@ ldv_convert_compound_statement (tree t)
                   XDELETE (identifier);
                 }
               else
-                LDV_WARN ("can't find variable name");
+                LDV_FATAL_ERROR ("can't find variable name");
 
             default:
               ;
@@ -1515,7 +1515,7 @@ ldv_convert_compound_statement (tree t)
                 decl_block_item_list = decl_block_item_list_next;
             }
           else
-            LDV_WARN ("block item list wasn't converted");
+            LDV_FATAL_ERROR ("block item list wasn't converted");
         }
 
       if ((block_statement = BIND_EXPR_BODY (t)))
@@ -1537,7 +1537,7 @@ ldv_convert_compound_statement (tree t)
             }
         }
       else
-        LDV_WARN ("can't find statement list of compound statement");
+        LDV_FATAL_ERROR ("can't find statement list of compound statement");
 
       /* Merge label declarations if any */
       if (label_decls_next)
@@ -1646,7 +1646,7 @@ ldv_convert_decl_spec (tree t, bool is_decl_decl_spec)
   if (is_decl_spec)
     return decl_spec;
 
-  LDV_WARN ("declaration specifiers weren't converted");
+  LDV_FATAL_ERROR ("declaration specifiers weren't converted");
 
   XDELETE (decl_spec);
 
@@ -1717,7 +1717,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
         {
           if (!direct_declarator_prev)
           {
-            LDV_WARN ("a previous direct declarator isn't specified");
+            LDV_FATAL_ERROR ("a previous direct declarator isn't specified");
             break;
           }
 
@@ -1752,7 +1752,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
                 LDV_CONVERT_ERROR (first_non_pointer);
               }
           else
-            LDV_WARN ("first non pointer type isn't specified");
+            LDV_FATAL_ERROR ("first non pointer type isn't specified");
         }
 
       break;
@@ -1811,7 +1811,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
           LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR (direct_abstract_declarator_next) = (int) TREE_INT_CST_LOW (array_size) + 1;
         }
       else
-        LDV_WARN ("can't find array size");
+        LDV_FATAL_ERROR ("can't find array size");
 
       if ((array_type = TREE_TYPE (t)))
         switch (TREE_CODE (array_type))
@@ -1835,7 +1835,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
             LDV_CONVERT_ERROR (t);
           }
       else
-        LDV_WARN ("can't find array type");
+        LDV_FATAL_ERROR ("can't find array type");
 
       break;
 
@@ -1879,7 +1879,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
             LDV_CONVERT_ERROR (t);
           }
       else
-        LDV_WARN ("can't find function return type");
+        LDV_FATAL_ERROR ("can't find function return type");
 
       break;
 
@@ -1962,7 +1962,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
             }
         }
       else
-        LDV_WARN ("can't find declaration type");
+        LDV_FATAL_ERROR ("can't find declaration type");
 
       break;
 
@@ -2004,16 +2004,16 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
                         if ((integer_constant = LDV_CONSTANT_INTEGER_CONSTANT (ldv_constant_current)))
                           LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) ++;
                         else
-                          LDV_WARN ("can't find array size");
+                          LDV_FATAL_ERROR ("can't find array size");
 
                         break;
 
                       default:
-                        LDV_WARN ("something strange");
+                        LDV_FATAL_ERROR ("something strange");
                     }
                 }
               else
-                LDV_WARN ("array size wasn't found or isn't a constant");
+                LDV_FATAL_ERROR ("array size wasn't found or isn't a constant");
             }
         }
 
@@ -2039,7 +2039,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
             LDV_CONVERT_ERROR (t);
           }
       else
-        LDV_WARN ("can't find array type");
+        LDV_FATAL_ERROR ("can't find array type");
 
       break;
 
@@ -2097,7 +2097,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
             LDV_CONVERT_ERROR (t);
           }
       else
-        LDV_WARN ("can't find function return type");
+        LDV_FATAL_ERROR ("can't find function return type");
 
       break;
 
@@ -2122,7 +2122,7 @@ ldv_convert_designation (tree t)
   if (LDV_DESIGNATION_DESIGNATOR_LIST (designation))
     return designation;
 
-  LDV_WARN ("designation wasn't converted");
+  LDV_FATAL_ERROR ("designation wasn't converted");
 
   XDELETE (designation);
 
@@ -2162,7 +2162,7 @@ ldv_convert_designator (tree t)
   if (LDV_DESIGNATOR_KIND (designator))
     return designator;
 
-  LDV_WARN ("designator wasn't converted");
+  LDV_FATAL_ERROR ("designator wasn't converted");
 
   XDELETE (designator);
 
@@ -2188,7 +2188,7 @@ ldv_convert_designator_list (tree t)
   if (LDV_DESIGNATOR_LIST_KIND (designator_list))
     return designator_list;
 
-  LDV_WARN ("designator list wasn't converted");
+  LDV_FATAL_ERROR ("designator list wasn't converted");
 
   XDELETE (designator_list);
 
@@ -2216,7 +2216,7 @@ ldv_convert_enum (tree t)
       if ((enum_const = TREE_PURPOSE (t)))
         LDV_ENUM_ENUM_CONST (ldv_enum) = ldv_convert_enum_const (enum_const);
       else
-        LDV_WARN ("can't get an enumeration constant");
+        LDV_FATAL_ERROR ("can't get an enumeration constant");
 
       if ((const_expr = TREE_VALUE (t)))
         {
@@ -2235,7 +2235,7 @@ ldv_convert_enum (tree t)
   if (LDV_ENUM_ENUM_CONST (ldv_enum))
     return ldv_enum;
 
-  LDV_WARN ("enumerator wasn't converted");
+  LDV_FATAL_ERROR ("enumerator wasn't converted");
 
   XDELETE (ldv_enum);
 
@@ -2260,7 +2260,7 @@ ldv_convert_enum_const (tree t)
       if ((enum_value_name_str = IDENTIFIER_POINTER (t)))
         LDV_ENUM_CONST_ID (enum_const) = enum_value_name_str;
       else
-        LDV_WARN ("enumeration constant hasn't a name");
+        LDV_FATAL_ERROR ("enumeration constant hasn't a name");
       break;
 
     default:
@@ -2270,7 +2270,7 @@ ldv_convert_enum_const (tree t)
   if (LDV_ENUM_CONST_ID (enum_const))
     return enum_const;
 
-  LDV_WARN ("enumeration constant wasn't converted");
+  LDV_FATAL_ERROR ("enumeration constant wasn't converted");
 
   XDELETE (enum_const);
 
@@ -2313,7 +2313,7 @@ ldv_convert_enum_list (tree t)
   if (LDV_ENUM_LIST_ENUM (enum_list) || LDV_ENUM_LIST_ENUM_LIST (enum_list))
     return enum_list;
 
-  LDV_WARN ("enumeration list wasn't converted");
+  LDV_FATAL_ERROR ("enumeration list wasn't converted");
 
   XDELETE (enum_list);
 
@@ -2372,7 +2372,7 @@ ldv_convert_enum_spec (tree t, bool is_decl_decl_spec)
   if (LDV_TYPE_SPEC_KIND (type_spec))
     return decl_spec;
 
-  LDV_WARN ("enum specifier wasn't converted");
+  LDV_FATAL_ERROR ("enum specifier wasn't converted");
 
   XDELETE (enum_spec);
   XDELETE (type_spec);
@@ -2410,14 +2410,14 @@ ldv_convert_enumeration_constant (tree t)
                   if ((purpose = TREE_PURPOSE (value)))
                     LDV_ENUMERATION_CONSTANT_IDENTIFIER (enumeration_constant) = ldv_convert_identifier (purpose);
                   else
-                    LDV_WARN ("can't find enumeration constant name");
+                    LDV_FATAL_ERROR ("can't find enumeration constant name");
                 }
             }
           else
-            LDV_WARN ("type of constant isn't enumeration");
+            LDV_FATAL_ERROR ("type of constant isn't enumeration");
         }
       else
-        LDV_WARN ("can't find type of integer constant");
+        LDV_FATAL_ERROR ("can't find type of integer constant");
 
       break;
 
@@ -2459,12 +2459,12 @@ ldv_convert_equality_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_EQUALITY_EXPR_EQUALITY_EXPR (equality_expr) = ldv_convert_equality_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of equality expression");
+        LDV_FATAL_ERROR ("can't find the first operand of equality expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_EQUALITY_EXPR_RELATIONAL_EXPR (equality_expr) = ldv_convert_relational_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of equality expression");
+        LDV_FATAL_ERROR ("can't find the second operand of equality expression");
 
       LDV_EQUALITY_EXPR_LOCATION (equality_expr) = ldv_convert_location (t);
 
@@ -2478,7 +2478,7 @@ ldv_convert_equality_expr (tree t, unsigned int recursion_limit)
   if (LDV_EQUALITY_EXPR_KIND (equality_expr))
     return equality_expr;
 
-  LDV_WARN ("equality expression wasn't converted");
+  LDV_FATAL_ERROR ("equality expression wasn't converted");
 
   XDELETE (equality_expr);
 
@@ -2507,12 +2507,12 @@ ldv_convert_exclusive_or_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_EXCLUSIVE_OR_EXPR_EXCLUSIVE_OR_EXPR (exclusive_or_expr) = ldv_convert_exclusive_or_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of exclusive or expression");
+        LDV_FATAL_ERROR ("can't find the first operand of exclusive or expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_EXCLUSIVE_OR_EXPR_AND_EXPR (exclusive_or_expr) = ldv_convert_and_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of exclusive or expression");
+        LDV_FATAL_ERROR ("can't find the second operand of exclusive or expression");
 
       LDV_EXCLUSIVE_OR_EXPR_LOCATION (exclusive_or_expr) = ldv_convert_location (t);
 
@@ -2526,7 +2526,7 @@ ldv_convert_exclusive_or_expr (tree t, unsigned int recursion_limit)
   if (LDV_EXCLUSIVE_OR_EXPR_KIND (exclusive_or_expr))
     return exclusive_or_expr;
 
-  LDV_WARN ("exclusive or expression wasn't converted");
+  LDV_FATAL_ERROR ("exclusive or expression wasn't converted");
 
   XDELETE (exclusive_or_expr);
 
@@ -2560,20 +2560,20 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
           LDV_EXPR_ASSIGNMENT_EXPR (expr) = ldv_convert_assignment_expr (op1, recursion_limit);
         }
       else
-        LDV_WARN ("can't find the first operand of save expression");
+        LDV_FATAL_ERROR ("can't find the first operand of save expression");
 
       break;
 
     case COMPOUND_EXPR:
       if (!(op1 = LDV_OP_FIRST (t)))
         {
-          LDV_WARN ("can't find the first operand of compound expression");
+          LDV_FATAL_ERROR ("can't find the first operand of compound expression");
           break;
         }
 
       if (!(op2 = LDV_OP_SECOND (t)))
         {
-          LDV_WARN ("can't find the second operand of compound expression");
+          LDV_FATAL_ERROR ("can't find the second operand of compound expression");
           break;
         }
 
@@ -2585,7 +2585,7 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
       if ((assignment_expr = ldv_convert_assignment_expr (op2, recursion_limit)))
         LDV_EXPR_ASSIGNMENT_EXPR (expr) = assignment_expr;
       else
-        LDV_WARN ("assigment expression wasn't converted");
+        LDV_FATAL_ERROR ("assigment expression wasn't converted");
 
       break;
 
@@ -2595,37 +2595,37 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
     case BIT_FIELD_REF:
       if (!(type = TREE_TYPE (t)))
         {
-          LDV_WARN ("can't find the type of bit field reference");
+          LDV_FATAL_ERROR ("can't find the type of bit field reference");
           break;
         }
 
       if (!(op1 = LDV_OP_FIRST (t)))
         {
-          LDV_WARN ("can't find the first operand of bit field reference");
+          LDV_FATAL_ERROR ("can't find the first operand of bit field reference");
           break;
         }
 
       if (!(op3 = LDV_OP_THIRD (t)))
         {
-          LDV_WARN ("can't find the third operand of bit field reference");
+          LDV_FATAL_ERROR ("can't find the third operand of bit field reference");
           break;
         }
 
       if (!(addr = build1 (ADDR_EXPR, type, op1)))
         {
-          LDV_WARN ("can't build address for variable");
+          LDV_FATAL_ERROR ("can't build address for variable");
           break;
         }
 
       if (!(cast_type = build_pointer_type (type)))
         {
-          LDV_WARN ("can't build pointer for type");
+          LDV_FATAL_ERROR ("can't build pointer for type");
           break;
         }
 
       if (!(cast = build1 (CONVERT_EXPR, cast_type, addr)))
         {
-          LDV_WARN ("can't build cast for address");
+          LDV_FATAL_ERROR ("can't build cast for address");
           break;
         }
 
@@ -2634,7 +2634,7 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
 
       if (bitpos % size)
         {
-          LDV_WARN ("bit field position isn't multiple of type size");
+          LDV_FATAL_ERROR ("bit field position isn't multiple of type size");
           break;
         }
 
@@ -2642,13 +2642,13 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
 
       if (!(ptr_plus = build2 (POINTER_PLUS_EXPR, cast_type, cast, offset)))
         {
-          LDV_WARN ("can't build cast for address");
+          LDV_FATAL_ERROR ("can't build cast for address");
           break;
         }
 
       if (!(indirect_ref = build1 (INDIRECT_REF, TREE_TYPE (ptr_plus), ptr_plus)))
         {
-          LDV_WARN ("can't build indirect reference for pointer plus expression");
+          LDV_FATAL_ERROR ("can't build indirect reference for pointer plus expression");
           break;
         }
 
@@ -2665,7 +2665,7 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
   if ((LDV_EXPR_KIND (expr)))
     return expr;
 
-  LDV_WARN ("expression wasn't converted");
+  LDV_FATAL_ERROR ("expression wasn't converted");
 
   XDELETE (expr);
 
@@ -2717,7 +2717,7 @@ ldv_convert_ext_decl (tree t, bool isdecl)
   if (LDV_EXT_DECL_KIND (ext_decl))
     return ext_decl;
 
-  LDV_WARN ("external declaration wasn't converted");
+  LDV_FATAL_ERROR ("external declaration wasn't converted");
 
   XDELETE (ext_decl);
 
@@ -2742,7 +2742,7 @@ ldv_convert_expr_statement (tree t)
   if (LDV_EXPR_STATEMENT_EXPR (expr_statement))
     return expr_statement;
 
-  LDV_WARN ("expression statement wasn't converted");
+  LDV_FATAL_ERROR ("expression statement wasn't converted");
 
   XDELETE (expr_statement);
 
@@ -2770,7 +2770,7 @@ ldv_convert_floating_constant (tree t)
       if ((cst = TREE_REAL_CST_PTR (t)))
         real_to_decimal (LDV_FLOATING_CONSTANT_CST (floating_constant), cst, sizeof (LDV_FLOATING_CONSTANT_CST (floating_constant)), 0, true);
       else
-        LDV_WARN ("can't find floating constant");
+        LDV_FATAL_ERROR ("can't find floating constant");
 
       break;
 
@@ -2781,7 +2781,7 @@ ldv_convert_floating_constant (tree t)
   if (LDV_FLOATING_CONSTANT_KIND (floating_constant))
     return floating_constant;
 
-  LDV_WARN ("floating constant wasn't converted");
+  LDV_FATAL_ERROR ("floating constant wasn't converted");
 
   XDELETE (floating_constant);
 
@@ -2806,12 +2806,12 @@ ldv_convert_func_def (tree t)
   if ((func_body = DECL_SAVED_TREE (t)))
     LDV_FUNC_DEF_COMPOUND_STATEMENT (func_def) = ldv_convert_compound_statement (func_body);
   else
-    LDV_WARN ("can't find function body");
+    LDV_FATAL_ERROR ("can't find function body");
 
   if (LDV_FUNC_DEF_DECL_SPEC (func_def) && LDV_FUNC_DEF_DECLARATOR (func_def) && LDV_FUNC_DEF_COMPOUND_STATEMENT (func_def))
     return func_def;
 
-  LDV_WARN ("function definition wasn't converted");
+  LDV_FATAL_ERROR ("function definition wasn't converted");
 
   XDELETE (func_def);
 
@@ -2970,7 +2970,7 @@ ldv_convert_identifier (tree t)
   if (LDV_IDENTIFIER_STR (identifier))
     return identifier;
 
-  LDV_WARN ("identifier wasn't converted");
+  LDV_FATAL_ERROR ("identifier wasn't converted");
 
   XDELETE (identifier);
 
@@ -2998,12 +2998,12 @@ ldv_convert_inclusive_or_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_INCLUSIVE_OR_EXPR_INCLUSIVE_OR_EXPR (inclusive_or_expr) = ldv_convert_inclusive_or_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of inclusive or expression");
+        LDV_FATAL_ERROR ("can't find the first operand of inclusive or expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_INCLUSIVE_OR_EXPR_EXCLUSIVE_OR_EXPR (inclusive_or_expr) = ldv_convert_exclusive_or_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of inclusive or expression");
+        LDV_FATAL_ERROR ("can't find the second operand of inclusive or expression");
 
       LDV_INCLUSIVE_OR_EXPR_LOCATION (inclusive_or_expr) = ldv_convert_location (t);
 
@@ -3017,7 +3017,7 @@ ldv_convert_inclusive_or_expr (tree t, unsigned int recursion_limit)
   if (LDV_INCLUSIVE_OR_EXPR_KIND (inclusive_or_expr))
     return inclusive_or_expr;
 
-  LDV_WARN ("inclusive or expression wasn't converted");
+  LDV_FATAL_ERROR ("inclusive or expression wasn't converted");
 
   XDELETE (inclusive_or_expr);
 
@@ -3063,7 +3063,7 @@ ldv_convert_init_declarator (tree t)
   if (LDV_INIT_DECLARATOR_KIND (init_declarator))
     return init_declarator;
 
-  LDV_WARN ("init declarator wasn't converted");
+  LDV_FATAL_ERROR ("init declarator wasn't converted");
 
   XDELETE (init_declarator);
 
@@ -3101,7 +3101,7 @@ ldv_convert_init_declarator_list (tree t)
   if (LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
     return init_declarator_list;
 
-  LDV_WARN ("init declarator list wasn't converted");
+  LDV_FATAL_ERROR ("init declarator list wasn't converted");
 
   XDELETE (init_declarator_list);
 
@@ -3147,7 +3147,7 @@ ldv_convert_initializer (tree t)
   if (LDV_INITIALIZER_KIND (initializer))
     return initializer;
 
-  LDV_WARN ("initializer wasn't converted");
+  LDV_FATAL_ERROR ("initializer wasn't converted");
 
   XDELETE (initializer);
 
@@ -3207,7 +3207,7 @@ ldv_convert_initializer_list (tree t)
   if (initializer_list_next && LDV_INITIALIZER_LIST_KIND (initializer_list_next))
     return initializer_list_next;
 
-  LDV_WARN ("initializer list wasn't converted");
+  LDV_FATAL_ERROR ("initializer list wasn't converted");
 
   XDELETE (initializer_list_next);
 
@@ -3267,7 +3267,7 @@ ldv_convert_integer_constant (tree t)
             LDV_INTEGER_CONSTANT_INTEGER_SUFFIX (integer_constant) = ldv_convert_integer_suffix (type);
         }
       else
-        LDV_WARN ("can't find integer constant type");
+        LDV_FATAL_ERROR ("can't find integer constant type");
 
       break;
 
@@ -3278,7 +3278,7 @@ ldv_convert_integer_constant (tree t)
   if (LDV_INTEGER_CONSTANT_KIND (integer_constant))
     return integer_constant;
 
-  LDV_WARN ("integer constant wasn't converted");
+  LDV_FATAL_ERROR ("integer constant wasn't converted");
 
   XDELETE (integer_constant);
 
@@ -3328,7 +3328,7 @@ ldv_convert_integer_suffix (tree t)
               LDV_INTEGER_SUFFIX_LONG_LONG_SUFFIX (integer_suffix) = ldv_convert_long_long_suffix (t);
             }
           else
-            LDV_WARN ("something strange");
+            LDV_FATAL_ERROR ("something strange");
         }
 
       break;
@@ -3340,7 +3340,7 @@ ldv_convert_integer_suffix (tree t)
   if (LDV_INTEGER_SUFFIX_KIND (integer_suffix))
     return integer_suffix;
 
-  LDV_WARN ("integer suffix wasn't converted");
+  LDV_FATAL_ERROR ("integer suffix wasn't converted");
 
   XDELETE (integer_suffix);
 
@@ -3380,7 +3380,7 @@ ldv_convert_jump_statement (tree t)
             }
         }
       else
-        LDV_WARN ("can't find goto destination");
+        LDV_FATAL_ERROR ("can't find goto destination");
 
       LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
 
@@ -3397,7 +3397,7 @@ ldv_convert_jump_statement (tree t)
               if ((ret_val = LDV_OP_SECOND (ret_val_expr)))
                 LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val, LDV_CONVERT_EXPR_RECURSION_LIMIT);
               else
-                LDV_WARN ("can't find return value");
+                LDV_FATAL_ERROR ("can't find return value");
             }
           else
               LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
@@ -3414,7 +3414,7 @@ ldv_convert_jump_statement (tree t)
   if (LDV_JUMP_STATEMENT_KIND (jump_statement))
     return jump_statement;
 
-  LDV_WARN ("jump statement wasn't converted");
+  LDV_FATAL_ERROR ("jump statement wasn't converted");
 
   XDELETE (jump_statement);
 
@@ -3448,7 +3448,7 @@ ldv_convert_label_decl (tree t)
   if (LDV_LABEL_DECL_IDENTIFIER (label_decl))
     return label_decl;
 
-  LDV_WARN ("label declaration wasn't converted");
+  LDV_FATAL_ERROR ("label declaration wasn't converted");
 
   XDELETE (label_decl);
 
@@ -3483,7 +3483,7 @@ ldv_convert_labeled_statement (tree t)
       if ((label_decl = LABEL_EXPR_LABEL (t)))
         LDV_LABELED_STATEMENT_ID (labeled_statement) = ldv_label_decl_name (label_decl);
       else
-        LDV_WARN ("can't find label declaration");
+        LDV_FATAL_ERROR ("can't find label declaration");
 
       LDV_LABELED_STATEMENT_LOCATION (labeled_statement) = ldv_convert_location (t);
 
@@ -3501,7 +3501,7 @@ ldv_convert_labeled_statement (tree t)
           if ((const_expr = CASE_LOW (t)))
             LDV_LABELED_STATEMENT_CONST_EXPR1 (labeled_statement) = (int) TREE_INT_CST_LOW (const_expr);
           else
-            LDV_WARN ("can't find case constant");
+            LDV_FATAL_ERROR ("can't find case constant");
 
           if ((const_expr = CASE_HIGH (t)))
             {
@@ -3526,7 +3526,7 @@ ldv_convert_labeled_statement (tree t)
   if (LDV_LABELED_STATEMENT_KIND (labeled_statement))
     return labeled_statement;
 
-  LDV_WARN ("labeled statement wasn't converted");
+  LDV_FATAL_ERROR ("labeled statement wasn't converted");
 
   XDELETE (labeled_statement);
 
@@ -3547,12 +3547,12 @@ ldv_convert_location (tree t)
       if ((file = DECL_SOURCE_FILE (t)))
         LDV_LOCATION_FILE (location) = file;
       else
-        LDV_WARN ("can't find location file for declaration");
+        LDV_FATAL_ERROR ("can't find location file for declaration");
 
       if ((line = DECL_SOURCE_LINE (t)))
         LDV_LOCATION_LINE (location) = line;
       else
-        LDV_WARN ("can't find location line for declaration");
+        LDV_FATAL_ERROR ("can't find location line for declaration");
     }
   else if (EXPR_P (t))
     {
@@ -3566,12 +3566,12 @@ ldv_convert_location (tree t)
       if ((file = EXPR_FILENAME (t)))
         LDV_LOCATION_FILE (location) = file;
       else
-        LDV_WARN ("can't find location file for expression");
+        LDV_FATAL_ERROR ("can't find location file for expression");
 
       if ((line = EXPR_LINENO (t)))
         LDV_LOCATION_LINE (location) = line;
       else
-        LDV_WARN ("can't find location line for expression");
+        LDV_FATAL_ERROR ("can't find location line for expression");
     }
   else
     LDV_CONVERT_ERROR (t);
@@ -3579,7 +3579,7 @@ ldv_convert_location (tree t)
   if (LDV_LOCATION_FILE (location) || LDV_LOCATION_LINE (location))
     return location;
 
-  LDV_WARN ("location wasn't converted");
+  LDV_FATAL_ERROR ("location wasn't converted");
 
   XDELETE (location);
 
@@ -3608,12 +3608,12 @@ ldv_convert_logical_and_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_LOGICAL_AND_EXPR_LOGICAL_AND_EXPR (logical_and_expr) = ldv_convert_logical_and_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of logical and expression");
+        LDV_FATAL_ERROR ("can't find the first operand of logical and expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_LOGICAL_AND_EXPR_INCLUSIVE_OR_EXPR (logical_and_expr) = ldv_convert_inclusive_or_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of logical and expression");
+        LDV_FATAL_ERROR ("can't find the second operand of logical and expression");
 
       LDV_LOGICAL_AND_EXPR_LOCATION (logical_and_expr) = ldv_convert_location (t);
 
@@ -3627,7 +3627,7 @@ ldv_convert_logical_and_expr (tree t, unsigned int recursion_limit)
   if (LDV_LOGICAL_AND_EXPR_KIND (logical_and_expr))
     return logical_and_expr;
 
-  LDV_WARN ("logical and expression wasn't converted");
+  LDV_FATAL_ERROR ("logical and expression wasn't converted");
 
   XDELETE (logical_and_expr);
 
@@ -3656,12 +3656,12 @@ ldv_convert_logical_or_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_LOGICAL_OR_EXPR_LOGICAL_OR_EXPR (logical_or_expr) = ldv_convert_logical_or_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of logical or expression");
+        LDV_FATAL_ERROR ("can't find the first operand of logical or expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_LOGICAL_OR_EXPR_LOGICAL_AND_EXPR (logical_or_expr) = ldv_convert_logical_and_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of logical or expression");
+        LDV_FATAL_ERROR ("can't find the second operand of logical or expression");
 
       LDV_LOGICAL_OR_EXPR_LOCATION (logical_or_expr) = ldv_convert_location (t);
 
@@ -3675,7 +3675,7 @@ ldv_convert_logical_or_expr (tree t, unsigned int recursion_limit)
   if (LDV_LOGICAL_OR_EXPR_KIND (logical_or_expr))
     return logical_or_expr;
 
-  LDV_WARN ("logical or expression wasn't converted");
+  LDV_FATAL_ERROR ("logical or expression wasn't converted");
 
   XDELETE (logical_or_expr);
 
@@ -3699,7 +3699,7 @@ ldv_convert_long_long_suffix (tree t)
       if (t == long_long_integer_type_node || t == long_long_unsigned_type_node)
         LDV_LONG_LONG_SUFFIX_KIND (long_long_suffix) = LDV_LONG_LONG_SUFFIX_SECOND;
       else
-        LDV_WARN ("try to get long long suffix for not long long type");
+        LDV_FATAL_ERROR ("try to get long long suffix for not long long type");
 
       break;
 
@@ -3710,7 +3710,7 @@ ldv_convert_long_long_suffix (tree t)
   if (LDV_LONG_LONG_SUFFIX_KIND (long_long_suffix))
     return long_long_suffix;
 
-  LDV_WARN ("long long suffix wasn't converted");
+  LDV_FATAL_ERROR ("long long suffix wasn't converted");
 
   XDELETE (long_long_suffix);
 
@@ -3734,7 +3734,7 @@ ldv_convert_long_suffix (tree t)
       if (t == long_integer_type_node || t == long_unsigned_type_node)
         LDV_LONG_SUFFIX_KIND (long_suffix) = LDV_LONG_SUFFIX_SECOND;
       else
-        LDV_WARN ("try to get long suffix for not long type");
+        LDV_FATAL_ERROR ("try to get long suffix for not long type");
 
       break;
 
@@ -3745,7 +3745,7 @@ ldv_convert_long_suffix (tree t)
   if (LDV_LONG_SUFFIX_KIND (long_suffix))
     return long_suffix;
 
-  LDV_WARN ("long suffix wasn't converted");
+  LDV_FATAL_ERROR ("long suffix wasn't converted");
 
   XDELETE (long_suffix);
 
@@ -3784,12 +3784,12 @@ ldv_convert_multiplicative_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_MULTIPLICATIVE_EXPR_MULTIPLICATIVE_EXPR (multiplicative_expr) = ldv_convert_multiplicative_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of multiplicative expression");
+        LDV_FATAL_ERROR ("can't find the first operand of multiplicative expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_MULTIPLICATIVE_EXPR_CAST_EXPR (multiplicative_expr) = ldv_convert_cast_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of multiplicative expression");
+        LDV_FATAL_ERROR ("can't find the second operand of multiplicative expression");
 
       LDV_MULTIPLICATIVE_EXPR_LOCATION (multiplicative_expr) = ldv_convert_location (t);
 
@@ -3803,7 +3803,7 @@ ldv_convert_multiplicative_expr (tree t, unsigned int recursion_limit)
   if (LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr))
     return multiplicative_expr;
 
-  LDV_WARN ("multiplicative expression wasn't converted");
+  LDV_FATAL_ERROR ("multiplicative expression wasn't converted");
 
   XDELETE (multiplicative_expr);
 
@@ -3857,7 +3857,7 @@ ldv_convert_nested_decl (tree t)
   if (LDV_NESTED_DECL_KIND (nested_decl))
     return nested_decl;
 
-  LDV_WARN ("nested declaration wasn't converted");
+  LDV_FATAL_ERROR ("nested declaration wasn't converted");
 
   XDELETE (nested_decl);
 
@@ -3891,7 +3891,7 @@ ldv_convert_nested_func_def (tree t)
   if (LDV_NESTED_FUNC_DEF_FUNC_DEF (nested_func_def))
     return nested_func_def;
 
-  LDV_WARN ("nested function definition wasn't converted");
+  LDV_FATAL_ERROR ("nested function definition wasn't converted");
 
   XDELETE (nested_func_def);
 
@@ -3921,7 +3921,7 @@ ldv_convert_param_decl (tree t)
     case TREE_LIST:
       if (!(param_type = TREE_VALUE (t)))
         {
-          LDV_WARN ("can't find function parameter type");
+          LDV_FATAL_ERROR ("can't find function parameter type");
           break;
         }
 
@@ -3937,7 +3937,7 @@ ldv_convert_param_decl (tree t)
   if (LDV_PARAM_DECL_DECL_SPEC (param_decl))
     return param_decl;
 
-  LDV_WARN ("parameter declaration wasn't converted");
+  LDV_FATAL_ERROR ("parameter declaration wasn't converted");
 
   XDELETE (param_decl);
 
@@ -3975,7 +3975,7 @@ ldv_convert_param_list (tree t)
                       LDV_PARAM_LIST_PARAM_LIST (param_list_next_next) = param_list;
                     }
                   else
-                    LDV_WARN ("can't process following parameter list");
+                    LDV_FATAL_ERROR ("can't process following parameter list");
                 }
             }
           LDV_PARAM_LIST_PARAM_DECL (param_list) = ldv_convert_param_decl (t);
@@ -3996,7 +3996,7 @@ ldv_convert_param_list (tree t)
   if (LDV_PARAM_LIST_PARAM_DECL (param_list) || LDV_PARAM_LIST_PARAM_LIST (param_list))
     return param_list;
 
-  LDV_WARN ("parameter list wasn't converted");
+  LDV_FATAL_ERROR ("parameter list wasn't converted");
 
   XDELETE (param_list);
 
@@ -4021,7 +4021,7 @@ ldv_convert_param_type_list (tree t)
     {
     case FUNCTION_DECL:
       if (!(func_type = TREE_TYPE (t)))
-        LDV_WARN ("can't find function type");
+        LDV_FATAL_ERROR ("can't find function type");
 
       break;
 
@@ -4153,7 +4153,7 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
                 }
             }
           else
-            LDV_WARN ("can't find the first or the second operand of postfix expression");
+            LDV_FATAL_ERROR ("can't find the first or the second operand of postfix expression");
 
           LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_FOURTH;
         }
@@ -4169,7 +4169,7 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
           if ((op1 = LDV_OP_FIRST (t)))
             LDV_POSTFIX_EXPR_POSTFIX_EXPR (postfix_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
           else
-            LDV_WARN ("can't find the first operand of postfix expression");
+            LDV_FATAL_ERROR ("can't find the first operand of postfix expression");
         }
 
       if (TREE_CODE (t) == ARRAY_REF)
@@ -4177,14 +4177,14 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
           if ((op2 = LDV_OP_SECOND (t)))
             LDV_POSTFIX_EXPR_EXPR (postfix_expr) = ldv_convert_expr (op2, recursion_limit);
           else
-            LDV_WARN ("can't find the second operand of postfix expression");
+            LDV_FATAL_ERROR ("can't find the second operand of postfix expression");
         }
       else if (TREE_CODE (t) == COMPONENT_REF)
         {
           if ((op2 = LDV_OP_SECOND (t)))
             LDV_POSTFIX_EXPR_IDENTIFIER (postfix_expr) = ldv_convert_identifier (op2);
           else
-            LDV_WARN ("can't find the second operand of postfix expression");
+            LDV_FATAL_ERROR ("can't find the second operand of postfix expression");
         }
       else if (TREE_CODE (t) == COMPOUND_LITERAL_EXPR)
         {
@@ -4193,7 +4193,7 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
               if ((expr_decl_type = TREE_TYPE (expr_decl)))
                 LDV_POSTFIX_EXPR_TYPE_NAME (postfix_expr) = ldv_convert_type_name (expr_decl_type);
               else
-                LDV_WARN ("can't find initialization of expression declaration");
+                LDV_FATAL_ERROR ("can't find initialization of expression declaration");
 
               if ((expr_decl_initial = DECL_INITIAL (expr_decl)))
                 {
@@ -4203,10 +4203,10 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
                     LDV_POSTFIX_EXPR_KIND (postfix_expr) = LDV_POSTFIX_EXPR_NINETH;
                 }
               else
-                LDV_WARN ("can't find initialization of expression declaration");
+                LDV_FATAL_ERROR ("can't find initialization of expression declaration");
             }
           else
-            LDV_WARN ("can't find expression declaration of compound literal");
+            LDV_FATAL_ERROR ("can't find expression declaration of compound literal");
         }
 
       LDV_POSTFIX_EXPR_LOCATION (postfix_expr) = ldv_convert_location (t);
@@ -4226,13 +4226,13 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
               if ((func = LDV_OP_FIRST (func_addr)))
                 LDV_POSTFIX_EXPR_POSTFIX_EXPR (postfix_expr) = ldv_convert_postfix_expr (func, recursion_limit);
               else
-                LDV_WARN ("can't find the called function of postfix expression");
+                LDV_FATAL_ERROR ("can't find the called function of postfix expression");
             }
           else
             LDV_POSTFIX_EXPR_POSTFIX_EXPR (postfix_expr) = ldv_convert_postfix_expr (func_addr, recursion_limit);
         }
       else
-        LDV_WARN ("can't find the called function adrress of postfix expression");
+        LDV_FATAL_ERROR ("can't find the called function adrress of postfix expression");
 
       if (first_call_expr_arg(t, &func_arg_iterator))
         LDV_POSTFIX_EXPR_ARG_EXPR_LIST (postfix_expr) = ldv_convert_arg_expr_list (t, recursion_limit);
@@ -4259,7 +4259,7 @@ ldv_convert_postfix_expr (tree t, unsigned int recursion_limit)
   if (LDV_POSTFIX_EXPR_KIND (postfix_expr))
     return postfix_expr;
 
-  LDV_WARN ("postfix expression wasn't converted");
+  LDV_FATAL_ERROR ("postfix expression wasn't converted");
 
   XDELETE (postfix_expr);
 
@@ -4316,7 +4316,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
                  type. */
               if (!(copy = copy_node (t)))
                 {
-                  LDV_WARN ("can't copy constant");
+                  LDV_FATAL_ERROR ("can't copy constant");
                   break;
                 }
 
@@ -4331,7 +4331,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 
               if (!(cast = build1 (CONVERT_EXPR, type, copy)))
                 {
-                  LDV_WARN ("can't build cast for constant");
+                  LDV_FATAL_ERROR ("can't build cast for constant");
                   break;
                 }
 
@@ -4345,7 +4345,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
             }
         }
       else
-        LDV_WARN ("can't find constant type");
+        LDV_FATAL_ERROR ("can't find constant type");
 
       if ((LDV_PRIMARY_EXPR_KIND (primary_expr) == LDV_PRIMARY_EXPR_SECOND))
         ldv_constant_current = LDV_PRIMARY_EXPR_CONSTANT (primary_expr) = ldv_convert_constant (t);
@@ -4364,7 +4364,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
       if ((initial = TARGET_EXPR_INITIAL (t)))
         LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr) = ldv_convert_compound_statement (initial);
       else
-        LDV_WARN ("can't find compound statement of primary expression");
+        LDV_FATAL_ERROR ("can't find compound statement of primary expression");
 
       break;
 
@@ -4380,12 +4380,12 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_PRIMARY_EXPR_ASSIGNMENT_EXPR (primary_expr) = ldv_convert_assignment_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of variable argument expression");
+        LDV_FATAL_ERROR ("can't find the first operand of variable argument expression");
 
       if ((type = TREE_TYPE (t)))
         LDV_PRIMARY_EXPR_TYPE_NAME (primary_expr) = ldv_convert_type_name (type);
       else
-        LDV_WARN ("can't find type of variable argument expression");
+        LDV_FATAL_ERROR ("can't find type of variable argument expression");
 
       break;
 
@@ -4398,7 +4398,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
         LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (t, recursion_limit - 1);
       else
         {
-          LDV_WARN ("expression recursion limit is reached");
+          LDV_FATAL_ERROR ("expression recursion limit is reached");
           LDV_CONVERT_ERROR (t);
         }
     }
@@ -4406,7 +4406,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
   if (LDV_PRIMARY_EXPR_KIND (primary_expr))
     return primary_expr;
 
-  LDV_WARN ("primary expression wasn't converted");
+  LDV_FATAL_ERROR ("primary expression wasn't converted");
 
   XDELETE (primary_expr);
 
@@ -4447,12 +4447,12 @@ ldv_convert_relational_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_RELATIONAL_EXPR_RELATIONAL_EXPR (relational_expr) = ldv_convert_relational_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of relational expression");
+        LDV_FATAL_ERROR ("can't find the first operand of relational expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_RELATIONAL_EXPR_SHIFT_EXPR (relational_expr) = ldv_convert_shift_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of relational expression");
+        LDV_FATAL_ERROR ("can't find the second operand of relational expression");
 
       LDV_RELATIONAL_EXPR_LOCATION (relational_expr) = ldv_convert_location (t);
 
@@ -4466,7 +4466,7 @@ ldv_convert_relational_expr (tree t, unsigned int recursion_limit)
   if (LDV_RELATIONAL_EXPR_KIND (relational_expr))
     return relational_expr;
 
-  LDV_WARN ("relational expression wasn't converted");
+  LDV_FATAL_ERROR ("relational expression wasn't converted");
 
   XDELETE (relational_expr);
 
@@ -4498,12 +4498,12 @@ ldv_convert_selection_statement (tree t)
       if ((cond_expr = COND_EXPR_COND (t)))
         LDV_SELECTION_STATEMENT_EXPR (selection_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
       else
-        LDV_WARN ("can't find conditional expression");
+        LDV_FATAL_ERROR ("can't find conditional expression");
 
       if ((then_statement_tree = COND_EXPR_THEN (t)))
         LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = then_statement = ldv_convert_statement (then_statement_tree);
       else
-        LDV_WARN ("can't find then statement");
+        LDV_FATAL_ERROR ("can't find then statement");
 
       if ((else_statement = COND_EXPR_ELSE (t)))
         {
@@ -4549,12 +4549,12 @@ ldv_convert_selection_statement (tree t)
       if ((cond_expr = SWITCH_COND (t)))
         LDV_SELECTION_STATEMENT_EXPR (selection_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
       else
-        LDV_WARN ("can't find conditional expression");
+        LDV_FATAL_ERROR ("can't find conditional expression");
 
       if ((switch_statement = SWITCH_BODY (t)))
         LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = ldv_convert_statement (switch_statement);
       else
-        LDV_WARN ("can't find switch statement");
+        LDV_FATAL_ERROR ("can't find switch statement");
 
       LDV_SELECTION_STATEMENT_LOCATION (selection_statement) = ldv_convert_location (t);
 
@@ -4567,7 +4567,7 @@ ldv_convert_selection_statement (tree t)
   if (LDV_SELECTION_STATEMENT_KIND (selection_statement))
     return selection_statement;
 
-  LDV_WARN ("selection statement wasn't converted");
+  LDV_FATAL_ERROR ("selection statement wasn't converted");
 
   XDELETE (selection_statement);
 
@@ -4612,12 +4612,12 @@ ldv_convert_shift_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr) = ldv_convert_shift_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of shift expression");
+        LDV_FATAL_ERROR ("can't find the first operand of shift expression");
 
       if ((op2 = LDV_OP_SECOND (t)))
         LDV_SHIFT_EXPR_ADDITIVE_EXPR (shift_expr) = ldv_convert_additive_expr (op2, recursion_limit);
       else
-        LDV_WARN ("can't find the second operand of shift expression");
+        LDV_FATAL_ERROR ("can't find the second operand of shift expression");
 
       LDV_SHIFT_EXPR_LOCATION (shift_expr) = ldv_convert_location (t);
 
@@ -4631,7 +4631,7 @@ ldv_convert_shift_expr (tree t, unsigned int recursion_limit)
   if (LDV_SHIFT_EXPR_KIND (shift_expr))
     return shift_expr;
 
-  LDV_WARN ("shift expression wasn't converted");
+  LDV_FATAL_ERROR ("shift expression wasn't converted");
 
   XDELETE (shift_expr);
 
@@ -4690,7 +4690,7 @@ ldv_convert_spec_qual_list (tree t)
       else if ((type_qual = LDV_DECL_SPEC_TYPE_QUAL (decl_cur)))
         LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list_cur) = type_qual;
       else
-        LDV_WARN ("incorrect declaration specifier");
+        LDV_FATAL_ERROR ("incorrect declaration specifier");
 
       /* Remember current declaration specifier to free it on the next iteration. */
       decl_prev = decl_cur;
@@ -4703,7 +4703,7 @@ ldv_convert_spec_qual_list (tree t)
   if (LDV_SPEC_QUAL_LIST_TYPE_SPEC (spec_qual_list) || LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list))
     return spec_qual_list;
 
-  LDV_WARN ("specifier qualifier list wasn't converted");
+  LDV_FATAL_ERROR ("specifier qualifier list wasn't converted");
 
   XDELETE (spec_qual_list);
 
@@ -4785,7 +4785,7 @@ ldv_convert_statement (tree t)
   if (LDV_STATEMENT_KIND (statement))
     return statement;
 
-  LDV_WARN ("statement wasn't converted");
+  LDV_FATAL_ERROR ("statement wasn't converted");
 
   XDELETE (statement);
 
@@ -4894,7 +4894,7 @@ ldv_convert_str_literal (tree t)
   if (LDV_STR_LITERAL_STR (str_literal))
     return str_literal;
 
-  LDV_WARN ("string literal wasn't converted");
+  LDV_FATAL_ERROR ("string literal wasn't converted");
 
   XDELETE (str_literal);
 
@@ -4924,12 +4924,12 @@ ldv_convert_struct_decl (tree t)
       if (DECL_C_BIT_FIELD (t))
         {
           if (!(field_type = DECL_BIT_FIELD_TYPE (t)))
-            LDV_WARN ("can't find original bitfield type");
+            LDV_FATAL_ERROR ("can't find original bitfield type");
         }
       else
         {
           if (!(field_type = TREE_TYPE (t)))
-            LDV_WARN ("can't find field declaration type");
+            LDV_FATAL_ERROR ("can't find field declaration type");
         }
 
       if (field_type)
@@ -4950,7 +4950,7 @@ ldv_convert_struct_decl (tree t)
   if (LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl) || LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl))
     return struct_decl;
 
-  LDV_WARN ("struct declaration wasn't converted");
+  LDV_FATAL_ERROR ("struct declaration wasn't converted");
 
   XDELETE (struct_decl);
 
@@ -4993,7 +4993,7 @@ ldv_convert_struct_decl_list (tree t)
   if (LDV_STRUCT_DECL_LIST_STRUCT_DECL (struct_decl_list) || LDV_STRUCT_DECL_LIST_STRUCT_DECL_LIST (struct_decl_list))
     return struct_decl_list;
 
-  LDV_WARN ("struct declaration list wasn't converted");
+  LDV_FATAL_ERROR ("struct declaration list wasn't converted");
 
   XDELETE (struct_decl_list);
 
@@ -5020,7 +5020,7 @@ ldv_convert_struct_declarator (tree t)
       if (DECL_C_BIT_FIELD (t))
         {
           if (!DECL_SIZE (t) || TREE_CODE (DECL_SIZE (t)) != INTEGER_CST)
-            LDV_WARN ("can't find bitfield size");
+            LDV_FATAL_ERROR ("can't find bitfield size");
           else
             LDV_STRUCT_DECLARATOR_CONST_EXPR (struct_declarator) = ldv_convert_integer_constant(DECL_SIZE (t));
         }
@@ -5051,7 +5051,7 @@ ldv_convert_struct_declarator_list (tree t)
   if ((LDV_STRUCT_DECLARATOR_LIST_STRUCT_DECLARATOR (struct_declarator_list) = ldv_convert_struct_declarator (t)))
     return struct_declarator_list;
 
-  LDV_WARN ("struct declarator list wasn't converted");
+  LDV_FATAL_ERROR ("struct declarator list wasn't converted");
 
   XDELETE (struct_declarator_list);
 
@@ -5087,7 +5087,7 @@ ldv_convert_struct_or_union (tree t)
   if (LDV_STRUCT_OR_UNION_STRUCT_OR_UNION (struct_or_union))
     return struct_or_union;
 
-  LDV_WARN ("struct or union wasn't converted");
+  LDV_FATAL_ERROR ("struct or union wasn't converted");
 
   XDELETE (struct_or_union);
 
@@ -5158,7 +5158,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
   if (LDV_TYPE_SPEC_KIND (type_spec))
     return decl_spec;
 
-  LDV_WARN ("struct or union specifier wasn't converted");
+  LDV_FATAL_ERROR ("struct or union specifier wasn't converted");
 
   XDELETE (struct_or_union_spec);
   XDELETE (type_spec);
@@ -5215,7 +5215,7 @@ ldv_convert_type_qual (tree t)
       if ((decl_type = TREE_TYPE (t)))
         return ldv_convert_type_qual (decl_type);
 
-      LDV_WARN ("can't find declaration type");
+      LDV_FATAL_ERROR ("can't find declaration type");
 
       break;
 
@@ -5223,7 +5223,7 @@ ldv_convert_type_qual (tree t)
       if ((pointer_type = TREE_TYPE (t)))
         return ldv_convert_type_qual (pointer_type);
 
-      LDV_WARN ("can't find pointer type");
+      LDV_FATAL_ERROR ("can't find pointer type");
 
       break;
 
@@ -5231,7 +5231,7 @@ ldv_convert_type_qual (tree t)
       if ((array_type = TREE_TYPE (t)))
         return ldv_convert_type_qual (array_type);
 
-      LDV_WARN ("can't find array type");
+      LDV_FATAL_ERROR ("can't find array type");
 
       break;
 
@@ -5239,7 +5239,7 @@ ldv_convert_type_qual (tree t)
       if ((func_ret_type = TREE_TYPE (t)))
         return ldv_convert_type_qual (func_ret_type);
 
-      LDV_WARN ("can't find function return type");
+      LDV_FATAL_ERROR ("can't find function return type");
 
       break;
 
@@ -5247,7 +5247,7 @@ ldv_convert_type_qual (tree t)
       LDV_CONVERT_ERROR (t);
     }
 
-  LDV_WARN ("type qualifier wasn't converted");
+  LDV_FATAL_ERROR ("type qualifier wasn't converted");
 
   return NULL;
 }
@@ -5279,7 +5279,7 @@ ldv_convert_type_qual_internal (tree t)
          generate artificial type qualifier to print warning message later. */
       if (!is_type_qual)
         {
-          LDV_WARN ("type qualifier wasn't converted");
+          LDV_FATAL_ERROR ("type qualifier wasn't converted");
           ldv_new_type_qual (&is_type_qual, &decl_spec_cur, LDV_TYPE_QUAL_UNKNOWN);
         }
     }
@@ -5324,7 +5324,7 @@ ldv_convert_type_qual_list (tree t)
           is_type_qual = true;
         }
       else
-        LDV_WARN ("incorrect declaration specifier");
+        LDV_FATAL_ERROR ("incorrect declaration specifier");
 
       decl_spec_prev = decl_spec_cur;
     }
@@ -5380,7 +5380,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
           if ((type_name = TYPE_NAME (t)))
             return ldv_convert_typedef_name (type_name);
           else
-            LDV_WARN ("can't find type declaration");
+            LDV_FATAL_ERROR ("can't find type declaration");
         }
 
       break;
@@ -5411,13 +5411,13 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
               if ((decl_type_original = DECL_ORIGINAL_TYPE (t)))//TYPE_MAIN_VARIANT (decl_type)))
                 return ldv_convert_type_spec (decl_type_original, false);
               else
-                LDV_WARN ("can't find original declaration type");
+                LDV_FATAL_ERROR ("can't find original declaration type");
             }
           else
             return ldv_convert_type_spec (decl_type, false);
         }
 
-      LDV_WARN ("can't find declaration type");
+      LDV_FATAL_ERROR ("can't find declaration type");
 
       break;
 
@@ -5430,7 +5430,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       if ((pointer_type = TREE_TYPE (t)))
         return ldv_convert_type_spec (pointer_type, false);
 
-      LDV_WARN ("can't find pointer type");
+      LDV_FATAL_ERROR ("can't find pointer type");
 
       break;
 
@@ -5443,7 +5443,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       if ((array_type = TREE_TYPE (t)))
         return ldv_convert_type_spec (array_type, false);
 
-      LDV_WARN ("can't find array type");
+      LDV_FATAL_ERROR ("can't find array type");
 
       break;
 
@@ -5456,7 +5456,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       if ((func_ret_type = TREE_TYPE (t)))
         return ldv_convert_type_spec (func_ret_type, false);
 
-      LDV_WARN ("can't find function return type");
+      LDV_FATAL_ERROR ("can't find function return type");
 
       break;
 
@@ -5464,7 +5464,7 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       LDV_CONVERT_ERROR (t);
     }
 
-  LDV_WARN ("type specifier wasn't converted");
+  LDV_FATAL_ERROR ("type specifier wasn't converted");
 
   return NULL;
 }
@@ -5484,7 +5484,7 @@ ldv_convert_type_spec_internal (tree t)
   if (!(type_decl = TYPE_NAME (t)))
     {
       if (!(type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
-        LDV_WARN ("can't find appropriate type");
+        LDV_FATAL_ERROR ("can't find appropriate type");
     }
   else
     type = t;
@@ -5536,25 +5536,25 @@ ldv_convert_type_spec_internal (tree t)
                  warning message later. */
               if (!is_type_spec)
                 {
-                  LDV_WARN ("type specifier");
-                  LDV_WARN (type_name_str);
-                  LDV_WARN ("wasn't converted");
+                  LDV_FATAL_ERROR ("type specifier");
+                  LDV_FATAL_ERROR (type_name_str);
+                  LDV_FATAL_ERROR ("wasn't converted");
                   ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNKNOWN);
                 }
             }
           else
-            LDV_WARN ("can't find type name");
+            LDV_FATAL_ERROR ("can't find type name");
         }
       else
-        LDV_WARN ("can't find type name identifier");
+        LDV_FATAL_ERROR ("can't find type name identifier");
     }
   else
-    LDV_WARN ("can't find type declaration");
+    LDV_FATAL_ERROR ("can't find type declaration");
 
   if (is_type_spec)
     return decl_spec;
 
-  LDV_WARN ("type specifier wasn't converted");
+  LDV_FATAL_ERROR ("type specifier wasn't converted");
 
   XDELETE (decl_spec);
 
@@ -5594,7 +5594,7 @@ ldv_convert_typedef_name (tree t)
   if (LDV_TYPE_SPEC_KIND (type_spec))
     return decl_spec;
 
-  LDV_WARN ("typedef name wasn't converted");
+  LDV_FATAL_ERROR ("typedef name wasn't converted");
 
   XDELETE (typedef_name);
   XDELETE (type_spec);
@@ -5641,7 +5641,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
       if ((op1 = LDV_OP_FIRST (t)))
         LDV_UNARY_EXPR_UNARY_EXPR (unary_expr) = ldv_convert_unary_expr (op1, recursion_limit);
       else
-        LDV_WARN ("can't find the first operand of unary expression");
+        LDV_FATAL_ERROR ("can't find the first operand of unary expression");
 
       LDV_UNARY_EXPR_LOCATION (unary_expr) = ldv_convert_location (t);
 
@@ -5653,7 +5653,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
     case BIT_NOT_EXPR:
     case TRUTH_NOT_EXPR:
       if (!(op1 = LDV_OP_FIRST (t)))
-        LDV_WARN ("can't find the first operand of unary expression");
+        LDV_FATAL_ERROR ("can't find the first operand of unary expression");
 
       /* String constants are always taken by their addresses. To prevent this
          skip address expression and go directly to string constant itself.
@@ -5682,7 +5682,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
                   XDELETE (identifier);
                 }
               else
-                LDV_WARN ("can't find variable name");
+                LDV_FATAL_ERROR ("can't find variable name");
 
               break;
 
@@ -5721,7 +5721,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
   if (LDV_UNARY_EXPR_KIND (unary_expr))
     return unary_expr;
 
-  LDV_WARN ("unary expression wasn't converted");
+  LDV_FATAL_ERROR ("unary expression wasn't converted");
 
   XDELETE (unary_expr);
 
@@ -5773,7 +5773,7 @@ ldv_convert_unary_operator (tree t)
   if (LDV_UNARY_OPERATOR_KIND (unary_operator))
     return unary_operator;
 
-  LDV_WARN ("unary operator wasn't converted");
+  LDV_FATAL_ERROR ("unary operator wasn't converted");
 
   XDELETE (unary_operator);
 
@@ -5797,7 +5797,7 @@ ldv_convert_unsigned_suffix (tree t)
       if (TYPE_UNSIGNED (t))
         LDV_UNSIGNED_SUFFIX_KIND (unsigned_suffix) = LDV_UNSIGNED_SUFFIX_SECOND;
       else
-        LDV_WARN ("try to get unsigned suffix for signed type");
+        LDV_FATAL_ERROR ("try to get unsigned suffix for signed type");
 
       break;
 
@@ -5808,7 +5808,7 @@ ldv_convert_unsigned_suffix (tree t)
   if (LDV_UNSIGNED_SUFFIX_KIND (unsigned_suffix))
     return unsigned_suffix;
 
-  LDV_WARN ("unsigned suffix wasn't converted");
+  LDV_FATAL_ERROR ("unsigned suffix wasn't converted");
 
   XDELETE (unsigned_suffix);
 
@@ -5910,7 +5910,7 @@ ldv_dump_expr_ops (tree t, unsigned int op_numb, unsigned int indent_level)
       break;
 
     default:
-      LDV_WARN ("operand number isn't supported");
+      LDV_FATAL_ERROR ("operand number isn't supported");
     }
 
   printf ("%s\n", LDV_TREE_NODE_NAME (t));
@@ -5959,13 +5959,13 @@ ldv_is_not_empty_statement_list (tree t)
                 is_not_empty = true;
               }
           else
-            LDV_WARN ("can't find statement");
+            LDV_FATAL_ERROR ("can't find statement");
         }
 
       break;
 
     default:
-      LDV_WARN ("try to check not a statement list");
+      LDV_FATAL_ERROR ("try to check not a statement list");
     }
 
   return is_not_empty;
@@ -5993,7 +5993,7 @@ ldv_label_decl_name (tree t)
             return label_decl_name_str;
           }
         else
-          LDV_WARN ("can't find label declaration name");
+          LDV_FATAL_ERROR ("can't find label declaration name");
 
         break;
 
@@ -6001,7 +6001,7 @@ ldv_label_decl_name (tree t)
         LDV_CONVERT_ERROR (t);
     }
 
-  LDV_WARN ("label declaration name wasn't converted");
+  LDV_FATAL_ERROR ("label declaration name wasn't converted");
 
   return NULL;
 }

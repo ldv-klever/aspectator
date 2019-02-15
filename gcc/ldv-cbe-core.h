@@ -21,7 +21,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 
 #define LDV_WARN(msg) warning (0, "LDV: %s: %d: %s", __FILE__, __LINE__, msg)
-
+/* Like in ldv-core.h. */
+#define LDV_FATAL_ERROR(msg) do { fprintf (stderr, "LDV: %s: %d: fatal error took place here\n", __FILE__, __LINE__); internal_error(msg); } while(0)
 
 /* Names for different line directive levels. */
 enum
