@@ -48,7 +48,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* The macro is portable like in the kernel 'do { ... } while (0)'.
    Note that this requires semicolon! */
-#define LDV_PRETTY_PRINT_WARN(indent_level, msg) do { LDV_WARN (msg); ldv_c_backend_print (indent_level, true, "/* LDV: %s: %d: %s */", __FILE__, __LINE__, msg); } while (0)
+#define LDV_PRETTY_PRINT_WARN(indent_level, msg) do { LDV_ERROR (msg); ldv_c_backend_print (indent_level, true, "/* LDV: %s: %d: %s */", __FILE__, __LINE__, msg); } while (0)
 /* Free memory of second argument is first argument is true. */
 #define LDV_XDELETE_ON_PRINTING(ptr) if (ldv_free_on_printing) XDELETE (ptr)
 
@@ -168,7 +168,7 @@ ldv_declarator_location (ldv_declarator_ptr declarator)
   if ((direct_declarator = LDV_DECLARATOR_DIRECT_DECLARATOR (declarator)))
     return ldv_direct_declarator_location (direct_declarator);
   else
-    LDV_WARN ("can't find direct declarator of declarator");
+    LDV_ERROR ("can't find direct declarator of declarator");
 
   return NULL;
 }
@@ -189,7 +189,7 @@ ldv_direct_declarator_location (ldv_direct_declarator_ptr direct_declarator)
       if ((location = LDV_DIRECT_DECLARATOR_LOCATION (direct_declarator)))
         return location;
       else
-        LDV_WARN ("can't find location of direct declarator");
+        LDV_ERROR ("can't find location of direct declarator");
     }
 
   return NULL;
@@ -240,7 +240,7 @@ static bool ldv_isglobal_var_was_printed (tree t)
         }
     }
   else
-    LDV_WARN ("can't find variable name");
+    LDV_ERROR ("can't find variable name");
 
   return false;
 }
@@ -263,7 +263,7 @@ ldv_print_abstract_declarator (unsigned int indent_level, ldv_abstract_declarato
     ldv_print_direct_abstract_declarator (indent_level, direct_abstract_declarator);
 
   if (!pointer && !direct_abstract_declarator)
-    LDV_WARN ("neither pointer nor abstract declarator direct abstract declarator was printed");
+    LDV_ERROR ("neither pointer nor abstract declarator direct abstract declarator was printed");
 
   LDV_XDELETE_ON_PRINTING (abstract_declarator);
 }
@@ -970,7 +970,7 @@ ldv_print_block_item_list (unsigned int indent_level, ldv_block_item_list_ptr bl
   if ((block_item = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list)))
     ldv_print_block_item (indent_level, block_item);
   else
-    LDV_WARN ("block item wasn't printed");
+    LDV_ERROR ("block item wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (block_item_list);
 }
@@ -1294,7 +1294,7 @@ ldv_print_decl_spec (unsigned int indent_level, ldv_decl_spec_ptr decl_spec)
   else if ((func_spec = LDV_DECL_SPEC_FUNC_SPEC (decl_spec)))
     ldv_print_func_spec (indent_level, func_spec);
   else
-    LDV_WARN ("neither storage class specifier nor type specifier nor type qualifier nor function specifier was printed");
+    LDV_ERROR ("neither storage class specifier nor type specifier nor type qualifier nor function specifier was printed");
 
   if ((decl_spec_next = LDV_DECL_SPEC_DECL_SPEC (decl_spec)))
     ldv_print_decl_spec (indent_level, decl_spec_next);
@@ -1318,7 +1318,7 @@ ldv_print_declarator (unsigned int indent_level, ldv_declarator_ptr declarator)
   if ((direct_declarator = LDV_DECLARATOR_DIRECT_DECLARATOR (declarator)))
     ldv_print_direct_declarator (indent_level, direct_declarator);
   else
-    LDV_WARN ("declarator direct declarator wasn't printed");
+    LDV_ERROR ("declarator direct declarator wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (declarator);
 }
@@ -1466,7 +1466,7 @@ ldv_print_direct_abstract_declarator (unsigned int indent_level, ldv_direct_abst
     }
 
   if (!abstract_declarator && !direct_abstract_declarator && !assign_expr && !param_type_list)
-    LDV_WARN ("neither direct abstract declarator abstract declarator nor direct abstract declarator nor assignment expression nor parameter type list was printed");
+    LDV_ERROR ("neither direct abstract declarator abstract declarator nor direct abstract declarator nor assignment expression nor parameter type list was printed");
 
   LDV_XDELETE_ON_PRINTING (direct_abstract_declarator);
 }
@@ -1538,7 +1538,7 @@ ldv_print_direct_declarator (unsigned int indent_level, ldv_direct_declarator_pt
                 ldv_print_assignment_expr (indent_level, assignment_expr);
             }
           else
-            LDV_WARN ("something strange");
+            LDV_ERROR ("something strange");
 
           ldv_c_backend_print (indent_level, false, "]");
         }
@@ -1559,7 +1559,7 @@ ldv_print_direct_declarator (unsigned int indent_level, ldv_direct_declarator_pt
           ldv_c_backend_print (indent_level, false, ")");
         }
       else
-        LDV_WARN ("something strange");
+        LDV_ERROR ("something strange");
 
       break;
 
@@ -1621,7 +1621,7 @@ ldv_print_enum_const (unsigned int indent_level, ldv_enum_const_ptr enum_const)
   if ((id = LDV_ENUM_CONST_ID (enum_const)))
     ldv_c_backend_print (indent_level, true, "%s", id);
   else
-    LDV_WARN ("enumeration constant name wasn't printed");
+    LDV_ERROR ("enumeration constant name wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (enum_const);
 }
@@ -1646,7 +1646,7 @@ ldv_print_enum_list (unsigned int indent_level, ldv_enum_list_ptr enum_list)
   if ((ldv_enum = LDV_ENUM_LIST_ENUM (enum_list)))
     ldv_print_enum (indent_level, ldv_enum);
   else
-    LDV_WARN ("enumerator wasn't printed");
+    LDV_ERROR ("enumerator wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (enum_list);
 }
@@ -1678,7 +1678,7 @@ ldv_print_enum_spec (unsigned int indent_level, ldv_enum_spec_ptr enum_spec)
     }
 
   if (!identifier && !enum_list)
-    LDV_WARN ("neither enum name nor enumerator list was printed");
+    LDV_ERROR ("neither enum name nor enumerator list was printed");
 
   LDV_XDELETE_ON_PRINTING (enum_spec);
 }
@@ -1949,13 +1949,13 @@ ldv_print_func_def (unsigned int indent_level, ldv_func_def_ptr func_def)
   if ((decl_spec = LDV_FUNC_DEF_DECL_SPEC (func_def)))
     ldv_print_decl_spec (indent_level, decl_spec);
   else
-    LDV_WARN ("function definition declaration specifiers weren't printed");
+    LDV_ERROR ("function definition declaration specifiers weren't printed");
 
 
   if ((declarator = LDV_FUNC_DEF_DECLARATOR (func_def)))
     ldv_print_declarator (indent_level, declarator);
   else
-    LDV_WARN ("function definition declarator wasn't printed");
+    LDV_ERROR ("function definition declarator wasn't printed");
 
   if ((compound_statement = LDV_FUNC_DEF_COMPOUND_STATEMENT (func_def)))
     {
@@ -1963,7 +1963,7 @@ ldv_print_func_def (unsigned int indent_level, ldv_func_def_ptr func_def)
       ldv_print_compound_statement (indent_level, compound_statement);
     }
   else
-    LDV_WARN ("function definition compound statement wasn't printed");
+    LDV_ERROR ("function definition compound statement wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (func_def);
 }
@@ -2118,7 +2118,7 @@ ldv_print_init_declarator_list (unsigned int indent_level, ldv_init_declarator_l
   if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list)))
     ldv_print_init_declarator (indent_level, init_declarator);
   else
-    LDV_WARN ("init declarator list init declarator wasn't printed");
+    LDV_ERROR ("init declarator list init declarator wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (init_declarator_list);
 }
@@ -2348,7 +2348,7 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
             if ((id = LDV_JUMP_STATEMENT_ID (jump_statement)))
               ldv_c_backend_print (indent_level, true, id);
             else
-              LDV_WARN ("can't find goto name");
+              LDV_ERROR ("can't find goto name");
           }
         else
           {
@@ -2447,7 +2447,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
       if ((id = LDV_LABELED_STATEMENT_ID (labeled_statement)))
         ldv_c_backend_print (indent_level, true, id);
       else
-        LDV_WARN ("labeled statement name wasn't printed");
+        LDV_ERROR ("labeled statement name wasn't printed");
 
       ldv_c_backend_print (indent_level, false, ":");
       ldv_c_backend_padding_force ();
@@ -2455,7 +2455,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
       if ((statement = LDV_LABELED_STATEMENT_STATEMENT (labeled_statement)))
         ldv_print_statement_internal (indent_level, statement);
       else
-        LDV_WARN ("labeled statement statement wasn't printed");
+        LDV_ERROR ("labeled statement statement wasn't printed");
 
       break;
 
@@ -2483,7 +2483,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
       if ((statement = LDV_LABELED_STATEMENT_STATEMENT (labeled_statement)))
         ldv_print_statement_internal (indent_level, statement);
       else
-        LDV_WARN ("labeled statement statement wasn't printed");
+        LDV_ERROR ("labeled statement statement wasn't printed");
 
       break;
 
@@ -2499,7 +2499,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
       if ((statement = LDV_LABELED_STATEMENT_STATEMENT (labeled_statement)))
         ldv_print_statement_internal (indent_level, statement);
       else
-        LDV_WARN ("labeled statement statement wasn't printed");
+        LDV_ERROR ("labeled statement statement wasn't printed");
 
       break;
 
@@ -2539,7 +2539,7 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
             break;
 
           default:
-            LDV_WARN ("something strange");
+            LDV_ERROR ("something strange");
         }
     }
 
@@ -2846,7 +2846,7 @@ ldv_print_param_decl (unsigned int indent_level, ldv_param_decl_ptr param_decl)
   if ((decl_spec = LDV_PARAM_DECL_DECL_SPEC (param_decl)))
     ldv_print_decl_spec (indent_level, decl_spec);
   else
-    LDV_WARN ("parameter declaration declaration specifiers weren't printed");
+    LDV_ERROR ("parameter declaration declaration specifiers weren't printed");
 
   if ((declarator = LDV_PARAM_DECL_DECLARATOR (param_decl)))
     ldv_print_declarator (indent_level, declarator);
@@ -2877,7 +2877,7 @@ ldv_print_param_list (unsigned int indent_level, ldv_param_list_ptr param_list)
   if ((param_decl = LDV_PARAM_LIST_PARAM_DECL (param_list)))
     ldv_print_param_decl (indent_level, param_decl);
   else
-    LDV_WARN ("parameter declaration list parameter declaration wasn't printed");
+    LDV_ERROR ("parameter declaration list parameter declaration wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (param_list);
 }
@@ -2896,7 +2896,7 @@ ldv_print_param_type_list (unsigned int indent_level, ldv_param_type_list_ptr pa
   if ((param_list = LDV_PARAM_TYPE_LIST_PARAM_LIST (param_type_list)))
     ldv_print_param_list (indent_level, param_list);
   else
-    LDV_WARN ("parameter type list parametr list wasn't printed");
+    LDV_ERROR ("parameter type list parametr list wasn't printed");
 
   if ((is_va = LDV_PARAM_TYPE_LIST_IS_VA (param_type_list)))
     {
@@ -3248,7 +3248,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
       if ((cond_expr = LDV_SELECTION_STATEMENT_EXPR (selection_statement)))
         ldv_print_expr (indent_level, cond_expr);
       else
-        LDV_WARN ("selection statement conditional exrpession wasn't printed");
+        LDV_ERROR ("selection statement conditional exrpession wasn't printed");
 
       ldv_c_backend_print (indent_level, false, ")");
       ldv_c_backend_print (indent_level, false, "\n");
@@ -3256,7 +3256,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
       if ((switch_statement = LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement)))
         ldv_print_statement_internal (indent_level, switch_statement);
       else
-        LDV_WARN ("selection statement switch statement wasn't printed");
+        LDV_ERROR ("selection statement switch statement wasn't printed");
 
       break;
 
@@ -3274,7 +3274,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
       if ((cond_expr = LDV_SELECTION_STATEMENT_EXPR (selection_statement)))
         ldv_print_expr (indent_level, cond_expr);
       else
-        LDV_WARN ("selection statement conditional exrpession wasn't printed");
+        LDV_ERROR ("selection statement conditional exrpession wasn't printed");
 
       ldv_c_backend_print (indent_level, false, ")");
       ldv_c_backend_print (indent_level, false, "\n");
@@ -3282,7 +3282,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
       if ((then_statement = LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement)))
         ldv_print_statement_internal (indent_level, then_statement);
       else
-        LDV_WARN ("selection statement then statement wasn't printed");
+        LDV_ERROR ("selection statement then statement wasn't printed");
 
       if (kind == LDV_SELECTION_STATEMENT_IF_THEN_ELSE)
         {
@@ -3391,7 +3391,7 @@ ldv_print_spec_qual_list (unsigned int indent_level, ldv_spec_qual_list_ptr spec
   else if ((type_qual = LDV_SPEC_QUAL_LIST_TYPE_QUAL (spec_qual_list)))
     ldv_print_type_qual (indent_level, type_qual);
   else
-    LDV_WARN ("neither type specifier nor type qualifier was printed");
+    LDV_ERROR ("neither type specifier nor type qualifier was printed");
 
   if ((spec_qual_list_next = LDV_SPEC_QUAL_LIST_SPEC_QUAL_LIST (spec_qual_list)))
     ldv_print_spec_qual_list (indent_level, spec_qual_list_next);
@@ -3651,7 +3651,7 @@ ldv_print_struct_decl (unsigned int indent_level, ldv_struct_decl_ptr struct_dec
   if ((spec_qual_list = LDV_STRUCT_DECL_SPEC_QUAL_LIST (struct_decl)))
     ldv_print_spec_qual_list (indent_level, spec_qual_list);
   else
-    LDV_WARN ("struct declaration specifier list wasn't printed");
+    LDV_ERROR ("struct declaration specifier list wasn't printed");
 
   if ((struct_declarator_list = LDV_STRUCT_DECL_STRUCT_DECLARATOR_LIST (struct_decl)))
     ldv_print_struct_declarator_list (indent_level, struct_declarator_list);
@@ -3681,7 +3681,7 @@ ldv_print_struct_decl_list (unsigned int indent_level, ldv_struct_decl_list_ptr 
   if ((struct_decl = LDV_STRUCT_DECL_LIST_STRUCT_DECL (struct_decl_list)))
     ldv_print_struct_decl (indent_level, struct_decl);
   else
-    LDV_WARN ("struct declaration list struct declaration wasn't printed");
+    LDV_ERROR ("struct declaration list struct declaration wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (struct_decl_list);
 }
@@ -3716,7 +3716,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
     }
 
   if (!declarator && !const_expr)
-    LDV_WARN ("neither struct declarator declarator nor constant expression was printed");
+    LDV_ERROR ("neither struct declarator declarator nor constant expression was printed");
 
   LDV_XDELETE_ON_PRINTING (struct_declarator);
 }
@@ -3741,7 +3741,7 @@ ldv_print_struct_declarator_list (unsigned int indent_level, ldv_struct_declarat
   if ((struct_declarator = LDV_STRUCT_DECLARATOR_LIST_STRUCT_DECLARATOR (struct_declarator_list)))
     ldv_print_struct_declarator (indent_level, struct_declarator);
   else
-    LDV_WARN ("struct declarator list struct declarator wasn't printed");
+    LDV_ERROR ("struct declarator list struct declarator wasn't printed");
 
   LDV_XDELETE_ON_PRINTING (struct_declarator_list);
 }
@@ -4008,7 +4008,7 @@ ldv_print_type_qual_list (unsigned int indent_level, ldv_type_qual_list_ptr type
   if ((type_qual = LDV_TYPE_QUAL_LIST_TYPE_QUAL (type_qual_list)))
     ldv_print_type_qual (indent_level, type_qual);
   else
-    LDV_WARN ("type qualifier wasn't printed");
+    LDV_ERROR ("type qualifier wasn't printed");
 
   if ((type_qual_list_next = LDV_TYPE_QUAL_LIST_TYPE_QUAL_LIST (type_qual_list)))
     ldv_print_type_qual_list (indent_level, type_qual_list_next);
