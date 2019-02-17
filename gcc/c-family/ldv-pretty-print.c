@@ -3914,6 +3914,13 @@ ldv_print_translation_unit (tree t, bool isdecl)
   if (ldv_isglobal_var_was_printed (t))
     return;
 
+  /* Original source code can define the same type names several times.
+     However, GCC represents them differently and C back-end can't process
+     corresponding typedefs similarly. Since typedef duplicates are redundant,
+     simply skip them. */
+  if (TREE_CODE (t) == TYPE_DECL && !DECL_ORIGINAL_TYPE (t))
+    return;
+
   /* This is the artificial function added just to correspond to the C standard.
      We don't collect all external declaration together now and print them
      directly after converting to the internal representation. Generally
