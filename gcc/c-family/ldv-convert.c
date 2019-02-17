@@ -5400,22 +5400,19 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
 
     case FUNCTION_DECL:
     case PARM_DECL:
-    case TYPE_DECL:
     case VAR_DECL:
       if ((decl_type = TREE_TYPE (t)))
-        {
-          if (TREE_CODE (t) == TYPE_DECL)
-            {
-              if ((decl_type_original = DECL_ORIGINAL_TYPE (t)))//TYPE_MAIN_VARIANT (decl_type)))
-                return ldv_convert_type_spec (decl_type_original, false);
-              else
-                LDV_ERROR ("can't find original declaration type");
-            }
-          else
-            return ldv_convert_type_spec (decl_type, false);
-        }
+        return ldv_convert_type_spec (decl_type, false);
 
       LDV_ERROR ("can't find declaration type");
+
+      break;
+
+    case TYPE_DECL:
+      if ((decl_type_original = DECL_ORIGINAL_TYPE (t)))
+        return ldv_convert_type_spec (decl_type_original, false);
+
+      LDV_ERROR ("can't find original declaration type");
 
       break;
 
