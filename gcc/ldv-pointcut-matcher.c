@@ -1096,6 +1096,10 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
       return;
     }
 
+  /* See comments for ldv_print_translation_unit().*/
+  if (!DECL_ORIGINAL_TYPE (t))
+    return;
+
   match = ldv_create_info_match ();
 
   typedecl = ldv_create_info_typedecl ();
