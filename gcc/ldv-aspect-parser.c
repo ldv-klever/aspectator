@@ -4313,6 +4313,9 @@ ldv_parse_aspect_pattern_param_str (char **str)
       return byte_count;
     }
 
+  /* Push back a first non-string character. */
+  ldv_ungetc (c, LDV_ASPECT_STREAM);
+
   /* Don't assign any value to string passed through parameter. 0 bytes were
      read from stream. */
   return 0;
@@ -4323,7 +4326,8 @@ ldv_parse_aspect_pattern_params (void)
 {
   int c;
   ldv_list_ptr params = NULL;
-  ldv_aspect_pattern_param_ptr param = NULL;
+  ldv_aspect_pattern_param_ptr prev_param = NULL, param = NULL;
+  ldv_str_ptr str = NULL;
 
   c = ldv_getc (LDV_ASPECT_STREAM);
 
@@ -4332,23 +4336,46 @@ ldv_parse_aspect_pattern_params (void)
     {
       ldv_set_last_column (yylloc.last_column + 1);
 
+      /* Aspect parameters can be separated by commas and spaces.
+         We need to preserve commas to pass them as is to, say,
+         fprintf. This will allow to concatenate several aspect
+         parameters represented as strings.*/
       while (1)
         {
           if ((param = ldv_parse_aspect_pattern_param ()))
             {
+              /* Merge strings located together. */
+              if (prev_param
+                && !prev_param->next_param
+                && param->kind == LDV_ASPECT_PATTERN_STRING
+                && prev_param->kind == LDV_ASPECT_PATTERN_STRING)
+                {
+                  str = ldv_create_string ();
+                  ldv_puts_string (prev_param->string, str);
+                  ldv_puts_string (param->string, str);
+                  prev_param->string = ldv_get_str (str);
+                  continue;
+                }
+
+              prev_param = param;
               ldv_list_push_back (&params, param);
-            }
-          else
-            {
-              LDV_FATAL_ERROR ("aspect pattern parameter wasn't parsed");
+              continue;
             }
 
-          /* Next symbol may be either ',' (that means that there is some other
-             aspect pattern parameters) or '>' (that finishes parameters list). */
+          /* Next symbol may be:
+               - ',' that means that there are some other aspect pattern
+                 parameters,
+               - meaningless space,
+               - '>' that finishes parameters list.
+          */
           ldv_set_last_column (yylloc.last_column + 1);
           switch (c = ldv_getc (LDV_ASPECT_STREAM))
             {
             case ',':
+              prev_param->next_param = true;
+              break;
+
+            case ' ':
               break;
 
             case '>':
