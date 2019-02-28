@@ -190,14 +190,10 @@ ldv_handle_options (void)
               ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
             }
           else
-            {
-              LDV_FATAL_ERROR ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_ASPECT_PREPROCESSING, LDV_COMPILATION);
-            }
+            internal_error ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_ASPECT_PREPROCESSING, LDV_COMPILATION);
         }
       else
-        {
-          LDV_FATAL_ERROR ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
-        }
+        internal_error ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
 
       if ((ldv_dir_res = getenv (LDV_DIR_RES_ENV)))
         ldv_print_info (LDV_INFO_IO, "directory for results \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_res, LDV_DIR_RES_ENV);
@@ -233,9 +229,7 @@ ldv_handle_options (void)
               ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"complex identifiers\"");
             }
           else
-            {
-              LDV_FATAL_ERROR ("specified by means of environment variable \"%s\" algorithm of argument signatures extraction \"%s\" isn't supported", LDV_ARG_SIGN_ENV, arg_sign);
-            }
+            internal_error ("specified by means of environment variable \"%s\" algorithm of argument signatures extraction \"%s\" isn't supported", LDV_ARG_SIGN_ENV, arg_sign);
         }
       else
         {

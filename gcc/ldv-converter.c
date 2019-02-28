@@ -242,7 +242,7 @@ ldv_convert_internal_to_declarator_reverse (ldv_i_type_ptr type)
       break;
 
     default:
-      LDV_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
+      internal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
 
   return declarator_list;
@@ -270,7 +270,7 @@ ldv_convert_internal_to_declspecs (ldv_i_type_ptr type)
       return ldv_convert_internal_to_declspecs (type->ptr_type);
 
     default:
-      LDV_FATAL_ERROR ("incorrect type information kind \"%d\" is used", type->it_kind);
+      internal_error ("incorrect type information kind \"%d\" is used", type->it_kind);
     }
 }
 
@@ -324,9 +324,7 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
               ldv_list_push_back (&initializer->array_initializer, array_elem_initializer);
             }
           else
-            {
-              LDV_FATAL_ERROR ("can't find neiter initialized structure field nor array element");
-            }
+            internal_error ("can't find neiter initialized structure field nor array element");
         }
     }
   else
@@ -607,7 +605,7 @@ ldv_convert_type_tree_to_internal (tree type_tree, tree decl_tree)
       break;
 
     default:
-      LDV_FATAL_ERROR ("tree node type '%s' isn't supported", get_tree_code_name(TREE_CODE (type_tree)));
+      internal_error ("tree node type '%s' isn't supported", get_tree_code_name(TREE_CODE (type_tree)));
       break;
     }
 

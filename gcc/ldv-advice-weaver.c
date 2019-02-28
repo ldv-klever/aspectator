@@ -213,7 +213,7 @@ ldv_add_id_declarator (ldv_pps_decl_ptr decl, const char *name)
       return ;
     }
 
-  LDV_FATAL_ERROR ("can't add identifier declarator to the end of declarator chain");
+  internal_error ("can't add identifier declarator to the end of declarator chain");
 }
 
 char *
@@ -361,7 +361,7 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
         }
     }
 
-  LDV_FATAL_ERROR ("can't remove identifier declarator from the end of declarator chain");
+  internal_error ("can't remove identifier declarator from the end of declarator chain");
 }
 
 int
@@ -425,27 +425,21 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_aspect_func_name)
         text = ldv_copy_str (ldv_aspect_func_name);
       else
-        {
-          LDV_FATAL_ERROR ("no function name was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_name"))
     {
       if (ldv_func_name)
         text = ldv_copy_str (ldv_func_name);
       else
-        {
-          LDV_FATAL_ERROR ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no aspect function name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_ptr_name"))
     {
       if (ldv_func_ptr_name)
         text = ldv_copy_str (ldv_func_ptr_name);
       else
-        {
-          LDV_FATAL_ERROR ("no function pointer name was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function pointer name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_context"))
     {
@@ -454,14 +448,10 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           if (ldv_func_signature->func_context)
             text = ldv_copy_str (ldv_print_func_context (ldv_func_signature));
           else
-            {
-              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
-            }
+            internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_context_decl_line"))
     {
@@ -470,14 +460,10 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           if (ldv_func_signature->func_context)
             text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->func_context->decl_line));
           else
-            {
-              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
-            }
+            internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_context_name"))
     {
@@ -496,9 +482,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
             text = "NULL";
         }
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "func_context_path"))
     {
@@ -507,23 +491,17 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           if (ldv_func_signature->func_context)
             text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->func_context->file_path));
           else
-            {
-              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
-            }
+            internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
       else if (ldv_var_signature)
         {
           if (ldv_var_signature->func_context)
             text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->func_context->file_path));
           else
-            {
-              LDV_FATAL_ERROR ("no function context was found for aspect pattern \"%s\"", pattern->name);
-            }
+            internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if ((!strcmp (pattern->name, "func_signature")) || (!strcmp (pattern->name, "signature")))
     {
@@ -534,27 +512,21 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       else if (ldv_type_decl)
         text = ldv_copy_str (ldv_type_decl);
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "call_line"))
     {
       if (ldv_func_signature)
         text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->call_line));
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "decl_line"))
     {
       if (ldv_func_signature)
         text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->decl_line));
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "use_line"))
     {
@@ -563,9 +535,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       else if (ldv_var_signature)
         text = ldv_copy_str (ldv_print_line_number (ldv_var_signature->use_line));
       else
-        {
-          LDV_FATAL_ERROR ("no function signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "path"))
     {
@@ -574,9 +544,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       else if (ldv_var_signature)
         text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->file_path));
       else
-        {
-          LDV_FATAL_ERROR ("no signature was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "proceed"))
     {
@@ -594,18 +562,14 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_var_name)
         text = ldv_copy_str (ldv_var_name);
       else
-        {
-          LDV_FATAL_ERROR ("no variable name was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no variable name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "var_type_name"))
     {
       if (ldv_var_type_name)
         text = ldv_copy_str (ldv_var_type_name);
       else
-        {
-          LDV_FATAL_ERROR ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
-        }
+        internal_error ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "env"))
     text = ldv_copy_str (pattern->value);
@@ -668,7 +632,7 @@ ldv_get_arg_sign (unsigned int arg_numb)
         return func_arg_info->sign;
     }
 
-  LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  internal_error ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *
@@ -689,7 +653,7 @@ ldv_get_arg_type_name (unsigned int arg_numb)
         return ldv_get_str (str);
     }
 
-  LDV_FATAL_ERROR ("required argument type name has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  internal_error ("required argument type name has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 int
@@ -718,7 +682,7 @@ ldv_get_arg_size (unsigned int arg_numb)
         }
     }
 
-  LDV_FATAL_ERROR ("required argument size has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  internal_error ("required argument size has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 char *
@@ -794,7 +758,7 @@ ldv_get_arg_name (unsigned int arg_numb)
         }
     }
 
-  LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  internal_error ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *
@@ -823,7 +787,7 @@ ldv_get_arg_value (unsigned int arg_numb)
         }
     }
 
-  LDV_FATAL_ERROR ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+  internal_error ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 }
 
 const char *
@@ -844,7 +808,7 @@ ldv_get_param_name (unsigned int param_numb)
         return ldv_get_str (param_str);
     }
 
-  LDV_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_numb, (i - 1));
+  internal_error ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_numb, (i - 1));
 }
 
 bool
@@ -899,9 +863,7 @@ ldv_print_arg_type_str (unsigned int arg_numb)
   ldv_isstorage_class_and_function_specifiers_needed = false;
 
   if (!ldv_func_arg_type_decl_list)
-    {
-      LDV_FATAL_ERROR ("argument type declarations list wasn't found");
-    }
+    internal_error ("argument type declarations list wasn't found");
 
   for (func_arg_type_decl_list = ldv_func_arg_type_decl_list, i = 1
     ; func_arg_type_decl_list
@@ -922,9 +884,7 @@ ldv_print_arg_type_str (unsigned int arg_numb)
     }
 
   if (arg_numb > i)
-    {
-      LDV_FATAL_ERROR ("required argument type string has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
-    }
+    internal_error ("required argument type string has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
 
   ldv_isstorage_class_and_function_specifiers_needed = true;
 
@@ -1168,9 +1128,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                                 param_cur->integer = number;
                             }
                           else
-                            {
-                              LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
-                            }
+                            internal_error ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
                         }
                     }
 
@@ -1179,9 +1137,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   ldv_close_file_stream (file_stream);
                 }
               else
-                {
-                  LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
-                }
+                internal_error ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
 
               ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
 
@@ -1497,7 +1453,7 @@ ldv_print_direct_declarator (ldv_list_ptr declarator_list)
       break;
 
     default:
-      LDV_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
+      internal_error ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
     }
 }
 
@@ -1713,7 +1669,7 @@ ldv_print_type_decl (ldv_i_typedecl_ptr typedecl)
         break;
 
       default:
-        LDV_FATAL_ERROR ("incorrect type declaration information kind \"%d\" is used", typedecl->itd_kind);
+        internal_error ("incorrect type declaration information kind \"%d\" is used", typedecl->itd_kind);
     }
 
   ldv_print_str (ldv_get_id_name (typedecl->name));
@@ -1814,9 +1770,7 @@ ldv_print_ret_type_str (void)
       ldv_delete_id_declarator (ldv_func_ret_type_decl->pps_declarator);
     }
   else
-    {
-      LDV_FATAL_ERROR ("return type declaration wasn't found");
-    }
+    internal_error ("return type declaration wasn't found");
 
   ldv_isstorage_class_and_function_specifiers_needed = true;
 
@@ -1956,9 +1910,7 @@ ldv_diagnostics (void)
   if (ldv_diag_env)
   {
     if((ldv_diag_file = fopen (ldv_diag_env, "a")) == NULL)
-      {
-        LDV_FATAL_ERROR ("Failed to open file %s", ldv_diag_env);
-      }
+      internal_error ("Failed to open file %s", ldv_diag_env);
 
     for (n_pointcut_list = ldv_n_pointcut_list; n_pointcut_list ; n_pointcut_list = ldv_list_get_next (n_pointcut_list))
     {
@@ -2299,9 +2251,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Place (aspect) function declarations immediately after the end of
              a function definition, i.e. after a close brace. */
           if (!close_brace)
-            {
-              LDV_FATAL_ERROR ("for function \"%s\" location of close brace isn't specified", ldv_get_id_name (func_source->name));
-            }
+            internal_error ("for function \"%s\" location of close brace isn't specified", ldv_get_id_name (func_source->name));
 
           func_decl_for_print_new->file = (*close_brace).file;
           aspect_func_decl_for_print_new->file = (*close_brace).file;
@@ -2532,7 +2482,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             break;
 
           default:
-            LDV_FATAL_ERROR ("incorrect advice kind \"%d\" is used", a_kind);
+            internal_error ("incorrect advice kind \"%d\" is used", a_kind);
           }
 
         body_text = ldv_copy_str (ldv_get_body_text (ldv_i_match->a_definition->a_body));
@@ -2678,7 +2628,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       break;
 
     default:
-      LDV_FATAL_ERROR ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
+      internal_error ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
     }
 
   ldv_free_info_match (ldv_i_match);

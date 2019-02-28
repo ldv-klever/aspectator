@@ -179,9 +179,7 @@ ldv_create_files (void)
                       if (!strcmp (pattern->name, "env"))
                         ldv_puts_text (pattern->value, body_with_patterns);
                       else
-                        {
-                          LDV_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
-                        }
+                        internal_error ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
 
                       ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
 
@@ -195,16 +193,12 @@ ldv_create_files (void)
           free (fcontent - 1);
 
           if ((fstream = fopen (fname, "w")) == NULL)
-            {
-              LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", fname);
-            }
+            internal_error ("can%'t open file \"%s\" for write: %m", fname);
 
           ldv_print_info (LDV_INFO_IO, "file \"%s\" was created successfully", fname);
 
           if (fputs (ldv_get_text (body_with_patterns), fstream) == EOF)
-            {
-              LDV_FATAL_ERROR ("can%'t write to file \"%s\": %m", fname);
-            }
+            internal_error ("can%'t write to file \"%s\": %m", fname);
 
           ldv_free_text (body_with_patterns);
 
@@ -224,9 +218,7 @@ ldv_copy_file (const char *fname, FILE *stream)
   int c;
 
   if ((fstream = fopen (fname, "r")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", fname);
-    }
+    internal_error ("can%'t open file \"%s\" for read: %m", fname);
 
   ldv_print_info (LDV_INFO_IO, "file \"%s\" that content will be copied was successfully opened for write", fname);
 
@@ -438,9 +430,8 @@ ldv_make_includes (void)
       /* Remember current line to print line directive below. -1 is to take into
          account line directive at the beginning of auxiliary file. */
       if (fflush (LDV_FILE_PREPARED_STREAM))
-      {
-        LDV_FATAL_ERROR ("can%'t flush to file \"%s\": %m", ldv_output_fname);
-      }
+        internal_error ("can%'t flush to file \"%s\": %m", ldv_output_fname);
+
       line_cur = ldv_get_current_line_number(ldv_output_fname) - 1;
 
       /* Then copy a file itself. */
@@ -489,14 +480,10 @@ void
 ldv_open_instrumented_file_stream (void)
 {
   if (!ldv_output_fname)
-    {
-      LDV_FATAL_ERROR ("specify output file name by means of environment variable LDV_OUT");
-    }
+    internal_error ("specify output file name by means of environment variable LDV_OUT");
 
   if ((ldv_instrumented_file_stream = fopen (ldv_output_fname, "w")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
-    }
+    internal_error ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
 
   ldv_print_info (LDV_INFO_IO, "Instrumented file \"%s\" was successfully opened for write", ldv_output_fname);
 }
@@ -505,9 +492,7 @@ void
 ldv_open_aspect_stream (void)
 {
   if ((ldv_aspect_stream = fopen (ldv_aspect_fname, "r")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", ldv_aspect_fname);
-    }
+    internal_error ("can%'t open file \"%s\" for read: %m", ldv_aspect_fname);
 
   ldv_print_info (LDV_INFO_IO, "aspect file \"%s\" was successfully opened for read", ldv_aspect_fname);
 }
@@ -516,9 +501,7 @@ void
 ldv_open_main_stream (void)
 {
   if ((ldv_main_stream = fopen (main_input_filename, "r")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", main_input_filename);
-    }
+    internal_error ("can%'t open file \"%s\" for read: %m", main_input_filename);
 
   ldv_print_info (LDV_INFO_IO, "main file \"%s\" was successfully opened for read", main_input_filename);
 }
@@ -527,9 +510,7 @@ static void
 ldv_open_file_prepared_stream (void)
 {
   if ((ldv_file_prepared_stream = fopen (ldv_output_fname, "w")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
-    }
+    internal_error ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
 
   ldv_print_info (LDV_INFO_IO, "Prepared file \"%s\" was successfully opened for write", ldv_output_fname);
 }
@@ -554,9 +535,7 @@ ldv_open_file_streams (void)
         }
     }
   else
-    {
-      LDV_FATAL_ERROR ("ldv stage '%d' wasn't processed", ldv_get_ldv_stage ());
-    }
+    internal_error ("ldv stage '%d' wasn't processed", ldv_get_ldv_stage ());
 }
 
 void
@@ -727,9 +706,7 @@ ldv_putc (int c, FILE *stream)
 {
   /* Finish work if can not write a given character to a given stream. */
   if (putc (c, stream) != (unsigned char) c)
-    {
-      LDV_FATAL_ERROR ("character \"%c\" wasn't put to stream", c);
-    }
+    internal_error ("character \"%c\" wasn't put to stream", c);
 
 #ifdef LDV_CHAR_DEBUG
 
@@ -744,9 +721,7 @@ ldv_puts (const char *str, FILE *stream)
   const char *c = NULL;
 
   if (!str)
-    {
-      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
-    }
+    internal_error ("symbol pointer wasn't initialized");
 
   /* Put each symbol of a string to a stream. */
   for (c = str; c && *c; c++)
@@ -760,9 +735,7 @@ ldv_putsn (const char *str, FILE *stream, int n)
   int i;
 
   if (!str)
-    {
-      LDV_FATAL_ERROR ("symbol pointer wasn't initialized");
-    }
+    internal_error ("symbol pointer wasn't initialized");
 
   /* Put each symbol of a string to a stream. */
   for (c = str, i = 0; c && *c && i < n; c++, i++)
@@ -790,9 +763,7 @@ ldv_ungetc (int c, FILE *stream)
 {
   /* Finish work if can not back a character to a stream. */
   if (ungetc (c, stream) != c)
-    {
-      LDV_FATAL_ERROR ("character \"%c\" wasn't back to stream", c);
-    }
+    internal_error ("character \"%c\" wasn't back to stream", c);
 
 #ifdef LDV_CHAR_DEBUG
 
@@ -819,9 +790,7 @@ ldv_get_aux_file_name_and_stream (char **aux_fname, FILE **aux_file_stream)
   ldv_free_string (aux_fname_str);
 
   if ((*aux_file_stream = fopen (*aux_fname, "a+")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for write: %m", *aux_fname);
-    }
+    internal_error ("can%'t open file \"%s\" for write: %m", *aux_fname);
 
   ldv_print_info (LDV_INFO_IO, "Auxiliary file \"%s\" was successfully opened for write", *aux_fname);
 }

@@ -200,7 +200,7 @@ ldv_free_declarator (ldv_pps_declarator_ptr declarator)
       break;
 
     default:
-      LDV_FATAL_ERROR ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
+      internal_error ("incorrect primitive pointcut signature declarator kind \"%d\" is used", declarator->pps_declarator_kind);
     }
 
   free (declarator);
@@ -230,9 +230,7 @@ ldv_free_file (ldv_file_ptr file)
       ldv_print_info (LDV_INFO_MEM, "file memory was free");
     }
   else
-    {
-      LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
+    internal_error ("file pointer wasn't initialized");
 }
 
 ldv_int_ptr
@@ -356,9 +354,7 @@ ldv_free_text (ldv_text_ptr text)
       ldv_print_info (LDV_INFO_MEM, "text memory was free");
     }
   else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
-    }
+    internal_error ("text pointer wasn't initialized");
 }
 
 void
@@ -372,9 +368,7 @@ ldv_delete_body (ldv_ab_ptr body)
       ldv_print_info (LDV_INFO_MEM, "body memory was free");
     }
   else
-    {
-      LDV_FATAL_ERROR ("body pointer wasn't initialized");
-    }
+    internal_error ("body pointer wasn't initialized");
 }
 
 void
@@ -388,9 +382,7 @@ ldv_delete_id (ldv_id_ptr id)
       ldv_print_info (LDV_INFO_MEM, "identifier memory was free");
     }
   else
-    {
-      LDV_FATAL_ERROR ("id pointer wasn't initialized");
-    }
+    internal_error ("id pointer wasn't initialized");
 }
 
 void
@@ -402,9 +394,7 @@ ldv_delete_int (ldv_int_ptr integer)
       ldv_print_info (LDV_INFO_MEM, "integer number memory was free");
     }
   else
-    {
-      LDV_FATAL_ERROR ("integer pointer wasn't initialized");
-    }
+    internal_error ("integer pointer wasn't initialized");
 }
 
 char *
@@ -434,14 +424,10 @@ ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr pattern)
   if (!pattern->params || ldv_list_get_next (pattern->params)
     || !(param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern->params))
     || !(param->kind == LDV_ASPECT_PATTERN_STRING))
-    {
-      LDV_FATAL_ERROR ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
-    }
+    internal_error ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
 
   if (!(value = getenv (param->string)))
-    {
-      LDV_FATAL_ERROR ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
-    }
+    internal_error ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
 
   return value;
 }
@@ -470,9 +456,7 @@ ldv_get_int (ldv_int_ptr integer)
   if (integer)
     return integer->numb;
   else
-    {
-      LDV_FATAL_ERROR ("integer pointer wasn't initialized");
-    }
+    internal_error ("integer pointer wasn't initialized");
 }
 
 char *
@@ -481,9 +465,7 @@ ldv_get_text (ldv_text_ptr text)
   if (text)
     return ldv_get_str (text->text);
   else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
-    }
+    internal_error ("text pointer wasn't initialized");
 }
 
 unsigned int
@@ -505,9 +487,7 @@ ldv_get_unique_numb(void)
           fclose (stream);
         }
       else
-        {
-          LDV_FATAL_ERROR ("can't read unsigned integer from file '%s'", file_name);
-        }
+        internal_error ("can't read unsigned integer from file '%s'", file_name);
     }
 
   /* Next unique number is following for the current one. */
@@ -535,9 +515,7 @@ ldv_get_current_line_number(const char *fname)
   unsigned int line_number = 1;
 
   if ((fstream = fopen (fname, "r")) == NULL)
-    {
-      LDV_FATAL_ERROR ("can%'t open file \"%s\" for read: %m", fname);
-    }
+    internal_error ("can%'t open file \"%s\" for read: %m", fname);
 
   while ((c = ldv_getc (fstream)) != EOF)
     {
@@ -556,9 +534,7 @@ ldv_putc_body (unsigned char c, ldv_ab_ptr body)
   if (body)
     ldv_putc_str (c, body->ab_text, LDV_T_B);
   else
-    {
-      LDV_FATAL_ERROR ("body pointer wasn't initialized");
-    }
+    internal_error ("body pointer wasn't initialized");
 }
 
 void
@@ -567,9 +543,7 @@ ldv_putc_file (unsigned char c, ldv_file_ptr file)
   if (file)
     ldv_putc_str (c, file->file_name, LDV_T_FILE);
   else
-    {
-      LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
+    internal_error ("file pointer wasn't initialized");
 }
 
 void
@@ -578,9 +552,7 @@ ldv_putc_text (unsigned char c, ldv_text_ptr text)
   if (text)
     ldv_putc_str (c, text->text, LDV_T_TEXT);
   else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
-    }
+    internal_error ("text pointer wasn't initialized");
 }
 
 void
@@ -589,9 +561,7 @@ ldv_puts_body (const char *str, ldv_ab_ptr body)
   if (body)
     ldv_puts_str (str, body->ab_text, LDV_T_B);
   else
-    {
-      LDV_FATAL_ERROR ("body pointer wasn't initialized");
-    }
+    internal_error ("body pointer wasn't initialized");
 }
 
 void
@@ -600,9 +570,7 @@ ldv_puts_file (const char *str, ldv_file_ptr file)
   if (file)
     ldv_puts_str (str, file->file_name, LDV_T_FILE);
   else
-    {
-      LDV_FATAL_ERROR ("file pointer wasn't initialized");
-    }
+    internal_error ("file pointer wasn't initialized");
 }
 
 void
@@ -611,7 +579,5 @@ ldv_puts_text (const char *str, ldv_text_ptr text)
   if (text)
     ldv_puts_str (str, text->text, LDV_T_TEXT);
   else
-    {
-      LDV_FATAL_ERROR ("text pointer wasn't initialized");
-    }
+    internal_error ("text pointer wasn't initialized");
 }
