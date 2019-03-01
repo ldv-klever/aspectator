@@ -136,7 +136,7 @@ static void ldv_diag_composite_pointcut (ldv_cp_ptr, FILE *);
 static void ldv_diag_primitive_pointcut (ldv_pp_ptr, FILE *);
 static void ldv_diag_recursive_composite_pointcut (ldv_cp_ptr);
 static ldv_pps_decl_ptr ldv_diag_replace_return_type (ldv_pps_decl_ptr);
-static int ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
+static LDV_EVALUATE_ASPECT_PATTERN_FUNC ldv_evaluate_aspect_pattern;
 static char *ldv_get_actual_arg_func_names (void);
 static const char *ldv_get_arg_name (unsigned int);
 static const char *ldv_get_arg_sign (unsigned int);
@@ -1023,9 +1023,6 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   ldv_list_ptr body_patterns = NULL;
   ldv_ab_aspect_pattern_ptr body_pattern = NULL;
   ldv_aspect_pattern_ptr pattern = NULL;
-  ldv_list_ptr pattern_params = NULL, pattern_params_cur = NULL;
-  ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL, param_cur = NULL;
-  FILE *file_stream = NULL;
 
   /* Print '{' that starts a body for all advice kinds. */
   ldv_print_c ('{');
@@ -1088,52 +1085,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                     }
                 }
               else if (!strcmp (pattern->name, "fprintf"))
-                {
-                  /* First parameter specifies file where information request
-                     result to be printed. */
-                  pattern_params = pattern->params;
-                  param1 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-                  /* Second parameter specifies format string like for standard
-                     printf function. */
-                  pattern_params = ldv_list_get_next (pattern_params);
-                  param2 = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-
-                  /* Evaluate other parameters. */
-                  pattern_params = ldv_list_get_next (pattern_params);
-                  /* To keep evaluated values of parameters use parameters
-                     themselves since parameter evaluation may lead to either
-                     string or integer, and parameters themselves may be either
-                     strings or integers. */
-                  for (pattern_params_cur = pattern_params
-                    ; pattern_params_cur
-                    ; pattern_params_cur = ldv_list_get_next (pattern_params_cur))
-                    {
-                      param_cur = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params_cur);
-
-                      /* We are interested here in parameters to be evaluated. */
-                      if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-                        {
-                          if (ldv_evaluate_aspect_pattern (param_cur->aspect_pattern, &text, &number))
-                            {
-                              if (text)
-                                {
-                                  param_cur->string = text;
-                                  /* Forget about evaluated text since it is
-                                     used in condition above. */
-                                  text = NULL;
-                                }
-                              else
-                                param_cur->integer = number;
-                            }
-                          else
-                            internal_error ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
-                        }
-                    }
-
-                  file_stream = ldv_open_aspect_pattern_param_file_stream (param1);
-                  ldv_print_query_result (file_stream, ldv_get_aspect_pattern_value_or_string (param2), pattern_params);
-                  ldv_close_file_stream (file_stream);
-                }
+                ldv_process_aspect_pattern_fprintf (pattern->params, ldv_evaluate_aspect_pattern);
               else
                 internal_error ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
 
