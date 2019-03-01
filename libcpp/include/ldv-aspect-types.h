@@ -330,14 +330,14 @@ typedef struct ldv_aspect_pattern_param_internal
   ldv_aspect_pattern_param_kind kind;
   struct ldv_aspect_pattern_internal *aspect_pattern;
   unsigned int integer;
-  char *string;
+  const char *string;
   bool next_param;
 } ldv_aspect_pattern_param;
 typedef ldv_aspect_pattern_param *ldv_aspect_pattern_param_ptr;
 
 typedef struct ldv_aspect_pattern_internal
 {
-  char *name;
+  const char *name;
   const char *value;
   unsigned int arg_numb;
   ldv_list_ptr params;

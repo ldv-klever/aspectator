@@ -101,14 +101,14 @@ ldv_free_aspect_pattern (ldv_aspect_pattern_ptr aspect_pattern)
   ldv_list_ptr params;
   ldv_aspect_pattern_param_ptr param;
 
-  free (aspect_pattern->name);
+  free ((void *)aspect_pattern->name);
 
   for (params = aspect_pattern->params
     ; params
     ; params = ldv_list_get_next (params))
     {
       param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (params);
-      free (param->string);
+      free ((void *)param->string);
       free (param);
     }
 
