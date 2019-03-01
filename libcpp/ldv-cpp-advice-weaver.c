@@ -406,8 +406,26 @@ ldv_cpp_weave (void)
 FILE *
 ldv_open_aspect_pattern_fprintf_file_stream (const char *file_name)
 {
+  char *tmp;
+  int status;
   FILE *aspect_pattern_param_file_stream = NULL;
   struct flock lock;
+
+  /* Recursively create directories. */
+  tmp = ldv_copy_str (file_name);
+
+  for (char *p = tmp + 1; *p; p++)
+    if (*p == '/')
+      {
+        *p = 0;
+        if (mkdir(tmp, S_IRWXU) == -1)
+          if (errno != EEXIST)
+            {
+              LDV_CPP_FATAL_ERROR ("can't create directory '%s'", tmp);
+            }
+
+        *p = '/';
+      }
 
   /* Open file for write in append mode to avoid overwriting of already printed
      data. */
