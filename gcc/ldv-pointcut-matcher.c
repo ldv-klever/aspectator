@@ -967,7 +967,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
       func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
     }
 
-  func->file_path = DECL_SOURCE_FILE (t);
+  func->file_path = lrealpath (DECL_SOURCE_FILE (t));
   func->decl_line = DECL_SOURCE_LINE (t);
 
   if (pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP)
@@ -1117,9 +1117,7 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
 
   typedecl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 
-  typedecl->file_path = DECL_SOURCE_FILE (t);
-
-  /* typedecl->file_path = file_path; */
+  typedecl->file_path = lrealpath (DECL_SOURCE_FILE (t));
 
   ldv_disable_anon_enum_spec = true;
   typedecl->decl = ldv_convert_and_print_decl (t);
@@ -1222,7 +1220,7 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
 
   var->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 
-  var->file_path = DECL_SOURCE_FILE (t);
+  var->file_path = lrealpath (DECL_SOURCE_FILE (t));
 
   if (pp_kind == LDV_PP_USE_VAR)
     {
@@ -1251,7 +1249,7 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
 
       f_context->type = ldv_convert_type_tree_to_internal (TREE_TYPE (DECL_CONTEXT (t)), DECL_CONTEXT (t));
 
-      f_context->file_path = DECL_SOURCE_FILE (DECL_CONTEXT (t));
+      f_context->file_path = lrealpath (DECL_SOURCE_FILE (DECL_CONTEXT (t)));
     }
   else
     var->decl_func_context = NULL;
