@@ -571,8 +571,6 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       else
         internal_error ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
     }
-  else if (!strcmp (pattern->name, "env"))
-    text = ldv_copy_str (pattern->value);
   else if (!strcmp (pattern->name, "arg_sign"))
     text = ldv_copy_str (ldv_get_arg_sign (pattern->arg_numb));
   else if (!strcmp (pattern->name, "var_init_list"))

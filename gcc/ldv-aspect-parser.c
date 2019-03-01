@@ -4169,40 +4169,49 @@ ldv_parse_aspect_pattern_param (void)
 
   if ((pattern = ldv_parse_aspect_pattern ()))
     {
-      param->kind = LDV_ASPECT_PATTERN_ASPECT_PATTERN;
-      param->aspect_pattern = pattern;
-
       ldv_print_info (LDV_INFO_LEX, "lex parsed aspect pattern parameter that is aspect pattern");
+
+      /* Replace evaluated environment variables with corresponding strings. */
+      if (pattern->value)
+        {
+          param->kind = LDV_ASPECT_PATTERN_STRING;
+          param->string = pattern->value;
+        }
+      else
+        {
+          param->kind = LDV_ASPECT_PATTERN_ASPECT_PATTERN;
+          param->aspect_pattern = pattern;
+        }
 
       return param;
     }
 
   if (ldv_parse_unsigned_integer (&integer))
     {
+      ldv_print_info (LDV_INFO_LEX, "lex parsed unsigned int aspect pattern parameter \"%u\"", integer);
+
       param->kind = LDV_ASPECT_PATTERN_INTEGER;
       param->integer = integer;
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed unsigned int aspect pattern parameter \"%u\"", integer);
 
       return param;
     }
 
   if (ldv_parse_id (&str, &isany_chars, true))
     {
+      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
+
       param->kind = LDV_ASPECT_PATTERN_STRING;
       param->string = str;
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
 
       return param;
     }
 
   if (ldv_parse_aspect_pattern_param_str (&str))
     {
+      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
+
       param->kind = LDV_ASPECT_PATTERN_STRING;
       param->string = str;
-
-      ldv_print_info (LDV_INFO_LEX, "lex parsed string aspect pattern parameter \"%s\"", str);
 
       return param;
     }
