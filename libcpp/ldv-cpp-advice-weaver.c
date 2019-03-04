@@ -445,21 +445,26 @@ ldv_open_aspect_pattern_fprintf_file_stream (const char *file_name)
   FILE *aspect_pattern_param_file_stream = NULL;
   struct flock lock;
 
-  /* Recursively create directories. */
-  tmp = ldv_copy_str (file_name);
+  /* Often Aspectator will print query results to the same files.
+     So, do not "create"" corresponding directories each time. */
+  if (access (file_name, F_OK) == -1)
+    {
+      /* Recursively create directories. */
+      tmp = ldv_copy_str (file_name);
 
-  for (char *p = tmp + 1; *p; p++)
-    if (*p == '/')
-      {
-        *p = 0;
-        if (mkdir(tmp, S_IRWXU) == -1)
-          if (errno != EEXIST)
-            {
-              LDV_CPP_FATAL_ERROR ("can't create directory '%s'", tmp);
-            }
+      for (char *p = tmp + 1; *p; p++)
+        if (*p == '/')
+          {
+            *p = 0;
+            if (mkdir(tmp, S_IRWXU) == -1)
+              if (errno != EEXIST)
+                {
+                  LDV_CPP_FATAL_ERROR ("can't create directory '%s'", tmp);
+                }
 
-        *p = '/';
-      }
+            *p = '/';
+          }
+    }
 
   /* Open file for write in append mode to avoid overwriting of already printed
      data. */
