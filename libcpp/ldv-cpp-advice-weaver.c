@@ -31,7 +31,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* Macro from ldv-io.h that's needed for printing of matched just by name macros. */
 #define LDV_MATCHED_BY_NAME (stderr)
 
-static ldv_aspect_pattern_param_ptr ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func);
+static ldv_aspect_pattern_param_ptr ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC);
+static const char *ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
 static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
 static char *ldv_get_actual_args (void);
 static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
@@ -52,6 +53,8 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
         param_cur = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (*aspect_pattern_params);
         /* Move pointer to next aspect pattern parameter. */
         *aspect_pattern_params = ldv_list_get_next (*aspect_pattern_params);
+        /* Forget previously evaluated strings if so. */
+        param_cur->string_eval = NULL;
 
         /* We are interested here in parameters to be evaluated. */
         if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
@@ -90,9 +93,21 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
               }
 
             str = ldv_create_string ();
-            ldv_puts_string (param->string, str);
+
+            /* See comment below. */
+            if (param->string_eval)
+              ldv_puts_string (param->string_eval, str);
+            else
+              ldv_puts_string (param->string, str);
+
             ldv_puts_string (param_cur->string, str);
-            param->string = ldv_get_str (str);
+
+            /* We can not change pure string aspect pattern parameters since
+               next time we will use already changed values. */
+            if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+              param->string = ldv_get_str (str);
+            else
+              param->string_eval = ldv_get_str (str);
           }
 
         /* Aspect pattern parameter was parsed. */
@@ -101,6 +116,24 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
       }
 
     return param;
+}
+
+const char *
+ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr param)
+{
+  /* String aspect pattern parameters can be additionally evaluated in
+     ldv_consume_aspect_pattern_param(). */
+  if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+    return param->string;
+  else if (param->kind == LDV_ASPECT_PATTERN_STRING)
+    {
+      if (param->string_eval)
+        return param->string_eval;
+      else
+        return param->string;
+    }
+
+  LDV_CPP_FATAL_ERROR ("can not get aspect pattern string parameter");
 }
 
 void
@@ -122,8 +155,8 @@ ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVAL
     ldv_list_push_back (&evaluated_aspect_patter_params,
                         ldv_consume_aspect_pattern_param (&aspect_pattern_params, evaluate_aspect_pattern_func));
 
-  file_stream = ldv_open_aspect_pattern_fprintf_file_stream (param1->string);
-  ldv_print_query_result (file_stream, param2->string, evaluated_aspect_patter_params);
+  file_stream = ldv_open_aspect_pattern_fprintf_file_stream (ldv_get_aspect_pattern_str_param(param1));
+  ldv_print_query_result (file_stream, ldv_get_aspect_pattern_str_param(param2), evaluated_aspect_patter_params);
   ldv_close_file_stream (file_stream);
 }
 
@@ -508,7 +541,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
                     }
 
                   param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-                  fprintf (file_stream, ldv_get_str (conversion), param->string);
+                  fprintf (file_stream, ldv_get_str (conversion), ldv_get_aspect_pattern_str_param(param));
                   pattern_params = ldv_list_get_next (pattern_params);
                   break;
                 }
