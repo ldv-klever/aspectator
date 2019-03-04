@@ -43,79 +43,79 @@ static void ldv_print_query_result (FILE *, const char *, ldv_list_ptr);
 ldv_aspect_pattern_param_ptr
 ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func)
 {
-    ldv_aspect_pattern_param_ptr param = NULL, param_cur = NULL;
-    char *text = NULL;
-    unsigned int number;
-    ldv_str_ptr str;
+  ldv_aspect_pattern_param_ptr param = NULL, param_cur = NULL;
+  char *text = NULL;
+  unsigned int number;
+  ldv_str_ptr str;
 
-    while (1)
-      {
-        param_cur = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (*aspect_pattern_params);
-        /* Move pointer to next aspect pattern parameter. */
-        *aspect_pattern_params = ldv_list_get_next (*aspect_pattern_params);
-        /* Forget previously evaluated strings if so. */
-        param_cur->string_eval = NULL;
+  while (1)
+    {
+      param_cur = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (*aspect_pattern_params);
+      /* Move pointer to next aspect pattern parameter. */
+      *aspect_pattern_params = ldv_list_get_next (*aspect_pattern_params);
+      /* Forget previously evaluated strings if so. */
+      param_cur->string_eval = NULL;
 
-        /* We are interested here in parameters to be evaluated. */
-        if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-          {
-            /* To keep evaluated values of parameters use parameters themselves
-               since parameter evaluation may lead to either string or integer,
-               and parameters themselves may be either strings or integers. */
-            if (evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number))
-              {
-                if (text)
-                  {
-                    param_cur->string = text;
-                    /* Forget about evaluated text since it is used in condition above. */
-                    text = NULL;
-                  }
-                else
-                  param_cur->integer = number;
-              }
-            else
-              {
-                LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
-              }
-          }
+      /* We are interested here in parameters to be evaluated. */
+      if (param_cur->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+        {
+          /* To keep evaluated values of parameters use parameters themselves
+             since parameter evaluation may lead to either string or integer,
+             and parameters themselves may be either strings or integers. */
+          if (evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number))
+            {
+              if (text)
+                {
+                  param_cur->string = text;
+                  /* Forget about evaluated text since it is used in condition above. */
+                  text = NULL;
+                }
+              else
+                param_cur->integer = number;
+            }
+          else
+            {
+              LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
+            }
+        }
 
-        if (!param)
-          param = param_cur;
-        /* Aspect pattern parameter consists of several ones. This can be the
-           case just when each of them is either string or can be evaluated as
-           string. Concatenate these strings and store result into firs
-           parameter. */
-        else
-          {
-            if (!param->string || !param_cur->string)
-              {
-                LDV_CPP_FATAL_ERROR ("can't concatenate non-string aspect pattern patterns");
-              }
+      if (!param)
+        param = param_cur;
+      /* Aspect pattern parameter consists of several ones. This can be the
+         case just when each of them is either string or can be evaluated as
+         string. Concatenate these strings and store result into firs
+         parameter. */
+      else
+        {
+          if (!param->string || !param_cur->string)
+            {
+              LDV_CPP_FATAL_ERROR ("can't concatenate non-string aspect pattern patterns");
+            }
 
-            str = ldv_create_string ();
+          str = ldv_create_string ();
 
-            /* See comment below. */
-            if (param->string_eval)
-              ldv_puts_string (param->string_eval, str);
-            else
-              ldv_puts_string (param->string, str);
+          /* See comment below. */
+          if (param->string_eval)
+            ldv_puts_string (param->string_eval, str);
+          else
+            ldv_puts_string (param->string, str);
 
-            ldv_puts_string (param_cur->string, str);
+          ldv_puts_string (param_cur->string, str);
 
-            /* We can not change pure string aspect pattern parameters since
-               next time we will use already changed values. */
-            if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-              param->string = ldv_get_str (str);
-            else
-              param->string_eval = ldv_get_str (str);
-          }
+          /* We can not change pure string aspect pattern parameters since
+             next time we will use already changed values. */
+          if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+            param->string = ldv_get_str (str);
+          else
+            param->string_eval = ldv_get_str (str);
+        }
 
-        /* Aspect pattern parameter was parsed. */
-        if (param_cur->next_param || !*aspect_pattern_params)
-          break;
-      }
+      /* Aspect pattern parameter was parsed. */
+      if (param_cur->next_param || !*aspect_pattern_params)
+        break;
+    }
 
-    return param;
+  return param;
 }
 
 const char *
@@ -134,6 +134,8 @@ ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr param)
     }
 
   LDV_CPP_FATAL_ERROR ("can not get aspect pattern string parameter");
+
+  return NULL;
 }
 
 void
@@ -440,7 +442,6 @@ FILE *
 ldv_open_aspect_pattern_fprintf_file_stream (const char *file_name)
 {
   char *tmp;
-  int status;
   FILE *aspect_pattern_param_file_stream = NULL;
   struct flock lock;
 
