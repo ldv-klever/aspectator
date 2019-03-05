@@ -1011,33 +1011,6 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
       LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
     }
 
-  /* An additional string length depends on a ldv token kind. */
-  switch (token_kind)
-    {
-    case LDV_T_FILE:
-      len_add = LDV_FILE_LEN_ADD;
-      break;
-
-    case LDV_T_B:
-      len_add = LDV_B_LEN_ADD;
-      break;
-
-    case LDV_T_ID:
-      len_add = LDV_ID_LEN_ADD;
-      break;
-
-    case LDV_T_STRING:
-      len_add = LDV_STRING_LEN_ADD;
-      break;
-
-    case LDV_T_TEXT:
-      len_add = LDV_TEXT_LEN_ADD;
-      break;
-
-    default:
-      LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
-    }
-
   /* If a character can be added to a current string text, do it. */
   if (string->len < string->max_len)
     {
@@ -1048,6 +1021,33 @@ ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
   /* Otherwise a new memory is allocated for a large string text. */
   else
     {
+      /* An additional string length depends on a ldv token kind. */
+      switch (token_kind)
+        {
+        case LDV_T_FILE:
+          len_add = LDV_FILE_LEN_ADD;
+          break;
+
+        case LDV_T_B:
+          len_add = LDV_B_LEN_ADD;
+          break;
+
+        case LDV_T_ID:
+          len_add = LDV_ID_LEN_ADD;
+          break;
+
+        case LDV_T_STRING:
+          len_add = LDV_STRING_LEN_ADD;
+          break;
+
+        case LDV_T_TEXT:
+          len_add = LDV_TEXT_LEN_ADD;
+          break;
+
+        default:
+          LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
+        }
+
       /* Allocate a new memory for a large string text. */
       string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
 
