@@ -33,7 +33,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 static ldv_aspect_pattern_param_ptr ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC);
 static const char *ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
-static int ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr, char **, unsigned int *);
+static LDV_EVALUATE_ASPECT_PATTERN_FUNC ldv_cpp_evaluate_aspect_pattern;
 static char *ldv_get_actual_args (void);
 static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
 static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
@@ -62,21 +62,15 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
           /* To keep evaluated values of parameters use parameters themselves
              since parameter evaluation may lead to either string or integer,
              and parameters themselves may be either strings or integers. */
-          if (evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number))
+          evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number);
+          if (text)
             {
-              if (text)
-                {
-                  param_cur->string = text;
-                  /* Forget about evaluated text since it is used in condition above. */
-                  text = NULL;
-                }
-              else
-                param_cur->integer = number;
+              param_cur->string = text;
+              /* Forget about evaluated text since it is used in condition above. */
+              text = NULL;
             }
           else
-            {
-              LDV_CPP_FATAL_ERROR ("body aspect pattern \"%s\" wasn't weaved", param_cur->aspect_pattern->name);
-            }
+            param_cur->integer = number;
         }
 
       if (!param)
@@ -247,14 +241,13 @@ ldv_cpp_undef (struct cpp_reader *pfile)
   cpp_undef (pfile, name);
 }
 
-int
+void
 ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
 {
   char *text = NULL;
   char *arg_value = NULL;
-  bool is_number = false;
   ldv_list_ptr arg_value_list = NULL;
-  unsigned int number;
+  unsigned int number = 0;
   unsigned int i;
 
   if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
@@ -281,11 +274,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
         }
     }
   else if (!strcmp (pattern->name, "arg_numb"))
-    {
-      arg_value_list = ldv_i_match->i_macro->macro_param;
-      number = ldv_list_len (arg_value_list);
-      is_number = true;
-    }
+    number = ldv_list_len (ldv_i_match->i_macro->macro_param);
   else if (!strcmp (pattern->name, "actual_args"))
     {
       text = ldv_get_actual_args ();
@@ -293,26 +282,14 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
           text = "NULL";
     }
   else if (!strcmp (pattern->name, "path"))
-    {
-      text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
-    }
+    text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "line"))
-    {
-      text = ldv_cpp_itoa(ldv_i_match->i_macro->line);
-    }
+    number = ldv_i_match->i_macro->line;
 
   if (text)
-    {
-      *string = text;
-      return 1;
-    }
-  else if (is_number)
-    {
-      *integer = number;
-      return 1;
-    }
-
-  return 0;
+    *string = text;
+  else
+    *integer = number;
 }
 
 char *
@@ -486,6 +463,7 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
 {
   ldv_str_ptr conversion = NULL, text = NULL;
   ldv_aspect_pattern_param_ptr param = NULL;
+  const char *str = NULL;
 
   if (!file_stream)
     {
@@ -547,7 +525,15 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
                     }
 
                   param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-                  fprintf (file_stream, ldv_get_str (conversion), ldv_get_aspect_pattern_str_param(param));
+
+                  str = ldv_get_aspect_pattern_str_param(param);
+
+                  if (!str)
+                    {
+                      LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument (maybe you need to use '%%d')");
+                    }
+
+                  fprintf (file_stream, ldv_get_str (conversion), str);
                   pattern_params = ldv_list_get_next (pattern_params);
                   break;
                 }

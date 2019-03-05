@@ -364,12 +364,13 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
   internal_error ("can't remove identifier declarator from the end of declarator chain");
 }
 
-int
+
+/* Aspect patterns that can be evaluated basing on matching information. */
+void
 ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
 {
   char *text = NULL;
   unsigned int number;
-  bool is_number = false;
   const char *func_arg = NULL;
   int func_arg_size;
   ldv_text_ptr ldv_text = NULL;
@@ -416,10 +417,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           text = "NULL";
     }
   else if (!strcmp (pattern->name, "arg_numb"))
-    {
-      number = ldv_list_len (ldv_func_arg_info_list);
-      is_number = true;
-    }
+    number = ldv_list_len (ldv_func_arg_info_list);
   else if (!strcmp (pattern->name, "aspect_func_name"))
     {
       if (ldv_aspect_func_name)
@@ -517,23 +515,23 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "call_line"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->call_line));
+        number = ldv_func_signature->call_line;
       else
         internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "decl_line"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->decl_line));
+        number = ldv_func_signature->decl_line;
       else
         internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "use_line"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_line_number (ldv_func_signature->use_line));
+        number = ldv_func_signature->use_line;
       else if (ldv_var_signature)
-        text = ldv_copy_str (ldv_print_line_number (ldv_var_signature->use_line));
+        number = ldv_var_signature->use_line;
       else
         internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
     }
@@ -597,19 +595,13 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_var_initializer)
         ldv_free_info_initializer (ldv_var_initializer);
     }
+  else
+    internal_error ("aspect pattern \"%s\" wasn't weaved", pattern->name);
 
   if (text)
-    {
-      *string = text;
-      return 1;
-    }
-  else if (is_number)
-    {
-      *integer = number;
-      return 1;
-    }
-
-  return 0;
+    *string = text;
+  else
+    *integer = number;
 }
 
 const char *
@@ -1066,10 +1058,11 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
             {
               pattern = body_pattern->pattern;
 
-              /* Aspect patterns that can be evaluated on the basis of matching
-                 information and environment variable values. */
-              if (ldv_evaluate_aspect_pattern (pattern, &text, &number))
+              if (!strcmp (pattern->name, "fprintf"))
+                ldv_process_aspect_pattern_fprintf (pattern->params, ldv_evaluate_aspect_pattern);
+              else
                 {
+                  ldv_evaluate_aspect_pattern (pattern, &text, &number);
                   if (text)
                     {
                       ldv_puts_text (text, body_with_patterns);
@@ -1080,14 +1073,10 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                   else
                     {
                       /* Here we are interested just in text representation of
-                         aspect body pattern pattern. */
+                         aspect pattern integers. */
                       ldv_puts_text (ldv_itoa (number), body_with_patterns);
                     }
                 }
-              else if (!strcmp (pattern->name, "fprintf"))
-                ldv_process_aspect_pattern_fprintf (pattern->params, ldv_evaluate_aspect_pattern);
-              else
-                internal_error ("body aspect pattern \"%s\" wasn't weaved", pattern->name);
 
               ldv_print_info (LDV_INFO_WEAVE, "weave body aspect pattern \"%s\"", pattern->name);
 
