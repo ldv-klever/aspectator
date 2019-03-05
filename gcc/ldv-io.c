@@ -289,36 +289,6 @@ ldv_getc (FILE *stream)
   return c;
 }
 
-char *
-ldv_gets (FILE *stream)
-{
-  int c;
-  ldv_text_ptr line = NULL;
-  char *str = NULL;
-
-  if ((c = ldv_getc (stream)) == EOF)
-    return NULL;
-  else
-    ldv_ungetc (c, stream);
-
-  line = ldv_create_text ();
-
-  while ((c = ldv_getc (stream)) != EOF)
-    {
-      ldv_putc_text (c, line);
-
-      if (c == '\n')
-        break;
-    }
-
-  str = ldv_get_text (line);
-
-  free (line->text);
-  free (line);
-
-  return str;
-}
-
 char
 ldv_end_of_line (int c)
 {
@@ -574,6 +544,7 @@ void
 ldv_print_to_awfile (void)
 {
   char *line = NULL, *quote_left = NULL, *quote_right = NULL, *c = NULL;
+  size_t len;
   int line_numb = 0;
   ldv_file_ptr file = NULL;
   ldv_decl_for_print_ptr decl_for_print = NULL;
@@ -586,7 +557,7 @@ ldv_print_to_awfile (void)
   FILE *aux_file_stream = NULL;
 
   /* Add needed declarations untill a line remains in a main file. */
-  while ((line = ldv_gets (LDV_MAIN_STREAM)))
+  while (getline (&line, &len, LDV_MAIN_STREAM) != -1)
     {
       /* Specify that an obtained line beginning wasn't printed yet. */
       isline_beginning_printed = false;
@@ -669,13 +640,14 @@ ldv_print_to_awfile (void)
       else
         ldv_puts (line, LDV_INSTRUMENTED_FILE_STREAM);
 
-      free (line);
-
       /* Enlarge a line number in a currently processed file. Special
          preprocessor directives are skipped. */
       if (!ispreprocessor_directive)
         line_numb++;
     }
+
+  free (line);
+  line = NULL;
 
   if (file)
     ldv_free_file (file);
@@ -689,8 +661,12 @@ ldv_print_to_awfile (void)
        * update line reference. This finally fixes #6487. */
       ldv_get_aux_file_name_and_stream (&aux_fname, &aux_file_stream);
       line_numb = 0;
-      while (ldv_gets(aux_file_stream))
+
+      while (getline (&line, &len, aux_file_stream) != -1)
         line_numb++;
+
+      free (line);
+
       ldv_puts ("\n#line ", LDV_INSTRUMENTED_FILE_STREAM);
       ldv_puts (ldv_itoa(line_numb + 1), LDV_INSTRUMENTED_FILE_STREAM);
       ldv_puts (" \"", LDV_INSTRUMENTED_FILE_STREAM);
