@@ -36,8 +36,9 @@ bool ldv_cpp_isinfo_matching_table = false;
 int ldv_cpp_stage = -1;
 
 
-static int ldv_cmp_str_any_chars (const char *id, const char *str);
+static int ldv_cmp_str_any_chars (const char *, const char *);
 static bool ldv_isany_chars(const char *);
+static void ldv_enlarge_str (ldv_str_ptr, ldv_token_k);
 
 
 int
@@ -1002,61 +1003,58 @@ ldv_putc_id (unsigned char c, ldv_id_ptr id)
 }
 
 void
-ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
+ldv_enlarge_str (ldv_str_ptr string, ldv_token_k token_kind)
 {
   unsigned int len_add;
 
+  /* Additional string length depends on token kind. */
+  switch (token_kind)
+    {
+    case LDV_T_FILE:
+      len_add = LDV_FILE_LEN_ADD;
+      break;
+
+    case LDV_T_B:
+      len_add = LDV_B_LEN_ADD;
+      break;
+
+    case LDV_T_ID:
+      len_add = LDV_ID_LEN_ADD;
+      break;
+
+    case LDV_T_STRING:
+      len_add = LDV_STRING_LEN_ADD;
+      break;
+
+    case LDV_T_TEXT:
+      len_add = LDV_TEXT_LEN_ADD;
+      break;
+
+    default:
+      LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
+    }
+
+  /* Enlarge buffer lenght and reallocate memory for larger string text. */
+  string->max_len += len_add;
+  string->text = (char *) xrealloc (string->text, sizeof (char) * (string->max_len + 1));
+}
+
+void
+ldv_putc_str (unsigned char c, ldv_str_ptr string, ldv_token_k token_kind)
+{
   if (!string)
     {
       LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
     }
 
-  /* If a character can be added to a current string text, do it. */
-  if (string->len < string->max_len)
-    {
-      string->text[string->len] = c;
-      string->text[string->len + 1] = '\0';
-      string->len++;
-    }
-  /* Otherwise a new memory is allocated for a large string text. */
-  else
-    {
-      /* An additional string length depends on a ldv token kind. */
-      switch (token_kind)
-        {
-        case LDV_T_FILE:
-          len_add = LDV_FILE_LEN_ADD;
-          break;
+  /* Enlarge internal string since it is already full. */
+  if (string->len == string->max_len)
+    ldv_enlarge_str (string, token_kind);
 
-        case LDV_T_B:
-          len_add = LDV_B_LEN_ADD;
-          break;
-
-        case LDV_T_ID:
-          len_add = LDV_ID_LEN_ADD;
-          break;
-
-        case LDV_T_STRING:
-          len_add = LDV_STRING_LEN_ADD;
-          break;
-
-        case LDV_T_TEXT:
-          len_add = LDV_TEXT_LEN_ADD;
-          break;
-
-        default:
-          LDV_CPP_FATAL_ERROR ("unrecognize ldv token kind \"%d\"", token_kind);
-        }
-
-      /* Allocate a new memory for a large string text. */
-      string->text = (char *) xrealloc (string->text, sizeof (char) * (string->len + len_add + 1));
-
-      /* Enlarge buffer length respectively. */
-      string->max_len += len_add;
-
-      /* Put a new character to a large string text. */
-      ldv_putc_str (c, string, token_kind);
-    }
+  /* Put character to the end of internal string. */
+  string->text[string->len] = c;
+  string->text[string->len + 1] = '\0';
+  string->len++;
 }
 
 void
@@ -1085,6 +1083,7 @@ void
 ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
 {
   const char *c = NULL;
+  ssize_t len;
 
   if (!str)
     {
@@ -1096,9 +1095,24 @@ ldv_puts_str (const char *str, ldv_str_ptr string, ldv_token_k token_kind)
       LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
     }
 
-  /* Put every symbol of a string to an internal string. */
-  for (c = str; c && *c; c++)
-    ldv_putc_str (*c, string, token_kind);
+  len = strlen (str);
+
+  /* Enlarge internal string until it will be enough for putting string. */
+  while (len + string->len > string->max_len)
+    ldv_enlarge_str (string, token_kind);
+
+  /* Put all symbols of string to the end of internal string. */
+  for (c = str; ; c++)
+    {
+      string->text[string->len] = *c;
+
+      if (!*c)
+        break;
+
+      /* This field corresponds to the number of characters without
+         including string terminator. */
+      string->len++;
+    }
 }
 
 void
