@@ -61,7 +61,7 @@ typedef struct ldv_string_internal
 typedef ldv_string *ldv_str_ptr;
 
 /* These constants are for a list of strings. */
-enum { LDV_STRING_LEN_ADD = 10, LDV_STRING_LEN_START = 20 };
+enum { LDV_STRING_LEN_ADD = 60, LDV_STRING_LEN_START = 120 };
 
 /* Integer number = integer number (unsigned). */
 typedef struct ldv_int_internal
@@ -71,7 +71,7 @@ typedef struct ldv_int_internal
 typedef ldv_int *ldv_int_ptr;
 
 /* Identifier = string that may contains '$' wildcards. */
-enum { LDV_ID_LEN_ADD = 5, LDV_ID_LEN_START = 10 };
+enum { LDV_ID_LEN_ADD = 30, LDV_ID_LEN_START = 60 };
 typedef struct ldv_id_internal
 {
   ldv_str_ptr id_name;
@@ -80,7 +80,7 @@ typedef struct ldv_id_internal
 typedef ldv_id *ldv_id_ptr;
 
 /* Text = string (large). */
-enum { LDV_TEXT_LEN_ADD = 50, LDV_TEXT_LEN_START = 100 };
+enum { LDV_TEXT_LEN_ADD = 150, LDV_TEXT_LEN_START = 300 };
 typedef struct ldv_text_internal
 {
   ldv_str_ptr text;
@@ -88,7 +88,7 @@ typedef struct ldv_text_internal
 typedef ldv_text *ldv_text_ptr;
 
 /* File = string + information on whether a given file is processed. */
-enum { LDV_FILE_LEN_ADD = 25, LDV_FILE_LEN_START = 50 };
+enum { LDV_FILE_LEN_ADD = 75, LDV_FILE_LEN_START = 150 };
 typedef struct ldv_file_internal
 {
   ldv_str_ptr file_name;
@@ -354,7 +354,7 @@ typedef struct ldv_ab_aspect_pattern_internal
 typedef ldv_ab_aspect_pattern *ldv_ab_aspect_pattern_ptr;
 
 /* Body string beginning maximum length and its growth are specified. */
-typedef enum { LDV_B_LEN_ADD = 50, LDV_B_LEN_START = 100 } ldv_abl;
+typedef enum { LDV_B_LEN_ADD = 150, LDV_B_LEN_START = 300 } ldv_abl;
 /* Body = string + aspect patterns to be weaved. */
 typedef struct ldv_advice_body_internal
 {
