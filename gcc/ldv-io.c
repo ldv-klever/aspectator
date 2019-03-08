@@ -126,6 +126,8 @@ static void ldv_open_aspect_stream (void);
 static void ldv_open_main_stream (void);
 static void ldv_open_file_prepared_stream (void);
 
+static void ldv_putsn (char *, FILE *, int);
+
 static void ldv_get_aux_file_name_and_stream (char **, FILE **);
 
 void
@@ -215,7 +217,8 @@ void
 ldv_copy_file (const char *fname, FILE *stream)
 {
   FILE *fstream = NULL;
-  int c;
+  char *line = NULL;
+  size_t len;
 
   if ((fstream = fopen (fname, "r")) == NULL)
     internal_error ("can%'t open file \"%s\" for read: %m", fname);
@@ -228,9 +231,10 @@ ldv_copy_file (const char *fname, FILE *stream)
   ldv_puts ("\"\n", stream);
 
   /* Copy a content of a file to a stream. */
-  while ((c = ldv_getc (fstream)) != EOF)
-    ldv_putc (c, stream);
+  while (getline (&line, &len, fstream) != -1)
+    ldv_puts (line, stream);
 
+  free (line);
   fclose (fstream);
 }
 
@@ -623,7 +627,8 @@ ldv_print_to_awfile (void)
                          string. */
                       if (!isline_beginning_printed)
                         {
-                          symbol_printed_numb = ldv_putsn (line, LDV_INSTRUMENTED_FILE_STREAM, decl_for_print->column);
+                          ldv_putsn (line, LDV_INSTRUMENTED_FILE_STREAM, decl_for_print->column);
+                          symbol_printed_numb = decl_for_print->column;
                           isline_beginning_printed = true;
                         }
 
@@ -678,46 +683,28 @@ ldv_print_to_awfile (void)
 }
 
 void
-ldv_putc (int c, FILE *stream)
+ldv_puts (const char *str, FILE *stream)
 {
-  /* Finish work if can not write a given character to a given stream. */
-  if (putc (c, stream) != (unsigned char) c)
-    internal_error ("character \"%c\" wasn't put to stream", c);
+  if (!str)
+    internal_error ("symbol pointer wasn't initialized");
 
-#ifdef LDV_CHAR_DEBUG
-
-  ldv_print_info (LDV_INFO_IO, "put character \"%c\"", ldv_end_of_line (c));
-
-#endif /* LDV_CHAR_DEBUG */
+  if (fputs (str, stream) == EOF)
+    internal_error ("string \"%s\" wasn't put to stream: %s", str, xstrerror (errno));
 }
 
 void
-ldv_puts (const char *str, FILE *stream)
+ldv_putsn (char *str, FILE *stream, int n)
 {
-  const char *c = NULL;
+  char c;
 
   if (!str)
     internal_error ("symbol pointer wasn't initialized");
 
-  /* Put each symbol of a string to a stream. */
-  for (c = str; c && *c; c++)
-    ldv_putc (*c, stream);
-}
-
-int
-ldv_putsn (const char *str, FILE *stream, int n)
-{
-  const char *c = NULL;
-  int i;
-
-  if (!str)
-    internal_error ("symbol pointer wasn't initialized");
-
-  /* Put each symbol of a string to a stream. */
-  for (c = str, i = 0; c && *c && i < n; c++, i++)
-    ldv_putc (*c, stream);
-
-  return i;
+  /* Print n symbols of string to stream. */
+  c = str[n];
+  str[n] = '\0';
+  ldv_puts (str, stream);
+  str[n] = c;
 }
 
 void
