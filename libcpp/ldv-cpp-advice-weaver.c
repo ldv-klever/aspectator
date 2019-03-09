@@ -107,6 +107,9 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
             param->string = ldv_get_str (str);
           else
             param->string_eval = ldv_get_str (str);
+
+          /* String text will be freed later. */
+          free (str);
         }
 
       /* Aspect pattern parameter was parsed. */
