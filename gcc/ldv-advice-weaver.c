@@ -173,6 +173,7 @@ static void ldv_print_str_without_padding (const char *);
 static void ldv_print_types_typedefs (ldv_ab_ptr, bool);
 static void ldv_print_var_init_values (ldv_i_initializer_ptr, ldv_text_ptr);
 static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
+static void ldv_free_func_arg_type_decl_list (void);
 static void ldv_weave_func_source (ldv_i_func_ptr, ldv_ppk);
 static void ldv_weave_var_source (ldv_i_var_ptr, ldv_ppk);
 
@@ -2080,6 +2081,20 @@ ldv_store_func_arg_type_decl_list (ldv_i_type_ptr func_type)
 }
 
 void
+ldv_free_func_arg_type_decl_list (void)
+{
+  ldv_list_ptr param_list = NULL;
+
+  for (param_list = ldv_func_arg_type_decl_list
+    ; param_list
+    ; param_list = ldv_list_get_next (param_list))
+    ldv_free_pps_decl ((ldv_pps_decl_ptr) ldv_list_get_data (param_list));
+
+  ldv_list_delete_all (ldv_func_arg_type_decl_list);
+  ldv_func_arg_type_decl_list = NULL;
+}
+
+void
 ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 {
   ldv_ak a_kind;
@@ -2151,8 +2166,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_free_text (ldv_text_printed);
 
-      ldv_list_delete_all (ldv_func_arg_type_decl_list);
-      ldv_func_arg_type_decl_list = NULL;
+      ldv_free_func_arg_type_decl_list ();
       ldv_free_pps_decl (ldv_func_ret_type_decl);
       ldv_func_ret_type_decl = NULL;
       ldv_func_signature = NULL;
