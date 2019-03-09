@@ -32,5 +32,6 @@ extern void ldv_cpp_weave (void);
 
 extern void ldv_process_aspect_pattern_fprintf (ldv_list_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC);
 extern void ldv_print_macro (ldv_i_macro_ptr);
+extern void ldv_print_query_results (void);
 
 #endif /* _LDV_CPP_ADVICE_WEAVER_H_ */

@@ -344,6 +344,17 @@ ldv_cpp_get_id_name (ldv_id_ptr id)
 }
 
 char *
+ldv_get_text (ldv_text_ptr text)
+{
+  if (text)
+    return ldv_get_str (text->text);
+
+  LDV_CPP_FATAL_ERROR ("text pointer wasn't initialized");
+
+  return NULL;
+}
+
+char *
 ldv_cpp_itoa (unsigned int n)
 {
   unsigned int int_digits = 1, order = 10;
@@ -885,6 +896,35 @@ ldv_free_string (ldv_str_ptr str)
   ldv_free_str (str);
 }
 
+ldv_text_ptr
+ldv_create_text (void)
+{
+  ldv_text_ptr text = NULL;
+
+  text = XCNEW (ldv_text);
+  /* TODO: ldv_print_info (LDV_INFO_MEM, "text memory was released"); */
+
+  text->text = ldv_create_str (LDV_T_TEXT);
+
+  return text;
+}
+
+void
+ldv_free_text (ldv_text_ptr text)
+{
+  if (text)
+    {
+      ldv_free_str (text->text);
+
+      free (text);
+      /* TODO: ldv_print_info (LDV_INFO_MEM, "text memory was free"); */
+    }
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("text pointer wasn't initialized");
+    }
+}
+
 static bool
 ldv_isany_chars (const char *c)
 {
@@ -1071,6 +1111,17 @@ ldv_putc_string (unsigned char c, ldv_str_ptr string)
 }
 
 void
+ldv_putc_text (unsigned char c, ldv_text_ptr text)
+{
+  if (text)
+    ldv_putc_str (c, text->text, LDV_T_TEXT);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("text pointer wasn't initialized");
+    }
+}
+
+void
 ldv_puts_id (const char *str, ldv_id_ptr id)
 {
   if (id)
@@ -1125,6 +1176,17 @@ ldv_puts_string (const char *str, ldv_str_ptr string)
   else
     {
       LDV_CPP_FATAL_ERROR ("string pointer wasn't initialized");
+    }
+}
+
+void
+ldv_puts_text (const char *str, ldv_text_ptr text)
+{
+  if (text)
+    ldv_puts_str (str, text->text, LDV_T_TEXT);
+  else
+    {
+      LDV_CPP_FATAL_ERROR ("text pointer wasn't initialized");
     }
 }
 

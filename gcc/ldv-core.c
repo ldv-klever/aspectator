@@ -330,33 +330,6 @@ ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr ptr_quals)
   free (ptr_quals);
 }
 
-ldv_text_ptr
-ldv_create_text (void)
-{
-  ldv_text_ptr text = NULL;
-
-  text = XCNEW (ldv_text);
-  ldv_print_info (LDV_INFO_MEM, "text memory was released");
-
-  text->text = ldv_create_str (LDV_T_TEXT);
-
-  return text;
-}
-
-void
-ldv_free_text (ldv_text_ptr text)
-{
-  if (text)
-    {
-      ldv_free_str (text->text);
-
-      free (text);
-      ldv_print_info (LDV_INFO_MEM, "text memory was free");
-    }
-  else
-    internal_error ("text pointer wasn't initialized");
-}
-
 void
 ldv_delete_body (ldv_ab_ptr body)
 {
@@ -459,15 +432,6 @@ ldv_get_int (ldv_int_ptr integer)
     internal_error ("integer pointer wasn't initialized");
 }
 
-char *
-ldv_get_text (ldv_text_ptr text)
-{
-  if (text)
-    return ldv_get_str (text->text);
-  else
-    internal_error ("text pointer wasn't initialized");
-}
-
 unsigned int
 ldv_get_unique_numb(void)
 {
@@ -547,15 +511,6 @@ ldv_putc_file (unsigned char c, ldv_file_ptr file)
 }
 
 void
-ldv_putc_text (unsigned char c, ldv_text_ptr text)
-{
-  if (text)
-    ldv_putc_str (c, text->text, LDV_T_TEXT);
-  else
-    internal_error ("text pointer wasn't initialized");
-}
-
-void
 ldv_puts_body (const char *str, ldv_ab_ptr body)
 {
   if (body)
@@ -571,13 +526,4 @@ ldv_puts_file (const char *str, ldv_file_ptr file)
     ldv_puts_str (str, file->file_name, LDV_T_FILE);
   else
     internal_error ("file pointer wasn't initialized");
-}
-
-void
-ldv_puts_text (const char *str, ldv_text_ptr text)
-{
-  if (text)
-    ldv_puts_str (str, text->text, LDV_T_TEXT);
-  else
-    internal_error ("text pointer wasn't initialized");
 }

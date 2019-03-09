@@ -41,7 +41,6 @@ extern ldv_pps_array_size_ptr ldv_create_pps_array_size (void);
 extern ldv_pps_decl_ptr ldv_create_pps_decl (void);
 extern ldv_pps_func_arg_ptr ldv_create_pps_func_arg (void);
 extern ldv_pps_ptr_quals_ptr ldv_create_ptr_quals (void);
-extern ldv_text_ptr ldv_create_text (void);
 
 extern void ldv_free_aspect_pattern (ldv_aspect_pattern_ptr);
 extern void ldv_free_declarator (ldv_pps_declarator_ptr);
@@ -50,7 +49,6 @@ extern void ldv_free_pps_array_size (ldv_pps_array_size_ptr);
 extern void ldv_free_pps_decl (ldv_pps_decl_ptr);
 extern void ldv_free_pps_func_arg (ldv_pps_func_arg_ptr);
 extern void ldv_free_ptr_quals (ldv_pps_ptr_quals_ptr);
-extern void ldv_free_text (ldv_text_ptr);
 
 extern void ldv_delete_body (ldv_ab_ptr);
 extern void ldv_delete_id (ldv_id_ptr);
@@ -64,7 +62,6 @@ extern char *ldv_get_body_text (ldv_ab_ptr);
 extern char *ldv_get_file_name (ldv_file_ptr);
 extern char *ldv_get_id_name (ldv_id_ptr);
 extern int ldv_get_int (ldv_int_ptr);
-extern char *ldv_get_text (ldv_text_ptr);
 
 extern unsigned int ldv_get_unique_numb(void);
 
@@ -72,10 +69,8 @@ extern unsigned int ldv_get_current_line_number(const char *);
 
 extern void ldv_putc_body (unsigned char, ldv_ab_ptr);
 extern void ldv_putc_file (unsigned char, ldv_file_ptr);
-extern void ldv_putc_text (unsigned char, ldv_text_ptr);
 extern void ldv_puts_body (const char *, ldv_ab_ptr);
 extern void ldv_puts_file (const char *, ldv_file_ptr);
-extern void ldv_puts_text (const char *, ldv_text_ptr);
 
 
 #endif /* _LDV_CORE_H_ */

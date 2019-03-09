@@ -100,6 +100,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-parser.h"
+#include "ldv-cpp-advice-weaver.h"
 #include "ldv-cpp-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
@@ -492,6 +493,8 @@ compile_file (void)
   /* Perform postparsing actions for different ldv stages if needed. */
   if (ldv ())
     {
+      ldv_print_query_results ();
+
       if (ldv_instrumentation ())
         {
           /* Print needed declarations and definitions to a file processed. */
@@ -2032,6 +2035,10 @@ do_compile ()
         }
       else
         {
+          /* Print preprocessor query results after all. */
+          if (ldv ())
+            ldv_print_query_results ();
+
           timevar_stop (TV_PHASE_SETUP);
         }
 

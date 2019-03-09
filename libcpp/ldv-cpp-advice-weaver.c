@@ -31,6 +31,10 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 /* Macro from ldv-io.h that's needed for printing of matched just by name macros. */
 #define LDV_MATCHED_BY_NAME (stderr)
 
+
+static htab_t ldv_query_result_htab = NULL;
+
+
 static ldv_aspect_pattern_param_ptr ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC);
 static const char *ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
 static LDV_EVALUATE_ASPECT_PATTERN_FUNC ldv_cpp_evaluate_aspect_pattern;
@@ -38,7 +42,7 @@ static char *ldv_get_actual_args (void);
 static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
 static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
 static FILE *ldv_open_aspect_pattern_fprintf_file_stream (const char *);
-static void ldv_print_query_result (FILE *, const char *, ldv_list_ptr);
+static void ldv_store_query_results (const char *, const char *, ldv_list_ptr);
 
 ldv_aspect_pattern_param_ptr
 ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func)
@@ -137,7 +141,6 @@ ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVAL
 {
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL;
   ldv_list_ptr evaluated_aspect_patter_params = NULL;
-  FILE *file_stream = NULL;
 
   /* First parameter specifies file where information request result to be
      printed. */
@@ -151,9 +154,11 @@ ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVAL
     ldv_list_push_back (&evaluated_aspect_patter_params,
                         ldv_consume_aspect_pattern_param (&aspect_pattern_params, evaluate_aspect_pattern_func));
 
-  file_stream = ldv_open_aspect_pattern_fprintf_file_stream (ldv_get_aspect_pattern_str_param(param1));
-  ldv_print_query_result (file_stream, ldv_get_aspect_pattern_str_param(param2), evaluated_aspect_patter_params);
-  ldv_close_file_stream (file_stream);
+  /* Immediate printing query results is too inefficient since we need to open
+     files and write there exclusively (the same files may be opened and
+     written too very many times). So, let's accumulate all query results
+     first and print them at the end of operation. */
+  ldv_store_query_results (ldv_get_aspect_pattern_str_param(param1), ldv_get_aspect_pattern_str_param(param2), evaluated_aspect_patter_params);
 }
 
 void
@@ -458,14 +463,33 @@ ldv_open_aspect_pattern_fprintf_file_stream (const char *file_name)
   return aspect_pattern_param_file_stream;
 }
 
-void
-ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr pattern_params)
+struct ldv_query_results
 {
-  ldv_str_ptr conversion = NULL, text = NULL;
+  const char *filename;
+  ldv_text_ptr query_results;
+};
+
+static hashval_t
+htab_hash_path (const void *p)
+{
+  return htab_hash_string (((struct ldv_query_results *)p)->filename);
+}
+
+static int
+htab_eq_path (const void *p, const void *q)
+{
+  return strcmp (((struct ldv_query_results *)p)->filename, (const char *)q) == 0;
+}
+
+void
+ldv_store_query_results (const char *filename, const char *format, ldv_list_ptr pattern_params)
+{
+  void **slot = NULL;
+  ldv_text_ptr text = NULL;
   ldv_aspect_pattern_param_ptr param = NULL;
   const char *str = NULL;
 
-  if (!file_stream)
+  if (!filename)
     {
       LDV_CPP_FATAL_ERROR ("file stream where query result to be printed isn't specified");
     }
@@ -475,9 +499,24 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
       LDV_CPP_FATAL_ERROR ("format for query result should be specified as second parameter of each $fprintf aspect body pattern");
     }
 
+  if (!ldv_query_result_htab)
+    ldv_query_result_htab = htab_create (127, htab_hash_path, htab_eq_path, NULL);
+
+  slot = htab_find_slot_with_hash (ldv_query_result_htab, filename, htab_hash_string (filename), INSERT);
+
+  if (!*slot)
+    {
+      struct ldv_query_results *v;
+      *slot = v = XCNEW (struct ldv_query_results);
+      v->filename = filename;
+      v->query_results = ldv_create_text ();
+    }
+
+  text = ((struct ldv_query_results *)*slot)->query_results;
+
   /* Unfortunately there is not built-in feature to printf array of integers and
      strings. So we extract all conversions from a given format manually and
-     then use built-in fprintf for a single string or integer. Here is
+     then use ???built-in fprintf??? for a single string or integer. Here is
      description of conversion syntax:
      http://www.gnu.org/software/libc/manual/html_node/Output-Conversion-Syntax.html
      % [ param-no $] flags width [ . precision ] type conversion
@@ -487,82 +526,59 @@ ldv_print_query_result (FILE *file_stream, const char *format, ldv_list_ptr patt
     {
       if (*format == '%')
         {
-          /* Print previously collected text. */
-          if (text)
-            {
-              fprintf (file_stream, ldv_get_str (text));
-              text = NULL;
-            }
-
-          conversion = ldv_create_string ();
-          ldv_putc_string (*format, conversion);
-
           /* Get the rest of conversion. */
           format++;
-          while (*format)
+          switch (*format)
             {
-              ldv_putc_string (*format, conversion);
-
-              /* Formatted integer should be printed. */
-              if (*format == 'd')
+            /* Formatted integer should be printed. */
+            case 'd':
+              if (!pattern_params)
                 {
-                  if (!pattern_params)
-                    {
-                      LDV_CPP_FATAL_ERROR ("format '%%d' expects a matching integer argument");
-                    }
-
-                  param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-                  fprintf (file_stream, ldv_get_str (conversion), param->integer);
-                  pattern_params = ldv_list_get_next (pattern_params);
-                  break;
-                }
-              /* Formatted string should be printed. */
-              else if (*format == 's')
-                {
-                  if (!pattern_params)
-                    {
-                      LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument");
-                    }
-
-                  param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
-
-                  str = ldv_get_aspect_pattern_str_param(param);
-
-                  if (!str)
-                    {
-                      LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument (maybe you need to use '%%d')");
-                    }
-
-                  fprintf (file_stream, ldv_get_str (conversion), str);
-                  pattern_params = ldv_list_get_next (pattern_params);
-                  break;
-                }
-              else if (*format == '%')
-                {
-                  fprintf (file_stream, "%s", ldv_get_str (conversion));
-                  break;
+                  LDV_CPP_FATAL_ERROR ("format '%%d' expects a matching integer argument");
                 }
 
-              format++;
+              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+              ldv_puts_text (ldv_cpp_itoa (param->integer), text);
+              pattern_params = ldv_list_get_next (pattern_params);
+
+              break;
+
+            /* Formatted string should be printed. */
+            case 's':
+              if (!pattern_params)
+                {
+                  LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument");
+                }
+
+              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+
+              str = ldv_get_aspect_pattern_str_param(param);
+
+              if (!str)
+                {
+                  LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument (maybe you need to use '%%d')");
+                }
+
+              ldv_puts_text (str, text);
+              pattern_params = ldv_list_get_next (pattern_params);
+
+              break;
+
+            case '%':
+              ldv_putc_text ('%', text);
+
+              break;
+
+            default:
+              LDV_CPP_FATAL_ERROR ("unsupported format '%c'", *format);
             }
         }
-      /* Collect text without conversions. Note that we can't output single
-         characters since this doesn't take into account multi character
-         sequences. */
+      /* Collect text without conversions. */
       else
-        {
-          if (!text)
-            text = ldv_create_string ();
-
-          ldv_putc_string (*format, text);
-        }
+        ldv_putc_text (*format, text);
 
       format++;
     }
-
-  /* Print the rest of collected text. */
-  if (text)
-    fprintf (file_stream, ldv_get_str (text));
 }
 
 void
@@ -589,4 +605,27 @@ ldv_print_macro (ldv_i_macro_ptr i_macro)
       else
         fprintf (LDV_MATCHED_BY_NAME, ")");
     }
+}
+
+static int
+ldv_print_filename_query_results (void **slot, void *d)
+{
+  struct ldv_query_results *entry = (struct ldv_query_results *)*slot;
+  FILE *file_stream = NULL;
+
+  file_stream = ldv_open_aspect_pattern_fprintf_file_stream (entry->filename);
+  fprintf (file_stream, "%s", ldv_get_text (entry->query_results));
+  ldv_close_file_stream (file_stream);
+
+  return 1;
+}
+
+void
+ldv_print_query_results (void)
+{
+  /* Nothing to print. */
+  if (!ldv_query_result_htab)
+    return;
+
+  htab_traverse (ldv_query_result_htab, ldv_print_filename_query_results, NULL);
 }

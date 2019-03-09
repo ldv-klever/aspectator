@@ -77,6 +77,7 @@ extern void ldv_free_info_var (ldv_i_var_ptr);
 extern ldv_id_ptr ldv_create_id (void);
 extern ldv_str_ptr ldv_create_str (ldv_token_k);
 extern ldv_str_ptr ldv_create_string (void);
+extern ldv_text_ptr ldv_create_text (void);
 
 extern ldv_id_ptr ldv_copy_id (ldv_id_ptr);
 extern ldv_str_ptr ldv_copy_string (ldv_str_ptr);
@@ -84,12 +85,16 @@ extern ldv_str_ptr ldv_copy_string (ldv_str_ptr);
 extern void ldv_free_id (ldv_id_ptr);
 extern void ldv_free_str (ldv_str_ptr);
 extern void ldv_free_string (ldv_str_ptr);
+extern void ldv_free_text (ldv_text_ptr);
 
 extern void ldv_cpp_fatal_error (const char *, ...) ATTRIBUTE_PRINTF_1;
 
 extern char *ldv_cpp_get_body_text (ldv_ab_ptr);
 extern char *ldv_cpp_get_file_name (ldv_file_ptr);
 extern char *ldv_cpp_get_id_name (ldv_id_ptr);
+
+extern char *ldv_get_text (ldv_text_ptr);
+
 extern char *ldv_cpp_itoa (unsigned int n);
 
 extern char *ldv_get_str (ldv_str_ptr);
@@ -104,9 +109,11 @@ extern void ldv_close_file_stream (FILE *);
 extern void ldv_putc_id (unsigned char, ldv_id_ptr);
 extern void ldv_putc_str (unsigned char, ldv_str_ptr, ldv_token_k);
 extern void ldv_putc_string (unsigned char, ldv_str_ptr);
+extern void ldv_putc_text (unsigned char, ldv_text_ptr);
 extern void ldv_puts_id (const char *, ldv_id_ptr);
 extern void ldv_puts_str (const char *, ldv_str_ptr, ldv_token_k);
 extern void ldv_puts_string (const char *, ldv_str_ptr);
+extern void ldv_puts_text (const char *, ldv_text_ptr);
 
 extern void ldv_set_ldv (bool);
 extern void ldv_set_ldv_opts (bool);
