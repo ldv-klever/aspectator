@@ -37,12 +37,13 @@ static htab_t ldv_query_result_htab = NULL;
 
 static ldv_aspect_pattern_param_ptr ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr, LDV_EVALUATE_ASPECT_PATTERN_FUNC);
 static const char *ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
+static void ldv_free_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
 static LDV_EVALUATE_ASPECT_PATTERN_FUNC ldv_cpp_evaluate_aspect_pattern;
 static char *ldv_get_actual_args (void);
 static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
 static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
 static FILE *ldv_open_aspect_pattern_fprintf_file_stream (const char *);
-static void ldv_store_query_results (const char *, const char *, ldv_list_ptr);
+static void ldv_store_query_results (ldv_aspect_pattern_param_ptr, ldv_aspect_pattern_param_ptr, ldv_list_ptr);
 
 ldv_aspect_pattern_param_ptr
 ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func)
@@ -137,6 +138,25 @@ ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr param)
 }
 
 void
+ldv_free_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr param)
+{
+  if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
+    {
+      free ((void *)param->string);
+      return;
+    }
+  else if (param->kind == LDV_ASPECT_PATTERN_STRING)
+    {
+      if (param->string_eval)
+        free ((void *)param->string_eval);
+
+      return;
+    }
+
+  LDV_CPP_FATAL_ERROR ("can not get aspect pattern string parameter");
+}
+
+void
 ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func)
 {
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL;
@@ -158,7 +178,7 @@ ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVAL
      files and write there exclusively (the same files may be opened and
      written too very many times). So, let's accumulate all query results
      first and print them at the end of operation. */
-  ldv_store_query_results (ldv_get_aspect_pattern_str_param(param1), ldv_get_aspect_pattern_str_param(param2), evaluated_aspect_patter_params);
+  ldv_store_query_results (param1, param2, evaluated_aspect_patter_params);
 }
 
 void
@@ -482,22 +502,16 @@ htab_eq_path (const void *p, const void *q)
 }
 
 void
-ldv_store_query_results (const char *filename, const char *format, ldv_list_ptr pattern_params)
+ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern_param_ptr param2, ldv_list_ptr pattern_params)
 {
+  const char *filename = NULL, *format = NULL;
   void **slot = NULL;
   ldv_text_ptr text = NULL;
   ldv_aspect_pattern_param_ptr param = NULL;
   const char *str = NULL;
 
-  if (!filename)
-    {
-      LDV_CPP_FATAL_ERROR ("file stream where query result to be printed isn't specified");
-    }
-
-  if (!format)
-    {
-      LDV_CPP_FATAL_ERROR ("format for query result should be specified as second parameter of each $fprintf aspect body pattern");
-    }
+  filename = ldv_get_aspect_pattern_str_param (param1);
+  format = ldv_get_aspect_pattern_str_param (param2);
 
   if (!ldv_query_result_htab)
     ldv_query_result_htab = htab_create (127, htab_hash_path, htab_eq_path, NULL);
@@ -552,7 +566,7 @@ ldv_store_query_results (const char *filename, const char *format, ldv_list_ptr 
 
               param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
 
-              str = ldv_get_aspect_pattern_str_param(param);
+              str = ldv_get_aspect_pattern_str_param (param);
 
               if (!str)
                 {
@@ -560,6 +574,7 @@ ldv_store_query_results (const char *filename, const char *format, ldv_list_ptr 
                 }
 
               ldv_puts_text (str, text);
+              ldv_free_aspect_pattern_str_param (param);
               pattern_params = ldv_list_get_next (pattern_params);
 
               break;
@@ -579,6 +594,8 @@ ldv_store_query_results (const char *filename, const char *format, ldv_list_ptr 
 
       format++;
     }
+
+  ldv_free_aspect_pattern_str_param (param2);
 }
 
 void

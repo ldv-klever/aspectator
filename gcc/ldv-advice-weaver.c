@@ -414,7 +414,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
     {
       text = ldv_get_actual_arg_func_names ();
       if (!text)
-          text = "NULL";
+          text = ldv_copy_str ("NULL");
     }
   else if (!strcmp (pattern->name, "arg_numb"))
     number = ldv_list_len (ldv_func_arg_info_list);
@@ -470,14 +470,14 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
           if (ldv_func_signature->func_context)
             text = ldv_copy_str (ldv_print_func_name (ldv_func_signature->func_context));
           else
-            text = "NULL";
+            text = ldv_copy_str ("NULL");
         }
       else if (ldv_var_signature)
         {
           if (ldv_var_signature->func_context)
             text = ldv_copy_str (ldv_print_func_name (ldv_var_signature->func_context));
           else
-            text = "NULL";
+            text = ldv_copy_str ("NULL");
         }
       else
         internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
