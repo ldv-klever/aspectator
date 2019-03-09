@@ -2121,6 +2121,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
+      ldv_free_text (ldv_text_printed);
+
       ldv_var_signature = NULL;
       ldv_var_decl = NULL;
       ldv_var_name = NULL;
@@ -2131,38 +2133,43 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     }
   else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION|| pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC))
     {
-       ldv_text_printed = ldv_create_text ();
+      ldv_text_printed = ldv_create_text ();
 
-       ldv_func_signature = ldv_i_match->i_func;
-       ldv_func_decl = ldv_i_match->i_func->decl;
-       ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
-       ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
+      ldv_func_signature = ldv_i_match->i_func;
+      ldv_func_decl = ldv_i_match->i_func->decl;
+      ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
+      ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
 
-       /* TODO: merge this code with the same code below. */
-       /* Store an information on a function return type and function
-          arguments types that will be used in a body patterns weaving. */
-       ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (ldv_i_match->i_func_aspect->type->ret_type, NULL);
+      /* TODO: merge this code with the same code below. */
+      /* Store an information on a function return type and function
+         arguments types that will be used in a body patterns weaving. */
+      ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (ldv_i_match->i_func_aspect->type->ret_type, NULL);
 
-       ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
+      ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
 
-       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+      ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
-       ldv_list_delete_all (ldv_func_arg_type_decl_list);
-       ldv_func_arg_type_decl_list = NULL;
-       ldv_free_pps_decl (ldv_func_ret_type_decl);
-       ldv_func_ret_type_decl = NULL;
-       ldv_func_signature = NULL;
-       ldv_func_decl = NULL;
-       ldv_func_name = NULL;
-       ldv_func_ptr_name = NULL;
+      ldv_free_text (ldv_text_printed);
 
-       return;
+      ldv_list_delete_all (ldv_func_arg_type_decl_list);
+      ldv_func_arg_type_decl_list = NULL;
+      ldv_free_pps_decl (ldv_func_ret_type_decl);
+      ldv_func_ret_type_decl = NULL;
+      ldv_func_signature = NULL;
+      ldv_func_decl = NULL;
+      ldv_func_name = NULL;
+      ldv_func_ptr_name = NULL;
+
+      return;
     }
   if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_INTRODUCE)
     {
       ldv_text_printed = ldv_create_text ();
       ldv_type_decl = ldv_i_match->i_typedecl->decl;
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+
+      ldv_free_text (ldv_text_printed);
+
       ldv_type_decl = NULL;
 
       return;
