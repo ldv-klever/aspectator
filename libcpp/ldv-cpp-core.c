@@ -36,10 +36,12 @@ bool ldv_cpp_isinfo_matching_table = false;
 int ldv_cpp_stage = -1;
 
 
+static htab_t ldv_filename_htab = NULL;
+
+
 static int ldv_cmp_str_any_chars (const char *, const char *);
 static bool ldv_isany_chars(const char *);
 static void ldv_enlarge_str (ldv_str_ptr, ldv_token_k);
-
 
 int
 ldv_cmp_str (ldv_id_ptr id, const char *str)
@@ -1163,4 +1165,52 @@ ldv_truncate_braces (char *str)
   LDV_CPP_FATAL_ERROR ("can't truncate braces from \"%s\" string", str);
 
   return NULL;
+}
+
+int
+htab_eq_string (const void *s1, const void *s2)
+{
+  return strcmp ((const char*)s1, (const char*)s2) == 0;
+}
+
+/* CIF users prefer absolute normalized filenames for entities. But calling
+   lrealpath for all filenames is too expensive. Use hashtable to accumulate
+   already processed filenames. */
+struct ldv_realpath
+{
+  const char *path;
+  const char *realpath;
+};
+
+static hashval_t
+htab_hash_path (const void *p)
+{
+  return htab_hash_string (((struct ldv_realpath *)p)->path);
+}
+
+static int
+htab_eq_path (const void *p, const void *q)
+{
+  return strcmp (((struct ldv_realpath *)p)->path, (const char *)q) == 0;
+}
+
+const char *
+ldv_get_realpath (const char *filename)
+{
+  void **slot;
+
+  if (!ldv_filename_htab)
+    ldv_filename_htab = htab_create (127, htab_hash_path, htab_eq_path, NULL);
+
+  slot = htab_find_slot_with_hash (ldv_filename_htab, filename, htab_hash_string (filename), INSERT);
+
+  if (!*slot)
+    {
+      struct ldv_realpath *v;
+      *slot = v = XCNEW (struct ldv_realpath);
+      v->path = filename;
+      v->realpath = lrealpath (filename);
+    }
+
+  return ((struct ldv_realpath *)*slot)->realpath;
 }

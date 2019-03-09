@@ -285,7 +285,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   if (!LINEMAP_LINE (map))
     return;
 
-  macro->file_path = lrealpath (LINEMAP_FILE (map));
+  macro->file_path = ldv_get_realpath (LINEMAP_FILE (map));
   macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
   macro->macro_param = NULL;
 

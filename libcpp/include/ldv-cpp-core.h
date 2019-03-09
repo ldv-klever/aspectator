@@ -114,4 +114,6 @@ extern void ldv_set_ldv_stage (int);
 
 extern char *ldv_truncate_braces (char *);
 
+extern const char *ldv_get_realpath (const char *);
+
 #endif /* _LDV_CPP_CORE_H_ */
