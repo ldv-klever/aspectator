@@ -1636,10 +1636,7 @@ ldv_convert_decl_spec (tree t, bool is_decl_decl_spec)
     ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, NULL, NULL, decl_func_spec);
 
   if ((decl_type_spec = ldv_convert_type_spec (t, is_decl_decl_spec)))
-    {
-      ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, decl_type_spec, NULL, NULL);
-      XDELETE (decl_type_spec);
-    }
+    ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, decl_type_spec, NULL, NULL);
 
   if ((decl_type_qual = ldv_convert_type_qual (t)))
     ldv_new_decl_spec (&is_decl_spec, &decl_spec_cur, NULL, NULL, decl_type_qual, NULL);
