@@ -6024,16 +6024,19 @@ ldv_new_decl_spec (bool *is_decl_spec_ptr, ldv_decl_spec_ptr *decl_spec_ptr,
     {
       LDV_DECL_SPEC_TYPE_SPEC (decl_spec) = LDV_DECL_SPEC_TYPE_SPEC (decl_type_spec);
       LDV_DECL_SPEC_DECL_SPEC (decl_spec) = LDV_DECL_SPEC_DECL_SPEC (decl_type_spec);
+      XDELETE (decl_type_spec);
     }
   else if (decl_type_qual)
     {
       LDV_DECL_SPEC_TYPE_QUAL (decl_spec) = LDV_DECL_SPEC_TYPE_QUAL (decl_type_qual);
       LDV_DECL_SPEC_DECL_SPEC (decl_spec) = LDV_DECL_SPEC_DECL_SPEC (decl_type_qual);
+      XDELETE (decl_type_qual);
     }
   else
     {
       LDV_DECL_SPEC_FUNC_SPEC (decl_spec) = LDV_DECL_SPEC_FUNC_SPEC (decl_func_spec);
       LDV_DECL_SPEC_DECL_SPEC (decl_spec) = LDV_DECL_SPEC_DECL_SPEC (decl_func_spec);
+      XDELETE (decl_func_spec);
     }
 
 
