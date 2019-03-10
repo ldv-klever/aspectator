@@ -40,7 +40,6 @@ static const char *ldv_get_aspect_pattern_str_param (ldv_aspect_pattern_param_pt
 static void ldv_free_aspect_pattern_str_param (ldv_aspect_pattern_param_ptr);
 static LDV_EVALUATE_ASPECT_PATTERN_FUNC ldv_cpp_evaluate_aspect_pattern;
 static char *ldv_get_actual_args (void);
-static char *ldv_cpp_print_macro_path (ldv_i_macro_ptr);
 static char *ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro);
 static FILE *ldv_open_aspect_pattern_fprintf_file_stream (const char *);
 static void ldv_store_query_results (ldv_aspect_pattern_param_ptr, ldv_aspect_pattern_param_ptr, ldv_list_ptr);
@@ -310,7 +309,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
           text = "NULL";
     }
   else if (!strcmp (pattern->name, "path"))
-    text = ldv_cpp_print_macro_path (ldv_i_match->i_macro);
+    text = ldv_copy_str (ldv_i_match->i_macro->file_path);
   else if (!strcmp (pattern->name, "line"))
     number = ldv_i_match->i_macro->line;
 
@@ -361,25 +360,6 @@ ldv_get_actual_args (void)
     }
 
   return res;
-}
-
-char *
-ldv_cpp_print_macro_path (ldv_i_macro_ptr i_macro)
-{
-  char *path = NULL;
-  char *occurrence = NULL;
-
-  /* TODO: fix ldv_print_func_path() like here. */
-  path = xstrdup (i_macro->file_path);
-
-  /* TODO: remove processing of ".prepared" after all intermediate code will
-     reference the original one (there is the same trick in
-     gcc/ldv-advice-weaver.c). */
-  occurrence = strstr (path, ".prepared");
-  if (occurrence)
-    *occurrence = '\0';
-
-  return path;
 }
 
 char *

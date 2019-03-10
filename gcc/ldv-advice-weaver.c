@@ -156,7 +156,6 @@ static void ldv_print_int (int);
 static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_name (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
-static const char *ldv_print_file_path (const char*);
 static void ldv_print_initializer (ldv_i_initializer_ptr, ldv_text_ptr, unsigned int);
 static const char *ldv_print_line_number (unsigned int);
 static void ldv_print_macro_name (ldv_id_ptr);
@@ -488,14 +487,14 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
       if (ldv_func_signature)
         {
           if (ldv_func_signature->func_context)
-            text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->func_context->file_path));
+            text = ldv_copy_str (ldv_func_signature->func_context->file_path);
           else
             internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
       else if (ldv_var_signature)
         {
           if (ldv_var_signature->func_context)
-            text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->func_context->file_path));
+            text = ldv_copy_str (ldv_var_signature->func_context->file_path);
           else
             internal_error ("no function context was found for aspect pattern \"%s\"", pattern->name);
         }
@@ -539,9 +538,9 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsi
   else if (!strcmp (pattern->name, "path"))
     {
       if (ldv_func_signature)
-        text = ldv_copy_str (ldv_print_file_path (ldv_func_signature->file_path));
+        text = ldv_copy_str (ldv_func_signature->file_path);
       else if (ldv_var_signature)
-        text = ldv_copy_str (ldv_print_file_path (ldv_var_signature->file_path));
+        text = ldv_copy_str (ldv_var_signature->file_path);
       else
         internal_error ("no signature was found for aspect pattern \"%s\"", pattern->name);
     }
@@ -1421,23 +1420,6 @@ ldv_print_func_decl (ldv_i_func_ptr func)
   ldv_padding_cur = LDV_PADDING_NONE;
 
   ldv_print_decl (decl);
-
-  return ldv_get_text (ldv_text_printed);
-}
-
-const char *
-ldv_print_file_path (const char* path)
-{
-  char* occurrence = NULL;
-
-  ldv_text_printed = ldv_create_text ();
-
-  ldv_padding_cur = LDV_PADDING_NONE;
-
-  occurrence = (char*)strstr(path, ".prepared");
-  if (occurrence)
-    *occurrence = '\0';
-  ldv_print_str (path);
 
   return ldv_get_text (ldv_text_printed);
 }
