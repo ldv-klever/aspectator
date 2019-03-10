@@ -1622,7 +1622,7 @@ char *
 ldv_print_var_decl (ldv_i_var_ptr var)
 {
   ldv_pps_decl_ptr decl;
-  char *str;
+  /* char *str; */
 
   decl = ldv_convert_internal_to_declaration (var->type, ldv_get_id_name (var->name));
 
@@ -2166,13 +2166,25 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_free_text (ldv_text_printed);
 
+      for (str_list = ldv_func_arg_type_name_list
+        ; str_list
+        ; str_list = ldv_list_get_next (str_list))
+        {
+          str = (ldv_str_ptr) ldv_list_get_data (str_list);
+          ldv_free_str (str);
+        }
+
+      ldv_list_delete_all (ldv_func_arg_type_name_list);
+
       ldv_free_func_arg_type_decl_list ();
       ldv_free_pps_decl (ldv_func_ret_type_decl);
+
       ldv_func_ret_type_decl = NULL;
       ldv_func_signature = NULL;
       ldv_func_decl = NULL;
       ldv_func_name = NULL;
       ldv_func_ptr_name = NULL;
+      ldv_func_arg_type_name_list = NULL;
 
       return;
     }
