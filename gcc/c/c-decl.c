@@ -57,6 +57,7 @@ along with GCC; see the file COPYING3.  If not see
 /* LDV extension beginning. */
 
 #include "ldv-advice-weaver.h"
+#include "ldv-cpp-core.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "ldv-io.h"
 #include "ldv-opts.h"
@@ -5204,14 +5205,19 @@ finish_decl (tree decl, location_t init_loc, tree init,
         }
       else if (ldv_instrumentation () && TREE_CODE (decl) == FUNCTION_DECL)
         {
+          ldv_i_func_ptr i_func = NULL;
+
           /* Try to match a function declaration. */
-          ldv_match_func (decl, 0, LDV_PP_DECLARE_FUNC);
+          i_func = ldv_match_func (decl, 0, LDV_PP_DECLARE_FUNC);
 
           /* Instance a matched advice. */
           ldv_weave_advice (NULL, NULL);
 
           /* Finish match. */
           ldv_i_match = NULL;
+
+          if (i_func)
+            ldv_free_info_func (i_func);
         }
       else if (ldv_instrumentation () && TREE_CODE (decl) == TYPE_DECL)
         {
@@ -9344,7 +9350,7 @@ void
 finish_function (void)
 {
   tree fndecl = current_function_decl;
-  
+
   /* LDV extension begin. */
 
   /* Variable to store an internal representation of the function signature. */

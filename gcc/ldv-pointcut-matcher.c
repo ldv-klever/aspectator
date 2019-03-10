@@ -1037,17 +1037,19 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
         }
     }
 
+  /* Nothing was matched. */
+  ldv_free_info_match (match);
+  ldv_i_match = NULL;
+
   /* We need to remember current function context till we will finish processing
      of this function body. */
   if (pp_kind != LDV_PP_EXECUTION)
-    ldv_free_info_func (func);
-
-  ldv_free_info_match (match);
-
-  /* Nothing was matched. */
-  ldv_i_match = NULL;
-
-  return func;
+    {
+      ldv_free_info_func (func);
+      return NULL;
+    }
+  else
+    return func;
 }
 
 void
