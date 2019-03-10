@@ -2120,6 +2120,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_free_text (ldv_text_printed);
 
+      ldv_free_info_match (ldv_i_match);
+
       ldv_var_signature = NULL;
       ldv_var_decl = NULL;
       ldv_var_name = NULL;
@@ -2161,6 +2163,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_free_func_arg_type_decl_list ();
       ldv_free_pps_decl (ldv_func_ret_type_decl);
 
+      ldv_free_info_match (ldv_i_match);
+
       ldv_func_ret_type_decl = NULL;
       ldv_func_signature = NULL;
       ldv_func_decl = NULL;
@@ -2177,6 +2181,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
       ldv_free_text (ldv_text_printed);
+
+      ldv_free_info_match (ldv_i_match);
 
       ldv_type_decl = NULL;
 
