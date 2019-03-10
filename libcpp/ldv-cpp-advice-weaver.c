@@ -94,7 +94,11 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
 
           /* See comment below. */
           if (param->string_eval)
-            ldv_puts_string (param->string_eval, str);
+            {
+              ldv_puts_string (param->string_eval, str);
+              /* param->string_eval will be overwritten below. */
+              free ((void *)param->string_eval);
+            }
           else
             ldv_puts_string (param->string, str);
 
@@ -103,7 +107,10 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
           /* We can not change pure string aspect pattern parameters since
              next time we will use already changed values. */
           if (param->kind == LDV_ASPECT_PATTERN_ASPECT_PATTERN)
-            param->string = ldv_get_str (str);
+            {
+              free ((void *)param->string);
+              param->string = ldv_get_str (str);
+            }
           else
             param->string_eval = ldv_get_str (str);
 
