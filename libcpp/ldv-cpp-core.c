@@ -464,6 +464,9 @@ ldv_free_info_func (ldv_i_func_ptr func)
   if (func->name && func->name->id_name)
     ldv_free_id (func->name);
 
+  if (func->ptr_name)
+    ldv_free_id (func->ptr_name);
+
   ldv_free_info_type (func->type);
 
   free (func->decl);

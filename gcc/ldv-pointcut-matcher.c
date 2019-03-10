@@ -911,18 +911,18 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
   isfunc_ptr = (TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == PARM_DECL || TREE_CODE (t) == FIELD_DECL);
 
   /* Obtain information on a function signature. */
-  func->name = ldv_create_id ();
-  func->ptr_name = ldv_create_id ();
 
   /* If function is called by pointer we won't treat its name since we don't
      know it (we know just a name of variable or field that holds corresponding
      function pointer). */
   if (!isfunc_ptr)
     {
+      func->name = ldv_create_id ();
       ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), func->name);
     }
   else
     {
+      func->ptr_name = ldv_create_id ();
       if (TREE_CODE (t) == FIELD_DECL && TREE_CODE (DECL_CONTEXT (t)) == RECORD_TYPE && TYPE_NAME (DECL_CONTEXT (t)))
         {
           if (TREE_CODE (TYPE_NAME (DECL_CONTEXT (t))) == IDENTIFIER_NODE)
@@ -1010,7 +1010,10 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
           /* Count advice weavings. */
           ++(adef->use_counter);
 
-          ldv_print_info (LDV_INFO_MATCH, "match function \"%s\"", ldv_get_id_name (func->name));
+          if (func->name)
+            ldv_print_info (LDV_INFO_MATCH, "match function \"%s\"", ldv_get_id_name (func->name));
+          else
+            ldv_print_info (LDV_INFO_MATCH, "match function called by pointer");
 
           ldv_i_match = match;
           match->a_definition = adef;

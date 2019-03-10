@@ -2136,8 +2136,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       ldv_func_signature = ldv_i_match->i_func;
       ldv_func_decl = ldv_i_match->i_func->decl;
-      ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
-      ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
+      if (ldv_func_signature->name)
+        ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
+      if (ldv_func_signature->ptr_name)
+        ldv_func_ptr_name = ldv_get_id_name (ldv_func_signature->ptr_name);
 
       /* TODO: merge this code with the same code below. */
       /* Store an information on a function return type and function

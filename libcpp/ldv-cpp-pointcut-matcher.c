@@ -456,8 +456,8 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   i_match->i_func_aspect = func_aspect;
 
   /* Compare functions names. If function is called by pointer, then source
-     function name is empty string and aspect function name is ignored. */
-  if (strcmp ("", ldv_cpp_get_id_name (func_source->name)) && ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
+     function name is not set and aspect function name is ignored. */
+  if (func_source->name && ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
     {
       ldv_free_info_func (func_aspect);
       return false;
@@ -465,10 +465,13 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
 
   /* Replace aspect function name used just for a current matching with
      the source one since they match each other but the aspect one can
-     contain '$' wildcards.*/
-  ldv_free_id (func_aspect->name);
-  func_aspect->name = ldv_create_id ();
-  ldv_puts_id (ldv_cpp_get_id_name (func_source->name), func_aspect->name);
+     contain '$' wildcards. Skip this for functions called by pointers. */
+  if (func_source->name)
+    {
+      ldv_free_id (func_aspect->name);
+      func_aspect->name = ldv_create_id ();
+      ldv_puts_id (ldv_cpp_get_id_name (func_source->name), func_aspect->name);
+    }
 
   /* Specify that a function was matched by name. */
   i_match->ismatched_by_name = true;
