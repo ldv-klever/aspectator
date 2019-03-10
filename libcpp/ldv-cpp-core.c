@@ -460,7 +460,8 @@ ldv_create_info_func (void)
 void
 ldv_free_info_func (ldv_i_func_ptr func)
 {
-  if (func->name)
+  /* Aspect functions can omit actual identifier. */
+  if (func->name && func->name->id_name)
     ldv_free_id (func->name);
 
   ldv_free_info_type (func->type);
@@ -580,6 +581,9 @@ ldv_create_info_match (void)
 void
 ldv_free_info_match (ldv_i_match_ptr match)
 {
+  if (match->i_func_aspect)
+    ldv_free_info_func (match->i_func_aspect);
+
   free (match);
 }
 
