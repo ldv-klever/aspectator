@@ -512,9 +512,14 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
     {
       struct ldv_query_results *v;
       *slot = v = XCNEW (struct ldv_query_results);
-      v->filename = filename;
+      v->filename = ldv_copy_str (filename);
       v->query_results = ldv_create_text ();
     }
+
+  /* filename was copied above and corresponding memory will be freed after
+     actual printing of query results. First aspect pattern parameter is not
+     needed anymore. */
+  ldv_free_aspect_pattern_str_param (param1);
 
   text = ((struct ldv_query_results *)*slot)->query_results;
 
@@ -623,6 +628,8 @@ ldv_print_filename_query_results (void **slot, void *d)
   file_stream = ldv_open_aspect_pattern_fprintf_file_stream (entry->filename);
   fprintf (file_stream, "%s", ldv_get_text (entry->query_results));
   ldv_close_file_stream (file_stream);
+  /* We will not need this filename anymore. */
+  free ((void *)entry->filename);
 
   return 1;
 }
