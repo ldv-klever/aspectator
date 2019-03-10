@@ -60,6 +60,17 @@ ldv_cmp_str (ldv_id_ptr id, const char *str)
   return ldv_cmp_str_any_chars (id_name, str);
 }
 
+static void
+ldv_free_symbol_matching_table (bool **symbol_matching_table, unsigned int id_symbol_numb)
+{
+  unsigned int i;
+
+  for (i = 0; i < id_symbol_numb; i++)
+    free (symbol_matching_table[i]);
+
+  free (symbol_matching_table);
+}
+
 static int
 ldv_cmp_str_any_chars (const char *id, const char *str)
 {
@@ -131,9 +142,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
       /* Initialize the whole matching table with false values at the
        * beginning. */
       for (j = 0; j < str_symbol_numb; j++)
-        {
-          symbol_matching_table[i][j] = false;
-        }
+        symbol_matching_table[i][j] = false;
     }
 
   /* Fill table by going through its rows (directly from the first to
@@ -151,9 +160,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
           if (ldv_isany_chars (id))
             {
               for (j = 0; j < str_symbol_numb; j++)
-                {
-                  symbol_matching_table[i][j] = true;
-                }
+                symbol_matching_table[i][j] = true;
             }
           /* Otherwise the first row element must coinside with the
            * first column element. */
@@ -165,6 +172,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
           /* Identifier and string don't coinside. */
           else
             {
+              ldv_free_symbol_matching_table (symbol_matching_table, id_symbol_numb);
               return 1;
             }
         }
@@ -179,9 +187,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
           if (ldv_isany_chars (id + i))
             {
               for (j = j_first_matched; j < str_symbol_numb; j++)
-                {
-                  symbol_matching_table[i][j] = true;
-                }
+                symbol_matching_table[i][j] = true;
             }
           /* Otherwise try to find all correspondence to column
            * elements for the given row element. */
@@ -219,6 +225,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
               /* Finish because of can't find correspondence at all. */
               if (!ismatched)
                 {
+                  ldv_free_symbol_matching_table (symbol_matching_table, id_symbol_numb);
                   return 1;
                 }
             }
@@ -234,9 +241,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
 
       /* Print Ox axis signatures. */
       for (j = 0; j < str_symbol_numb; j++)
-        {
-          fprintf (stderr, "%2d  ", (j + 1));
-        }
+        fprintf (stderr, "%2d  ", (j + 1));
 
       fprintf (stderr, "\n");
 
@@ -253,9 +258,7 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
 
               /* Print sepator between elements. */
               if (j != str_symbol_numb - 1)
-                {
-                  fprintf (stderr, ", ");
-                }
+                fprintf (stderr, ", ");
             }
 
           fprintf (stderr, "\n");
@@ -270,15 +273,16 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
   /* Skip $ wildcard that catches nothing and that is placed at the last
    * row. */
   if (ldv_isany_chars (id + i) && !symbol_matching_table[i][j])
-    {
-      i--;
-    }
+    i--;
 
   /* There is no 'true' path in matching table. */
   if (!symbol_matching_table[i][j])
     {
+      ldv_free_symbol_matching_table (symbol_matching_table, id_symbol_numb);
       return 1;
     }
+
+  ldv_free_symbol_matching_table (symbol_matching_table, id_symbol_numb);
 
   /* Identifier correspond to the given string. */
   return 0;
