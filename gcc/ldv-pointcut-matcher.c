@@ -814,6 +814,7 @@ ldv_match_expr (tree t, tree context)
                   ldv_weave_advice (NULL, &func_close_brace_location);
 
                   /* Finish matching. */
+                  ldv_free_info_func (ldv_i_match->i_func);
                   ldv_i_match = NULL;
 
                   /* Change a function call to an aspect function call if it's
