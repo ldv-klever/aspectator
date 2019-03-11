@@ -400,7 +400,7 @@ ldv_get_aspect_pattern_env (ldv_aspect_pattern_ptr pattern)
     internal_error ("aspect pattern \"%s\" should have the only string parameter", pattern->name);
 
   if (!(value = getenv (param->string)))
-    internal_error ("couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
+    fatal_error (UNKNOWN_LOCATION, "couldn't obtain a value of environment variable \"%s\" corresponding to aspect pattern \"%s\"", param->string, pattern->name);
 
   return value;
 }
