@@ -281,6 +281,7 @@ ldv_match_expr (tree t, tree context)
   tree arg = NULL_TREE;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
+  ldv_i_func_ptr func = NULL;
 
   /* Stop processing if there is not a node given. */
   if (!t)
@@ -794,7 +795,7 @@ ldv_match_expr (tree t, tree context)
             && !DECL_IS_BUILTIN (func_called))
             {
               /* Try to match a function declaration for a call join point. */
-              ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);
+              func = ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);
 
               if (ldv_i_match)
                 {
@@ -814,7 +815,7 @@ ldv_match_expr (tree t, tree context)
                   ldv_weave_advice (NULL, &func_close_brace_location);
 
                   /* Finish matching. */
-                  ldv_free_info_func (ldv_i_match->i_func);
+                  ldv_free_info_func (func);
                   ldv_i_match = NULL;
 
                   /* Change a function call to an aspect function call if it's
