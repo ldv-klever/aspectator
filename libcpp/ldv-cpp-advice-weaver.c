@@ -290,7 +290,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
   if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
     text = ldv_cpp_print_macro_signature (ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "macro_name"))
-    text = ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name);
+    text = ldv_copy_str (ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name));
   else if (!strcmp (pattern->name, "arg_val"))
     {
       for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
