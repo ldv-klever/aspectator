@@ -969,15 +969,16 @@ _cpp_clean_line (cpp_reader *pfile)
 	    {
 	      /* Record the location of the backslash and continue.  */
 	      pbackslash = s++;
-	      
+
 	      /* LDV extension beginning. */
 
 	      /* Ignore backslashes encountered during the aspect
 	         preprocessing stage (#865, comment 20). */
 	      if (ldv_cpp_stage == 0)
 		pbackslash = NULL;
-	
+
 	      /* LDV extension end. */
+
 	    }
 	  else if (__builtin_expect (c == '?', 0))
 	    {
@@ -2779,13 +2780,9 @@ _cpp_lex_direct (cpp_reader *pfile)
   if (ldv_cpp_stage == 0)
     {
       if (c == '#')
-        {
-          c = '@';
-        }
+        c = '@';
       else if (c == '@')
-        {
-          c = '#';
-        }
+        c = '#';
     }
 
   /* LDV extension end. */

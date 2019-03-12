@@ -656,11 +656,13 @@ do_define (cpp_reader *pfile)
     }
 
   /* LDV extension beginning. */
-  
-  if (ldv_cpp)
+
+
+  /* Treat only non-builtin macros. */
+  if (ldv_cpp && LINEMAP_LINE (LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table)))
     /* Try to match macro definition. */
     ldv_match_macro (pfile, node, NULL, LDV_PP_DEFINE);
-      
+
   /* LDV extension end. */  
 
 }

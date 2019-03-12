@@ -1173,16 +1173,17 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 			  (macro_arg *) buff->base,
 			  location);
 
-    /* LDV extension beginning. */
+	  /* LDV extension beginning. */
 
-	  if (ldv_cpp)
+	  /* Treat only non-builtin macros. */
+	  if (ldv_cpp && LINEMAP_LINE (LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table)))
 	    {
 	      ldv_macro_params = (const cpp_token ***) XNEWVEC (const cpp_token **, macro->paramc);
 
 	      for (i = 0; i < macro->paramc; i++)
 	        ldv_macro_params[i] = (((macro_arg *) buff->base)[i]).first;
 
-	      /* Try to match macro definition. */
+	      /* Try to match macrofunction definition. */
 	      ldv_match_macro (pfile, node, ldv_macro_params, LDV_PP_EXPAND);
 
 	      /* Weave macro expansion if macro was matched. */
@@ -1202,7 +1203,11 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 	     funlike_invocation_p and by replace_args.  */
 	  delete_macro_args (buff, num_args);
 	}
-      else
+
+      /* LDV extension beginning. */
+
+      /* Treat only non-builtin macros. */
+      if (ldv_cpp && ! macro->fun_like && LINEMAP_LINE (LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table)))
 	{
 	   /* Try to match macro definition. */
 	   ldv_match_macro (pfile, node, NULL, LDV_PP_EXPAND);
@@ -1216,6 +1221,8 @@ enter_macro_context (cpp_reader *pfile, cpp_hashnode *node,
 	       ldv_i_match = NULL;
 	     }
 	}
+
+      /* LDV extension end. */
 
       /* Disable the macro within its expansion.  */
       node->flags |= NODE_DISABLED;

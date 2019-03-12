@@ -279,12 +279,6 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
 
   map = LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table);
-
-  /* Skip built-in macro definitions. Anyway because of there isn't appropriate
-   * weaving for them above their instrumentation or querying is broken. */
-  if (!LINEMAP_LINE (map))
-    return;
-
   macro->file_path = ldv_get_realpath (LINEMAP_FILE (map));
   macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
   macro->macro_param = NULL;
