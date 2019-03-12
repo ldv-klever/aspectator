@@ -6019,6 +6019,7 @@ ldv_new_decl_spec (bool *is_decl_spec_ptr, ldv_decl_spec_ptr *decl_spec_ptr,
     {
       LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec) = LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_storage_class_spec);
       LDV_DECL_SPEC_DECL_SPEC (decl_spec) = LDV_DECL_SPEC_DECL_SPEC (decl_storage_class_spec);
+      XDELETE (decl_storage_class_spec);
     }
   else if (decl_type_spec)
     {
