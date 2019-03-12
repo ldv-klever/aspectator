@@ -333,7 +333,7 @@ char *
 ldv_get_actual_args (void)
 {
   unsigned int i;
-  char *i_str;
+  const char *i_str;
   ldv_list_ptr actual_args_list = NULL;
   char *actual_arg = NULL;
   ldv_str_ptr actual_args = NULL;
@@ -357,7 +357,7 @@ ldv_get_actual_args (void)
 
       i_str = ldv_cpp_itoa (i);
       ldv_puts_string (i_str, actual_args);
-      free (i_str);
+      free ((void *)i_str);
 
       ldv_putc_string ('=', actual_args);
       ldv_puts_string (actual_arg, actual_args);
@@ -552,7 +552,9 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
                 }
 
               param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (param_list);
-              ldv_puts_text (ldv_cpp_itoa (param->integer), text);
+              str = ldv_cpp_itoa (param->integer);
+              ldv_puts_text (str, text);
+              free ((void *)str);
               param_list = ldv_list_get_next (param_list);
 
               break;

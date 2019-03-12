@@ -358,7 +358,7 @@ ldv_get_text (ldv_text_ptr text)
   return NULL;
 }
 
-char *
+const char *
 ldv_cpp_itoa (unsigned int n)
 {
   unsigned int int_digits = 1, order = 10;
