@@ -847,13 +847,17 @@ ldv_match_expr (tree t, tree context)
           else if ((func_called_addr = CALL_EXPR_FN (t))
             && TREE_CODE (func_called_addr) == COMPONENT_REF)
             {
-              ldv_match_func (TREE_OPERAND (func_called_addr, 1), EXPR_LINENO(t), LDV_PP_CALLP);
+              func = ldv_match_func (TREE_OPERAND (func_called_addr, 1), EXPR_LINENO(t), LDV_PP_CALLP);
 
               /* Weave a matched advice. */
               ldv_weave_advice (NULL, NULL);
 
               /* Finish matching. */
-              ldv_i_match = NULL;
+              if (ldv_i_match)
+                {
+                  ldv_free_info_func (func);
+                  ldv_i_match = NULL;
+                }
             }
 
           /* Walk through function arguments to free memory. */
