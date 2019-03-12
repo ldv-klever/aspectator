@@ -316,7 +316,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, 
     {
       text = ldv_get_actual_args ();
       if (!text)
-          text = "NULL";
+          text = ldv_copy_str ("NULL");
     }
   else if (!strcmp (pattern->name, "path"))
     text = ldv_copy_str (ldv_i_match->i_macro->file_path);
@@ -626,7 +626,7 @@ ldv_print_macro (ldv_i_macro_ptr i_macro)
 }
 
 static int
-ldv_print_filename_query_results (void **slot, void *d)
+ldv_print_filename_query_results (void **slot, void *d ATTRIBUTE_UNUSED)
 {
   struct ldv_query_results *entry = (struct ldv_query_results *)*slot;
   FILE *file_stream = NULL;
