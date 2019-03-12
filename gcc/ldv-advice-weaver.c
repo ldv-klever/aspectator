@@ -2405,12 +2405,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_weave_func_source (func_aspect, pp_kind);
         }
 
-      /* Memory will be freed later when scanning of this function body will be
-         completed. */
-      if (pp_kind != LDV_PP_EXECUTION)
-        ldv_free_info_func (func_source);
-
-      ldv_free_info_func (func_aspect);
       ldv_free_info_match (ldv_i_match);
 
       break;

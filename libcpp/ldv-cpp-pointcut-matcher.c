@@ -454,6 +454,7 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   if (func_source->name && ldv_cmp_str (func_aspect->name, ldv_cpp_get_id_name (func_source->name)))
     {
       ldv_free_info_func (func_aspect);
+      i_match->i_func_aspect = NULL;
       return false;
     }
 
@@ -474,6 +475,7 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   if (!ldv_match_type (func_source->type, func_aspect->type))
     {
       ldv_free_info_func (func_aspect);
+      i_match->i_func_aspect = NULL;
       return false;
     }
 
