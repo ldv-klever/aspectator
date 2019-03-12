@@ -500,6 +500,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
   const char *filename = NULL, *format = NULL;
   void **slot = NULL;
   ldv_text_ptr text = NULL;
+  ldv_list_ptr param_list = NULL;
   ldv_aspect_pattern_param_ptr param = NULL;
   const char *str = NULL;
 
@@ -534,6 +535,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
      % [ param-no $] flags width [ . precision ] type conversion
      % [ param-no $] flags width . * [ param-no $] type conversion
   */
+  param_list = pattern_params;
   while (*format)
     {
       if (*format == '%')
@@ -544,25 +546,25 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
             {
             /* Formatted integer should be printed. */
             case 'd':
-              if (!pattern_params)
+              if (!param_list)
                 {
                   LDV_CPP_FATAL_ERROR ("format '%%d' expects a matching integer argument");
                 }
 
-              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (param_list);
               ldv_puts_text (ldv_cpp_itoa (param->integer), text);
-              pattern_params = ldv_list_get_next (pattern_params);
+              param_list = ldv_list_get_next (param_list);
 
               break;
 
             /* Formatted string should be printed. */
             case 's':
-              if (!pattern_params)
+              if (!param_list)
                 {
                   LDV_CPP_FATAL_ERROR ("format '%%s' expects a matching string argument");
                 }
 
-              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (pattern_params);
+              param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (param_list);
 
               str = ldv_get_aspect_pattern_str_param (param);
 
@@ -573,7 +575,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
 
               ldv_puts_text (str, text);
               ldv_free_aspect_pattern_str_param (param);
-              pattern_params = ldv_list_get_next (pattern_params);
+              param_list = ldv_list_get_next (param_list);
 
               break;
 
@@ -593,6 +595,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
       format++;
     }
 
+  ldv_list_delete_all (pattern_params);
   ldv_free_aspect_pattern_str_param (param2);
 }
 
