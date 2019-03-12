@@ -1007,12 +1007,16 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
         continue;
 
       /* If a given function name can't be found in hash table (if so), then
-         there is no need to use heavy-weight comparison further. */
-      called_func_names = adef->a_declaration->called_func_names;
-      if (called_func_names != NULL
-        && !htab_find_with_hash (called_func_names, "$", (*htab_hash_string) ("$"))
-        && !htab_find_with_hash (called_func_names, ldv_get_id_name (func->name), (*htab_hash_string) (ldv_get_id_name (func->name))))
-        continue;
+         there is no need to use heavy-weight comparison further. This check
+         is not performed for functions called by pointers. */
+      if (func->name)
+        {
+          called_func_names = adef->a_declaration->called_func_names;
+          if (called_func_names != NULL
+            && !htab_find_with_hash (called_func_names, "$", (*htab_hash_string) ("$"))
+            && !htab_find_with_hash (called_func_names, ldv_get_id_name (func->name), (*htab_hash_string) (ldv_get_id_name (func->name))))
+            continue;
+        }
 
       if (ldv_match_cp (c_pointcut, match))
         {
