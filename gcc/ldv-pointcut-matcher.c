@@ -301,11 +301,15 @@ ldv_match_expr (tree t, tree context)
     case tcc_declaration:
       if (code == FUNCTION_DECL)
         {
-          ldv_match_func (t, EXPR_LINENO(context), LDV_PP_USE_FUNC);
+          func = ldv_match_func (t, EXPR_LINENO(context), LDV_PP_USE_FUNC);
 
           ldv_weave_advice (NULL, NULL);
 
-          ldv_i_match = NULL;
+          if (ldv_i_match)
+            {
+              ldv_free_info_func (func);
+              ldv_i_match = NULL;
+            }
         }
       else if (code == VAR_DECL)
         {
