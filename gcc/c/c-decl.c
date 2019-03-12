@@ -5228,7 +5228,12 @@ finish_decl (tree decl, location_t init_loc, tree init,
           ldv_weave_advice (NULL, NULL);
 
           /* Finish match. */
-          ldv_i_match = NULL;
+          if (ldv_i_match)
+            {
+              ldv_free_info_typedecl (ldv_i_match->i_typedecl);
+              ldv_free_info_match (ldv_i_match);
+              ldv_i_match = NULL;
+            }
         }
     }
 

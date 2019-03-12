@@ -2179,13 +2179,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_INTRODUCE)
     {
       ldv_text_printed = ldv_create_text ();
+
       ldv_type_decl = ldv_i_match->i_typedecl->decl;
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
       ldv_free_text (ldv_text_printed);
-
-      ldv_free_info_match (ldv_i_match);
-
       ldv_type_decl = NULL;
 
       return;
@@ -2413,6 +2411,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
         ldv_free_info_func (func_source);
 
       ldv_free_info_func (func_aspect);
+      ldv_free_info_match (ldv_i_match);
 
       break;
 
@@ -2587,13 +2586,13 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       else if (ldv_compilation ())
         ldv_weave_var_source (var, pp_kind);
 
+      ldv_free_info_match (ldv_i_match);
+
       break;
 
     default:
       internal_error ("incorrect information kind \"%d\" is used", ldv_i_match->i_kind);
     }
-
-  ldv_free_info_match (ldv_i_match);
 }
 
 void
