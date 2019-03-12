@@ -1181,7 +1181,7 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
               typedecl_printed = ldv_print_type_decl (match->i_typedecl);
               ldv_puts (typedecl_printed, LDV_MATCHED_BY_NAME);
               ldv_puts ("\n  aspect type declaration: ", LDV_MATCHED_BY_NAME);
-              typedecl_printed = ldv_print_type_decl (match->i_typedecl_aspect);
+              // typedecl_printed = ldv_print_type_decl (match->i_typedecl_aspect);
               ldv_puts (typedecl_printed, LDV_MATCHED_BY_NAME);
               ldv_puts ("\n", LDV_MATCHED_BY_NAME);
             }
@@ -1190,7 +1190,6 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
         }
     }
 
-  ldv_free_info_typedecl (typedecl);
   ldv_free_info_match (match);
 
   /* Nothing was matched. */

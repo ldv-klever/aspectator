@@ -1347,29 +1347,29 @@ ldv_match_typedecl_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_type
   typedecl_source = i_match->i_typedecl;
   typedecl_aspect = ldv_convert_typedecl_signature_to_internal (pps_typedecl);
 
-  /* Set an aspect type declaration. */
-  i_match->i_typedecl_aspect = typedecl_aspect;
-
   /* Compare type declaration names. */
   if (ldv_cmp_str (typedecl_aspect->name, ldv_cpp_get_id_name (typedecl_source->name)))
-    return false;
-
-  /* Replace aspect type declaration name used just for a current matching with
-     the source one since they match each other but the aspect one can contain
-     '$' wildcards.*/
-  typedecl_aspect->name = typedecl_source->name;
+    {
+      ldv_free_info_typedecl (typedecl_aspect);
+      return false;
+    }
 
   /* Specify that a type declaration was matched by a name. */
   i_match->ismatched_by_name = true;
 
   /* Compare type definition types. */
   if (!ldv_match_type (typedecl_source->type, typedecl_aspect->type))
-    return false;
-
+    {
+      ldv_free_info_typedecl (typedecl_aspect);
+      return false;
+    }
 
   /* Specify that a type declaration was matched by a whole signature not just
      by a name. */
   i_match->ismatched_by_name = false;
+
+  /* We don't need aspect typedecl for weaving. */
+  ldv_free_info_typedecl (typedecl_aspect);
 
   return true;
 }

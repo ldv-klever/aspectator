@@ -5230,7 +5230,6 @@ finish_decl (tree decl, location_t init_loc, tree init,
           /* Finish match. */
           if (ldv_i_match)
             {
-              ldv_free_info_typedecl (ldv_i_match->i_typedecl);
               ldv_free_info_match (ldv_i_match);
               ldv_i_match = NULL;
             }

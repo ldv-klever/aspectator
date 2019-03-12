@@ -591,6 +591,9 @@ ldv_free_info_match (ldv_i_match_ptr match)
   if (match->i_func_aspect)
     ldv_free_info_func (match->i_func_aspect);
 
+  if (match->i_typedecl)
+    ldv_free_info_typedecl (match->i_typedecl);
+
   free (match);
 }
 

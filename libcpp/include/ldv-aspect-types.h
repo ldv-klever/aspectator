@@ -533,7 +533,6 @@ typedef struct ldv_info_match_internal
   ldv_i_param_ptr i_param;
   ldv_i_param_ptr i_param_aspect;
   ldv_i_typedecl_ptr i_typedecl;
-  ldv_i_typedecl_ptr i_typedecl_aspect;
   ldv_i_var_ptr i_var;
   ldv_i_var_ptr i_var_aspect;
   ldv_adef_ptr a_definition;
