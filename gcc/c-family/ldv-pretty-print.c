@@ -1436,37 +1436,59 @@ ldv_print_direct_abstract_declarator (unsigned int indent_level, ldv_direct_abst
   ldv_abstract_declarator_ptr abstract_declarator;
   ldv_direct_abstract_declarator_ptr direct_abstract_declarator_next;
   ldv_param_type_list_ptr param_type_list;
-  int assign_expr;
+  ldv_assignment_expr_ptr assignment_expr;
 
-  if ((abstract_declarator = LDV_DIRECT_ABSTRACT_DECLARATOR_ABSTRACT_DECLARATOR (direct_abstract_declarator)))
+  switch (LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator))
     {
+    case LDV_DIRECT_ABSTRACT_DECLARATOR_FIRST:
       ldv_c_backend_print (indent_level, true, "(");
       ldv_c_backend_padding_cancel ();
-      ldv_print_abstract_declarator (indent_level, abstract_declarator);
+
+      if ((abstract_declarator = LDV_DIRECT_ABSTRACT_DECLARATOR_ABSTRACT_DECLARATOR (direct_abstract_declarator)))
+        ldv_print_abstract_declarator (indent_level, abstract_declarator);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "abstract declarator of direct abstract declarator was not printed");
+
       ldv_c_backend_print (indent_level, false, ")");
-    }
-  else
-    {
+
+      break;
+
+    case LDV_DIRECT_ABSTRACT_DECLARATOR_SECOND:
+    case LDV_DIRECT_ABSTRACT_DECLARATOR_THIRD:
+    case LDV_DIRECT_ABSTRACT_DECLARATOR_FOURTH:
       if ((direct_abstract_declarator_next = LDV_DIRECT_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (direct_abstract_declarator)))
         ldv_print_direct_abstract_declarator (indent_level, direct_abstract_declarator_next);
 
-      if ((assign_expr = LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR (direct_abstract_declarator)))
+      if (LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) == LDV_DIRECT_ABSTRACT_DECLARATOR_SECOND
+        || LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) == LDV_DIRECT_ABSTRACT_DECLARATOR_THIRD)
         {
           ldv_c_backend_print (indent_level, false, "[");
-          //TODO fix assign expr!
-          ldv_c_backend_print (indent_level, false, "%d", assign_expr);
+
+          if (LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) == LDV_DIRECT_ABSTRACT_DECLARATOR_SECOND)
+            {
+              if ((assignment_expr = LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR (direct_abstract_declarator)))
+                ldv_print_assignment_expr (indent_level, assignment_expr);
+            }
+          else
+            LDV_ERROR ("something strange");
+
           ldv_c_backend_print (indent_level, false, "]");
         }
-      else if ((param_type_list = LDV_DIRECT_ABSTRACT_DECLARATOR_PARAM_TYPE_LIST (direct_abstract_declarator)))
+      else if (LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) == LDV_DIRECT_ABSTRACT_DECLARATOR_FOURTH)
         {
           ldv_c_backend_print (indent_level, false, "(");
-          ldv_print_param_type_list (indent_level, param_type_list);
-          ldv_c_backend_print (indent_level, false, ")");
-        }
-    }
 
-  if (!abstract_declarator && !direct_abstract_declarator && !assign_expr && !param_type_list)
-    LDV_ERROR ("neither direct abstract declarator abstract declarator nor direct abstract declarator nor assignment expression nor parameter type list was printed");
+          if ((param_type_list = LDV_DIRECT_ABSTRACT_DECLARATOR_PARAM_TYPE_LIST (direct_abstract_declarator)))
+            ldv_print_param_type_list (indent_level, param_type_list);
+        }
+      else
+        LDV_ERROR ("something strange");
+
+      break;
+
+    default:
+      LDV_PRETTY_PRINT_ERROR (indent_level, "direct abstract declarator was not printed");
+    }
 
   LDV_XDELETE_ON_PRINTING (direct_abstract_declarator);
 }

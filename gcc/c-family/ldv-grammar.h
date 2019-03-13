@@ -1335,17 +1335,26 @@ direct-abstract-declarator:
     direct-abstract-declaratoropt [ * ]
     direct-abstract-declaratoropt ( parameter-type-listopt )
 */
+enum ldv_direct_abstract_declarator_kind
+{
+  LDV_DIRECT_ABSTRACT_DECLARATOR_FIRST = 1,
+  LDV_DIRECT_ABSTRACT_DECLARATOR_SECOND,
+  LDV_DIRECT_ABSTRACT_DECLARATOR_THIRD,
+  LDV_DIRECT_ABSTRACT_DECLARATOR_FOURTH
+};
 struct ldv_direct_abstract_declarator
 {
+  enum ldv_direct_abstract_declarator_kind kind;
   struct ldv_abstract_declarator *abstract_declarator;
   struct ldv_direct_abstract_declarator *direct_abstract_declarator;
-  int a;
+  ldv_assignment_expr_ptr assignment_expr;
   struct ldv_param_type_list *param_type_list;
 };
 typedef struct ldv_direct_abstract_declarator *ldv_direct_abstract_declarator_ptr;
+#define LDV_DIRECT_ABSTRACT_DECLARATOR_KIND(direct_abstract_declarator)                           (direct_abstract_declarator->kind)
 #define LDV_DIRECT_ABSTRACT_DECLARATOR_ABSTRACT_DECLARATOR(direct_abstract_declarator)            (direct_abstract_declarator->abstract_declarator)
 #define LDV_DIRECT_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR(direct_abstract_declarator_arg) (direct_abstract_declarator_arg->direct_abstract_declarator)
-#define LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR(direct_abstract_declarator)                    (direct_abstract_declarator->a)
+#define LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR(direct_abstract_declarator)                    (direct_abstract_declarator->assignment_expr)
 #define LDV_DIRECT_ABSTRACT_DECLARATOR_PARAM_TYPE_LIST(direct_abstract_declarator)                (direct_abstract_declarator->param_type_list)
 
 /*

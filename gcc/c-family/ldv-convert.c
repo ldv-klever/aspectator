@@ -70,6 +70,7 @@ static ldv_compound_statement_ptr ldv_convert_compound_statement (tree);
 static ldv_decl_spec_ptr ldv_convert_decl_spec (tree, bool);
 static void ldv_convert_declarator (tree, bool, ldv_declarator_ptr *, ldv_direct_declarator_ptr, ldv_declarator_ptr);
 static ldv_declarator_ptr ldv_convert_declarator_internal (tree, bool);
+static ldv_assignment_expr_ptr ldv_convert_array_size (tree);
 static void ldv_convert_direct_abstract_declarator (tree, ldv_abstract_declarator_ptr *, ldv_direct_abstract_declarator_ptr, ldv_abstract_declarator_ptr);
 static void ldv_convert_direct_declarator (tree, bool, tree, ldv_declarator_ptr *, ldv_direct_declarator_ptr, ldv_declarator_ptr);
 static ldv_designation_ptr ldv_convert_designation (tree);
@@ -1774,6 +1775,60 @@ ldv_convert_declarator_internal (tree t, bool is_decl_decl_spec)
   return declarator;
 }
 
+static ldv_assignment_expr_ptr
+ldv_convert_array_size (tree t)
+{
+  tree type_domain = NULL_TREE, array_size = NULL_TREE;
+  ldv_assignment_expr_ptr assignment_expr = NULL;
+  ldv_integer_constant_ptr integer_constant = NULL;
+
+  /* If field declation has array type with flexible number of elements [],
+     then TYPE_SIZE is NULL (#3378). */
+  if (!TYPE_SIZE (t))
+    return NULL;
+
+  /* Absence of type domain was already treated as absence of array size for
+     direct declarators. */
+  if ((type_domain = TYPE_DOMAIN (t)))
+    {
+      if ((array_size = TYPE_MAX_VALUE (type_domain)) || (array_size = TYPE_MIN_VALUE (type_domain)))
+        {
+          ldv_constant_current = NULL;
+
+          assignment_expr = ldv_convert_assignment_expr (array_size, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+          /* GCC keeps array index boundaries. Array size is a maximum value of
+             index plus 1. The only exception is actual zero array size, but in
+             this case there is just a left boundary. */
+          if (TYPE_MAX_VALUE (type_domain))
+            {
+              if (ldv_constant_current)
+                {
+                  switch (LDV_CONSTANT_KIND (ldv_constant_current))
+                    {
+                      case LDV_CONSTANT_FIRST:
+                        if ((integer_constant = LDV_CONSTANT_INTEGER_CONSTANT (ldv_constant_current)))
+                          LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) ++;
+                        else
+                          LDV_ERROR ("can't find array size");
+
+                        break;
+
+                      default:
+                        LDV_ERROR ("something strange");
+                    }
+                }
+              else
+                LDV_ERROR ("array size wasn't found or isn't a constant");
+            }
+        }
+      else
+        LDV_ERROR ("can't find array size");
+    }
+
+  return assignment_expr;
+}
+
 /*
 direct-abstract-declarator:
     ( abstract-declarator )
@@ -1785,7 +1840,7 @@ static void
 ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_declarator_first_ptr, ldv_direct_abstract_declarator_ptr direct_abstract_declarator_prev, ldv_abstract_declarator_ptr abstract_declarator_prev)
 {
   ldv_direct_abstract_declarator_ptr direct_abstract_declarator, direct_abstract_declarator_next;
-  tree array_size, array_type;
+  tree array_type;
   tree func_ret_type;
 
   direct_abstract_declarator = XCNEW (struct ldv_direct_abstract_declarator);
@@ -1795,6 +1850,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
     case ARRAY_TYPE:
       if (abstract_declarator_prev)
         {
+          LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) = LDV_DIRECT_ABSTRACT_DECLARATOR_FIRST;
           LDV_DIRECT_ABSTRACT_DECLARATOR_ABSTRACT_DECLARATOR (direct_abstract_declarator) = abstract_declarator_prev;
           direct_abstract_declarator_prev = direct_abstract_declarator;
           direct_abstract_declarator_next = XCNEW (struct ldv_direct_abstract_declarator);
@@ -1802,14 +1858,9 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
       else
         direct_abstract_declarator_next = direct_abstract_declarator;
 
+      LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator_next) = LDV_DIRECT_ABSTRACT_DECLARATOR_SECOND;
       LDV_DIRECT_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (direct_abstract_declarator_next) = direct_abstract_declarator_prev;
-      // TODO fix assign expr.
-      if (TYPE_DOMAIN (t) && (array_size = TYPE_MAX_VALUE (TYPE_DOMAIN (t))))
-        {
-          LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR (direct_abstract_declarator_next) = (int) TREE_INT_CST_LOW (array_size) + 1;
-        }
-      else
-        LDV_ERROR ("can't find array size");
+      LDV_DIRECT_ABSTRACT_DECLARATOR_ASSIGN_EXPR (direct_abstract_declarator_next) = ldv_convert_array_size (t);
 
       if ((array_type = TREE_TYPE (t)))
         switch (TREE_CODE (array_type))
@@ -1840,6 +1891,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
     case FUNCTION_TYPE:
       if (abstract_declarator_prev)
         {
+          LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator) = LDV_DIRECT_ABSTRACT_DECLARATOR_FIRST;
           LDV_DIRECT_ABSTRACT_DECLARATOR_ABSTRACT_DECLARATOR (direct_abstract_declarator) = abstract_declarator_prev;
           direct_abstract_declarator_prev = direct_abstract_declarator;
           direct_abstract_declarator_next = XCNEW (struct ldv_direct_abstract_declarator);
@@ -1856,6 +1908,7 @@ ldv_convert_direct_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abs
             direct_abstract_declarator_next = direct_abstract_declarator;
         }
 
+      LDV_DIRECT_ABSTRACT_DECLARATOR_KIND (direct_abstract_declarator_next) = LDV_DIRECT_ABSTRACT_DECLARATOR_FOURTH;
       LDV_DIRECT_ABSTRACT_DECLARATOR_DIRECT_ABSTRACT_DECLARATOR (direct_abstract_declarator_next) = direct_abstract_declarator_prev;
       LDV_DIRECT_ABSTRACT_DECLARATOR_PARAM_TYPE_LIST (direct_abstract_declarator_next) = ldv_convert_param_type_list (t);
 
@@ -1901,10 +1954,9 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
 {
   ldv_direct_declarator_ptr direct_declarator, direct_declarator_next;
   tree decl_type;
-  tree array_size, array_type;
+  tree array_type;
   tree func_ret_type;
   tree type_name;
-  ldv_integer_constant_ptr integer_constant;
 
   direct_declarator = XCNEW (struct ldv_direct_declarator);
 
@@ -1980,40 +2032,7 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
 
       LDV_DIRECT_DECLARATOR_KIND (direct_declarator_next) = LDV_DIRECT_DECLARATOR_THIRD;
       LDV_DIRECT_DECLARATOR_DIRECT_DECLARATOR (direct_declarator_next) = direct_declarator_prev;
-
-      /* If field declation has array type with flexible number of elements [],
-         then TYPE_SIZE is NULL (#3378). */
-      if (TYPE_DOMAIN (t)
-        && TYPE_SIZE (t)
-        && ((array_size = TYPE_MAX_VALUE (TYPE_DOMAIN (t))) || (array_size = TYPE_MIN_VALUE (TYPE_DOMAIN (t)))))
-        {
-          ldv_constant_current = NULL;
-          LDV_DIRECT_DECLARATOR_ASSIGNMENT_EXPR (direct_declarator_next) = ldv_convert_assignment_expr (array_size, LDV_CONVERT_EXPR_RECURSION_LIMIT);
-          /* Gcc keeps array index boundaries. Array size is a maximum value of
-             index plus 1. The only exception is actual zero array size, but in
-             this case there is just a left boundary. */
-          if (TYPE_MAX_VALUE (TYPE_DOMAIN (t)))
-            {
-              if (ldv_constant_current)
-                {
-                  switch (LDV_CONSTANT_KIND (ldv_constant_current))
-                    {
-                      case LDV_CONSTANT_FIRST:
-                        if ((integer_constant = LDV_CONSTANT_INTEGER_CONSTANT (ldv_constant_current)))
-                          LDV_INTEGER_CONSTANT_DECIMAL_CONSTANT (integer_constant) ++;
-                        else
-                          LDV_ERROR ("can't find array size");
-
-                        break;
-
-                      default:
-                        LDV_ERROR ("something strange");
-                    }
-                }
-              else
-                LDV_ERROR ("array size wasn't found or isn't a constant");
-            }
-        }
+      LDV_DIRECT_DECLARATOR_ASSIGNMENT_EXPR (direct_declarator_next) = ldv_convert_array_size (t);
 
       if ((array_type = TREE_TYPE (t)))
         switch (TREE_CODE (array_type))
