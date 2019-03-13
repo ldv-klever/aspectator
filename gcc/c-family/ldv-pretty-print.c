@@ -1480,6 +1480,8 @@ ldv_print_direct_abstract_declarator (unsigned int indent_level, ldv_direct_abst
 
           if ((param_type_list = LDV_DIRECT_ABSTRACT_DECLARATOR_PARAM_TYPE_LIST (direct_abstract_declarator)))
             ldv_print_param_type_list (indent_level, param_type_list);
+
+          ldv_c_backend_print (indent_level, false, ")");
         }
       else
         LDV_ERROR ("something strange");
