@@ -1040,7 +1040,8 @@ asm-statement:
 enum ldv_asm_statement_kind
 {
   LDV_ASM_STATEMENT_FIRST = 1,
-  LDV_ASM_STATEMENT_SECOND
+  LDV_ASM_STATEMENT_SECOND,
+  LDV_ASM_STATEMENT_STUB
 };
 struct ldv_asm_statement
 {

@@ -742,6 +742,11 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
 
       break;
 
+    case LDV_ASM_STATEMENT_STUB:
+      ldv_c_backend_print (indent_level, true, "ldv_inline_asm();");
+
+      break;
+
     default:
       LDV_PRETTY_PRINT_ERROR (indent_level, "asm statement was not printed");
     }
@@ -904,6 +909,10 @@ ldv_print_aux_init (void)
       /* Print special typedef for __va_list_tag to prevent compile errors and
          warnings. */
       ldv_c_backend_print (0, false, "typedef struct __va_list_tag __va_list_tag;\n");
+
+      /* Print function declaration for inline Assembler stubs. */
+      if (ldv_inline_asm_stub)
+        ldv_c_backend_print (0, false, "void ldv_inline_asm(void);\n");
 
       once = true;
     }

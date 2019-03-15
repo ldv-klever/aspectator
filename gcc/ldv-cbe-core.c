@@ -30,6 +30,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* This flag says whether the LDV c backed should print at all. */
 bool ldv_c_backend_printing_disabled;
+/* This flag says whether stubs should be printed instead of inline Assembler. */
+bool ldv_inline_asm_stub;
 
 /* A file where the LDV c backend will place its output. */
 static const char *ldv_c_backend_out_fname;
@@ -224,6 +226,9 @@ ldv_cbe_handle_options (void)
 
   if (getenv ("LDV_C_BACKEND_DUMP_OPS"))
     ldv_dump_ops = true;
+
+  if (getenv ("LDV_INLINE_ASM_STUB"))
+    ldv_inline_asm_stub = true;
 }
 
 bool

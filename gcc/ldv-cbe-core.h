@@ -36,6 +36,7 @@ enum
 
 
 extern bool ldv_c_backend_printing_disabled;
+extern bool ldv_inline_asm_stub;
 
 
 extern void ldv_c_backend_current_line_set (unsigned int);

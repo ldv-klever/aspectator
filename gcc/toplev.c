@@ -2214,14 +2214,10 @@ toplev::main (int argc, char **argv)
         }
     }
 
-  /* LDV extension end. */
-
-/* LDV extension begin. */
-
   /* Process ldv options before any file analysis. */
   ldv_cbe_handle_options ();
 
-/* LDV extension end. */
+  /* LDV extension end. */
 
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)

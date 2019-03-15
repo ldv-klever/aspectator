@@ -753,6 +753,16 @@ ldv_convert_asm_statement (tree t)
 
   asm_statement = XCNEW (struct ldv_asm_statement);
 
+  /* Inline Assembler is not interpreted by source code analysis & verification
+     tools. Moreover, it can confuse them, e.g. CPAchecker doesn't support
+     asm goto. So, it is better to print some stub instead of inline
+     Assembler. */
+  if (ldv_inline_asm_stub)
+    {
+      LDV_ASM_STATEMENT_KIND (asm_statement) = LDV_ASM_STATEMENT_STUB;
+      return asm_statement;
+    }
+
   switch (TREE_CODE (t))
     {
     case ASM_EXPR:
