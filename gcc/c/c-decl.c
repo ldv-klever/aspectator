@@ -2048,20 +2048,21 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 		  )
 		  && same_translation_unit_p (newdecl, olddecl))
 		{
-      /* LDV extension beginning. */
 
-      /* Ignore duplicates connected with woven function
-         definitions. */
-      if (ldv ())
-        {
-          tree name = DECL_NAME (olddecl);
-          const char *name_str = NULL;
+		  /* LDV extension beginning. */
 
-          if (name && (name_str = IDENTIFIER_POINTER (name)) && ldv_isweaved (name_str, true))
-            return retval;
-        }
+		  /* Ignore duplicates connected with woven function
+		     definitions. */
+		  if (ldv ())
+		  {
+		    tree name = DECL_NAME (olddecl);
+		    const char *name_str = NULL;
 
-      /* LDV extension end. */
+		    if (name && (name_str = IDENTIFIER_POINTER (name)) && ldv_isweaved (name_str, true))
+		      return retval;
+		  }
+
+		  /* LDV extension end. */
 
 		  error ("redefinition of %q+D", newdecl);
 		  locate_old_decl (olddecl);
@@ -5185,6 +5186,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	  push_cleanup (decl, cleanup, false);
 	}
     }
+
   /* LDV extension beginning. */
 
   if (ldv ())
@@ -5193,52 +5195,48 @@ finish_decl (tree decl, location_t init_loc, tree init,
          purposes since it's unclear how to instrument them. Information
          requests are executed at instrumentation stage. */
       if (ldv_instrumentation () && TREE_CODE (decl) == VAR_DECL && DECL_INITIAL (decl))
-        {
-          /* Try to match a variable declaration. */
-          ldv_match_var (decl, 0, DECL_FILE_SCOPE_P (decl) ? LDV_PP_INIT_GLOBAL : LDV_PP_INIT_LOCAL);
+	{
+	  /* Try to match a variable declaration. */
+	  ldv_match_var (decl, 0, DECL_FILE_SCOPE_P (decl) ? LDV_PP_INIT_GLOBAL : LDV_PP_INIT_LOCAL);
 
-          /* Instance a matched advice. */
-          ldv_weave_advice (NULL, NULL);
+	  /* Instance a matched advice. */
+	  ldv_weave_advice (NULL, NULL);
 
-          /* Finish match. */
-          ldv_i_match = NULL;
-        }
+	  /* Finish match. */
+	  ldv_i_match = NULL;
+	}
       else if (ldv_instrumentation () && TREE_CODE (decl) == FUNCTION_DECL)
-        {
-          ldv_i_func_ptr i_func = NULL;
+	{
+	  ldv_i_func_ptr i_func = NULL;
 
-          /* Try to match a function declaration. */
-          i_func = ldv_match_func (decl, 0, LDV_PP_DECLARE_FUNC);
+	  /* Try to match a function declaration. */
+	  i_func = ldv_match_func (decl, 0, LDV_PP_DECLARE_FUNC);
 
-          /* Instance a matched advice. */
-          ldv_weave_advice (NULL, NULL);
+	  /* Instance a matched advice. */
+	  ldv_weave_advice (NULL, NULL);
 
-          /* Finish match. */
-          ldv_i_match = NULL;
+	  /* Finish match. */
+	  ldv_i_match = NULL;
 
-          if (i_func)
-            ldv_free_info_func (i_func);
-        }
+	  if (i_func)
+	    ldv_free_info_func (i_func);
+	}
       else if (ldv_instrumentation () && TREE_CODE (decl) == TYPE_DECL)
-        {
-          /* Try to match a type declaration. */
-          ldv_match_typedecl (decl, LDV_PP_INTRODUCE);
+	{
+	  /* Try to match a type declaration. */
+	  ldv_match_typedecl (decl, LDV_PP_INTRODUCE);
 
-          /* Instance a matched advice. */
-          ldv_weave_advice (NULL, NULL);
+	  /* Instance a matched advice. */
+	  ldv_weave_advice (NULL, NULL);
 
-          /* Finish match. */
-          if (ldv_i_match)
-            {
-              ldv_free_info_match (ldv_i_match);
-              ldv_i_match = NULL;
-            }
-        }
+	  /* Finish match. */
+	  if (ldv_i_match)
+	    {
+	      ldv_free_info_match (ldv_i_match);
+	      ldv_i_match = NULL;
+	    }
+	}
     }
-
-  /* LDV extension end. */
-
-/* LDV extension begin. */
 
   if (ldv_is_c_backend_enabled ())
     /* Don't skip function declarations that are already related with function
@@ -5246,7 +5244,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
     if ((TREE_CODE (decl) == FUNCTION_DECL || TREE_CODE (decl) == VAR_DECL || TREE_CODE (decl) == TYPE_DECL) && DECL_FILE_SCOPE_P (decl))
       ldv_print_translation_unit (decl, true);
 
-/* LDV extension end. */
+  /* LDV extension end. */
 
   if (warn_cxx_compat
       && VAR_P (decl)
@@ -8235,13 +8233,13 @@ finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
 	}
     }
 
-/* LDV extension begin. */
+  /* LDV extension begin. */
 
   if (ldv_is_c_backend_enabled ())
     if (TYPE_NAME (t) && TYPE_FILE_SCOPE_P (t))
       ldv_print_translation_unit (t, true);
 
-/* LDV extension end. */
+  /* LDV extension end. */
 
   /* If we're inside a function proper, i.e. not file-scope and not still
      parsing parameters, then arrange for the size of a variable sized type
@@ -8490,13 +8488,13 @@ finish_enum (tree enumtype, tree values, tree attributes)
   /* Finish debugging output for this type.  */
   rest_of_type_compilation (enumtype, toplevel);
 
-/* LDV extension begin. */
+  /* LDV extension begin. */
 
   if (ldv_is_c_backend_enabled ())
     if (TYPE_FILE_SCOPE_P (enumtype))
       ldv_print_translation_unit (enumtype, true);
 
-/* LDV extension end. */
+  /* LDV extension end. */
 
   /* If this enum is defined inside a struct, add it to
      struct_types.  */
@@ -9482,32 +9480,30 @@ finish_function (void)
       /* Function matching and corresponding advice weaving are needed just on
        * the third and fourth ldv stages. */
       if (ldv_instrumentation () || ldv_compilation ())
-        {
-          /* Try to match a function declaration for an execution join point. */
-          i_func = ldv_match_func (fndecl, 0, LDV_PP_EXECUTION);
+	{
+	  /* Try to match a function declaration for an execution join point. */
+	  i_func = ldv_match_func (fndecl, 0, LDV_PP_EXECUTION);
 
-          ldv_func_close_brace_location = expand_location (DECL_STRUCT_FUNCTION (fndecl)->function_end_locus);
+	  ldv_func_close_brace_location = expand_location (DECL_STRUCT_FUNCTION (fndecl)->function_end_locus);
 
-          /* Instance a matched advice. */
-          ldv_weave_advice (NULL, &ldv_func_close_brace_location);
+	  /* Instance a matched advice. */
+	  ldv_weave_advice (NULL, &ldv_func_close_brace_location);
 
-          /* Finish match. */
-          ldv_i_match = NULL;
+	  /* Finish match. */
+	  ldv_i_match = NULL;
 
-          /* Begin matching inside a function body. */
-          ldv_match_func_body (fndecl, i_func);
-        }
+	  /* Begin matching inside a function body. */
+	  ldv_match_func_body (fndecl, i_func);
+	}
     }
 
   /* LDV extension end. */
-
-/* LDV extension begin. */
 
   if (ldv_is_c_backend_enabled ())
     if (DECL_FILE_SCOPE_P (fndecl))
       ldv_print_translation_unit (fndecl, false);
 
-/* LDV extension end. */
+  /* LDV extension end. */
 
   /* Genericize before inlining.  Delay genericizing nested functions
      until their parent function is genericized.  Since finalizing
