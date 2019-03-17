@@ -7672,14 +7672,14 @@ fold_unary_loc (location_t loc, enum tree_code code, tree type, tree op0)
 	  tree arg01 = TREE_OPERAND (arg0, 1);
 	  tree arg02 = TREE_OPERAND (arg0, 2);
 
-    /* LDV extension begin. */
+	  /* LDV extension begin. */
 
 	  /* Omit this strange conversion since it results in
 	   * https://forge.ispras.ru/issues/7673. */
 	  if (ldv_is_c_backend_enabled ())
 	    return build1_stat_loc (loc, NOP_EXPR, type, arg0);
 
-    /* LDV extension end. */
+	  /* LDV extension end. */
 
 	  if (! VOID_TYPE_P (TREE_TYPE (arg01)))
 	    arg01 = fold_build1_loc (loc, code, type,

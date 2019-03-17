@@ -69,6 +69,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-fold.h"
 #include "intl.h"
 
+/* LDV extension begin. */
+
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 struct target_builtins default_target_builtins;
 #if SWITCHABLE_TARGET
 struct target_builtins *this_target_builtins = &default_target_builtins;
@@ -8916,6 +8922,15 @@ fold_builtin_3 (location_t loc, tree fndecl,
     case BUILT_IN_UMUL_OVERFLOW:
     case BUILT_IN_UMULL_OVERFLOW:
     case BUILT_IN_UMULLL_OVERFLOW:
+
+      /* LDV extension begin. */
+
+      /* Omit this folding since it results in complex number. */
+      if (ldv_is_c_backend_enabled ())
+        return NULL_TREE;
+
+      /* LDV extension end. */
+
       return fold_builtin_arith_overflow (loc, fcode, arg0, arg1, arg2);
 
     default:
