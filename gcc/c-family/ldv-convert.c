@@ -2579,18 +2579,6 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
 
   switch (TREE_CODE (t))
     {
-    /* TODO: Try to throw exception for this sort of expressions. We are unlikely need to convert them! */
-    case SAVE_EXPR:
-      if ((op1 = LDV_OP_FIRST (t)))
-        {
-          LDV_EXPR_KIND (expr) = LDV_EXPR_FIRST;
-          LDV_EXPR_ASSIGNMENT_EXPR (expr) = ldv_convert_assignment_expr (op1, recursion_limit);
-        }
-      else
-        LDV_ERROR ("can't find the first operand of save expression");
-
-      break;
-
     case COMPOUND_EXPR:
       if (!(op1 = LDV_OP_FIRST (t)))
         {
@@ -2604,15 +2592,24 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
           break;
         }
 
-      LDV_EXPR_KIND (expr) = LDV_EXPR_SECOND;
-
-      expr_next = ldv_convert_expr (op1, recursion_limit);
-      LDV_EXPR_EXPR (expr) = expr_next;
-
-      if ((assignment_expr = ldv_convert_assignment_expr (op2, recursion_limit)))
-        LDV_EXPR_ASSIGNMENT_EXPR (expr) = assignment_expr;
+      /* Skip save expressions since they introduce artificial things. */
+      if (TREE_CODE (op1) == SAVE_EXPR)
+        {
+          LDV_EXPR_KIND (expr) = LDV_EXPR_FIRST;
+          LDV_EXPR_ASSIGNMENT_EXPR (expr) = ldv_convert_assignment_expr (op2, recursion_limit);
+        }
       else
-        LDV_ERROR ("assigment expression wasn't converted");
+        {
+          LDV_EXPR_KIND (expr) = LDV_EXPR_SECOND;
+
+          expr_next = ldv_convert_expr (op1, recursion_limit);
+          LDV_EXPR_EXPR (expr) = expr_next;
+
+          if ((assignment_expr = ldv_convert_assignment_expr (op2, recursion_limit)))
+            LDV_EXPR_ASSIGNMENT_EXPR (expr) = assignment_expr;
+          else
+            LDV_ERROR ("assigment expression wasn't converted");
+        }
 
       break;
 
@@ -4410,6 +4407,17 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
         LDV_PRIMARY_EXPR_TYPE_NAME (primary_expr) = ldv_convert_type_name (type);
       else
         LDV_ERROR ("can't find type of variable argument expression");
+
+      break;
+
+    /* Skip this artificial expression. */
+    case SAVE_EXPR:
+      LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FOURTH;
+
+      if ((op1 = LDV_OP_FIRST (t)))
+        LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (op1, recursion_limit - 1);
+      else
+        LDV_ERROR ("can't find the first operand of save expression");
 
       break;
 
