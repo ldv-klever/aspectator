@@ -5561,6 +5561,19 @@ ldv_convert_type_spec_internal (tree t)
               if (strstr (type_name_str, "_Bool"))
                 ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_BOOL);
 
+              if (strstr (type_name_str, "_Float32x"))
+                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32X);
+              else if (strstr (type_name_str, "_Float32"))
+                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32);
+
+              if (strstr (type_name_str, "_Float64x"))
+                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64X);
+              else if (strstr (type_name_str, "_Float64"))
+                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64);
+
+              if (strstr (type_name_str, "_Float128"))
+                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT128);
+
               /* Sometimes a new type specifier may arise. In this case say
                  about it and generate artificial type specifier to print
                  warning message later. */

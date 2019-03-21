@@ -1754,6 +1754,15 @@ type-specifier:
     struct-or-union-specifier
     enum-specifier
     typedef-name
+
+ISO/IEC TS 18661-3:2015 extensions:
+
+type-specifier:
+    _Float32
+    _Float32x
+    _Float64
+    _Float64x
+    _Float128
 */
 enum ldv_type_spec_kind
 {
@@ -1771,7 +1780,12 @@ enum ldv_type_spec_kind
   LDV_TYPE_SPEC_COMPLEX,
   LDV_TYPE_SPEC_FIRST,
   LDV_TYPE_SPEC_SECOND,
-  LDV_TYPE_SPEC_THIRD
+  LDV_TYPE_SPEC_THIRD,
+  LDV_TYPE_SPEC_FLOAT32,
+  LDV_TYPE_SPEC_FLOAT32X,
+  LDV_TYPE_SPEC_FLOAT64,
+  LDV_TYPE_SPEC_FLOAT64X,
+  LDV_TYPE_SPEC_FLOAT128
 };
 struct ldv_type_spec
 {

@@ -4072,6 +4072,15 @@ type-specifier:
     struct-or-union-specifier
     enum-specifier
     typedef-name
+
+ISO/IEC TS 18661-3:2015 extensions:
+
+type-specifier:
+    _Float32
+    _Float32x
+    _Float64
+    _Float64x
+    _Float128
 */
 static void
 ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
@@ -4148,6 +4157,26 @@ ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "typedef name of type specifier was not printed");
 
+      break;
+
+    case LDV_TYPE_SPEC_FLOAT32:
+      ldv_c_backend_print (indent_level, true, "_Float32");
+      break;
+
+    case LDV_TYPE_SPEC_FLOAT32X:
+      ldv_c_backend_print (indent_level, true, "_Float32x");
+      break;
+
+    case LDV_TYPE_SPEC_FLOAT64:
+      ldv_c_backend_print (indent_level, true, "_Float64");
+      break;
+
+    case LDV_TYPE_SPEC_FLOAT64X:
+      ldv_c_backend_print (indent_level, true, "_Float64x");
+      break;
+
+    case LDV_TYPE_SPEC_FLOAT128:
+      ldv_c_backend_print (indent_level, true, "_Float128");
       break;
 
     default:
