@@ -28,6 +28,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "ldv-convert.h"
 #include "ldv-cbe-core.h"
+#include "ldv-cpp-core.h"
 #include "ldv-grammar.h"
 
 
@@ -5565,9 +5566,12 @@ ldv_convert_type_spec_internal (tree t)
                  warning message later. */
               if (!is_type_spec)
                 {
-                  LDV_ERROR ("type specifier");
-                  LDV_ERROR (type_name_str);
-                  LDV_ERROR ("wasn't converted");
+                  ldv_str_ptr str = ldv_create_string ();
+                  ldv_puts_string ("type specifier \"", str);
+                  ldv_puts_string (type_name_str, str);
+                  ldv_puts_string ("\" wasn't converted", str);
+                  LDV_ERROR (ldv_get_str (str));
+                  ldv_free_string (str);
                   ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNKNOWN);
                 }
             }
