@@ -1304,6 +1304,14 @@ struct GTY(()) tree_string {
   struct tree_typed typed;
   int length;
   char str[1];
+
+  /* LDV extension beginning. */
+
+  /* For UTF-8 encoded string representation. */
+  char *str_orig;
+
+  /* LDV extension end. */
+
 };
 
 struct GTY(()) tree_complex {

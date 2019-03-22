@@ -31,7 +31,7 @@ typedef struct ldv_location *ldv_location_ptr;
 #define LDV_LOCATION_FILE(location) (location->file)
 #define LDV_LOCATION_LINE(location) (location->line)
 
-/* String literal is considered as the sequence of symbols.
+/* String literal is considered as the sequence of UTF-8 encoded symbols.
 string-literal:
     " s-char-sequenceopt "
     L" s-char-sequenceopt "

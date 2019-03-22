@@ -4906,15 +4906,14 @@ static ldv_str_literal_ptr
 ldv_convert_str_literal (tree t)
 {
   ldv_str_literal_ptr str_literal;
-  const char *str;
 
   str_literal = XCNEW (struct ldv_str_literal);
 
   switch (TREE_CODE (t))
     {
     case STRING_CST:
-      if ((str = TREE_STRING_POINTER (t)))
-        LDV_STR_LITERAL_STR (str_literal) = str;
+      if (t->string.str_orig)
+        LDV_STR_LITERAL_STR (str_literal) = (const char *)(t->string.str_orig);
       else
         LDV_CONVERT_ERROR (t);
 

@@ -30,6 +30,12 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "attribs.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 /* We may keep statistics about how long which files took to compile.  */
 static int header_time, body_time;
 static splay_tree file_info_tree;
@@ -1231,6 +1237,22 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
       (parse_in, strs, concats + 1, &istr, type))
     {
       value = build_string (istr.len, (const char *) istr.text);
+
+      /* LDV extension beginning. */
+
+      /* GCC converts wide character strings from sources (which are assumed to
+         be UTF-8 encoded always) into UTF-16/UTF-32. We need to keep original
+         representation to print these strings easily since there is no inverse
+         conversion functions. */
+      if (ldv_is_c_backend_enabled () && translate)
+	{
+	  value->string.str_orig = XCNEWVEC (char, strs[0].len);
+	  memcpy (value->string.str_orig, strs[0].text, strs[0].len);
+	}
+
+      /* LDV extension end. */
+
+
       free (CONST_CAST (unsigned char *, istr.text));
       if (concats)
 	{

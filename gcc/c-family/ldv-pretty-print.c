@@ -41,6 +41,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "wide-int-print.h"
 
 #include "ldv-convert.h"
+#include "ldv-cpp-core.h"
 #include "ldv-cbe-core.h"
 #include "ldv-grammar.h"
 #include "ldv-pretty-print.h"
@@ -3589,7 +3590,7 @@ ldv_print_struct_or_union (unsigned int indent_level, ldv_struct_or_union_ptr st
   LDV_XDELETE_ON_PRINTING (struct_or_union);
 }
 
-/* String literal is considered as the sequence of symbols.
+/* String literal is considered as the sequence of UTF-8 encoded symbols.
 string-literal:
     " s-char-sequenceopt "
     L" s-char-sequenceopt "
@@ -3599,66 +3600,80 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
 {
   const char *str;
   const char *c;
+  ldv_str_ptr escaped_str;
 
-  /* A given string can contain some escape sequences. To print them correctly
-     print a given string character by character and escape escape sequences. */
+  /* A given string can contain some escape sequences. Escape them before
+     printing. */
   if ((str = LDV_STR_LITERAL_STR (str_literal)))
     {
-      ldv_c_backend_print (indent_level, true, "\"");
-      ldv_c_backend_padding_cancel ();
+      c = str;
+      escaped_str = ldv_create_string ();
 
-      for (c = str; *c; c++)
+      if (*c == 'L')
+        {
+          c++;
+          ldv_putc_string ('L', escaped_str);
+        }
+
+      if (*c != '"')
+        LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
+
+      c++;
+      ldv_putc_string ('"', escaped_str);
+
+      for (; *c && *(c + 1); c++)
         switch (*c)
           {
           case '\a':
-            ldv_c_backend_print (indent_level, false, "\\a");
+            ldv_puts_string ("\a", escaped_str);
             break;
 
           case '\b':
-            ldv_c_backend_print (indent_level, false, "\\b");
+            ldv_puts_string ("\b", escaped_str);
             break;
 
           case '\f':
-            ldv_c_backend_print (indent_level, false, "\\f");
+            ldv_puts_string ("\f", escaped_str);
             break;
 
           case '\n':
-            ldv_c_backend_print (indent_level, false, "\\n");
+            ldv_puts_string ("\n", escaped_str);
             break;
 
           case '\r':
-            ldv_c_backend_print (indent_level, false, "\\r");
+            ldv_puts_string ("\r", escaped_str);
             break;
 
           case '\t':
-            ldv_c_backend_print (indent_level, false, "\\t");
+            ldv_puts_string ("\t", escaped_str);
             break;
 
           case '\v':
-            ldv_c_backend_print (indent_level, false, "\\v");
+            ldv_puts_string ("\v", escaped_str);
             break;
 
           case '\\':
-            ldv_c_backend_print (indent_level, false, "\\\\");
+            ldv_puts_string ("\\", escaped_str);
             break;
 
-          case '\"':
-            ldv_c_backend_print (indent_level, false, "\\\"");
+          case '"':
+            ldv_puts_string ("\"", escaped_str);
             break;
 
           case '\'':
-            ldv_c_backend_print (indent_level, false, "\\'");
+            ldv_puts_string ("\'", escaped_str);
             break;
 
           default:
-            if (ISPRINT (*c))
-              ldv_c_backend_print (indent_level, false, "%c", *c);
-            else
-              ldv_c_backend_print (indent_level, false, "\\%o", (unsigned char) *c);
+            ldv_putc_string (*c, escaped_str);
           }
 
-      ldv_c_backend_print (indent_level, false, "\"");
-      ldv_c_backend_padding_force ();
+      if (*c != '"')
+        LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
+
+      ldv_putc_string ('"', escaped_str);
+      ldv_c_backend_print (indent_level, true, ldv_get_str (escaped_str));
+      ldv_free_string (escaped_str);
     }
   else
     LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
