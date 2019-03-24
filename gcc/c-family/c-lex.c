@@ -32,6 +32,7 @@ along with GCC; see the file COPYING3.  If not see
 
 /* LDV extension beginning. */
 
+#include "ldv-opts.h"
 #include "ldv-cbe-core.h"
 
 /* LDV extension end. */
@@ -1243,8 +1244,10 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
       /* GCC converts wide character strings from sources (which are assumed to
          be UTF-8 encoded always) into UTF-16/UTF-32. We need to keep original
          representation to print these strings easily since there is no inverse
-         conversion functions. */
-      if (ldv_is_c_backend_enabled () && translate)
+         conversion functions. This is necessary for instrumentation as well
+         since it requests C back-end for initializers that also can contain
+         strings. */
+      if ((ldv_instrumentation() || ldv_is_c_backend_enabled ()) && translate)
 	{
 	  value->string.str_orig = XCNEWVEC (char, strs[0].len);
 	  memcpy (value->string.str_orig, strs[0].text, strs[0].len);
