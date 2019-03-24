@@ -3672,7 +3672,7 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
         LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
 
       ldv_putc_string ('"', escaped_str);
-      ldv_c_backend_print (indent_level, true, ldv_get_str (escaped_str));
+      ldv_c_backend_print (indent_level, true, "%s", ldv_get_str (escaped_str));
       ldv_free_string (escaped_str);
     }
   else
