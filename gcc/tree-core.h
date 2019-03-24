@@ -1303,7 +1303,6 @@ struct GTY(()) tree_fixed_cst {
 struct GTY(()) tree_string {
   struct tree_typed typed;
   int length;
-  char str[1];
 
   /* LDV extension beginning. */
 
@@ -1312,6 +1311,7 @@ struct GTY(()) tree_string {
 
   /* LDV extension end. */
 
+  char str[1];
 };
 
 struct GTY(()) tree_complex {
