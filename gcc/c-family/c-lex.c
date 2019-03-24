@@ -1249,8 +1249,9 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
          strings. */
       if ((ldv_instrumentation() || ldv_is_c_backend_enabled ()) && translate)
 	{
-	  value->string.str_orig = XCNEWVEC (char, strs[0].len);
+	  value->string.str_orig = XCNEWVEC (char, strs[0].len + 1);
 	  memcpy (value->string.str_orig, strs[0].text, strs[0].len);
+	  value->string.str_orig[strs[0].len] = '\0';
 	}
 
       /* LDV extension end. */
