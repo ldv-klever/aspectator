@@ -483,13 +483,13 @@ struct ldv_query_results
 };
 
 static hashval_t
-htab_hash_path (const void *p)
+ldv_htab_hash_path (const void *p)
 {
   return htab_hash_string (((struct ldv_query_results *)p)->filename);
 }
 
 static int
-htab_eq_path (const void *p, const void *q)
+ldv_htab_eq_path (const void *p, const void *q)
 {
   return strcmp (((struct ldv_query_results *)p)->filename, (const char *)q) == 0;
 }
@@ -508,7 +508,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
   format = ldv_get_aspect_pattern_str_param (param2);
 
   if (!ldv_query_result_htab)
-    ldv_query_result_htab = htab_create (127, htab_hash_path, htab_eq_path, NULL);
+    ldv_query_result_htab = htab_create (127, ldv_htab_hash_path, ldv_htab_eq_path, NULL);
 
   slot = htab_find_slot_with_hash (ldv_query_result_htab, filename, htab_hash_string (filename), INSERT);
 

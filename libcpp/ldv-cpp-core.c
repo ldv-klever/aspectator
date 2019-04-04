@@ -1253,13 +1253,13 @@ struct ldv_realpath
 };
 
 static hashval_t
-htab_hash_path (const void *p)
+ldv_htab_hash_path (const void *p)
 {
   return htab_hash_string (((struct ldv_realpath *)p)->path);
 }
 
 static int
-htab_eq_path (const void *p, const void *q)
+ldv_htab_eq_path (const void *p, const void *q)
 {
   return strcmp (((struct ldv_realpath *)p)->path, (const char *)q) == 0;
 }
@@ -1270,7 +1270,7 @@ ldv_get_realpath (const char *filename)
   void **slot;
 
   if (!ldv_filename_htab)
-    ldv_filename_htab = htab_create (127, htab_hash_path, htab_eq_path, NULL);
+    ldv_filename_htab = htab_create (127, ldv_htab_hash_path, ldv_htab_eq_path, NULL);
 
   slot = htab_find_slot_with_hash (ldv_filename_htab, filename, htab_hash_string (filename), INSERT);
 
