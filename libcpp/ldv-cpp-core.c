@@ -1243,12 +1243,6 @@ ldv_truncate_braces (char *str)
   return NULL;
 }
 
-int
-htab_eq_string (const void *s1, const void *s2)
-{
-  return strcmp ((const char*)s1, (const char*)s2) == 0;
-}
-
 /* CIF users prefer absolute normalized filenames for entities. But calling
    lrealpath for all filenames is too expensive. Use hashtable to accumulate
    already processed filenames. */
