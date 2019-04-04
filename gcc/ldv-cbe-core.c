@@ -33,6 +33,9 @@ bool ldv_c_backend_printing_disabled;
 /* This flag says whether stubs should be printed instead of inline Assembler. */
 bool ldv_inline_asm_stub;
 
+/* Hash table to store original strings that not yet converted into UTF-16/UTF-32. */
+htab_t ldv_strings_htab;
+
 /* A file where the LDV c backend will place its output. */
 static const char *ldv_c_backend_out_fname;
 /* A stream where the LDV c backend will place its output. */

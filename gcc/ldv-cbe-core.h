@@ -35,8 +35,17 @@ enum
 };
 
 
+struct ldv_hash_string
+{
+  /* STRING_CST node with converted string. */
+  tree value;
+  /* UTF-8 encoded string representation. */
+  char *str;
+};
+
 extern bool ldv_c_backend_printing_disabled;
 extern bool ldv_inline_asm_stub;
+extern htab_t ldv_strings_htab;
 
 
 extern void ldv_c_backend_current_line_set (unsigned int);

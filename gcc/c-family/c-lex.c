@@ -1124,6 +1124,41 @@ interpret_fixed (const cpp_token *token, unsigned int flags)
   return value;
 }
 
+/* LDV extension beginning. */
+
+static int
+ldv_htab_eq_tree (const void *p, const void *q)
+{
+  return ((struct ldv_hash_string *)p)->value == (tree)q;
+}
+
+static void
+ldv_keep_original_string (tree value, cpp_string *strs)
+{
+  if (!ldv_strings_htab)
+   ldv_strings_htab = htab_create (127, htab_hash_pointer, ldv_htab_eq_tree, NULL);
+
+  void **slot = htab_find_slot(ldv_strings_htab, value, INSERT);
+
+  if (slot == NULL)
+    internal_error ("Can't allocate memory");
+
+  /* Assign a given string to a hash element. */
+  if (*slot == NULL)
+    {
+      struct ldv_hash_string *v;
+      v = XCNEW (struct ldv_hash_string);
+      v->value = value;
+      v->str = XCNEWVEC (char, strs[0].len + 1);
+      memcpy (v->str, strs[0].text, strs[0].len);
+      v->str[strs[0].len] = '\0';
+
+      *slot = v;
+    }
+}
+
+/* LDV extension end. */
+
 /* Convert a series of STRING, WSTRING, STRING16, STRING32 and/or
    UTF8STRING tokens into a tree, performing string constant
    concatenation.  TOK is the first of these.  VALP is the location to
@@ -1248,11 +1283,7 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
          since it requests C back-end for initializers that also can contain
          strings. */
       if ((ldv_instrumentation() || ldv_is_c_backend_enabled ()) && translate)
-	{
-	  value->string.str_orig = XCNEWVEC (char, strs[0].len + 1);
-	  memcpy (value->string.str_orig, strs[0].text, strs[0].len);
-	  value->string.str_orig[strs[0].len] = '\0';
-	}
+	ldv_keep_original_string(value, strs);
 
       /* LDV extension end. */
 

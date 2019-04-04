@@ -1303,14 +1303,6 @@ struct GTY(()) tree_fixed_cst {
 struct GTY(()) tree_string {
   struct tree_typed typed;
   int length;
-
-  /* LDV extension beginning. */
-
-  /* For UTF-8 encoded string representation. */
-  char *str_orig;
-
-  /* LDV extension end. */
-
   char str[1];
 };
 
