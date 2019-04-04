@@ -58,3 +58,7 @@ REVISION
 /mpc*
 /gmp*
 /isl*
+
+# IDE settings
+.vscode
+.idea
