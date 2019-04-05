@@ -1129,7 +1129,7 @@ interpret_fixed (const cpp_token *token, unsigned int flags)
 static int
 ldv_htab_eq_tree (const void *p, const void *q)
 {
-  return ((struct ldv_hash_string *)p)->value == (tree)q;
+  return ((const struct ldv_hash_string *)p)->value == (const_tree)q;
 }
 
 static void

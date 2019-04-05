@@ -485,7 +485,7 @@ struct ldv_query_results
 static int
 ldv_htab_eq_path (const void *p, const void *q)
 {
-  return strcmp (((struct ldv_query_results *)p)->filename, (const char *)q) == 0;
+  return strcmp (((const struct ldv_query_results *)p)->filename, (const char *)q) == 0;
 }
 
 void

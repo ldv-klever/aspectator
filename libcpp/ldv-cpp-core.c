@@ -1255,7 +1255,7 @@ struct ldv_realpath
 static int
 ldv_htab_eq_path (const void *p, const void *q)
 {
-  return strcmp (((struct ldv_realpath *)p)->path, (const char *)q) == 0;
+  return strcmp (((const struct ldv_realpath *)p)->path, (const char *)q) == 0;
 }
 
 const char *
