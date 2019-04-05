@@ -1282,8 +1282,8 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
          conversion functions. This is necessary for instrumentation as well
          since it requests C back-end for initializers that also can contain
          strings. */
-      if ((ldv_instrumentation() || ldv_is_c_backend_enabled ()) && translate)
-	ldv_keep_original_string(value, strs);
+      if ((ldv_instrumentation () || ldv_is_c_backend_enabled ()) && translate)
+	ldv_keep_original_string (value, strs);
 
       /* LDV extension end. */
 

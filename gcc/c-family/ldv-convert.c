@@ -4913,7 +4913,7 @@ ldv_convert_str_literal (tree t)
   switch (TREE_CODE (t))
     {
     case STRING_CST:
-      if (t->string.str)
+      if (TREE_STRING_POINTER (t))
         {
           slot = htab_find_slot (ldv_strings_htab, t, NO_INSERT);
 
@@ -4921,9 +4921,7 @@ ldv_convert_str_literal (tree t)
             internal_error ("Couldn't find string in the hash table");
 
           if (*slot)
-          {
             LDV_STR_LITERAL_STR (str_literal) = ((struct ldv_hash_string *)*slot)->str;
-          }
         }
       else
         LDV_CONVERT_ERROR (t);
