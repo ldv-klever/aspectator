@@ -1126,19 +1126,25 @@ interpret_fixed (const cpp_token *token, unsigned int flags)
 
 /* LDV extension beginning. */
 
-static int
-ldv_htab_eq_tree (const void *p, const void *q)
+static hashval_t
+ldv_htab_hash_tree_string (const void *p)
 {
-  return ((const struct ldv_hash_string *)p)->value == (const_tree)q;
+  return htab_hash_pointer (((const struct ldv_hash_tree_string *)p)->value);
+}
+
+static int
+ldv_htab_eq_tree_string (const void *p, const void *q)
+{
+  return ((const struct ldv_hash_tree_string *)p)->value == (const_tree)q;
 }
 
 static void
 ldv_keep_original_string (tree value, cpp_string *strs)
 {
-  if (!ldv_strings_htab)
-   ldv_strings_htab = htab_create (127, htab_hash_pointer, ldv_htab_eq_tree, NULL);
+  if (!ldv_tree_string_htab)
+   ldv_tree_string_htab = htab_create (127, ldv_htab_hash_tree_string, ldv_htab_eq_tree_string, NULL);
 
-  void **slot = htab_find_slot(ldv_strings_htab, value, INSERT);
+  void **slot = htab_find_slot_with_hash (ldv_tree_string_htab, value, htab_hash_pointer (value), INSERT);
 
   if (slot == NULL)
     internal_error ("Can't allocate memory");
@@ -1146,8 +1152,8 @@ ldv_keep_original_string (tree value, cpp_string *strs)
   /* Assign a given string to a hash element. */
   if (*slot == NULL)
     {
-      struct ldv_hash_string *v;
-      v = XCNEW (struct ldv_hash_string);
+      struct ldv_hash_tree_string *v;
+      v = XCNEW (struct ldv_hash_tree_string);
       v->value = value;
       v->str = XCNEWVEC (char, strs[0].len + 1);
       memcpy (v->str, strs[0].text, strs[0].len);

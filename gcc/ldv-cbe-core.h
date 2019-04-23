@@ -35,7 +35,7 @@ enum
 };
 
 
-struct ldv_hash_string
+struct ldv_hash_tree_string
 {
   /* STRING_CST node with converted string. */
   tree value;
@@ -45,7 +45,7 @@ struct ldv_hash_string
 
 extern bool ldv_c_backend_printing_disabled;
 extern bool ldv_inline_asm_stub;
-extern htab_t ldv_strings_htab;
+extern htab_t ldv_tree_string_htab;
 
 
 extern void ldv_c_backend_current_line_set (unsigned int);

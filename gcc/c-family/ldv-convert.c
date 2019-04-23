@@ -4915,13 +4915,13 @@ ldv_convert_str_literal (tree t)
     case STRING_CST:
       if (TREE_STRING_POINTER (t))
         {
-          slot = htab_find_slot (ldv_strings_htab, t, NO_INSERT);
+          slot = htab_find_slot_with_hash (ldv_tree_string_htab, t, htab_hash_pointer (t), NO_INSERT);
 
           if (slot == NULL)
             internal_error ("Couldn't find string in the hash table");
 
           if (*slot)
-            LDV_STR_LITERAL_STR (str_literal) = ((struct ldv_hash_string *)*slot)->str;
+            LDV_STR_LITERAL_STR (str_literal) = ((struct ldv_hash_tree_string *)*slot)->str;
         }
       else
         LDV_CONVERT_ERROR (t);
