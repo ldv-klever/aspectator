@@ -241,6 +241,7 @@ ldv_convert_abstract_declarator (tree t, ldv_abstract_declarator_ptr *abstract_d
 
               case ARRAY_TYPE:
               case FUNCTION_TYPE:
+              case POINTER_TYPE:
                 if ((type_name = TYPE_NAME (first_non_pointer)) && TREE_CODE(type_name) == TYPE_DECL)
                   *abstract_declarator_first_ptr = abstract_declarator;
                 else
@@ -1751,7 +1752,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
 
               case ARRAY_TYPE:
               case FUNCTION_TYPE:
-                /* Typedefs aren't processed here. */
+              case POINTER_TYPE:
                 if ((type_name = TYPE_NAME (first_non_pointer)) && TREE_CODE(type_name) == TYPE_DECL)
                   ldv_convert_declarator (first_non_pointer, is_decl_decl_spec, declarator_first_ptr, NULL, declarator);
                 else
@@ -4101,7 +4102,7 @@ static ldv_pointer_ptr
 ldv_convert_pointer (tree t, tree *first_non_pointer_ptr)
 {
   ldv_pointer_ptr pointer, pointer_next, pointer_last;
-  tree type;
+  tree type, type_name;
 
   /* Note that internal representation keeps pointers in backward order. */
   pointer = pointer_last = XCNEW (struct ldv_pointer);
@@ -4110,14 +4111,16 @@ ldv_convert_pointer (tree t, tree *first_non_pointer_ptr)
 
   type = TREE_TYPE (t);
 
-  if (TREE_CODE (type) == POINTER_TYPE)
+  /* Here is typedef name is also processed. It depends on whether type has
+     a name or not. */
+  if (((type_name = TYPE_NAME (type)) && TREE_CODE(type_name) == TYPE_DECL) || TREE_CODE (type) != POINTER_TYPE)
+    *first_non_pointer_ptr = type;
+  else
     {
       pointer = ldv_convert_pointer (type, first_non_pointer_ptr);
       for (pointer_next = pointer; LDV_POINTER_POINTER (pointer_next); pointer_next = LDV_POINTER_POINTER (pointer_next)) ;
       LDV_POINTER_POINTER (pointer_next) = pointer_last;
     }
-  else
-    *first_non_pointer_ptr = type;
 
   return pointer;
 }
