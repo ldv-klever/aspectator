@@ -1713,7 +1713,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
       break;
 
     case POINTER_TYPE:
-      if ((type_name = TYPE_NAME (t)) && TREE_CODE(type_name) == TYPE_DECL && !is_decl_decl_spec)
+      if ((type_name = TYPE_NAME (t)) && TREE_CODE(type_name) == TYPE_DECL)
         {
           if (direct_declarator_prev)
             {
@@ -1754,7 +1754,7 @@ ldv_convert_declarator (tree t, bool is_decl_decl_spec, ldv_declarator_ptr *decl
               case FUNCTION_TYPE:
               case POINTER_TYPE:
                 if ((type_name = TYPE_NAME (first_non_pointer)) && TREE_CODE(type_name) == TYPE_DECL)
-                  ldv_convert_declarator (first_non_pointer, is_decl_decl_spec, declarator_first_ptr, NULL, declarator);
+                  *declarator_first_ptr = declarator;
                 else
                   ldv_convert_direct_declarator (first_non_pointer, is_decl_decl_spec, NULL, declarator_first_ptr, NULL, declarator);
                 break;
@@ -1988,43 +1988,46 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
 
       /* Then recursively analyze declaration type to build the rest part of a
          declarator and direct declarator sequence. */
-      if ((decl_type = TREE_TYPE (t)))
+      if (TREE_CODE (t) == TYPE_DECL)
         {
-          /* Typedefs aren't processed here. */
-          if ((type_name = TYPE_NAME (decl_type)) && TREE_CODE(type_name) == TYPE_DECL && !is_decl_decl_spec)
-            ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
-          else
+          if (!(decl_type = DECL_ORIGINAL_TYPE (t)))
+            LDV_ERROR ("can't find original declaration type");
+        }
+      else if (!(decl_type = TREE_TYPE (t)))
+        LDV_ERROR ("can't find declaration type");
+
+      /* TODO: it seems that this if-branch is redundant. */
+      if ((type_name = TYPE_NAME (decl_type)) && TREE_CODE(type_name) == TYPE_DECL)
+        ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
+      else
+        {
+          switch (TREE_CODE (decl_type))
             {
-              switch (TREE_CODE (decl_type))
-                {
-                case ARRAY_TYPE:
-                case FUNCTION_TYPE:
-       // TODO: remove tree code checking from here! Type declarations shouldn't passed here!
-                  if (TREE_CODE (t) == FUNCTION_DECL)
-                    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, t, declarator_first_ptr, direct_declarator, NULL);
-                  else
-                    ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, NULL_TREE, declarator_first_ptr, direct_declarator, NULL);
+            case ARRAY_TYPE:
+            case FUNCTION_TYPE:
+              // TODO: remove tree code checking from here! Type declarations shouldn't passed here!
+              if (TREE_CODE (t) == FUNCTION_DECL)
+                ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, t, declarator_first_ptr, direct_declarator, NULL);
+              else
+                ldv_convert_direct_declarator (decl_type, is_decl_decl_spec, NULL_TREE, declarator_first_ptr, direct_declarator, NULL);
 
-                  break;
+              break;
 
-                case VOID_TYPE:
-                case INTEGER_TYPE:
-                case REAL_TYPE:
-                case BOOLEAN_TYPE:
-                case POINTER_TYPE:
-                case ENUMERAL_TYPE:
-                case RECORD_TYPE:
-                case UNION_TYPE:
-                  ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
-                  break;
+            case VOID_TYPE:
+            case INTEGER_TYPE:
+            case REAL_TYPE:
+            case BOOLEAN_TYPE:
+            case POINTER_TYPE:
+            case ENUMERAL_TYPE:
+            case RECORD_TYPE:
+            case UNION_TYPE:
+              ldv_convert_declarator (decl_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator, NULL);
+              break;
 
-                default:
-                  LDV_CONVERT_ERROR (decl_type);
-                }
+            default:
+              LDV_CONVERT_ERROR (decl_type);
             }
         }
-      else
-        LDV_ERROR ("can't find declaration type");
 
       break;
 
