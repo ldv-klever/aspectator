@@ -62,7 +62,6 @@ extern void ldv_c_backend_set_lines_level (int);
 extern void ldv_cbe_handle_options (void);
 extern bool ldv_is_c_backend_enabled (void);
 extern bool ldv_is_dump_ops (void);
-extern char *ldv_cbe_itoa (unsigned int);
 
 
 #endif /* _LDV_CBE_CORE_H_ */

@@ -248,21 +248,3 @@ ldv_is_dump_ops (void)
 {
   return (ldv_dump_ops == true);
 }
-
-/* TODO: merge it with ldv_itoa() from ldv-core.c. */
-char *
-ldv_cbe_itoa (unsigned int n)
-{
-  int int_digits, order;
-  char *str = NULL;
-
-  /* Obtain the number of digits that are contained in unsigned integer
-     number. */
-  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
-
-  str = XCNEWVEC (char, (int_digits + 1));
-
-  sprintf (str, "%d", n);
-
-  return str;
-}

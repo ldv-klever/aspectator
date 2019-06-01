@@ -27,6 +27,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "c/c-tree.h"
 
 #include "ldv-convert.h"
+#include "ldv-core.h"
 #include "ldv-cbe-core.h"
 #include "ldv-cpp-core.h"
 #include "ldv-grammar.h"
@@ -2942,7 +2943,7 @@ ldv_convert_identifier (tree t)
       else if ((decl_uid = DECL_UID (t)))
         {
           /* TODO: implement a special function for this (below there are two similar sequences of actions). */
-          decl_uid_str = ldv_cbe_itoa (decl_uid);
+          decl_uid_str = ldv_itoa (decl_uid);
           decl_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (decl_uid_str) + 1);
           sprintf (decl_uid_name_str, "ldv_%d", decl_uid);
           XDELETE (decl_uid_str);
@@ -2981,7 +2982,7 @@ ldv_convert_identifier (tree t)
          enumerations correctly. */
       else if ((enum_uid = TYPE_UID (t)))
         {
-          enum_uid_str = ldv_cbe_itoa (enum_uid);
+          enum_uid_str = ldv_itoa (enum_uid);
           enum_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (enum_uid_str) + 1);
           sprintf (enum_uid_name_str, "ldv_%d", enum_uid);
           XDELETE (enum_uid_str);
@@ -6046,7 +6047,7 @@ ldv_label_decl_name (tree t)
           return IDENTIFIER_POINTER (label_decl_name);
         else if ((label_decl_uid = DECL_UID (t)))
           {
-            label_decl_uid_str = ldv_cbe_itoa (label_decl_uid);
+            label_decl_uid_str = ldv_itoa (label_decl_uid);
             label_decl_name_str = XCNEWVEC (char, 3 + 1 + strlen (label_decl_uid_str) + 1);
             sprintf (label_decl_name_str, "ldv_%d", label_decl_uid);
             XDELETE (label_decl_uid_str);
