@@ -99,7 +99,6 @@ bool ldv_isinfo_io;
 bool ldv_isinfo_lex;
 bool ldv_isinfo_list;
 bool ldv_isinfo_match;
-bool ldv_isinfo_matching_table;
 /* This flag specifies whether an expression visualization is needed. */
 bool ldv_isexpr_visualization;
 /* This flag specifies whether a signature printing of matched by name entities
@@ -527,8 +526,6 @@ ldv_print_info (const char *info_kind, const char *format, ...)
   else if (!ldv_isinfo_list && !strcmp (info_kind, LDV_INFO_LIST))
     return;
   else if (!ldv_isinfo_match && !strcmp (info_kind, LDV_INFO_MATCH))
-    return;
-  else if (!ldv_isinfo_matching_table && !strcmp (info_kind, LDV_INFO_MATCHING_TABLE))
     return;
 
   va_start (ap, format);

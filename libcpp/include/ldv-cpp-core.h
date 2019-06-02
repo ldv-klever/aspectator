@@ -31,6 +31,10 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Print source code location and call CPP fatal_error. */
 #define LDV_CPP_FATAL_ERROR fprintf (stderr, "LDV: %s: %d: fatal error took place here\n", __FILE__, __LINE__); ldv_cpp_fatal_error
+/* Dump of matching table is not required almost ever. If one will need it
+ * nevertheless, one should replace false with true.
+ */
+#define LDV_DUMP_MATCHING_TABLE false
 
 
 /* Terminal symbols that require some memory allocation. */
@@ -39,7 +43,6 @@ typedef enum { LDV_T_FILE, LDV_T_ID, LDV_T_B, LDV_T_STRING, LDV_T_TEXT } ldv_tok
 
 /* Flags specify what ldv actions must be performed. */
 extern bool ldv_cpp;
-extern bool ldv_cpp_isinfo_matching_table;
 extern int ldv_cpp_stage;
 
 extern int ldv_cmp_str (ldv_id_ptr, const char *);
@@ -116,7 +119,6 @@ extern void ldv_puts_string (const char *, ldv_str_ptr);
 extern void ldv_puts_text (const char *, ldv_text_ptr);
 
 extern void ldv_set_ldv (bool);
-extern void ldv_set_ldv_opts (bool);
 extern void ldv_set_ldv_stage (int);
 
 extern char *ldv_truncate_braces (char *);

@@ -2175,9 +2175,6 @@ toplev::main (int argc, char **argv)
   /* Perform needed actions for different ldv stages if needed. */
   if (ldv ())
     {
-      /* Pass some options to cpp preprocessor library. */
-      ldv_set_ldv_opts (ldv_isinfo_matching_table);
-
       /* At the beginning specify that nothing was matched. */
       ldv_set_nomatch ();
 

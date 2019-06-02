@@ -33,7 +33,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_LEX            "INFO LEX"
 #define LDV_INFO_LIST           "INFO LIST"
 #define LDV_INFO_MATCH          "INFO MATCHING"
-#define LDV_INFO_MATCHING_TABLE "INFO MATCHING TABLE"
 
 #define LDV_ERROR_BISON     "ERROR BISON"
 #define LDV_ERROR_LEX       "ERROR LEX"
@@ -67,7 +66,6 @@ extern bool ldv_isinfo_io;
 extern bool ldv_isinfo_lex;
 extern bool ldv_isinfo_list;
 extern bool ldv_isinfo_match;
-extern bool ldv_isinfo_matching_table;
 extern bool ldv_isinfo_mem;
 extern bool ldv_isexpr_visualization;
 extern bool ldv_isprint_signature_of_matched_by_name;

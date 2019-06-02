@@ -31,7 +31,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Macro from ldv-io.h that's needed for printing of matched just by name
    macros. */
-#define LDV_MATCHED_BY_NAME             (stderr)
+#define LDV_MATCHED_BY_NAME     (stderr)
 
 
 /* An advice definitions list. */
@@ -945,7 +945,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
             }
 
           /* Dump the matching table if needed. */
-          if (ldv_cpp_isinfo_matching_table)
+          if (LDV_DUMP_MATCHING_TABLE)
             {
               fprintf (stderr, "MATCHING TABLE (OX - SOURCE ARGUMENT, OY - ASPECT ARGUMENTS):\n");
 
@@ -1073,7 +1073,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
           free (param_matching_table);
 
           /* Dump the 'true' path if needed. */
-          if (ldv_cpp_isinfo_matching_table)
+          if (LDV_DUMP_MATCHING_TABLE)
             {
               fprintf (stderr, "'TRUE' PATH IN MATCHING TABLE:\n");
 
@@ -1094,7 +1094,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
               fprintf (stderr, "\n\n");
             }
 
-          if (ldv_cpp_isinfo_matching_table)
+          if (LDV_DUMP_MATCHING_TABLE)
             fprintf (stderr, "MATCHES BETWEEN ARGUMENTS TYPES OF SOURCE AND ASPECT FUNCTION DECLARATIONS:\n");
 
           /* Replace '..' wildcards with real source function arguments types to
@@ -1106,7 +1106,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
             {
               matching_table_coord = (ldv_coord_ptr) ldv_list_get_data (matching_table_coord_list_cur);
 
-              if (ldv_cpp_isinfo_matching_table)
+              if (LDV_DUMP_MATCHING_TABLE)
                 fprintf(stderr, "CURRENT 'TRUE' PATH ELEMENT: (%d, %d)\n", (matching_table_coord->x + 1), (matching_table_coord->y + 1));
 
               /* See on a next 'true' path element to understand when '..'
@@ -1118,7 +1118,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
 
               param_second = (ldv_i_param_ptr) ldv_list_get_data (param_second_list);
 
-              if (ldv_cpp_isinfo_matching_table)
+              if (LDV_DUMP_MATCHING_TABLE)
                 {
                   fprintf(stderr, "SOURCE ARGUMENT NUMBER: %d\n", (j + 1));
                   fprintf(stderr, "ASPECT ARGUMENT NUMBER: %d (IS '..' WILDCARD: %d)\n", (i + 1), (int)param_second->isany_params);
@@ -1279,7 +1279,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                 }
             }
 
-          if (ldv_cpp_isinfo_matching_table)
+          if (LDV_DUMP_MATCHING_TABLE)
             fprintf (stderr, "\n");
         }
 

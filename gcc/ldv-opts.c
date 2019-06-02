@@ -96,7 +96,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_LEX_ENV                            "LDV_INFO_LEX"
 #define LDV_INFO_LIST_ENV                           "LDV_INFO_LIST"
 #define LDV_INFO_MATCH_ENV                          "LDV_INFO_MATCHING"
-#define LDV_INFO_MATCHING_TABLE_ENV                 "LDV_INFO_MATCHING_TABLE"
 #define LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME_ENV  "LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME"
 #define LDV_STAGE_ENV                               "LDV_STAGE"
 
@@ -155,7 +154,6 @@ ldv_handle_options (void)
       ldv_isinfo_lex = LDV_ISENV_SET (LDV_INFO_LEX_ENV);
       ldv_isinfo_list = LDV_ISENV_SET (LDV_INFO_LIST_ENV);
       ldv_isinfo_match = LDV_ISENV_SET (LDV_INFO_MATCH_ENV);
-      ldv_isinfo_matching_table = LDV_ISENV_SET (LDV_INFO_MATCHING_TABLE_ENV);
 
       /* Specify that all debugs are needed. */
       if (LDV_ISENV_SET (LDV_INFO_ALL_ENV))
@@ -167,7 +165,6 @@ ldv_handle_options (void)
           ldv_isinfo_lex = true;
           ldv_isinfo_list = true;
           ldv_isinfo_match = true;
-          ldv_isinfo_matching_table = true;
         }
 
       /* Check wether an expression virtualization is needed. */

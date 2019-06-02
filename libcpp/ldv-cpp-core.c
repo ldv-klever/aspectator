@@ -32,7 +32,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 
 bool ldv_cpp = false;
-bool ldv_cpp_isinfo_matching_table = false;
 int ldv_cpp_stage = -1;
 
 
@@ -233,10 +232,9 @@ ldv_cmp_str_any_chars (const char *id, const char *str)
     }
 
   /* Dump matching table if needed. */
-  if (ldv_cpp_isinfo_matching_table)
+  if (LDV_DUMP_MATCHING_TABLE)
     {
       fprintf (stderr, "MATCHING TABLE (OX - STRING SYMBOLS, OY - IDENTIFIER SYMBOLS):\n");
-
       fprintf (stderr, "    ");
 
       /* Print Ox axis signatures. */
@@ -1197,12 +1195,6 @@ ldv_set_ldv (bool ldv_gcc)
 {
   /* Set an ldv flag from gcc to cpp. */
   ldv_cpp = ldv_gcc;
-}
-
-void
-ldv_set_ldv_opts (bool ldv_gcc_isinfo_matching_table)
-{
-  ldv_cpp_isinfo_matching_table = ldv_gcc_isinfo_matching_table;
 }
 
 void
