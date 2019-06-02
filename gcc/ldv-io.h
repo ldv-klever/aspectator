@@ -31,7 +31,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_WEAVE          "INFO WEAVING"
 #define LDV_INFO_IO             "INFO IO"
 #define LDV_INFO_LEX            "INFO LEX"
-#define LDV_INFO_LIST           "INFO LIST"
 #define LDV_INFO_MATCH          "INFO MATCHING"
 
 #define LDV_ERROR_BISON     "ERROR BISON"
@@ -64,7 +63,6 @@ extern bool ldv_isinfo_bison;
 extern bool ldv_isinfo_weave;
 extern bool ldv_isinfo_io;
 extern bool ldv_isinfo_lex;
-extern bool ldv_isinfo_list;
 extern bool ldv_isinfo_match;
 extern bool ldv_isinfo_mem;
 extern bool ldv_isexpr_visualization;

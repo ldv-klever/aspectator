@@ -94,7 +94,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_WEAVE_ENV                          "LDV_INFO_WEAVING"
 #define LDV_INFO_IO_ENV                             "LDV_INFO_IO"
 #define LDV_INFO_LEX_ENV                            "LDV_INFO_LEX"
-#define LDV_INFO_LIST_ENV                           "LDV_INFO_LIST"
 #define LDV_INFO_MATCH_ENV                          "LDV_INFO_MATCHING"
 #define LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME_ENV  "LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME"
 #define LDV_STAGE_ENV                               "LDV_STAGE"
@@ -152,7 +151,6 @@ ldv_handle_options (void)
       ldv_isinfo_weave = LDV_ISENV_SET (LDV_INFO_WEAVE_ENV);
       ldv_isinfo_io = LDV_ISENV_SET (LDV_INFO_IO_ENV);
       ldv_isinfo_lex = LDV_ISENV_SET (LDV_INFO_LEX_ENV);
-      ldv_isinfo_list = LDV_ISENV_SET (LDV_INFO_LIST_ENV);
       ldv_isinfo_match = LDV_ISENV_SET (LDV_INFO_MATCH_ENV);
 
       /* Specify that all debugs are needed. */
@@ -163,7 +161,6 @@ ldv_handle_options (void)
           ldv_isinfo_weave = true;
           ldv_isinfo_io = true;
           ldv_isinfo_lex = true;
-          ldv_isinfo_list = true;
           ldv_isinfo_match = true;
         }
 

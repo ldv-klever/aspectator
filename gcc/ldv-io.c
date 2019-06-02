@@ -97,7 +97,6 @@ bool ldv_isinfo_bison;
 bool ldv_isinfo_weave;
 bool ldv_isinfo_io;
 bool ldv_isinfo_lex;
-bool ldv_isinfo_list;
 bool ldv_isinfo_match;
 /* This flag specifies whether an expression visualization is needed. */
 bool ldv_isexpr_visualization;
@@ -522,8 +521,6 @@ ldv_print_info (const char *info_kind, const char *format, ...)
   else if (!ldv_isinfo_io && !strcmp (info_kind, LDV_INFO_IO))
     return;
   else if (!ldv_isinfo_lex && !strcmp (info_kind, LDV_INFO_LEX))
-    return;
-  else if (!ldv_isinfo_list && !strcmp (info_kind, LDV_INFO_LIST))
     return;
   else if (!ldv_isinfo_match && !strcmp (info_kind, LDV_INFO_MATCH))
     return;
