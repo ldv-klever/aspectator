@@ -85,7 +85,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #define LDV_ARG_SIGN_ENV                            "LDV_ARG_SIGN"
 #define LDV_ASPECT_FILE_ENV                         "LDV_ASPECT_FILE"
-#define LDV_EXPRESSION_VISUALIZATON_ENV             "LDV_EXPRESSION_VISUALIZATON"
 #define LDV_DIR_RES_ENV                             "LDV_DIR_RES"
 #define LDV_DIR_TEMP_ENV                            "LDV_DIR_TEMP"
 #define LDV_INFO_ENV                                "LDV_INFO"
@@ -163,9 +162,6 @@ ldv_handle_options (void)
           ldv_isinfo_lex = true;
           ldv_isinfo_match = true;
         }
-
-      /* Check wether an expression virtualization is needed. */
-      ldv_isexpr_visualization = LDV_ISENV_SET (LDV_EXPRESSION_VISUALIZATON_ENV);
 
       /* Check wether a signature printing of matched by name entities is needed. */
       ldv_isprint_signature_of_matched_by_name = LDV_ISENV_SET (LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME_ENV);

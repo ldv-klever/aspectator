@@ -98,8 +98,6 @@ bool ldv_isinfo_weave;
 bool ldv_isinfo_io;
 bool ldv_isinfo_lex;
 bool ldv_isinfo_match;
-/* This flag specifies whether an expression visualization is needed. */
-bool ldv_isexpr_visualization;
 /* This flag specifies whether a signature printing of matched by name entities
    is needed. */
 bool ldv_isprint_signature_of_matched_by_name;

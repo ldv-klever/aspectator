@@ -1610,12 +1610,12 @@ ldv_visualize_body (tree fndecl)
 {
   tree body = NULL_TREE;
 
+  /* Replace with false if you do need to visualize function bodies. */
+  if (true)
+    return;
+
   /* Obtain a function body. */
   body = DECL_SAVED_TREE (fndecl);
-
-  /* Visualize a function body if it's needed. */
-  if (!ldv_isexpr_visualization)
-    return;
 
   /* Print a name of a function which a body will be visualized. */
   if (DECL_NAME (fndecl) && TREE_CODE (DECL_NAME (fndecl)) == IDENTIFIER_NODE)

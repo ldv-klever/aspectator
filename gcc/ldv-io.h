@@ -64,8 +64,6 @@ extern bool ldv_isinfo_weave;
 extern bool ldv_isinfo_io;
 extern bool ldv_isinfo_lex;
 extern bool ldv_isinfo_match;
-extern bool ldv_isinfo_mem;
-extern bool ldv_isexpr_visualization;
 extern bool ldv_isprint_signature_of_matched_by_name;
 
 extern const char *ldv_dir_res;
