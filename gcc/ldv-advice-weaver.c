@@ -220,7 +220,7 @@ char *
 ldv_create_aspected_name (const char *name)
 {
   char *aspected_name = NULL;
-  char *aspected_name_numb;
+  const char *aspected_name_numb;
 
   aspected_name_numb = ldv_itoa (ldv_get_unique_numb ());
 
@@ -230,7 +230,7 @@ ldv_create_aspected_name (const char *name)
 
   sprintf (aspected_name, "%s_%s_%s", LDV_ASPECTED_NAME_PREFIX, name, aspected_name_numb);
 
-  free (aspected_name_numb);
+  free (CONST_CAST (char *, aspected_name_numb));
 
   return aspected_name;
 }
@@ -367,9 +367,9 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
 
 /* Aspect patterns that can be evaluated basing on matching information. */
 void
-ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
+ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
 {
-  char *text = NULL;
+  const char *text = NULL;
   unsigned int number;
   const char *func_arg = NULL;
   int func_arg_size;
@@ -679,7 +679,7 @@ char *
 ldv_get_actual_arg_func_names (void)
 {
   unsigned int i;
-  char *i_str;
+  const char *i_str;
   ldv_list_ptr func_arg_info_list = NULL;
   ldv_func_arg_info_ptr func_arg_info = NULL;
   ldv_str_ptr actual_arg_func_names = NULL;
@@ -706,7 +706,7 @@ ldv_get_actual_arg_func_names (void)
 
           i_str = ldv_itoa (i);
           ldv_puts_string (i_str, actual_arg_func_names);
-          free (i_str);
+          free (CONST_CAST (char *, i_str));
 
           ldv_putc_string ('=', actual_arg_func_names);
           ldv_puts_string (func_arg_info->func_name, actual_arg_func_names);
@@ -1005,7 +1005,7 @@ void
 ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
 {
   char *body_text = NULL;
-  char *text = NULL;
+  const char *text = NULL;
   unsigned int number;
   const char *func_call = NULL;
   ldv_text_ptr body_with_patterns = NULL;
@@ -1630,13 +1630,13 @@ ldv_print_var_decl (ldv_i_var_ptr var)
 void
 ldv_print_int (int n)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
   str = ldv_itoa (n);
 
   ldv_print_str (str);
 
-  free (str);
+  free (CONST_CAST (char *, str));
 }
 
 ldv_list_ptr
@@ -1901,7 +1901,7 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
   ldv_list_ptr func_arg_type_decl_list = NULL;
   const char *arg_type_name = NULL;
   ldv_id_ptr arg_type_name_aux;
-  char *arg_type_name_numb_aux = NULL;
+  const char *arg_type_name_numb_aux = NULL;
   unsigned int arg_type_numb;
   ldv_str_ptr str = NULL;
   ldv_list_ptr body_patterns = NULL;
@@ -1960,7 +1960,7 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
 
       ldv_puts_id (arg_type_name_numb_aux, arg_type_name_aux);
 
-      free (arg_type_name_numb_aux);
+      free (CONST_CAST (char *, arg_type_name_numb_aux));
 
       arg_type_name = ldv_get_id_name (arg_type_name_aux);
 

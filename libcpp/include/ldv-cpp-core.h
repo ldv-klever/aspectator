@@ -95,7 +95,7 @@ extern char *ldv_cpp_get_id_name (ldv_id_ptr);
 
 extern char *ldv_get_text (ldv_text_ptr);
 
-extern const char *ldv_cpp_itoa (unsigned int n);
+extern const char *ldv_itoa (unsigned int n);
 
 extern char *ldv_get_str (ldv_str_ptr);
 

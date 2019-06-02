@@ -312,7 +312,7 @@ ldv_make_includes (void)
   char *include = NULL;
   bool isaround = false;
   unsigned int line_cur = 0;
-  char *line_cur_str = NULL;
+  const char *line_cur_str = NULL;
   char *aux_fname = NULL;
   FILE *aux_file_stream = NULL;
 
@@ -418,7 +418,7 @@ ldv_make_includes (void)
       ldv_puts (" \"", LDV_FILE_PREPARED_STREAM);
       ldv_puts (aux_fname, LDV_FILE_PREPARED_STREAM);
       ldv_puts ("\"\n", LDV_FILE_PREPARED_STREAM);
-      free (line_cur_str);
+      free (CONST_CAST (char *, line_cur_str));
 
       /* Then copy all after includes. */
       for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))

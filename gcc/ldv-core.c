@@ -101,14 +101,14 @@ ldv_free_aspect_pattern (ldv_aspect_pattern_ptr aspect_pattern)
   ldv_list_ptr params;
   ldv_aspect_pattern_param_ptr param;
 
-  free ((void *)aspect_pattern->name);
+  free (CONST_CAST (char *, aspect_pattern->name));
 
   for (params = aspect_pattern->params
     ; params
     ; params = ldv_list_get_next (params))
     {
       param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (params);
-      free ((void *)param->string);
+      free (CONST_CAST (char *, param->string));
       free (param);
     }
 
@@ -368,24 +368,6 @@ ldv_delete_int (ldv_int_ptr integer)
     }
   else
     internal_error ("integer pointer wasn't initialized");
-}
-
-char *
-ldv_itoa (unsigned int n)
-{
-  int int_digits, order;
-  char *str = NULL;
-
-  /* Obtain the number of digits that are contained in unsigned integer
-     number. */
-  for (int_digits = 1, order = 10; n / order >= 1; int_digits++, order *= 10) ;
-
-  str = XCNEWVEC (char, (int_digits + 1));
-  ldv_print_info (LDV_INFO_MEM, "string memory was released");
-
-  sprintf (str, "%d", n);
-
-  return str;
 }
 
 char *

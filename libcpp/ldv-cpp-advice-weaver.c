@@ -48,7 +48,7 @@ ldv_aspect_pattern_param_ptr
 ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EVALUATE_ASPECT_PATTERN_FUNC evaluate_aspect_pattern_func)
 {
   ldv_aspect_pattern_param_ptr param = NULL, param_cur = NULL;
-  char *text = NULL;
+  const char *text = NULL;
   unsigned int number;
   ldv_str_ptr str;
 
@@ -279,7 +279,7 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 }
 
 void
-ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, char **string, unsigned int *integer)
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
 {
   char *text = NULL;
   char *arg_value = NULL;
@@ -355,7 +355,7 @@ ldv_get_actual_args (void)
 
       ldv_puts_string ("actual_arg", actual_args);
 
-      i_str = ldv_cpp_itoa (i);
+      i_str = ldv_itoa (i);
       ldv_puts_string (i_str, actual_args);
       free ((void *)i_str);
 
@@ -552,7 +552,7 @@ ldv_store_query_results (ldv_aspect_pattern_param_ptr param1, ldv_aspect_pattern
                 }
 
               param = (ldv_aspect_pattern_param_ptr) ldv_list_get_data (param_list);
-              str = ldv_cpp_itoa (param->integer);
+              str = ldv_itoa (param->integer);
               ldv_puts_text (str, text);
               free ((void *)str);
               param_list = ldv_list_get_next (param_list);
