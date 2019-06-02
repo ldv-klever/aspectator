@@ -275,15 +275,8 @@ ldv_getc (FILE *stream)
 {
   int c = getc (stream);
 
-#ifdef LDV_CHAR_DEBUG
-
-  /* Print information on an obtained character. */
-  if (c == EOF)
-    ldv_print_info (LDV_INFO_IO, "get char \"end of file\"");
-  else
-    ldv_print_info (LDV_INFO_IO, "get char \"%c\"", ldv_end_of_line (c));
-
-#endif /* LDV_CHAR_DEBUG */
+  if (c == EOF && ferror (stream))
+    internal_error ("can%'t read character from stream: %s", xstrerror (errno));
 
   return c;
 }
@@ -716,12 +709,6 @@ ldv_ungetc (int c, FILE *stream)
   /* Finish work if can not back a character to a stream. */
   if (ungetc (c, stream) != c)
     internal_error ("character \"%c\" wasn't back to stream", c);
-
-#ifdef LDV_CHAR_DEBUG
-
-  ldv_print_info (LDV_INFO_IO, "unget character \"%c\"", ldv_end_of_line (c));
-
-#endif /* LDV_CHAR_DEBUG */
 }
 
 void
