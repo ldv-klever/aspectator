@@ -793,8 +793,6 @@ ldv_create_id (void)
   ldv_id_ptr id = NULL;
 
   id = XCNEW (ldv_id);
-  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "identifier memory was released");*/
-
   id->id_name = ldv_create_str (LDV_T_ID);
   id->isany_chars = false;
 
@@ -856,10 +854,7 @@ ldv_create_str (ldv_token_k token_kind)
     }
 
   string = XCNEW (ldv_string);
-  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "string memory was released");*/
-
   string->text = XCNEWVEC (char, (len_start + 1));
-  /* TODO #371 ldv_print_info (LDV_INFO_MEM, "string text memory was released");*/
 
   string->text[0] = '\0';
   string->max_len = len_start;
@@ -887,10 +882,7 @@ ldv_free_str (ldv_str_ptr string)
   if (string)
     {
       free (string->text);
-      /*ldv_print_info (LDV_INFO_MEM, "string text memory was free");*/
-
       free (string);
-      /*ldv_print_info (LDV_INFO_MEM, "string memory was free");*/
     }
   else
     {
@@ -916,8 +908,6 @@ ldv_create_text (void)
   ldv_text_ptr text = NULL;
 
   text = XCNEW (ldv_text);
-  /* TODO: ldv_print_info (LDV_INFO_MEM, "text memory was released"); */
-
   text->text = ldv_create_str (LDV_T_TEXT);
 
   return text;
@@ -929,9 +919,7 @@ ldv_free_text (ldv_text_ptr text)
   if (text)
     {
       ldv_free_str (text->text);
-
       free (text);
-      /* TODO: ldv_print_info (LDV_INFO_MEM, "text memory was free"); */
     }
   else
     {

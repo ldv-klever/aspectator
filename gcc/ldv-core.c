@@ -90,7 +90,6 @@ ldv_create_aspect_pattern (void)
   ldv_aspect_pattern_ptr aspect_pattern = NULL;
 
   aspect_pattern = XCNEW (ldv_aspect_pattern);
-  ldv_print_info (LDV_INFO_MEM, "aspect pattern memory was released");
 
   return aspect_pattern;
 }
@@ -122,7 +121,6 @@ ldv_create_aspect_pattern_param (void)
   ldv_aspect_pattern_param_ptr param = NULL;
 
   param = XCNEW (ldv_aspect_pattern_param);
-  ldv_print_info (LDV_INFO_MEM, "aspect pattern parameter memory was released");
 
   return param;
 }
@@ -133,8 +131,6 @@ ldv_create_body (void)
   ldv_ab_ptr body = NULL;
 
   body = XCNEW (ldv_advice_body);
-  ldv_print_info (LDV_INFO_MEM, "body memory was released");
-
   body->ab_text = ldv_create_str (LDV_T_B);
 
   return body;
@@ -146,7 +142,6 @@ ldv_create_body_aspect_pattern (void)
   ldv_ab_aspect_pattern_ptr pattern = NULL;
 
   pattern = XCNEW (ldv_ab_aspect_pattern);
-  ldv_print_info (LDV_INFO_MEM, "advice body aspect pattern memory was released");
 
   return pattern;
 }
@@ -157,8 +152,6 @@ ldv_create_declarator (void)
   ldv_pps_declarator_ptr declarator = NULL;
 
   declarator = XCNEW (ldv_primitive_pointcut_signature_declarator);
-  ldv_print_info (LDV_INFO_MEM, "declarator memory was released");
-
   declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_NONE;
 
   return declarator;
@@ -212,8 +205,6 @@ ldv_create_file (void)
   ldv_file_ptr file = NULL;
 
   file = XCNEW (ldv_file);
-  ldv_print_info (LDV_INFO_MEM, "file memory was released");
-
   file->file_name = ldv_create_str (LDV_T_FILE);
 
   return file;
@@ -225,9 +216,7 @@ ldv_free_file (ldv_file_ptr file)
   if (file)
     {
       ldv_free_str (file->file_name);
-
       free (file);
-      ldv_print_info (LDV_INFO_MEM, "file memory was free");
     }
   else
     internal_error ("file pointer wasn't initialized");
@@ -239,7 +228,6 @@ ldv_create_int (void)
   ldv_int_ptr integer = NULL;
 
   integer = XCNEW (ldv_int);
-  ldv_print_info (LDV_INFO_MEM, "integer number memory was released");
 
   return integer;
 }
@@ -250,7 +238,6 @@ ldv_create_pps_array_size (void)
   ldv_pps_array_size_ptr pps_array_size = NULL;
 
   pps_array_size = XCNEW (ldv_primitive_pointcut_signature_array_size);
-  ldv_print_info (LDV_INFO_MEM, "array size memory was released");
 
   return pps_array_size;
 }
@@ -267,8 +254,6 @@ ldv_create_pps_decl (void)
   ldv_pps_decl_ptr pps_decl = NULL;
 
   pps_decl = XCNEW (ldv_primitive_pointcut_signature_decl);
-  ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was released");
-
   pps_decl->pps_decl_kind = LDV_PPS_DECL_NONE;
 
   return pps_decl;
@@ -285,13 +270,11 @@ ldv_free_pps_decl (ldv_pps_decl_ptr pps_decl)
   for (declarator_list = pps_decl->pps_declarator; declarator_list; declarator_list = ldv_list_get_next (declarator_list))
     {
       declarator = (ldv_pps_declarator_ptr) ldv_list_get_data (declarator_list);
-
       ldv_free_declarator (declarator);
     }
 
   ldv_list_delete_all (pps_decl->pps_declarator);
   free (pps_decl);
-  ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature declaration memory was freed");
 }
 
 /* TODO: clarify names for these 2 functions, since below there is pps_func_arg->pps_func_arg. */
@@ -301,7 +284,6 @@ ldv_create_pps_func_arg (void)
   ldv_pps_func_arg_ptr pps_func_arg = NULL;
 
   pps_func_arg = XCNEW (ldv_primitive_pointcut_signature_func_arg);
-  ldv_print_info (LDV_INFO_MEM, "function argument memory was released");
 
   return pps_func_arg;
 }
@@ -319,7 +301,6 @@ ldv_create_ptr_quals (void)
   ldv_pps_ptr_quals_ptr ptr_quals = NULL;
 
   ptr_quals = XCNEW (ldv_primitive_pointcut_signature_ptr_quals);
-  ldv_print_info (LDV_INFO_MEM, "declarator pointer qualifiers memory was released");
 
   return ptr_quals;
 }
@@ -336,9 +317,7 @@ ldv_delete_body (ldv_ab_ptr body)
   if (body)
     {
       ldv_free_str (body->ab_text);
-
       free (body);
-      ldv_print_info (LDV_INFO_MEM, "body memory was free");
     }
   else
     internal_error ("body pointer wasn't initialized");
@@ -350,9 +329,7 @@ ldv_delete_id (ldv_id_ptr id)
   if (id)
     {
       ldv_free_str (id->id_name);
-
       free (id);
-      ldv_print_info (LDV_INFO_MEM, "identifier memory was free");
     }
   else
     internal_error ("id pointer wasn't initialized");
@@ -362,10 +339,7 @@ void
 ldv_delete_int (ldv_int_ptr integer)
 {
   if (integer)
-    {
-      free (integer);
-      ldv_print_info (LDV_INFO_MEM, "integer number memory was free");
-    }
+    free (integer);
   else
     internal_error ("integer pointer wasn't initialized");
 }

@@ -226,8 +226,6 @@ ldv_create_aspected_name (const char *name)
 
   /* Aspected name = ldv prefix + _ + original name + _ + unique number. */
   aspected_name = XCNEWVEC (char, strlen (LDV_ASPECTED_NAME_PREFIX) + 1 + strlen (name) + 1 + strlen (aspected_name_numb) + 1);
-  ldv_print_info (LDV_INFO_MEM, "aspected name memory was released");
-
   sprintf (aspected_name, "%s_%s_%s", LDV_ASPECTED_NAME_PREFIX, name, aspected_name_numb);
 
   free (CONST_CAST (char *, aspected_name_numb));
@@ -334,8 +332,6 @@ ldv_create_decl_for_print (void)
   ldv_decl_for_print_ptr decl_for_print = NULL;
 
   decl_for_print = XCNEW (ldv_decl_for_print);
-  ldv_print_info (LDV_INFO_MEM, "declaration for print memory was released");
-
   decl_for_print->decl = ldv_create_text ();
 
   return decl_for_print;

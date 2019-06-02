@@ -163,8 +163,6 @@ ldv_create_func_arg_info (void)
   ldv_func_arg_info_ptr func_arg_info;
 
   func_arg_info = XCNEW (ldv_func_arg_info);
-  ldv_print_info (LDV_INFO_MEM, "function argument information memory was released");
-
   func_arg_info->func_arg_info_kind = LDV_FUNC_ARG_INFO_NONE;
 
   return func_arg_info;
@@ -185,7 +183,6 @@ ldv_create_var_array (void)
   ldv_var_array_ptr var_array;
 
   var_array = XCNEW (ldv_var_array);
-  ldv_print_info (LDV_INFO_MEM, "variable array memory was released");
 
   return var_array;
 }

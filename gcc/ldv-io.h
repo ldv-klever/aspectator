@@ -34,7 +34,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_LIST           "INFO LIST"
 #define LDV_INFO_MATCH          "INFO MATCHING"
 #define LDV_INFO_MATCHING_TABLE "INFO MATCHING TABLE"
-#define LDV_INFO_MEM            "INFO MEMORY"
 
 #define LDV_ERROR_BISON     "ERROR BISON"
 #define LDV_ERROR_LEX       "ERROR LEX"

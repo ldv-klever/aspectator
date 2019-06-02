@@ -321,7 +321,6 @@ named_pointcut: /* It's a named pointcut, the first of two input conceptions. */
       ldv_delete_id ($1);
 
       n_pointcut_new = XCNEW (ldv_named_pointcut);
-      ldv_print_info (LDV_INFO_MEM, "named pointcut memory was released");
 
       /* Set a pointcut name from a lexer identifier. This name can't contain
          any '$' wildcards. */
@@ -351,7 +350,6 @@ advice_definition: /* It's an advice definition, the second of two input concept
       ldv_adef_ptr a_definition_new = NULL;
 
       a_definition_new = XCNEW (ldv_advice_definition);
-      ldv_print_info (LDV_INFO_MEM, "advice definition memory was released");
 
       /* Set an advice definition declaration from a corresponding rule. */
       a_definition_new->a_declaration = $1;
@@ -377,7 +375,6 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       a_kind = ldv_get_id_name ($1);
 
       a_declaration = XCNEW (ldv_advice_declaration);
-      ldv_print_info (LDV_INFO_MEM, "advice declaration memory was released");
 
       /* Set a corresponding advice kind. */
       if (!strcmp ("after", a_kind))
@@ -591,7 +588,6 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_kind = ldv_get_id_name ($1);
 
       p_pointcut = XCNEW (ldv_primitive_pointcut);
-      ldv_print_info (LDV_INFO_MEM, "primitive pointcut memory was released");
 
       /* Set a corresponding primitive pointcut kind. */
       if (!strcmp ("define", pp_kind))
@@ -629,7 +625,6 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_kind = ldv_get_id_name ($1);
 
       p_pointcut = XCNEW (ldv_primitive_pointcut);
-      ldv_print_info (LDV_INFO_MEM, "primitive pointcut memory was released");
 
       /* Set a corresponding primitive pointcut kind. */
       if (!strcmp ("file", pp_kind))
@@ -667,7 +662,6 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_kind = ldv_get_id_name ($1);
 
       p_pointcut = XCNEW (ldv_primitive_pointcut);
-      ldv_print_info (LDV_INFO_MEM, "primitive pointcut memory was released");
 
       /* Set a corresponding primitive pointcut kind. */
       if (!strcmp ("call", pp_kind))
@@ -738,8 +732,7 @@ primitive_pointcut_signature_macro: /* It's a macro primitive pointcut signature
     {
       ldv_pps_macro_ptr macro = NULL;
 
-      macro = XCNEW (ldv_primitive_pointcut_signature_macro);
-      ldv_print_info (LDV_INFO_MEM, "macro primitive pointcut signature memory was released");
+      macro = XCNEW (ldv_primitive_pointcut_signature_macro);\
 
       /* Specify that macro definition signature is parsed. */
       macro->pps_macro_kind = LDV_PPS_MACRO_DEF;
@@ -758,8 +751,7 @@ primitive_pointcut_signature_macro: /* It's a macro primitive pointcut signature
     {
       ldv_pps_macro_ptr macro = NULL;
 
-      macro = XCNEW (ldv_primitive_pointcut_signature_macro);
-      ldv_print_info (LDV_INFO_MEM, "macro primitive pointcut signature memory was released");
+      macro = XCNEW (ldv_primitive_pointcut_signature_macro);\
 
       /* Specify that macro function signature is parsed. */
       macro->pps_macro_kind = LDV_PPS_MACRO_FUNC;
@@ -781,7 +773,6 @@ primitive_pointcut_signature_file: /* It's a file primitive pointcut signature, 
       ldv_pps_file_ptr file = NULL;
 
       file = XCNEW (ldv_primitive_pointcut_signature_file);
-      ldv_print_info (LDV_INFO_MEM, "file primitive pointcut signature memory was released");
 
       /* Set a function name from a lexer identifier. */
       file->file_name = $1;
@@ -1911,10 +1902,7 @@ ldv_create_c_pointcut (void)
   ldv_cp_ptr c_pointcut = NULL;
 
   c_pointcut = XCNEW (ldv_composite_pointcut);
-  ldv_print_info (LDV_INFO_MEM, "composite pointcut memory was released");
-
   c_pointcut->cp_kind = LDV_CP_NONE;
-
   c_pointcut->cp_type = LDV_CP_TYPE_NONE;
 
   return c_pointcut;
@@ -1926,8 +1914,6 @@ ldv_create_pp_signature (void)
   ldv_pps_ptr pp_signature = NULL;
 
   pp_signature = XCNEW (ldv_primitive_pointcut_signature);
-  ldv_print_info (LDV_INFO_MEM, "primitive pointcut signature memory was released");
-
   pp_signature->pps_kind = LDV_PPS_NONE;
 
   return pp_signature;
