@@ -4442,7 +4442,6 @@ ldv_parse_comments (void)
                     }
 
                   ldv_putc_text (c, comment);
-                  ldv_print_info (LDV_INFO_IO, "read C++ comment character \"%c\"", ldv_end_of_line (c));
                 }
 
               /* So, we'll skip following whitespaces and comments if so. */
@@ -4488,7 +4487,6 @@ ldv_parse_comments (void)
                     ldv_set_last_column (yylloc.last_column + 1);
 
                   ldv_putc_text (c, comment);
-                  ldv_print_info (LDV_INFO_IO, "read C comment character \"%c\"", ldv_end_of_line (c));
                 }
 
               internal_error ("End of file is reached but C comment \"%s\" isn't completed", ldv_get_text (comment));
@@ -4656,12 +4654,8 @@ ldv_parse_preprocessor_directives (void)
 
                   while ((c_next = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
                    {
-                     ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c_next));
-
                      if (c_next == '"')
-                       {
-                          break;
-                       }
+                       break;
 
                      ldv_putc_string (c_next, file_name);
                    }
@@ -4682,13 +4676,9 @@ ldv_parse_preprocessor_directives (void)
                   ldv_set_last_column (1);
                 }
 
+              /* Don't ungetc the end of line to avoid line enlarging. */
               if (c == '\n')
-                {
-                  /* Don't ungetc the end of line to avoid line enlarging. */
-                  break;
-                }
-
-              ldv_print_info (LDV_INFO_IO, "dropped preprocessor character \"%c\"", ldv_end_of_line (c));
+                break;
             }
 
           /* So, lexer should be envolved from the beginning. */

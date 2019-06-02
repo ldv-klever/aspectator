@@ -95,7 +95,6 @@ const char *ldv_aspect_fname_base;
 bool ldv_isinfo;
 bool ldv_isinfo_bison;
 bool ldv_isinfo_weave;
-bool ldv_isinfo_io;
 bool ldv_isinfo_lex;
 bool ldv_isinfo_match;
 /* This flag specifies whether a signature printing of matched by name entities
@@ -192,20 +191,14 @@ ldv_create_files (void)
           if ((fstream = fopen (fname, "w")) == NULL)
             internal_error ("can%'t open file \"%s\" for write: %m", fname);
 
-          ldv_print_info (LDV_INFO_IO, "file \"%s\" was created successfully", fname);
-
           if (fputs (ldv_get_text (body_with_patterns), fstream) == EOF)
             internal_error ("can%'t write to file \"%s\": %m", fname);
 
           ldv_free_text (body_with_patterns);
 
           fclose (fstream);
-
-          ldv_print_info (LDV_INFO_IO, "file \"%s\" was written successfully", fname);
         }
     }
-
-  ldv_print_info (LDV_INFO_IO, "finish files creature");
 }
 
 void
@@ -217,8 +210,6 @@ ldv_copy_file (const char *fname, FILE *stream)
 
   if ((fstream = fopen (fname, "r")) == NULL)
     internal_error ("can%'t open file \"%s\" for read: %m", fname);
-
-  ldv_print_info (LDV_INFO_IO, "file \"%s\" that content will be copied was successfully opened for write", fname);
 
   /* Refer to the original file (fix #5431). */
   ldv_puts ("#line 1 \"", stream);
@@ -315,8 +306,6 @@ ldv_make_includes (void)
 
       return;
     }
-
-  ldv_print_info (LDV_INFO_IO, "begin make includes");
 
   match = ldv_create_info_match ();
   file = XCNEW (ldv_info_file);
@@ -432,8 +421,6 @@ ldv_make_includes (void)
 
   free (file);
   ldv_free_info_match (match);
-
-  ldv_print_info (LDV_INFO_IO, "finish make includes");
 }
 
 void
@@ -444,8 +431,6 @@ ldv_open_instrumented_file_stream (void)
 
   if ((ldv_instrumented_file_stream = fopen (ldv_output_fname, "w")) == NULL)
     internal_error ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
-
-  ldv_print_info (LDV_INFO_IO, "Instrumented file \"%s\" was successfully opened for write", ldv_output_fname);
 }
 
 void
@@ -453,8 +438,6 @@ ldv_open_aspect_stream (void)
 {
   if ((ldv_aspect_stream = fopen (ldv_aspect_fname, "r")) == NULL)
     internal_error ("can%'t open file \"%s\" for read: %m", ldv_aspect_fname);
-
-  ldv_print_info (LDV_INFO_IO, "aspect file \"%s\" was successfully opened for read", ldv_aspect_fname);
 }
 
 void
@@ -462,8 +445,6 @@ ldv_open_main_stream (void)
 {
   if ((ldv_main_stream = fopen (main_input_filename, "r")) == NULL)
     internal_error ("can%'t open file \"%s\" for read: %m", main_input_filename);
-
-  ldv_print_info (LDV_INFO_IO, "main file \"%s\" was successfully opened for read", main_input_filename);
 }
 
 static void
@@ -471,8 +452,6 @@ ldv_open_file_prepared_stream (void)
 {
   if ((ldv_file_prepared_stream = fopen (ldv_output_fname, "w")) == NULL)
     internal_error ("can%'t open file \"%s\" for write: %m", ldv_output_fname);
-
-  ldv_print_info (LDV_INFO_IO, "Prepared file \"%s\" was successfully opened for write", ldv_output_fname);
 }
 
 void
@@ -508,8 +487,6 @@ ldv_print_info (const char *info_kind, const char *format, ...)
   else if (!ldv_isinfo_bison && !strcmp (info_kind, LDV_INFO_BISON))
     return;
   else if (!ldv_isinfo_weave && !strcmp (info_kind, LDV_INFO_WEAVE))
-    return;
-  else if (!ldv_isinfo_io && !strcmp (info_kind, LDV_INFO_IO))
     return;
   else if (!ldv_isinfo_lex && !strcmp (info_kind, LDV_INFO_LEX))
     return;
@@ -728,6 +705,4 @@ ldv_get_aux_file_name_and_stream (char **aux_fname, FILE **aux_file_stream)
 
   if ((*aux_file_stream = fopen (*aux_fname, "a+")) == NULL)
     internal_error ("can%'t open file \"%s\" for write: %m", *aux_fname);
-
-  ldv_print_info (LDV_INFO_IO, "Auxiliary file \"%s\" was successfully opened for write", *aux_fname);
 }

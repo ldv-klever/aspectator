@@ -29,7 +29,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO                "INFO"
 #define LDV_INFO_BISON          "INFO BISON"
 #define LDV_INFO_WEAVE          "INFO WEAVING"
-#define LDV_INFO_IO             "INFO IO"
 #define LDV_INFO_LEX            "INFO LEX"
 #define LDV_INFO_MATCH          "INFO MATCHING"
 

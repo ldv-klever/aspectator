@@ -91,7 +91,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_INFO_ALL_ENV                            "LDV_INFO_ALL"
 #define LDV_INFO_BISON_ENV                          "LDV_INFO_BISON"
 #define LDV_INFO_WEAVE_ENV                          "LDV_INFO_WEAVING"
-#define LDV_INFO_IO_ENV                             "LDV_INFO_IO"
 #define LDV_INFO_LEX_ENV                            "LDV_INFO_LEX"
 #define LDV_INFO_MATCH_ENV                          "LDV_INFO_MATCHING"
 #define LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME_ENV  "LDV_PRINT_SIGNATURE_OF_MATCHED_BY_NAME"
@@ -139,7 +138,7 @@ ldv_handle_options (void)
     {
       isldv = true;
 
-      ldv_print_info (LDV_INFO_IO, "aspect file \"%s\" is specified by means of environment variable \"%s\"", ldv_aspect_fname, LDV_ASPECT_FILE_ENV);
+      ldv_print_info (LDV_INFO, "aspect file \"%s\" is specified by means of environment variable \"%s\"", ldv_aspect_fname, LDV_ASPECT_FILE_ENV);
 
       /* Obtain a base name for an aspect file name. */
       ldv_aspect_fname_base = lbasename (ldv_aspect_fname);
@@ -148,7 +147,6 @@ ldv_handle_options (void)
       ldv_isinfo = LDV_ISENV_SET (LDV_INFO_ENV);
       ldv_isinfo_bison = LDV_ISENV_SET (LDV_INFO_BISON_ENV);
       ldv_isinfo_weave = LDV_ISENV_SET (LDV_INFO_WEAVE_ENV);
-      ldv_isinfo_io = LDV_ISENV_SET (LDV_INFO_IO_ENV);
       ldv_isinfo_lex = LDV_ISENV_SET (LDV_INFO_LEX_ENV);
       ldv_isinfo_match = LDV_ISENV_SET (LDV_INFO_MATCH_ENV);
 
@@ -158,7 +156,6 @@ ldv_handle_options (void)
           ldv_isinfo = true;
           ldv_isinfo_bison = true;
           ldv_isinfo_weave = true;
-          ldv_isinfo_io = true;
           ldv_isinfo_lex = true;
           ldv_isinfo_match = true;
         }
@@ -174,7 +171,7 @@ ldv_handle_options (void)
           if (stage >= LDV_ASPECT_PREPROCESSING && stage <= LDV_COMPILATION)
             {
               ldv_stage = stage;
-              ldv_print_info (LDV_INFO_IO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
+              ldv_print_info (LDV_INFO, "stage \"%d\" is specified by means of environment variable \"%s\"", ldv_stage, LDV_STAGE_ENV);
             }
           else
             internal_error ("ldv stage specified by means of environment variable \"%s\" must be unsigned integer number between \"%d\" and \"%d\"", LDV_STAGE_ENV, LDV_ASPECT_PREPROCESSING, LDV_COMPILATION);
@@ -183,19 +180,19 @@ ldv_handle_options (void)
         internal_error ("specify ldv stage by means of environment variable \"%s\" since ldv aspect file was specified", LDV_STAGE_ENV);
 
       if ((ldv_dir_res = getenv (LDV_DIR_RES_ENV)))
-        ldv_print_info (LDV_INFO_IO, "directory for results \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_res, LDV_DIR_RES_ENV);
+        ldv_print_info (LDV_INFO, "directory for results \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_res, LDV_DIR_RES_ENV);
       else
         {
           ldv_dir_res = ldv_empty_str ();
-          ldv_print_info (LDV_INFO_IO, "current working directory will be used for results");
+          ldv_print_info (LDV_INFO, "current working directory will be used for results");
         }
 
       if ((ldv_dir_temp = getenv (LDV_DIR_TEMP_ENV)))
-        ldv_print_info (LDV_INFO_IO, "directory for temporaries \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_temp, LDV_DIR_TEMP_ENV);
+        ldv_print_info (LDV_INFO, "directory for temporaries \"%s\" is specified by means of environment variable \"%s\"", ldv_dir_temp, LDV_DIR_TEMP_ENV);
       else
         {
           ldv_dir_temp = ldv_empty_str ();
-          ldv_print_info (LDV_INFO_IO, "current working directory will be used for temporaries");
+          ldv_print_info (LDV_INFO, "current working directory will be used for temporaries");
         }
 
       if ((arg_sign = getenv (LDV_ARG_SIGN_ENV)))
@@ -203,17 +200,17 @@ ldv_handle_options (void)
           if (!strcmp (arg_sign, "VARIABLE_ID"))
             {
               ldv_arg_sign = LDV_ARG_SIGN_VARIABLE_ID;
-              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"variable identifiers\"");
+              ldv_print_info (LDV_INFO, "calculate argument signatures as \"variable identifiers\"");
             }
           else if (!strcmp (arg_sign, "SIMPLE_ID"))
             {
               ldv_arg_sign = LDV_ARG_SIGN_SIMPLE_ID;
-              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"simple identifiers\"");
+              ldv_print_info (LDV_INFO, "calculate argument signatures as \"simple identifiers\"");
             }
           else if (!strcmp (arg_sign, "COMPLEX_ID"))
             {
               ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
-              ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"complex identifiers\"");
+              ldv_print_info (LDV_INFO, "calculate argument signatures as \"complex identifiers\"");
             }
           else
             internal_error ("specified by means of environment variable \"%s\" algorithm of argument signatures extraction \"%s\" isn't supported", LDV_ARG_SIGN_ENV, arg_sign);
@@ -221,7 +218,7 @@ ldv_handle_options (void)
       else
         {
           ldv_arg_sign = LDV_ARG_SIGN_COMPLEX_ID;
-          ldv_print_info (LDV_INFO_IO, "calculate argument signatures as \"complex identifiers\"");
+          ldv_print_info (LDV_INFO, "calculate argument signatures as \"complex identifiers\"");
         }
 
       /* Use output file name specified by means of environment variable instead
