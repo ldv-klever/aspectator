@@ -53,6 +53,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "dumpfile.h"
 #include "builtins.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-opts.h"
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 
 /* Functions and data structures for expanding case statements.  */
 
@@ -555,6 +562,12 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
   const char *c;
   tree t;
 
+  /* LDV extension beginning. */
+
+  void **slot_old, **slot_new;
+
+  /* LDV extension end. */
+
   check_unique_operand_names (outputs, inputs, labels);
 
   /* Substitute [<name>] in input constraint strings.  There should be no
@@ -597,6 +610,19 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
       buffer = xstrdup (TREE_STRING_POINTER (string));
       p = buffer + (c - TREE_STRING_POINTER (string));
 
+      /* LDV extension beginning. */
+
+      /* Find hash table slot for original string. */
+      if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
+	{
+	  slot_old = htab_find_slot_with_hash (ldv_tree_string_htab, string, htab_hash_pointer (string), NO_INSERT);
+
+	  if (slot_old == NULL)
+	    internal_error ("Couldn't find string in the hash table");
+	}
+
+      /* LDV extension end. */
+
       while ((p = strchr (p, '%')) != NULL)
 	{
 	  if (p[1] == '[')
@@ -614,6 +640,31 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
 
       string = build_string (strlen (buffer), buffer);
       free (buffer);
+
+      /* LDV extension beginning. */
+
+      /* Create new hash table slot for modified string. */
+      if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
+	{
+	  slot_new = htab_find_slot_with_hash (ldv_tree_string_htab, string, htab_hash_pointer (string), INSERT);
+
+	  if (slot_new == NULL)
+	    internal_error ("Can't allocate memory");
+
+	  if (*slot_new == NULL)
+	    {
+	      struct ldv_hash_tree_string *v;
+
+	      v = XCNEW (struct ldv_hash_tree_string);
+	      v->value = string;
+	      v->str = ((struct ldv_hash_tree_string *)*slot_old)->str;
+
+	      *slot_new = v;
+	    }
+        }
+
+      /* LDV extension end. */
+
     }
 
   return string;
