@@ -121,6 +121,7 @@ static ldv_padding ldv_padding_cur = LDV_PADDING_NONE;
 static ldv_text_ptr ldv_text_printed = NULL;
 static ldv_i_func_ptr ldv_func_signature = NULL;
 static ldv_i_var_ptr ldv_var_signature = NULL;
+static ldv_i_typedecl_ptr ldv_type_signature = NULL;
 static const char *ldv_func_decl = NULL;
 static const char *ldv_var_decl = NULL;
 static const char *ldv_type_decl = NULL;
@@ -537,6 +538,8 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string
         text = ldv_copy_str (ldv_func_signature->file_path);
       else if (ldv_var_signature)
         text = ldv_copy_str (ldv_var_signature->file_path);
+      else if (ldv_type_signature)
+        text = ldv_copy_str (ldv_type_signature->file_path);
       else
         internal_error ("no signature was found for aspect pattern \"%s\"", pattern->name);
     }
@@ -2176,10 +2179,12 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     {
       ldv_text_printed = ldv_create_text ();
 
+      ldv_type_signature = ldv_i_match->i_typedecl;
       ldv_type_decl = ldv_i_match->i_typedecl->decl;
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
       ldv_free_text (ldv_text_printed);
+      ldv_type_signature = NULL;
       ldv_type_decl = NULL;
 
       return;
