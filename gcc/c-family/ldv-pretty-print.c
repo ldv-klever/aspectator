@@ -3615,61 +3615,62 @@ ldv_print_str_literal (unsigned int indent_level, ldv_str_literal_ptr str_litera
           ldv_putc_string ('L', escaped_str);
         }
 
-      if (*c != '"')
-        LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
+      if (*c == '"')
+        c++;
 
-      c++;
       ldv_putc_string ('"', escaped_str);
 
-      for (; *c && *(c + 1); c++)
-        switch (*c)
-          {
-          case '\a':
-            ldv_puts_string ("\a", escaped_str);
+      for (; *c; c++)
+        {
+          if (!*(c + 1) && *c == '"')
             break;
 
-          case '\b':
-            ldv_puts_string ("\b", escaped_str);
-            break;
+          switch (*c)
+            {
+            case '\a':
+              ldv_puts_string ("\a", escaped_str);
+              break;
 
-          case '\f':
-            ldv_puts_string ("\f", escaped_str);
-            break;
+            case '\b':
+              ldv_puts_string ("\b", escaped_str);
+              break;
 
-          case '\n':
-            ldv_puts_string ("\n", escaped_str);
-            break;
+            case '\f':
+              ldv_puts_string ("\f", escaped_str);
+              break;
 
-          case '\r':
-            ldv_puts_string ("\r", escaped_str);
-            break;
+            case '\n':
+              ldv_puts_string ("\n", escaped_str);
+              break;
 
-          case '\t':
-            ldv_puts_string ("\t", escaped_str);
-            break;
+            case '\r':
+              ldv_puts_string ("\r", escaped_str);
+              break;
 
-          case '\v':
-            ldv_puts_string ("\v", escaped_str);
-            break;
+            case '\t':
+              ldv_puts_string ("\t", escaped_str);
+              break;
 
-          case '\\':
-            ldv_puts_string ("\\", escaped_str);
-            break;
+            case '\v':
+              ldv_puts_string ("\v", escaped_str);
+              break;
 
-          case '"':
-            ldv_puts_string ("\"", escaped_str);
-            break;
+            case '\\':
+              ldv_puts_string ("\\", escaped_str);
+              break;
 
-          case '\'':
-            ldv_puts_string ("\'", escaped_str);
-            break;
+            case '"':
+              ldv_puts_string ("\"", escaped_str);
+              break;
 
-          default:
-            ldv_putc_string (*c, escaped_str);
-          }
+            case '\'':
+              ldv_puts_string ("\'", escaped_str);
+              break;
 
-      if (*c != '"')
-        LDV_PRETTY_PRINT_ERROR (indent_level, "string literal was not printed");
+            default:
+              ldv_putc_string (*c, escaped_str);
+            }
+        }
 
       ldv_putc_string ('"', escaped_str);
       ldv_c_backend_print (indent_level, true, "%s", ldv_get_str (escaped_str));

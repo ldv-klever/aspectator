@@ -4913,6 +4913,7 @@ static ldv_str_literal_ptr
 ldv_convert_str_literal (tree t)
 {
   ldv_str_literal_ptr str_literal;
+  const char *str;
   void **slot;
 
   str_literal = XCNEW (struct ldv_str_literal);
@@ -4920,15 +4921,19 @@ ldv_convert_str_literal (tree t)
   switch (TREE_CODE (t))
     {
     case STRING_CST:
-      if (TREE_STRING_POINTER (t))
+      if ((str = TREE_STRING_POINTER (t)))
         {
-          slot = htab_find_slot_with_hash (ldv_tree_string_htab, t, htab_hash_pointer (t), NO_INSERT);
+          if (ldv_tree_string_htab)
+            {
+              slot = htab_find_slot_with_hash (ldv_tree_string_htab, t, htab_hash_pointer (t), NO_INSERT);
 
-          if (slot == NULL)
-            internal_error ("Couldn't find string in the hash table");
-
-          if (*slot)
-            LDV_STR_LITERAL_STR (str_literal) = ((struct ldv_hash_tree_string *)*slot)->str;
+              if (slot == NULL)
+                LDV_STR_LITERAL_STR (str_literal) = str;
+              else if (*slot)
+                LDV_STR_LITERAL_STR (str_literal) = ((struct ldv_hash_tree_string *)*slot)->str;
+            }
+          else
+            LDV_STR_LITERAL_STR (str_literal) = str;
         }
       else
         LDV_CONVERT_ERROR (t);
