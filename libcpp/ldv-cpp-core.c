@@ -504,7 +504,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
         {
           struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
           free (struct_field_initializer->decl);
-          ldv_free_info_initializer (struct_field_initializer->initializer);
+          /* Large initializers are not converted. */
+          if (struct_field_initializer->initializer)
+            ldv_free_info_initializer (struct_field_initializer->initializer);
         }
 
       ldv_list_delete_all (initializer->struct_initializer);
@@ -516,7 +518,9 @@ ldv_free_info_initializer (ldv_i_initializer_ptr initializer)
         ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
         {
           array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
-          ldv_free_info_initializer (array_elem_initializer->initializer);
+          /* Like for structure initializers. */
+          if (array_elem_initializer->initializer)
+            ldv_free_info_initializer (array_elem_initializer->initializer);
         }
 
       ldv_list_delete_all (initializer->array_initializer);
