@@ -564,6 +564,7 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
 
   /* LDV extension beginning. */
 
+  tree string_old;
   void **slot_old, **slot_new;
 
   /* LDV extension end. */
@@ -612,14 +613,9 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
 
       /* LDV extension beginning. */
 
-      /* Find hash table slot for original string. */
+      /* Remember original string to find corresponding slot in hash table later. */
       if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
-	{
-	  slot_old = htab_find_slot_with_hash (ldv_tree_string_htab, string, htab_hash_pointer (string), NO_INSERT);
-
-	  if (slot_old == NULL)
-	    internal_error ("Couldn't find string in the hash table");
-	}
+        string_old = string;
 
       /* LDV extension end. */
 
@@ -650,6 +646,12 @@ resolve_asm_operand_names (tree string, tree outputs, tree inputs, tree labels)
 
 	  if (slot_new == NULL)
 	    internal_error ("Can't allocate memory");
+
+	  /* Find hash table slot for original string. This can not be done early since hash table may grow above. */
+	  slot_old = htab_find_slot_with_hash (ldv_tree_string_htab, string_old, htab_hash_pointer (string_old), NO_INSERT);
+
+	  if (slot_old == NULL || *slot_old == NULL)
+	    internal_error ("Couldn't find string in the hash table");
 
 	  if (*slot_new == NULL)
 	    {
