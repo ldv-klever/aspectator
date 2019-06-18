@@ -909,7 +909,7 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
                      element that has a marked previous (left-up) element. Mark
                      elements that correspond to each other and that have a
                      previosly marked left-up or up element. Finish if can't
-                    find correspondence. */
+                     find correspondence. */
                   else
                     {
                       ismatched = false;
@@ -979,10 +979,9 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
               fprintf (stderr, "\n");
             }
 
-          /* The matching table contains a correspondence between aspect
-             function arguments types and the source ones. So find a 'true' way
-             in it from the end to the beginning and remember this way. */
-          matching_table_coord = XCNEW (ldv_coord);
+          /* The matching table contains some correspondence between aspect
+             function arguments types and the source ones. Try to find a 'true'
+             way in it from the end to the beginning and remember this way. */
           j = param_source_numb - 1;
           i = param_aspect_numb - 1;
 
@@ -994,6 +993,12 @@ ldv_match_type (ldv_i_type_ptr first, ldv_i_type_ptr second)
           if (param_second->isany_params && !param_matching_table[i][j])
             i--;
 
+          /* Some source function argument types were not matched by aspect
+             ones. */
+          if (!param_matching_table[i][j])
+            return false;
+
+          matching_table_coord = XCNEW (ldv_coord);
           matching_table_coord->x = j;
           matching_table_coord->y = i;
 
