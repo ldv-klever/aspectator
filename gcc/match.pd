@@ -2801,6 +2801,11 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 
 /* If we have (A & C) != 0 where C is the sign bit of A, convert
    this into A < 0.  Similarly for (A & C) == 0 into A >= 0.  */
+
+/* LDV extension beginning. */
+
+/* There is artificial type for casting A that is necessary to keep semantics.
+   And C Back-end does not print it. So, let's skip this optimization.
 (for cmp (eq ne)
      ncmp (ge lt)
  (simplify
@@ -2812,6 +2817,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
        && wi::only_sign_bit_p (@1, element_precision (@0)))
    (with { tree stype = signed_type_for (TREE_TYPE (@0)); }
     (ncmp (convert:stype @0) { build_zero_cst (stype); })))))
+*/
+
+/* LDV extension end. */
 
 /* If we have A < 0 ? C : 0 where C is a power of 2, convert
    this into a right shift or sign extension followed by ANDing with C.  */
