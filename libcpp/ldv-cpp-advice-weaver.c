@@ -322,6 +322,10 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
     text = ldv_copy_str (ldv_i_match->i_macro->file_path);
   else if (!strcmp (pattern->name, "line"))
     number = ldv_i_match->i_macro->line;
+  else if (!strcmp (pattern->name, "expansion_path"))
+    text = ldv_copy_str (ldv_i_match->i_macro->expansion_file_path);
+  else if (!strcmp (pattern->name, "expansion_line"))
+    number = ldv_i_match->i_macro->expansion_line;
   else
     {
       LDV_CPP_FATAL_ERROR ("aspect pattern \"%s\" wasn't weaved", pattern->name);

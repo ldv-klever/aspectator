@@ -448,6 +448,8 @@ typedef struct ldv_info_macro_internal
   ldv_list_ptr macro_param_value;
   const char *file_path;
   unsigned int line;
+  const char *expansion_file_path;
+  unsigned int expansion_line;
 } ldv_info_macro;
 typedef ldv_info_macro *ldv_i_macro_ptr;
 

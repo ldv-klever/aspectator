@@ -243,6 +243,8 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   ldv_i_match_ptr match = NULL;
   ldv_i_macro_ptr macro = NULL;
   const line_map_ordinary *map = NULL;
+  const char *token_file_path = NULL;
+  unsigned int token_line;
   int i, j;
   const char *macro_param_name_original = NULL;
   char *macro_param_name = NULL;
@@ -278,9 +280,27 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
   macro->macro_name = ldv_create_id ();
   ldv_puts_id ((const char *) (NODE_NAME (node)), macro->macro_name);
 
+  /* Given token location corresponds to either define or expand location. */
   map = LINEMAPS_LAST_ORDINARY_MAP (pfile->line_table);
-  macro->file_path = ldv_get_realpath (LINEMAP_FILE (map));
-  macro->line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
+  token_file_path = ldv_get_realpath (LINEMAP_FILE (map));
+  token_line = SOURCE_LINE(map, pfile->cur_token[-1].src_loc);
+  if (pp_kind == LDV_PP_DEFINE)
+    {
+      macro->file_path = token_file_path;
+      macro->line = token_line;
+    }
+  else
+    {
+      macro->expansion_file_path = token_file_path;
+      macro->expansion_line = token_line;
+
+      /* For macro expansions we need to store locations of macros themselves. */
+      rich_location richloc (pfile->line_table, node->value.macro->line);
+      expanded_location xloc = richloc.get_expanded_location(0);
+      macro->file_path = xloc.file;
+      macro->line = xloc.line;
+    }
+
   macro->macro_param = NULL;
 
   /* Remember macro parameters. */
