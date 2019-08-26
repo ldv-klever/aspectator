@@ -284,7 +284,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
 
   /* Obtain macro location in the same way for definitions and expansions. */
   xloc = richloc.get_expanded_location(0);
-  macro->file_path = xloc.file;
+  macro->file_path = ldv_get_realpath (xloc.file);
   macro->line = xloc.line;
 
   /* Given token location corresponds to expansion location. */
