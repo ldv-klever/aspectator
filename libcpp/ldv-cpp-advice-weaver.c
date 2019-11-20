@@ -279,18 +279,16 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 }
 
 void
-ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **string, unsigned int *integer)
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number)
 {
-  char *text = NULL;
   char *arg_value = NULL;
   ldv_list_ptr arg_value_list = NULL;
-  unsigned int number = 0;
   unsigned int i;
 
   if ((!strcmp (pattern->name, "macro_signature")) || (!strcmp (pattern->name, "signature")))
-    text = ldv_cpp_print_macro_signature (ldv_i_match->i_macro);
+    *text = ldv_cpp_print_macro_signature (ldv_i_match->i_macro);
   else if (!strcmp (pattern->name, "macro_name"))
-    text = ldv_copy_str (ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name));
+    *text = ldv_copy_str (ldv_cpp_get_id_name (ldv_i_match->i_macro_aspect->macro_name));
   else if (!strcmp (pattern->name, "arg_val"))
     {
       for (i = 1, arg_value_list = ldv_i_match->i_macro->macro_param_value
@@ -301,7 +299,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
 
         if (i == pattern->arg_numb)
         {
-          text = arg_value;
+          *text = arg_value;
           break;
         }
       }
@@ -311,30 +309,25 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **st
         }
     }
   else if (!strcmp (pattern->name, "arg_numb"))
-    number = ldv_list_len (ldv_i_match->i_macro->macro_param);
+    *number = ldv_list_len (ldv_i_match->i_macro->macro_param);
   else if (!strcmp (pattern->name, "actual_args"))
     {
-      text = ldv_get_actual_args ();
+      *text = ldv_get_actual_args ();
       if (!text)
-          text = ldv_copy_str ("NULL");
+          *text = ldv_copy_str ("NULL");
     }
   else if (!strcmp (pattern->name, "path"))
-    text = ldv_copy_str (ldv_i_match->i_macro->file_path);
+    *text = ldv_copy_str (ldv_i_match->i_macro->file_path);
   else if (!strcmp (pattern->name, "line"))
-    number = ldv_i_match->i_macro->line;
+    *number = ldv_i_match->i_macro->line;
   else if (!strcmp (pattern->name, "expansion_path"))
-    text = ldv_copy_str (ldv_i_match->i_macro->expansion_file_path);
+    *text = ldv_copy_str (ldv_i_match->i_macro->expansion_file_path);
   else if (!strcmp (pattern->name, "expansion_line"))
-    number = ldv_i_match->i_macro->expansion_line;
+    *number = ldv_i_match->i_macro->expansion_line;
   else
     {
       LDV_CPP_FATAL_ERROR ("aspect pattern \"%s\" wasn't weaved", pattern->name);
     }
-
-  if (text)
-    *string = text;
-  else
-    *integer = number;
 }
 
 char *
