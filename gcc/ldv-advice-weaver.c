@@ -204,11 +204,9 @@ ldv_add_id_declarator (ldv_pps_decl_ptr decl, const char *name)
   else
     {
       declarator = ldv_create_declarator ();
-
       declarator->pps_declarator_kind = LDV_PPS_DECLARATOR_ID;
       declarator->declarator_name = ldv_create_id ();
       ldv_puts_id (name, declarator->declarator_name);
-
       ldv_list_push_back (&decl->pps_declarator, declarator);
 
       return ;
@@ -823,9 +821,7 @@ ldv_isweaved (const char *name, bool is_check)
       /* To prevent a warning about const qualifier discarding use an auxliary
         string. */
       name_save = XCNEWVEC (char, strlen (name) + 1);
-
       strcpy (name_save, name);
-
       ldv_list_push_back (&ldv_name_weaved_list, name_save);
     }
 
@@ -861,11 +857,8 @@ ldv_print_arg_type_str (unsigned int arg_numb)
       if (i == arg_numb)
         {
           func_arg_type_decl = (ldv_pps_decl_ptr) ldv_list_get_data (func_arg_type_decl_list);
-
           ldv_add_id_declarator (func_arg_type_decl, "%s");
-
           ldv_print_decl (func_arg_type_decl);
-
           ldv_delete_id_declarator (func_arg_type_decl->pps_declarator);
 
           break;
@@ -1100,18 +1093,13 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
       if (isres_needed)
         {
           ldv_print_str (LDV_FUNC_RET_TYPE);
-
           ldv_print_str (LDV_FUNC_RES);
-
           ldv_print_info (LDV_INFO_WEAVE, "variable \"%s\" was weaved for after advice", LDV_FUNC_RES);
-
           ldv_print_str_without_padding ("= ");
         }
 
       ldv_print_str_without_padding (func_call);
-
       ldv_print_str_without_padding (";\n");
-
       ldv_print_info (LDV_INFO_WEAVE, "function call \"%s\" was weaved to initialize variable for after advice", func_call);
     }
 
@@ -1128,19 +1116,14 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
         ldv_print_str ("return");
 
       ldv_print_str_without_padding (func_call);
-
       ldv_print_str_without_padding (";\n");
-
       ldv_print_info (LDV_INFO_WEAVE, "return expression was weaved for before advice");
     }
   else if (a_kind == LDV_A_AFTER && isres_needed)
     {
       ldv_print_str("\n  return");
-
       ldv_print_str_without_padding (LDV_FUNC_RES);
-
       ldv_print_str_without_padding (";\n");
-
       ldv_print_info (LDV_INFO_WEAVE, "return expression was weaved for after advice");
     }
 
@@ -1383,9 +1366,7 @@ ldv_print_direct_declarator (ldv_list_ptr declarator_list)
         ldv_print_space_after_pointer_star ();
 
       ldv_print_c ('(');
-
       ldv_print_declarator (declarator_list);
-
       ldv_print_c (')');
 
       break;
@@ -1413,11 +1394,8 @@ ldv_print_func_decl (ldv_i_func_ptr func)
   ldv_pps_decl_ptr decl;
 
   decl = ldv_convert_internal_to_declaration (func->type, ldv_get_id_name (func->name));
-
   ldv_text_printed = ldv_create_text ();
-
   ldv_padding_cur = LDV_PADDING_NONE;
-
   ldv_print_decl (decl);
 
   return ldv_get_text (ldv_text_printed);
@@ -1496,9 +1474,7 @@ const char *
 ldv_print_line_number (unsigned int line_number)
 {
   ldv_text_printed = ldv_create_text ();
-
   ldv_padding_cur = LDV_PADDING_NONE;
-
   ldv_print_int (line_number);
 
   return ldv_get_text (ldv_text_printed);
@@ -1508,9 +1484,7 @@ const char *
 ldv_print_func_signature (ldv_pps_decl_ptr decl)
 {
   ldv_text_printed = ldv_create_text ();
-
   ldv_padding_cur = LDV_PADDING_NONE;
-
   ldv_print_decl (decl);
 
   return ldv_get_text (ldv_text_printed);
@@ -1800,10 +1774,8 @@ ldv_diag_primitive_pointcut (ldv_pp_ptr p_pointcut, FILE *ldv_diag_file)
   else if (pp_signature->pps_kind == LDV_PPS_DEFINE)
     {
       fprintf (ldv_diag_file, "PRIMITIVE_MACROS\n");
-
       ldv_diag_text = ldv_print_macro_signature (pp_signature->pps_macro);
       fprintf (ldv_diag_file, "pointcut_signature: %s\n", ldv_diag_text);
-
       fprintf (ldv_diag_file, "define(%s)\n", ldv_diag_text);
     }
 }
@@ -1988,11 +1960,8 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
       ldv_free_pps_decl (func_arg_type_decl); */
 
       str = ldv_create_string ();
-
       ldv_puts_string (arg_type_name, str);
-
       ldv_free_id (arg_type_name_aux);
-
       ldv_list_push_back (&ldv_func_arg_type_name_list, str);
     }
 
@@ -2054,9 +2023,7 @@ ldv_store_func_arg_type_decl_list (ldv_i_type_ptr func_type)
     ; param_list = ldv_list_get_next (param_list))
     {
       arg_type = ((ldv_i_param_ptr) ldv_list_get_data (param_list))->type;
-
       func_arg_type_decl_new = ldv_convert_internal_to_declaration (arg_type, NULL);
-
       ldv_list_push_back (&ldv_func_arg_type_decl_list, func_arg_type_decl_new);
     }
 }
@@ -2110,15 +2077,15 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_var_signature = ldv_i_match->i_var;
       ldv_var_decl = ldv_i_match->i_var->decl;
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
+
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
         ldv_var_type_name = ldv_get_id_name (ldv_i_match->i_var_aspect->type->primitive_type->type_name);
+
       /* Convert void * to tree. */
       ldv_var_initializer_tree = (tree) ldv_i_match->i_var->initializer;
-
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
       ldv_free_text (ldv_text_printed);
-
       ldv_free_info_match (ldv_i_match);
 
       ldv_var_signature = NULL;
@@ -2144,11 +2111,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       /* Store an information on a function return type and function
          arguments types that will be used in a body patterns weaving. */
       ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (ldv_i_match->i_func_aspect->type->ret_type, NULL);
-
       ldv_store_func_arg_type_decl_list (ldv_i_match->i_func_aspect->type);
-
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
-
       ldv_free_text (ldv_text_printed);
 
       for (str_list = ldv_func_arg_type_name_list
@@ -2160,10 +2124,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
         }
 
       ldv_list_delete_all (ldv_func_arg_type_name_list);
-
       ldv_free_func_arg_type_decl_list ();
       ldv_free_pps_decl (ldv_func_ret_type_decl);
-
       ldv_free_info_match (ldv_i_match);
 
       ldv_func_ret_type_decl = NULL;
@@ -2246,24 +2208,17 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
-
           ldv_print_decl (decl);
-
           ldv_free_pps_decl (decl);
-
           ldv_puts_text (";\n", ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), func_decl_for_print_new->decl);
-
           ldv_free_text (ldv_text_printed);
-
           ldv_list_push_back (&ldv_decl_for_print_list, func_decl_for_print_new);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
 
           /* Create an aspect function declaration. */
           ldv_text_printed = ldv_create_text ();
-
           ldv_putc_text ('\n', ldv_text_printed);
 
           if (pp_kind == LDV_PP_EXECUTION)
@@ -2278,21 +2233,14 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
-
           /* Make auxiliary functions static to avoid duplicates
            * (http://forge.ispras.ru/issues/7100). */
           decl->pps_declspecs->isstatic = true;
-
           ldv_print_decl (decl);
-
           ldv_free_pps_decl (decl);
-
           ldv_puts_text (";\n", ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
-
           ldv_free_text (ldv_text_printed);
-
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
@@ -2306,7 +2254,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             func_name = ldv_get_id_name (func_aspect->name);
 
           ldv_puts_text (func_name, ldv_text_printed);
-
           ldv_putc_text ('(', ldv_text_printed);
 
           for (str_list = ldv_func_param_list
@@ -2322,9 +2269,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           ldv_putc_text (')', ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
-
           ldv_free_text (ldv_text_printed);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" function call for weaving", func_name);
@@ -2340,11 +2285,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text ("\n/* AUX_FUNC  ", ldv_text_printed);
           ldv_puts_text (func_name, ldv_text_printed);
           ldv_puts_text (" */\n", ldv_text_printed);
-
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
-
           ldv_print_decl (decl);
-
           ldv_free_pps_decl (decl);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" function weaving", func_name, ldv_get_id_name (func_aspect->name));
@@ -2352,15 +2294,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Store an information on a function return type and function
              arguments types that will be used in a body patterns weaving. */
           ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (func_aspect->type->ret_type, NULL);
-
           ldv_store_func_arg_type_decl_list (func_aspect->type);
 
           ldv_putc_text ('\n', ldv_text_printed);
-
           ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
-
           ldv_putc_text ('\n', ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
           free (aspected_name);
@@ -2442,9 +2380,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           }
 
         body_text = ldv_copy_str (ldv_get_body_text (ldv_i_match->a_definition->a_body));
-
         body_text = ldv_truncate_braces (body_text);
-
         ldv_puts_text (body_text, typedecl_for_print_new->decl);
 
         ldv_list_push_back (&ldv_decl_for_print_list, typedecl_for_print_new);
@@ -2494,61 +2430,40 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           /* Create aspect function declaration. */
           func_aspect = ldv_create_info_func ();
-
           func_aspect->name = ldv_create_id ();
           ldv_puts_id (ldv_create_aspected_name (ldv_get_id_name (var->name)), func_aspect->name);
-
           ldv_aspect_func_name = ldv_get_id_name (func_aspect->name);
-
           func_aspect->type = ldv_create_info_type ();
-
           func_aspect->type->it_kind = LDV_IT_FUNC;
-
           func_aspect->type->ret_type = var->type;
-
           param_new = ldv_create_info_param ();
-
           param_new->name = ldv_create_id ();
           ldv_puts_id (LDV_VAR_ARG_NAME, param_new->name);
-
           param_new->type = var->type;
-
           ldv_list_push_back (&func_aspect->type->param, param_new);
 
           ldv_text_printed = ldv_create_text ();
-
           ldv_putc_text ('\n', ldv_text_printed);
-
           decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
-
           ldv_print_decl (decl);
-
           ldv_free_pps_decl (decl);
-
           ldv_puts_text (";\n", ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
-
           ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
 
           /* Create a function call. */
           ldv_text_printed = ldv_create_text ();
-
           ldv_puts_text (LDV_VAR_ARG_NAME, ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" variable name reference for weaving", LDV_VAR_ARG_NAME);
 
           /* Create an aspect function definition. */
           ldv_text_printed = ldv_create_text ();
-
           decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
-
           ldv_print_decl (decl);
-
           ldv_free_pps_decl (decl);
 
           ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
@@ -2561,15 +2476,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           /* Store information on a function return type and a function argument
              type that will be used in a body patterns weaving. */
           ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (func_aspect->type->ret_type, NULL);
-
           ldv_store_func_arg_type_decl_list (func_aspect->type);
 
           ldv_putc_text ('\n', ldv_text_printed);
-
           ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
-
           ldv_putc_text ('\n', ldv_text_printed);
-
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
           /* Remove auxiliary entities. */
