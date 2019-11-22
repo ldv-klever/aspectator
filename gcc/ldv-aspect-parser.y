@@ -112,10 +112,12 @@ typedef struct YYLTYPE
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
 
-/* Flag says whether it's parsed macro signature or not. */
-static bool ldv_ismacro = false;
-/* Flag says whether it's parsed declaration or not. */
-static bool ldv_isdecl = false;
+/* Flag says whether it's parsed primitive pointcut declaration signature or not. */
+static bool ldv_isdecl_pps = false;
+/* Flag says whether it's parsed primitive pointcut file signature or not. */
+static bool ldv_isfile_pps = false;
+/* Flag says whether it's parsed primitive pointcut macro signature or not. */
+static bool ldv_ismacro_pps = false;
 /* Flag is true if some type specifier was parsed and false otherwise.
  * It becomes false when declaration specifiers are parsed. */
 static bool ldv_istype_spec = false;
@@ -578,7 +580,7 @@ composite_pointcut: /* It's a composite pointcut, the part of named pointcut, ad
     };
 
 primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut. */
-  LDV_MACRO_POINTCUT '(' primitive_pointcut_signature_macro ')'
+  LDV_MACRO_POINTCUT '(' { ldv_ismacro_pps = true; } primitive_pointcut_signature_macro { ldv_ismacro_pps = false; } ')'
     {
       char *pp_kind = NULL;
       ldv_pp_ptr p_pointcut = NULL;
@@ -601,7 +603,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_signature->pps_kind = LDV_PPS_DEFINE;
 
       /* Specify a macro signature. */
-      pp_signature->pps_macro = $3;
+      pp_signature->pps_macro = $4;
 
       /* Set a primitive pointcut signature. */
       p_pointcut->pp_signature = pp_signature;
@@ -615,7 +617,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
 
       $$ = p_pointcut;
     }
-  | LDV_FILE_POINTCUT '(' primitive_pointcut_signature_file ')'
+  | LDV_FILE_POINTCUT '(' { ldv_isfile_pps = true; } primitive_pointcut_signature_file { ldv_isfile_pps = false; } ')'
     {
       char *pp_kind = NULL;
       ldv_pp_ptr p_pointcut = NULL;
@@ -638,7 +640,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_signature->pps_kind = LDV_PPS_FILE;
 
       /* Specify a file signature. */
-      pp_signature->pps_file = $3;
+      pp_signature->pps_file = $4;
 
       /* Set a primitive pointcut signature. */
       p_pointcut->pp_signature = pp_signature;
@@ -652,7 +654,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
 
       $$ = p_pointcut;
     }
-  | LDV_ID '(' primitive_pointcut_signature_declaration ')'
+  | LDV_ID '(' { ldv_isdecl_pps = true; } primitive_pointcut_signature_declaration { ldv_isdecl_pps = false; } ')'
     {
       char *pp_kind = NULL;
       ldv_pp_ptr p_pointcut = NULL;
@@ -712,7 +714,7 @@ primitive_pointcut: /* It's a primitive pointcut, the part of composite pointcut
       pp_signature->pps_kind = LDV_PPS_DECL;
 
       /* Specify a file signature. */
-      pp_signature->pps_declaration = $3;
+      pp_signature->pps_declaration = $4;
 
       /* Set a primitive pointcut signature. */
       p_pointcut->pp_signature = pp_signature;
@@ -964,7 +966,7 @@ c_declaration:
         internal_error ("declaration kind can't be determined");
     };
 
-c_declaration_specifiers: { ldv_isdecl = true; ldv_istype_spec = false; ldv_isuniversal_type_spec = false; } c_declaration_specifiers_aux { ldv_isdecl = false; }
+c_declaration_specifiers: { ldv_istype_spec = false; ldv_isuniversal_type_spec = false; } c_declaration_specifiers_aux
   {
     $$ = $2;
   };
@@ -1929,8 +1931,8 @@ ldv_get_id_kind (char *id)
     int token;
   };
 
-  /* Map between keywords and tokens. */
-  struct ldv_keyword_token ldv_keyword_token_map [] = {
+  /* Map between declaration specifier keywords and tokens. */
+  struct ldv_keyword_token ldv_decl_spec_keyword_token_map [] = {
       {"typedef", LDV_TYPEDEF}
     , {"extern", LDV_EXTERN}
     , {"static", LDV_STATIC}
@@ -1959,17 +1961,27 @@ ldv_get_id_kind (char *id)
 
   int i;
 
-  /* Bind an identifier with some C keyword when parse declaration specifiers. */
-  if (ldv_isdecl)
+  /* Special identifier processing when parsing non-primitive pointcut
+     signatures. */
+  if (!ldv_isdecl_pps && !ldv_isfile_pps && !ldv_ismacro_pps)
     {
-      /* Check whether an identifier is a C declaration specifier keyword. */
-      for (i = 0; ldv_keyword_token_map[i].keyword; i++)
+      if (!strcmp (id, "expand") || !strcmp (id, "define"))
+        return LDV_MACRO_POINTCUT;
+      else if (!strcmp (id, "file") || !strcmp (id, "infile"))
+        return LDV_FILE_POINTCUT;
+    }
+
+  if (ldv_isdecl_pps)
+    {
+      /* Always bind an identifier with C declaration specifier keyword if so
+         when parsing declaration primitive pointcut signature. */
+      for (i = 0; ldv_decl_spec_keyword_token_map[i].keyword; i++)
         {
-          if (!strcmp (id, ldv_keyword_token_map[i].keyword))
+          if (!strcmp (id, ldv_decl_spec_keyword_token_map[i].keyword))
             {
               ldv_print_info (LDV_INFO_LEX, "lex parsed keyword \"%s\"", id);
 
-              /* Mark that some type specifier for a given declaration
+              /* Mark that some type specifier for given declaration
                  specifiers list was parsed. */
               if (i > 4 && i < 19)
                 ldv_istype_spec = true;
@@ -1977,7 +1989,7 @@ ldv_get_id_kind (char *id)
               /* Corresponding identifier won't be used any more. */
               ldv_free_id (yylval.id);
 
-              return ldv_keyword_token_map[i].token;
+              return ldv_decl_spec_keyword_token_map[i].token;
             }
         }
 
@@ -2007,14 +2019,6 @@ ldv_get_id_kind (char *id)
               return LDV_TYPEDEF_NAME;
             }
         }
-    }
-
-  if (!ldv_ismacro && !ldv_isdecl)
-    {
-      if (!strcmp (id, "expand") || !strcmp (id, "define"))
-        return LDV_MACRO_POINTCUT;
-      else if (!strcmp (id, "file") || !strcmp (id, "infile"))
-        return LDV_FILE_POINTCUT;
     }
 
   ldv_print_info (LDV_INFO_LEX, "lex parsed identifier \"%s\"", id);
