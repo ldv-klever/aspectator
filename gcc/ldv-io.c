@@ -697,7 +697,10 @@ ldv_get_aux_file_name_and_stream (char **aux_fname, FILE **aux_file_stream)
   /* Replace suffix ".prepared" with ".aux". */
   aux_fname_prefix = xstrdup(ldv_output_fname);
   aux_fname_last_dot = strrchr(aux_fname_prefix, '.');
-  *aux_fname_last_dot = '\0';
+
+  if (aux_fname_last_dot)
+    *aux_fname_last_dot = '\0';
+
   ldv_puts_string (aux_fname_prefix, aux_fname_str);
   ldv_puts_string (".aux", aux_fname_str);
   *aux_fname = xstrdup (ldv_get_str (aux_fname_str));
