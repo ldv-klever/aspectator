@@ -436,6 +436,7 @@ AC_CHECK_PROG([DOXYGEN], doxygen, yes, no)
 AC_CHECK_PROG([DOT], dot, yes, no)
 
 # Check for docbook
+AC_CHECK_PROG([XMLCATALOG], xmlcatalog, yes, no)
 AC_CHECK_PROG([XSLTPROC], xsltproc, yes, no)
 AC_CHECK_PROG([XMLLINT], xmllint, yes, no)
 GLIBCXX_CONFIGURE_DOCBOOK
@@ -467,6 +468,12 @@ AM_CONDITIONAL(BUILD_PDF,
 	       test $ac_cv_prog_DBLATEX = "yes" &&
 	       test $ac_cv_prog_PDFLATEX = "yes")
 
+case "$build" in
+ *-*-darwin* ) glibcxx_include_dir_notparallel=yes ;;
+ * ) glibcxx_include_dir_notparallel=no ;;
+esac
+AM_CONDITIONAL(INCLUDE_DIR_NOTPARALLEL,
+               test $glibcxx_include_dir_notparallel = "yes")
 
 # Propagate the target-specific source directories through the build chain.
 ATOMICITY_SRCDIR=config/${atomicity_dir}

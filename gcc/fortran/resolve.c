@@ -512,8 +512,11 @@ resolve_formal_arglist (gfc_symbol *proc)
 	{
 	  if (sym->as != NULL)
 	    {
-	      gfc_error ("Argument %qs of statement function at %L must "
-			 "be scalar", sym->name, &sym->declared_at);
+	      /* F03:C1263 (R1238) The function-name and each dummy-arg-name
+		 shall be specified, explicitly or implicitly, to be scalar.  */
+	      gfc_error ("Argument '%s' of statement function '%s' at %L "
+			 "must be scalar", sym->name, proc->name,
+			 &proc->declared_at);
 	      continue;
 	    }
 
@@ -1042,7 +1045,7 @@ resolve_common_blocks (gfc_symtree *common_root)
 	}
       if (!gsym)
 	{
-	  gsym = gfc_get_gsymbol (common_root->n.common->name);
+	  gsym = gfc_get_gsymbol (common_root->n.common->name, false);
 	  gsym->type = GSYM_COMMON;
 	  gsym->where = common_root->n.common->where;
 	  gsym->defined = 1;
@@ -1064,7 +1067,7 @@ resolve_common_blocks (gfc_symtree *common_root)
 	}
       if (!gsym)
 	{
-	  gsym = gfc_get_gsymbol (common_root->n.common->binding_label);
+	  gsym = gfc_get_gsymbol (common_root->n.common->binding_label, true);
 	  gsym->type = GSYM_COMMON;
 	  gsym->where = common_root->n.common->where;
 	  gsym->defined = 1;
@@ -1572,8 +1575,6 @@ is_illegal_recursion (gfc_symbol* sym, gfc_namespace* context)
   if (sym->attr.flavor == FL_PROGRAM
       || gfc_fl_struct (sym->attr.flavor))
     return false;
-
-  gcc_assert (sym->attr.flavor == FL_PROCEDURE);
 
   /* If we've got an ENTRY, find real procedure.  */
   if (sym->attr.entry && sym->ns->entries)
@@ -2376,7 +2377,8 @@ resolve_global_procedure (gfc_symbol *sym, locus *where,
 
   type = sub ? GSYM_SUBROUTINE : GSYM_FUNCTION;
 
-  gsym = gfc_get_gsymbol (sym->binding_label ? sym->binding_label : sym->name);
+  gsym = gfc_get_gsymbol (sym->binding_label ? sym->binding_label : sym->name,
+			  sym->binding_label != NULL);
 
   if ((gsym->type != GSYM_UNKNOWN && gsym->type != type))
     gfc_global_used (gsym, where);
@@ -2903,8 +2905,8 @@ update_current_proc_array_outer_dependency (gfc_symbol *sym)
 
   /* If SYM has references to outer arrays, so has the procedure calling
      SYM.  If SYM is a procedure pointer, we can assume the worst.  */
-  if (sym->attr.array_outer_dependency
-      || sym->attr.proc_pointer)
+  if ((sym->attr.array_outer_dependency || sym->attr.proc_pointer)
+      && gfc_current_ns->proc_name)
     gfc_current_ns->proc_name->attr.array_outer_dependency = 1;
 }
 
@@ -3682,7 +3684,13 @@ resolve_operator (gfc_expr *e)
 	  break;
 	}
 
-      sprintf (msg,
+      if (op1->ts.type == BT_DERIVED || op2->ts.type == BT_DERIVED)
+	sprintf (msg,
+	       _("Unexpected derived-type entities in binary intrinsic "
+		 "numeric operator %%<%s%%> at %%L"),
+	       gfc_op2string (e->value.op.op));
+      else
+      	sprintf (msg,
 	       _("Operands of binary numeric operator %%<%s%%> at %%L are %s/%s"),
 	       gfc_op2string (e->value.op.op), gfc_typename (&op1->ts),
 	       gfc_typename (&op2->ts));
@@ -3728,7 +3736,7 @@ resolve_operator (gfc_expr *e)
 	  if (op2->ts.type != e->ts.type || op2->ts.kind != e->ts.kind)
 	    gfc_convert_type (op2, &e->ts, 1);
 	  e = logical_to_bitwise (e);
-	  return resolve_function (e);
+	  break;
 	}
 
       sprintf (msg, _("Operands of logical operator %%<%s%%> at %%L are %s/%s"),
@@ -3744,7 +3752,7 @@ resolve_operator (gfc_expr *e)
 	  e->ts.type = BT_INTEGER;
 	  e->ts.kind = op1->ts.kind;
 	  e = logical_to_bitwise (e);
-	  return resolve_function (e);
+	  break;
 	}
 
       if (op1->ts.type == BT_LOGICAL)
@@ -5123,7 +5131,7 @@ resolve_variable (gfc_expr *e)
      the ts' type of the component refs is still array valued, which
      can't be translated that way.  */
   if (sym->assoc && e->rank == 0 && e->ref && sym->ts.type == BT_CLASS
-      && sym->assoc->target->ts.type == BT_CLASS
+      && sym->assoc->target && sym->assoc->target->ts.type == BT_CLASS
       && CLASS_DATA (sym->assoc->target)->as)
     {
       gfc_ref *ref = e->ref;
@@ -5152,6 +5160,23 @@ resolve_variable (gfc_expr *e)
 	gfc_fix_class_refs (e);
       if (!sym->attr.dimension && e->ref && e->ref->type == REF_ARRAY)
 	return false;
+       else if (sym->attr.dimension && (!e->ref || e->ref->type != REF_ARRAY))
+	  {
+	    /* This can happen because the parser did not detect that the
+	       associate name is an array and the expression had no array
+	       part_ref.  */
+	    gfc_ref *ref = gfc_get_ref ();
+	    ref->type = REF_ARRAY;
+	    ref->u.ar = *gfc_get_array_ref();
+	    ref->u.ar.type = AR_FULL;
+	    if (sym->as)
+	      {
+		ref->u.ar.as = sym->as;
+		ref->u.ar.dimen = sym->as->rank;
+	      }
+	    ref->next = e->ref;
+	    e->ref = ref;
+	  }
     }
 
   if (sym->ts.type == BT_DERIVED && sym->ts.u.derived->attr.generic)
@@ -6980,6 +7005,10 @@ gfc_expr_to_initialize (gfc_expr *e)
   for (ref = result->ref; ref; ref = ref->next)
     if (ref->type == REF_ARRAY && ref->next == NULL)
       {
+	if (ref->u.ar.dimen == 0
+	    && ref->u.ar.as && ref->u.ar.as->corank)
+	  return result;
+
 	ref->u.ar.type = AR_FULL;
 
 	for (i = 0; i < ref->u.ar.dimen; i++)
@@ -7405,13 +7434,54 @@ resolve_allocate_expr (gfc_expr *e, gfc_code *code, bool *array_alloc_wo_spec)
 
   if (codimension)
     for (i = ar->dimen; i < ar->dimen + ar->codimen; i++)
-      if (ar->dimen_type[i] == DIMEN_THIS_IMAGE)
-	{
-	  gfc_error ("Coarray specification required in ALLOCATE statement "
-		     "at %L", &e->where);
-	  goto failure;
-	}
+      {
+	switch (ar->dimen_type[i])
+	  {
+	  case DIMEN_THIS_IMAGE:
+	    gfc_error ("Coarray specification required in ALLOCATE statement "
+		       "at %L", &e->where);
+	    goto failure;
 
+	  case  DIMEN_RANGE:
+	    if (ar->start[i] == 0 || ar->end[i] == 0)
+	      {
+		/* If ar->stride[i] is NULL, we issued a previous error.  */
+		if (ar->stride[i] == NULL)
+		  gfc_error ("Bad array specification in ALLOCATE statement "
+			     "at %L", &e->where);
+		goto failure;
+	      }
+	    else if (gfc_dep_compare_expr (ar->start[i], ar->end[i]) == 1)
+	      {
+		gfc_error ("Upper cobound is less than lower cobound at %L",
+			   &ar->start[i]->where);
+		goto failure;
+	      }
+	    break;
+
+	  case DIMEN_ELEMENT:
+	    if (ar->start[i]->expr_type == EXPR_CONSTANT)
+	      {
+		gcc_assert (ar->start[i]->ts.type == BT_INTEGER);
+		if (mpz_cmp_si (ar->start[i]->value.integer, 1) < 0)
+		  {
+		    gfc_error ("Upper cobound is less than lower cobound "
+			       " of 1 at %L", &ar->start[i]->where);
+		    goto failure;
+		  }
+	      }
+	    break;
+
+	  case DIMEN_STAR:
+	    break;
+
+	  default:
+	    gfc_error ("Bad array specification in ALLOCATE statement at %L",
+		       &e->where);
+	    goto failure;
+
+	  }
+      }
   for (i = 0; i < ar->dimen; i++)
     {
       if (ar->type == AR_ELEMENT || ar->type == AR_FULL)
@@ -7551,12 +7621,17 @@ resolve_allocate_deallocate (gfc_code *code, const char *fcn)
       gfc_check_vardef_context (errmsg, false, false, false,
 				_("ERRMSG variable"));
 
+      /* F18:R928  alloc-opt             is ERRMSG = errmsg-variable
+	 F18:R930  errmsg-variable       is scalar-default-char-variable
+	 F18:R906  default-char-variable is variable
+	 F18:C906  default-char-variable shall be default character.  */
       if ((errmsg->ts.type != BT_CHARACTER
 	   && !(errmsg->ref
 		&& (errmsg->ref->type == REF_ARRAY
 		    || errmsg->ref->type == REF_COMPONENT)))
-	  || errmsg->rank > 0 )
-	gfc_error ("Errmsg-variable at %L must be a scalar CHARACTER "
+	  || errmsg->rank > 0
+	  || errmsg->ts.kind != gfc_default_character_kind)
+	gfc_error ("ERRMSG variable at %L shall be a scalar default CHARACTER "
 		   "variable", &errmsg->where);
 
       for (p = code->ext.alloc.list; p; p = p->next)
@@ -8495,7 +8570,7 @@ build_loc_call (gfc_expr *sym_expr)
   gfc_expr *loc_call;
   loc_call = gfc_get_expr ();
   loc_call->expr_type = EXPR_FUNCTION;
-  gfc_get_sym_tree ("loc", gfc_current_ns, &loc_call->symtree, false);
+  gfc_get_sym_tree ("_loc", gfc_current_ns, &loc_call->symtree, false);
   loc_call->symtree->n.sym->attr.flavor = FL_PROCEDURE;
   loc_call->symtree->n.sym->attr.intrinsic = 1;
   loc_call->symtree->n.sym->result = loc_call->symtree->n.sym;
@@ -8547,6 +8622,9 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
       if (code->expr1->symtree->n.sym->attr.untyped)
 	code->expr1->symtree->n.sym->ts = code->expr2->ts;
       selector_type = CLASS_DATA (code->expr2)->ts.u.derived;
+
+      if (code->expr2->rank && CLASS_DATA (code->expr1)->as)
+	CLASS_DATA (code->expr1)->as->rank = code->expr2->rank;
 
       /* F2008: C803 The selector expression must not be coindexed.  */
       if (gfc_is_coindexed (code->expr2))
@@ -8742,7 +8820,7 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	    {
 	      vtab = gfc_find_derived_vtab (c->ts.u.derived);
 	      gcc_assert (vtab);
-	      c->high = gfc_get_int_expr (gfc_default_integer_kind, NULL,
+	      c->high = gfc_get_int_expr (gfc_integer_4_kind, NULL,
 					  c->ts.u.derived->hash_value);
 	    }
 	  else
@@ -8751,6 +8829,13 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	      gcc_assert (vtab && CLASS_DATA (vtab)->initializer);
 	      e = CLASS_DATA (vtab)->initializer;
 	      c->high = gfc_copy_expr (e);
+	      if (c->high->ts.kind != gfc_integer_4_kind)
+		{
+		  gfc_typespec ts;
+		  ts.kind = gfc_integer_4_kind;
+		  ts.type = BT_INTEGER;
+		  gfc_convert_type_warn (c->high, &ts, 2, 0);
+		}
 	    }
 
 	  e = gfc_lval_expr_from_sym (vtab);
@@ -8996,19 +9081,9 @@ resolve_transfer (gfc_code *code)
       else
 	derived = ts->u.derived->components->ts.u.derived;
 
-      if (dt->format_expr)
-	{
-	  char *fmt;
-	  fmt = gfc_widechar_to_char (dt->format_expr->value.character.string,
-				      -1);
-	  if (strtok (fmt, "DT") != NULL)
-	    formatted = true;
-	}
-      else if (dt->format_label == &format_asterisk)
-	{
-	  /* List directed io must call the formatted DTIO procedure.  */
-	  formatted = true;
-	}
+      /* Determine when to use the formatted DTIO procedure.  */
+      if (dt && (dt->format_expr || dt->format_label))
+	formatted = true;
 
       write = dt->dt_io_kind->value.iokind == M_WRITE
 	      || dt->dt_io_kind->value.iokind == M_PRINT;
@@ -9296,6 +9371,7 @@ resolve_sync (gfc_code *code)
     }
 
   /* Check STAT.  */
+  gfc_resolve_expr (code->expr2);
   if (code->expr2
       && (code->expr2->ts.type != BT_INTEGER || code->expr2->rank != 0
 	  || code->expr2->expr_type != EXPR_VARIABLE))
@@ -9303,6 +9379,7 @@ resolve_sync (gfc_code *code)
 	       &code->expr2->where);
 
   /* Check ERRMSG.  */
+  gfc_resolve_expr (code->expr3);
   if (code->expr3
       && (code->expr3->ts.type != BT_CHARACTER || code->expr3->rank != 0
 	  || code->expr3->expr_type != EXPR_VARIABLE))
@@ -10135,6 +10212,11 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
       && rhs->expr_type != EXPR_ARRAY)
     gfc_add_data_component (rhs);
 
+  /* Make sure there is a vtable and, in particular, a _copy for the
+     rhs type.  */
+  if (UNLIMITED_POLY (lhs) && lhs->rank && rhs->ts.type != BT_CLASS)
+    gfc_find_vtab (&rhs->ts);
+
   bool caf_convert_to_send = flag_coarray == GFC_FCOARRAY_LIB
       && (lhs_coindexed
 	  || (code->expr2->expr_type == EXPR_FUNCTION
@@ -10243,6 +10325,11 @@ get_temp_from_expr (gfc_expr *e, gfc_namespace *ns)
   gfc_get_sym_tree (name, ns, &tmp, false);
   gfc_add_type (tmp->n.sym, &e->ts, NULL);
 
+  if (e->expr_type == EXPR_CONSTANT && e->ts.type == BT_CHARACTER)
+    tmp->n.sym->ts.u.cl->length = gfc_get_int_expr (gfc_charlen_int_kind,
+						    NULL,
+						    e->value.character.length);
+
   as = NULL;
   ref = NULL;
   aref = NULL;
@@ -10273,6 +10360,8 @@ get_temp_from_expr (gfc_expr *e, gfc_namespace *ns)
   tmp->n.sym->attr.function = 0;
   tmp->n.sym->attr.result = 0;
   tmp->n.sym->attr.flavor = FL_VARIABLE;
+  tmp->n.sym->attr.dummy = 0;
+  tmp->n.sym->attr.intent = INTENT_UNKNOWN;
 
   if (as)
     {
@@ -10731,6 +10820,9 @@ deferred_op_assign (gfc_code **code, gfc_namespace *ns)
   if (!gfc_check_dependency ((*code)->expr1, (*code)->expr2, 1))
     return false;
 
+  if (gfc_expr_attr ((*code)->expr1).pointer)
+    return false;
+
   tmp_expr = get_temp_from_expr ((*code)->expr1, ns);
   tmp_expr->where = (*code)->loc;
 
@@ -11140,7 +11232,7 @@ start:
 	case EXEC_ENDFILE:
 	case EXEC_REWIND:
 	case EXEC_FLUSH:
-	  if (!gfc_resolve_filepos (code->ext.filepos))
+	  if (!gfc_resolve_filepos (code->ext.filepos, &code->loc))
 	    break;
 
 	  resolve_branch (code->ext.filepos->err, code);
@@ -11362,7 +11454,7 @@ gfc_verify_binding_labels (gfc_symbol *sym)
 	  && (gsym->type == GSYM_FUNCTION || gsym->type == GSYM_SUBROUTINE)))
     {
       if (!gsym)
-	gsym = gfc_get_gsymbol (sym->binding_label);
+	gsym = gfc_get_gsymbol (sym->binding_label, true);
       gsym->where = sym->declared_at;
       gsym->sym_name = sym->name;
       gsym->binding_label = sym->binding_label;
@@ -12225,6 +12317,19 @@ resolve_fl_procedure (gfc_symbol *sym, int mp_flag)
 	}
     }
 
+  /* F2018, C15100: "The result of an elemental function shall be scalar,
+     and shall not have the POINTER or ALLOCATABLE attribute."  The scalar
+     pointer is tested and caught elsewhere.  */
+  if (sym->attr.elemental && sym->result
+      && (sym->result->attr.allocatable || sym->result->attr.pointer))
+    {
+      gfc_error ("Function result variable %qs at %L of elemental "
+		 "function %qs shall not have an ALLOCATABLE or POINTER "
+		 "attribute", sym->result->name,
+		 &sym->result->declared_at, sym->name);
+      return false;
+    }
+
   if (sym->attr.is_bind_c && sym->attr.is_c_interop != 1)
     {
       gfc_formal_arglist *curr_arg;
@@ -12250,7 +12355,7 @@ resolve_fl_procedure (gfc_symbol *sym, int mp_flag)
       while (curr_arg != NULL)
         {
           /* Skip implicitly typed dummy args here.  */
-	  if (curr_arg->sym->attr.implicit_type == 0)
+	  if (curr_arg->sym && curr_arg->sym->attr.implicit_type == 0)
 	    if (!gfc_verify_c_interop_param (curr_arg->sym))
 	      /* If something is found to fail, record the fact so we
 		 can mark the symbol for the procedure as not being
@@ -13799,6 +13904,31 @@ resolve_fl_derived0 (gfc_symbol *sym)
   if (!success)
     return false;
 
+  /* Now add the caf token field, where needed.  */
+  if (flag_coarray != GFC_FCOARRAY_NONE
+      && !sym->attr.is_class && !sym->attr.vtype)
+    {
+      for (c = sym->components; c; c = c->next)
+	if (!c->attr.dimension && !c->attr.codimension
+	    && (c->attr.allocatable || c->attr.pointer))
+	  {
+	    char name[GFC_MAX_SYMBOL_LEN+9];
+	    gfc_component *token;
+	    sprintf (name, "_caf_%s", c->name);
+	    token = gfc_find_component (sym, name, true, true, NULL);
+	    if (token == NULL)
+	      {
+		if (!gfc_add_component (sym, name, &token))
+		  return false;
+		token->ts.type = BT_VOID;
+		token->ts.kind = gfc_default_integer_kind;
+		token->attr.access = ACCESS_PRIVATE;
+		token->attr.artificial = 1;
+		token->attr.caf_token = 1;
+	      }
+	  }
+    }
+
   check_defined_assignments (sym);
 
   if (!sym->attr.defined_assign_comp && super_type)
@@ -14793,7 +14923,7 @@ resolve_symbol (gfc_symbol *sym)
   /* Set the formal_arg_flag so that check_conflict will not throw
      an error for host associated variables in the specification
      expression for an array_valued function.  */
-  if (sym->attr.function && sym->as)
+  if ((sym->attr.function || sym->attr.result) && sym->as)
     formal_arg_flag = true;
 
   saved_specification_expr = specification_expr;
@@ -15822,12 +15952,12 @@ resolve_equivalence (gfc_equiv *eq)
 }
 
 
-/* Function called by resolve_fntype to flag other symbol used in the
-   length type parameter specification of function resuls.  */
+/* Function called by resolve_fntype to flag other symbols used in the
+   length type parameter specification of function results.  */
 
 static bool
 flag_fn_result_spec (gfc_expr *expr,
-                     gfc_symbol *sym ATTRIBUTE_UNUSED,
+                     gfc_symbol *sym,
                      int *f ATTRIBUTE_UNUSED)
 {
   gfc_namespace *ns;
@@ -15839,6 +15969,13 @@ flag_fn_result_spec (gfc_expr *expr,
       for (ns = s->ns; ns; ns = ns->parent)
 	if (!ns->parent)
 	  break;
+
+      if (sym == s)
+	{
+	  gfc_error ("Self reference in character length expression "
+		     "for %qs at %L", sym->name, &expr->where);
+	  return true;
+	}
 
       if (!s->fn_result_spec
 	  && s->attr.flavor == FL_PARAMETER)
@@ -15922,7 +16059,7 @@ resolve_fntype (gfc_namespace *ns)
       }
 
   if (sym->ts.type == BT_CHARACTER)
-    gfc_traverse_expr (sym->ts.u.cl->length, NULL, flag_fn_result_spec, 0);
+    gfc_traverse_expr (sym->ts.u.cl->length, sym, flag_fn_result_spec, 0);
 }
 
 

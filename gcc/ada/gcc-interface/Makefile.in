@@ -2660,9 +2660,8 @@ gnatlink-re: ../stamp-tools gnatmake-re
 install-gcc-specs:
 #	Install all the requested GCC spec files.
 
-	for f in $(GCC_SPEC_FILES); do \
-	    $(INSTALL_DATA_DATE) $(srcdir)/ada/$$f $(libsubdir)/; \
-	done
+	$(foreach f,$(GCC_SPEC_FILES), \
+	    $(INSTALL_DATA_DATE) $(srcdir)/ada/$(f) $(DESTDIR)$(libsubdir)/;)
 
 install-gnatlib: ../stamp-gnatlib-$(RTSDIR) install-gcc-specs
 	$(RMDIR) $(DESTDIR)$(ADA_RTL_OBJ_DIR)
@@ -2756,9 +2755,9 @@ OSCONS_CC=$(subst ./xgcc,../../xgcc,$(subst -B./, -B../../,$(GCC_FOR_TARGET)))
 # ada/types.h does not conflict with a same-named system header (VxWorks
 # has a <types.h> header).
 
-OSCONS_CPP=$(OSCONS_CC) $(GNATLIBCFLAGS) $(GNATLIBCFLAGS_FOR_C) -E -C \
+OSCONS_CPP=$(OSCONS_CC) $(GNATLIBCFLAGS_FOR_C) -E -C \
   -DTARGET=\"$(target)\" -iquote $(fsrcpfx)ada $(fsrcpfx)ada/s-oscons-tmplt.c > s-oscons-tmplt.i
-OSCONS_EXTRACT=$(OSCONS_CC) -S s-oscons-tmplt.i
+OSCONS_EXTRACT=$(OSCONS_CC) $(GNATLIBCFLAGS_FOR_C) -S s-oscons-tmplt.i
 
 # Note: if you need to build with a non-GNU compiler, you could adapt the
 # following definitions (written for VMS DEC-C)

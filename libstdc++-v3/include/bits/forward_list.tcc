@@ -69,8 +69,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     {
       _Node* __curr = static_cast<_Node*>(__pos->_M_next);
       __pos->_M_next = __curr->_M_next;
-      _Tp_alloc_type __a(_M_get_Node_allocator());
-      allocator_traits<_Tp_alloc_type>::destroy(__a, __curr->_M_valptr());
+      _Node_alloc_traits::destroy(_M_get_Node_allocator(),
+				  __curr->_M_valptr());
       __curr->~_Node();
       _M_put_node(__curr);
       return __pos->_M_next;
@@ -87,8 +87,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         {
           _Node* __temp = __curr;
           __curr = static_cast<_Node*>(__curr->_M_next);
-	  _Tp_alloc_type __a(_M_get_Node_allocator());
-	  allocator_traits<_Tp_alloc_type>::destroy(__a, __temp->_M_valptr());
+	  _Node_alloc_traits::destroy(_M_get_Node_allocator(),
+				      __temp->_M_valptr());
 	  __temp->~_Node();
           _M_put_node(__temp);
         }
@@ -381,7 +381,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       auto __iy = __ly.cbegin();
       while (__ix != __lx.cend() && __iy != __ly.cend())
         {
-          if (*__ix != *__iy)
+          if (!(*__ix == *__iy))
             return false;
           ++__ix;
           ++__iy;
@@ -451,9 +451,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
                         __p = static_cast<_Node*>(__p->_M_next);
                         --__psize;
                       }
-                    else if (__comp(*__p->_M_valptr(), *__q->_M_valptr()))
+                    else if (!__comp(*__q->_M_valptr(), *__p->_M_valptr()))
                       {
-                        // First node of p is lower; e must come from p.
+                        // First node of q is not lower; e must come from p.
                         __e = __p;
                         __p = static_cast<_Node*>(__p->_M_next);
                         --__psize;

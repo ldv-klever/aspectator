@@ -2188,7 +2188,7 @@ sparc_expand_move (machine_mode mode, rtx *operands)
 	}
     }
 
-  /* Fixup TLS cases.  */
+  /* Fix up TLS cases.  */
   if (TARGET_HAVE_TLS
       && CONSTANT_P (operands[1])
       && sparc_tls_referenced_p (operands [1]))
@@ -2197,15 +2197,20 @@ sparc_expand_move (machine_mode mode, rtx *operands)
       return false;
     }
 
-  /* Fixup PIC cases.  */
+  /* Fix up PIC cases.  */
   if (flag_pic && CONSTANT_P (operands[1]))
     {
       if (pic_address_needs_scratch (operands[1]))
 	operands[1] = sparc_legitimize_pic_address (operands[1], NULL_RTX);
 
       /* We cannot use the mov{si,di}_pic_label_ref patterns in all cases.  */
-      if (GET_CODE (operands[1]) == LABEL_REF
-	  && can_use_mov_pic_label_ref (operands[1]))
+      if ((GET_CODE (operands[1]) == LABEL_REF
+	   && can_use_mov_pic_label_ref (operands[1]))
+	  || (GET_CODE (operands[1]) == CONST
+	      && GET_CODE (XEXP (operands[1], 0)) == PLUS
+	      && GET_CODE (XEXP (XEXP (operands[1], 0), 0)) == LABEL_REF
+	      && GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == CONST_INT
+	      && can_use_mov_pic_label_ref (XEXP (XEXP (operands[1], 0), 0))))
 	{
 	  if (mode == SImode)
 	    {
@@ -2215,7 +2220,6 @@ sparc_expand_move (machine_mode mode, rtx *operands)
 
 	  if (mode == DImode)
 	    {
-	      gcc_assert (TARGET_ARCH64);
 	      emit_insn (gen_movdi_pic_label_ref (operands[0], operands[1]));
 	      return true;
 	    }
@@ -4216,10 +4220,11 @@ int
 pic_address_needs_scratch (rtx x)
 {
   /* An address which is a symbolic plus a non SMALL_INT needs a temp reg.  */
-  if (GET_CODE (x) == CONST && GET_CODE (XEXP (x, 0)) == PLUS
+  if (GET_CODE (x) == CONST
+      && GET_CODE (XEXP (x, 0)) == PLUS
       && GET_CODE (XEXP (XEXP (x, 0), 0)) == SYMBOL_REF
       && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT
-      && ! SMALL_INT (XEXP (XEXP (x, 0), 1)))
+      && !SMALL_INT (XEXP (XEXP (x, 0), 1)))
     return 1;
 
   return 0;
@@ -4526,30 +4531,38 @@ sparc_legitimize_tls_address (rtx addr)
   gcc_assert (can_create_pseudo_p ());
 
   if (GET_CODE (addr) == SYMBOL_REF)
+    /* Although the various sethi/or sequences generate SImode values, many of
+       them can be transformed by the linker when relaxing and, if relaxing to
+       local-exec, will become a sethi/xor pair, which is signed and therefore
+       a full DImode value in 64-bit mode.  Thus we must use Pmode, lest these
+       values be spilled onto the stack in 64-bit mode.  */
     switch (SYMBOL_REF_TLS_MODEL (addr))
       {
       case TLS_MODEL_GLOBAL_DYNAMIC:
 	start_sequence ();
-	temp1 = gen_reg_rtx (SImode);
-	temp2 = gen_reg_rtx (SImode);
+	temp1 = gen_reg_rtx (Pmode);
+	temp2 = gen_reg_rtx (Pmode);
 	ret = gen_reg_rtx (Pmode);
 	o0 = gen_rtx_REG (Pmode, 8);
 	got = sparc_tls_got ();
-	emit_insn (gen_tgd_hi22 (temp1, addr));
-	emit_insn (gen_tgd_lo10 (temp2, temp1, addr));
 	if (TARGET_ARCH32)
 	  {
-	    emit_insn (gen_tgd_add32 (o0, got, temp2, addr));
-	    insn = emit_call_insn (gen_tgd_call32 (o0, sparc_tls_get_addr (),
+	    emit_insn (gen_tgd_hi22si (temp1, addr));
+	    emit_insn (gen_tgd_lo10si (temp2, temp1, addr));
+	    emit_insn (gen_tgd_addsi (o0, got, temp2, addr));
+	    insn = emit_call_insn (gen_tgd_callsi (o0, sparc_tls_get_addr (),
 						   addr, const1_rtx));
 	  }
 	else
 	  {
-	    emit_insn (gen_tgd_add64 (o0, got, temp2, addr));
-	    insn = emit_call_insn (gen_tgd_call64 (o0, sparc_tls_get_addr (),
+	    emit_insn (gen_tgd_hi22di (temp1, addr));
+	    emit_insn (gen_tgd_lo10di (temp2, temp1, addr));
+	    emit_insn (gen_tgd_adddi (o0, got, temp2, addr));
+	    insn = emit_call_insn (gen_tgd_calldi (o0, sparc_tls_get_addr (),
 						   addr, const1_rtx));
 	  }
 	use_reg (&CALL_INSN_FUNCTION_USAGE (insn), o0);
+	RTL_CONST_CALL_P (insn) = 1;
 	insn = get_insns ();
 	end_sequence ();
 	emit_libcall_block (insn, ret, o0, addr);
@@ -4557,61 +4570,78 @@ sparc_legitimize_tls_address (rtx addr)
 
       case TLS_MODEL_LOCAL_DYNAMIC:
 	start_sequence ();
-	temp1 = gen_reg_rtx (SImode);
-	temp2 = gen_reg_rtx (SImode);
+	temp1 = gen_reg_rtx (Pmode);
+	temp2 = gen_reg_rtx (Pmode);
 	temp3 = gen_reg_rtx (Pmode);
 	ret = gen_reg_rtx (Pmode);
 	o0 = gen_rtx_REG (Pmode, 8);
 	got = sparc_tls_got ();
-	emit_insn (gen_tldm_hi22 (temp1));
-	emit_insn (gen_tldm_lo10 (temp2, temp1));
 	if (TARGET_ARCH32)
 	  {
-	    emit_insn (gen_tldm_add32 (o0, got, temp2));
-	    insn = emit_call_insn (gen_tldm_call32 (o0, sparc_tls_get_addr (),
+	    emit_insn (gen_tldm_hi22si (temp1));
+	    emit_insn (gen_tldm_lo10si (temp2, temp1));
+	    emit_insn (gen_tldm_addsi (o0, got, temp2));
+	    insn = emit_call_insn (gen_tldm_callsi (o0, sparc_tls_get_addr (),
 						    const1_rtx));
 	  }
 	else
 	  {
-	    emit_insn (gen_tldm_add64 (o0, got, temp2));
-	    insn = emit_call_insn (gen_tldm_call64 (o0, sparc_tls_get_addr (),
+	    emit_insn (gen_tldm_hi22di (temp1));
+	    emit_insn (gen_tldm_lo10di (temp2, temp1));
+	    emit_insn (gen_tldm_adddi (o0, got, temp2));
+	    insn = emit_call_insn (gen_tldm_calldi (o0, sparc_tls_get_addr (),
 						    const1_rtx));
 	  }
 	use_reg (&CALL_INSN_FUNCTION_USAGE (insn), o0);
+	RTL_CONST_CALL_P (insn) = 1;
 	insn = get_insns ();
 	end_sequence ();
+	/* Attach a unique REG_EQUAL, to allow the RTL optimizers to
+	  share the LD_BASE result with other LD model accesses.  */
 	emit_libcall_block (insn, temp3, o0,
 			    gen_rtx_UNSPEC (Pmode, gen_rtvec (1, const0_rtx),
 					    UNSPEC_TLSLD_BASE));
-	temp1 = gen_reg_rtx (SImode);
-	temp2 = gen_reg_rtx (SImode);
-	emit_insn (gen_tldo_hix22 (temp1, addr));
-	emit_insn (gen_tldo_lox10 (temp2, temp1, addr));
+	temp1 = gen_reg_rtx (Pmode);
+	temp2 = gen_reg_rtx (Pmode);
 	if (TARGET_ARCH32)
-	  emit_insn (gen_tldo_add32 (ret, temp3, temp2, addr));
+	  {
+	    emit_insn (gen_tldo_hix22si (temp1, addr));
+	    emit_insn (gen_tldo_lox10si (temp2, temp1, addr));
+	    emit_insn (gen_tldo_addsi (ret, temp3, temp2, addr));
+	  }
 	else
-	  emit_insn (gen_tldo_add64 (ret, temp3, temp2, addr));
+	  {
+	    emit_insn (gen_tldo_hix22di (temp1, addr));
+	    emit_insn (gen_tldo_lox10di (temp2, temp1, addr));
+	    emit_insn (gen_tldo_adddi (ret, temp3, temp2, addr));
+	  }
 	break;
 
       case TLS_MODEL_INITIAL_EXEC:
-	temp1 = gen_reg_rtx (SImode);
-	temp2 = gen_reg_rtx (SImode);
+	temp1 = gen_reg_rtx (Pmode);
+	temp2 = gen_reg_rtx (Pmode);
 	temp3 = gen_reg_rtx (Pmode);
 	got = sparc_tls_got ();
-	emit_insn (gen_tie_hi22 (temp1, addr));
-	emit_insn (gen_tie_lo10 (temp2, temp1, addr));
 	if (TARGET_ARCH32)
-	  emit_insn (gen_tie_ld32 (temp3, got, temp2, addr));
+	  {
+	    emit_insn (gen_tie_hi22si (temp1, addr));
+	    emit_insn (gen_tie_lo10si (temp2, temp1, addr));
+	    emit_insn (gen_tie_ld32 (temp3, got, temp2, addr));
+	  }
 	else
-	  emit_insn (gen_tie_ld64 (temp3, got, temp2, addr));
+	  {
+	    emit_insn (gen_tie_hi22di (temp1, addr));
+	    emit_insn (gen_tie_lo10di (temp2, temp1, addr));
+	    emit_insn (gen_tie_ld64 (temp3, got, temp2, addr));
+	  }
         if (TARGET_SUN_TLS)
 	  {
 	    ret = gen_reg_rtx (Pmode);
 	    if (TARGET_ARCH32)
-	      emit_insn (gen_tie_add32 (ret, gen_rtx_REG (Pmode, 7),
+	      emit_insn (gen_tie_addsi (ret, gen_rtx_REG (Pmode, 7),
 					temp3, addr));
 	    else
-	      emit_insn (gen_tie_add64 (ret, gen_rtx_REG (Pmode, 7),
+	      emit_insn (gen_tie_adddi (ret, gen_rtx_REG (Pmode, 7),
 					temp3, addr));
 	  }
 	else
@@ -4623,13 +4653,13 @@ sparc_legitimize_tls_address (rtx addr)
 	temp2 = gen_reg_rtx (Pmode);
 	if (TARGET_ARCH32)
 	  {
-	    emit_insn (gen_tle_hix22_sp32 (temp1, addr));
-	    emit_insn (gen_tle_lox10_sp32 (temp2, temp1, addr));
+	    emit_insn (gen_tle_hix22si (temp1, addr));
+	    emit_insn (gen_tle_lox10si (temp2, temp1, addr));
 	  }
 	else
 	  {
-	    emit_insn (gen_tle_hix22_sp64 (temp1, addr));
-	    emit_insn (gen_tle_lox10_sp64 (temp2, temp1, addr));
+	    emit_insn (gen_tle_hix22di (temp1, addr));
+	    emit_insn (gen_tle_lox10di (temp2, temp1, addr));
 	  }
 	ret = gen_rtx_PLUS (Pmode, gen_rtx_REG (Pmode, 7), temp2);
 	break;
@@ -4667,16 +4697,15 @@ sparc_legitimize_tls_address (rtx addr)
 static rtx
 sparc_legitimize_pic_address (rtx orig, rtx reg)
 {
-  bool gotdata_op = false;
-
   if (GET_CODE (orig) == SYMBOL_REF
       /* See the comment in sparc_expand_move.  */
       || (GET_CODE (orig) == LABEL_REF && !can_use_mov_pic_label_ref (orig)))
     {
+      bool gotdata_op = false;
       rtx pic_ref, address;
       rtx_insn *insn;
 
-      if (reg == 0)
+      if (!reg)
 	{
 	  gcc_assert (can_create_pseudo_p ());
 	  reg = gen_reg_rtx (Pmode);
@@ -4687,8 +4716,7 @@ sparc_legitimize_pic_address (rtx orig, rtx reg)
 	  /* If not during reload, allocate another temp reg here for loading
 	     in the address, so that these instructions can be optimized
 	     properly.  */
-	  rtx temp_reg = (! can_create_pseudo_p ()
-			  ? reg : gen_reg_rtx (Pmode));
+	  rtx temp_reg = can_create_pseudo_p () ? gen_reg_rtx (Pmode) : reg;
 
 	  /* Must put the SYMBOL_REF inside an UNSPEC here so that cse
 	     won't get confused into thinking that these two instructions
@@ -4704,6 +4732,7 @@ sparc_legitimize_pic_address (rtx orig, rtx reg)
 	      emit_insn (gen_movsi_high_pic (temp_reg, orig));
 	      emit_insn (gen_movsi_lo_sum_pic (temp_reg, temp_reg, orig));
 	    }
+
 	  address = temp_reg;
 	  gotdata_op = true;
 	}
@@ -4744,7 +4773,7 @@ sparc_legitimize_pic_address (rtx orig, rtx reg)
 	  && XEXP (XEXP (orig, 0), 0) == pic_offset_table_rtx)
 	return orig;
 
-      if (reg == 0)
+      if (!reg)
 	{
 	  gcc_assert (can_create_pseudo_p ());
 	  reg = gen_reg_rtx (Pmode);
@@ -4853,7 +4882,11 @@ sparc_delegitimize_address (rtx x)
       && XINT (XEXP (XEXP (x, 1), 1), 1) == UNSPEC_MOVE_PIC_LABEL)
     {
       x = XVECEXP (XEXP (XEXP (x, 1), 1), 0, 0);
-      gcc_assert (GET_CODE (x) == LABEL_REF);
+      gcc_assert (GET_CODE (x) == LABEL_REF
+		  || (GET_CODE (x) == CONST
+		      && GET_CODE (XEXP (x, 0)) == PLUS
+		      && GET_CODE (XEXP (XEXP (x, 0), 0)) == LABEL_REF
+		      && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT));
     }
 
   return x;

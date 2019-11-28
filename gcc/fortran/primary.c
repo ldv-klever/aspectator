@@ -1247,8 +1247,22 @@ match_sym_complex_part (gfc_expr **result)
 
   if (sym->attr.flavor != FL_PARAMETER)
     {
-      gfc_error ("Expected PARAMETER symbol in complex constant at %C");
-      return MATCH_ERROR;
+      /* Give the matcher for implied do-loops a chance to run.  This yields
+	 a much saner error message for "write(*,*) (i, i=1, 6" where the 
+	 right parenthesis is missing.  */
+      char c;
+      gfc_gobble_whitespace ();
+      c = gfc_peek_ascii_char ();
+      if (c == '=' || c == ',')
+	{
+	  m = MATCH_NO;
+	}
+      else
+	{
+	  gfc_error ("Expected PARAMETER symbol in complex constant at %C");
+	  m = MATCH_ERROR;
+	}
+      return m;
     }
 
   if (!sym->value)
@@ -2966,6 +2980,7 @@ gfc_match_structure_constructor (gfc_symbol *sym, gfc_expr **result)
   e = gfc_get_expr ();
   e->symtree = symtree;
   e->expr_type = EXPR_FUNCTION;
+  e->where = gfc_current_locus;
 
   gcc_assert (gfc_fl_struct (sym->attr.flavor)
 	      && symtree->n.sym->attr.flavor == FL_PROCEDURE);

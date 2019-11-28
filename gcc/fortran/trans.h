@@ -431,7 +431,7 @@ tree gfc_vptr_deallocate_get (tree);
 void gfc_reset_vptr (stmtblock_t *, gfc_expr *);
 void gfc_reset_len (stmtblock_t *, gfc_expr *);
 tree gfc_get_vptr_from_expr (tree);
-tree gfc_get_class_array_ref (tree, tree, tree);
+tree gfc_get_class_array_ref (tree, tree, tree, bool);
 tree gfc_copy_class_to_class (tree, tree, tree, bool);
 bool gfc_add_finalizer_call (stmtblock_t *, gfc_expr *);
 bool gfc_add_comp_finalizer_call (stmtblock_t *, tree, gfc_component *, bool);
@@ -578,7 +578,8 @@ void gfc_merge_block_scope (stmtblock_t * block);
 tree gfc_get_label_decl (gfc_st_label *);
 
 /* Return the decl for an external function.  */
-tree gfc_get_extern_function_decl (gfc_symbol *);
+tree gfc_get_extern_function_decl (gfc_symbol *,
+				   gfc_actual_arglist *args = NULL);
 
 /* Return the decl for a function.  */
 tree gfc_get_function_decl (gfc_symbol *);

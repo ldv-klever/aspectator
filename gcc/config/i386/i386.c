@@ -6282,6 +6282,12 @@ ix86_option_override_internal (bool main_args_p,
     target_option_default_node = target_option_current_node
       = build_target_option_node (opts);
 
+  /* PR86952: jump table usage with retpolines is slow.
+     The PR provides some numbers about the slowness.  */
+  if (ix86_indirect_branch != indirect_branch_keep
+      && !opts_set->x_flag_jump_tables)
+    opts->x_flag_jump_tables = 0;
+
   return true;
 }
 
@@ -9442,7 +9448,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
       case X86_64_SSEDF_CLASS:
 	if (mode != BLKmode)
 	  return gen_reg_or_parallel (mode, orig_mode,
-				      SSE_REGNO (sse_regno));
+				      GET_SSE_REGNO (sse_regno));
 	break;
       case X86_64_X87_CLASS:
       case X86_64_COMPLEX_X87_CLASS:
@@ -9458,7 +9464,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
       && regclass[1] == X86_64_SSEUP_CLASS
       && mode != BLKmode)
     return gen_reg_or_parallel (mode, orig_mode,
-				SSE_REGNO (sse_regno));
+				GET_SSE_REGNO (sse_regno));
   if (n == 4
       && regclass[0] == X86_64_SSE_CLASS
       && regclass[1] == X86_64_SSEUP_CLASS
@@ -9466,7 +9472,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
       && regclass[3] == X86_64_SSEUP_CLASS
       && mode != BLKmode)
     return gen_reg_or_parallel (mode, orig_mode,
-				SSE_REGNO (sse_regno));
+				GET_SSE_REGNO (sse_regno));
   if (n == 8
       && regclass[0] == X86_64_SSE_CLASS
       && regclass[1] == X86_64_SSEUP_CLASS
@@ -9478,7 +9484,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
       && regclass[7] == X86_64_SSEUP_CLASS
       && mode != BLKmode)
     return gen_reg_or_parallel (mode, orig_mode,
-				SSE_REGNO (sse_regno));
+				GET_SSE_REGNO (sse_regno));
   if (n == 2
       && regclass[0] == X86_64_X87_CLASS
       && regclass[1] == X86_64_X87UP_CLASS)
@@ -9487,9 +9493,22 @@ construct_container (machine_mode mode, machine_mode orig_mode,
   if (n == 2
       && regclass[0] == X86_64_INTEGER_CLASS
       && regclass[1] == X86_64_INTEGER_CLASS
-      && (mode == CDImode || mode == TImode)
+      && (mode == CDImode || mode == TImode || mode == BLKmode)
       && intreg[0] + 1 == intreg[1])
-    return gen_rtx_REG (mode, intreg[0]);
+    {
+      if (mode == BLKmode)
+	{
+	  /* Use TImode for BLKmode values in 2 integer registers.  */
+	  exp[0] = gen_rtx_EXPR_LIST (VOIDmode,
+				      gen_rtx_REG (TImode, intreg[0]),
+				      GEN_INT (0));
+	  ret = gen_rtx_PARALLEL (mode, rtvec_alloc (1));
+	  XVECEXP (ret, 0, 0) = exp[0];
+	  return ret;
+	}
+      else
+	return gen_rtx_REG (mode, intreg[0]);
+    }
 
   /* Otherwise figure out the entries of the PARALLEL.  */
   for (i = 0; i < n; i++)
@@ -9524,7 +9543,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
 	    exp [nexps++]
 	      = gen_rtx_EXPR_LIST (VOIDmode,
 				   gen_rtx_REG (SFmode,
-						SSE_REGNO (sse_regno)),
+						GET_SSE_REGNO (sse_regno)),
 				   GEN_INT (i*8));
 	    sse_regno++;
 	    break;
@@ -9532,7 +9551,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
 	    exp [nexps++]
 	      = gen_rtx_EXPR_LIST (VOIDmode,
 				   gen_rtx_REG (DFmode,
-						SSE_REGNO (sse_regno)),
+						GET_SSE_REGNO (sse_regno)),
 				   GEN_INT (i*8));
 	    sse_regno++;
 	    break;
@@ -9578,7 +9597,7 @@ construct_container (machine_mode mode, machine_mode orig_mode,
 	    exp [nexps++]
 	      = gen_rtx_EXPR_LIST (VOIDmode,
 				   gen_rtx_REG (tmpmode,
-						SSE_REGNO (sse_regno)),
+						GET_SSE_REGNO (sse_regno)),
 				   GEN_INT (pos*8));
 	    sse_regno++;
 	    break;
@@ -11013,7 +11032,7 @@ setup_incoming_varargs_64 (CUMULATIVE_ARGS *cum)
 	  set_mem_alias_set (mem, set);
 	  set_mem_align (mem, GET_MODE_ALIGNMENT (smode));
 
-	  emit_move_insn (mem, gen_rtx_REG (smode, SSE_REGNO (i)));
+	  emit_move_insn (mem, gen_rtx_REG (smode, GET_SSE_REGNO (i)));
 	}
 
       emit_label (label);
@@ -12031,18 +12050,28 @@ ix86_setup_frame_addresses (void)
    labels in call and return thunks.  */
 static int indirectlabelno;
 
-/* True if call and return thunk functions are needed.  */
+/* True if call thunk function is needed.  */
 static bool indirect_thunk_needed = false;
-/* True if call and return thunk functions with the BND prefix are
-   needed.  */
+/* True if call thunk function with the BND prefix is needed.  */
 static bool indirect_thunk_bnd_needed = false;
 
 /* Bit masks of integer registers, which contain branch target, used
-   by call and return thunks functions.  */
+   by call thunk functions.  */
 static int indirect_thunks_used;
 /* Bit masks of integer registers, which contain branch target, used
-   by call and return thunks functions with the BND prefix.  */
+   by call thunk functions with the BND prefix.  */
 static int indirect_thunks_bnd_used;
+
+/* True if return thunk function is needed.  */
+static bool indirect_return_needed = false;
+/* True if return thunk function with the BND prefix is needed.  */
+static bool indirect_return_bnd_needed = false;
+
+/* True if return thunk function via CX is needed.  */
+static bool indirect_return_via_cx;
+/* True if return thunk function via CX with the BND prefix is
+   needed.  */
+static bool indirect_return_via_cx_bnd;
 
 #ifndef INDIRECT_LABEL
 # define INDIRECT_LABEL "LIND"
@@ -12051,34 +12080,32 @@ static int indirect_thunks_bnd_used;
 /* Fills in the label name that should be used for the indirect thunk.  */
 
 static void
-indirect_thunk_name (char name[32], int regno, bool need_bnd_p,
-		     bool ret_p)
+indirect_thunk_name (char name[32], unsigned int regno,
+		     bool need_bnd_p, bool ret_p)
 {
-  if (regno >= 0 && ret_p)
+  if (regno != INVALID_REGNUM && regno != CX_REG && ret_p)
     gcc_unreachable ();
 
   if (USE_HIDDEN_LINKONCE)
     {
       const char *bnd = need_bnd_p ? "_bnd" : "";
-      if (regno >= 0)
+      const char *ret = ret_p ? "return" : "indirect";
+      if (regno != INVALID_REGNUM)
 	{
 	  const char *reg_prefix;
 	  if (LEGACY_INT_REGNO_P (regno))
 	    reg_prefix = TARGET_64BIT ? "r" : "e";
 	  else
 	    reg_prefix = "";
-	  sprintf (name, "__x86_indirect_thunk%s_%s%s",
-		   bnd, reg_prefix, reg_names[regno]);
+	  sprintf (name, "__x86_%s_thunk%s_%s%s",
+		   ret, bnd, reg_prefix, reg_names[regno]);
 	}
       else
-	{
-	  const char *ret = ret_p ? "return" : "indirect";
-	  sprintf (name, "__x86_%s_thunk%s", ret, bnd);
-	}
+	sprintf (name, "__x86_%s_thunk%s", ret, bnd);
     }
   else
     {
-      if (regno >= 0)
+      if (regno != INVALID_REGNUM)
 	{
 	  if (need_bnd_p)
 	    ASM_GENERATE_INTERNAL_LABEL (name, "LITBR", regno);
@@ -12130,7 +12157,7 @@ indirect_thunk_name (char name[32], int regno, bool need_bnd_p,
  */
 
 static void
-output_indirect_thunk (bool need_bnd_p, int regno)
+output_indirect_thunk (bool need_bnd_p, unsigned int regno)
 {
   char indirectlabel1[32];
   char indirectlabel2[32];
@@ -12160,7 +12187,7 @@ output_indirect_thunk (bool need_bnd_p, int regno)
 
   ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
-  if (regno >= 0)
+  if (regno != INVALID_REGNUM)
     {
       /* MOV.  */
       rtx xops[2];
@@ -12184,18 +12211,20 @@ output_indirect_thunk (bool need_bnd_p, int regno)
 }
 
 /* Output a funtion with a call and return thunk for indirect branch.
-   If BND_P is true, the BND prefix is needed.   If REGNO != -1,  the
-   function address is in REGNO.  Otherwise, the function address is
-   on the top of stack.  */
+   If BND_P is true, the BND prefix is needed.  If REGNO != INVALID_REGNUM,
+   the function address is in REGNO.  Otherwise, the function address is
+   on the top of stack.  Thunk is used for function return if RET_P is
+   true.  */
 
 static void
-output_indirect_thunk_function (bool need_bnd_p, int regno)
+output_indirect_thunk_function (bool need_bnd_p, unsigned int regno,
+				bool ret_p)
 {
   char name[32];
   tree decl;
 
   /* Create __x86_indirect_thunk/__x86_indirect_thunk_bnd.  */
-  indirect_thunk_name (name, regno, need_bnd_p, false);
+  indirect_thunk_name (name, regno, need_bnd_p, ret_p);
   decl = build_decl (BUILTINS_LOCATION, FUNCTION_DECL,
 		     get_identifier (name),
 		     build_function_type_list (void_type_node, NULL_TREE));
@@ -12237,36 +12266,6 @@ output_indirect_thunk_function (bool need_bnd_p, int regno)
 	switch_to_section (text_section);
 	ASM_OUTPUT_LABEL (asm_out_file, name);
       }
-
-  if (regno < 0)
-    {
-      /* Create alias for __x86.return_thunk/__x86.return_thunk_bnd.  */
-      char alias[32];
-
-      indirect_thunk_name (alias, regno, need_bnd_p, true);
-#if TARGET_MACHO
-      if (TARGET_MACHO)
-	{
-	  fputs ("\t.weak_definition\t", asm_out_file);
-	  assemble_name (asm_out_file, alias);
-	  fputs ("\n\t.private_extern\t", asm_out_file);
-	  assemble_name (asm_out_file, alias);
-	  putc ('\n', asm_out_file);
-	  ASM_OUTPUT_LABEL (asm_out_file, alias);
-	}
-#else
-      ASM_OUTPUT_DEF (asm_out_file, alias, name);
-      if (USE_HIDDEN_LINKONCE)
-	{
-	  fputs ("\t.globl\t", asm_out_file);
-	  assemble_name (asm_out_file, alias);
-	  putc ('\n', asm_out_file);
-	  fputs ("\t.hidden\t", asm_out_file);
-	  assemble_name (asm_out_file, alias);
-	  putc ('\n', asm_out_file);
-	}
-#endif
-    }
 
   DECL_INITIAL (decl) = make_node (BLOCK);
   current_function_decl = decl;
@@ -12312,21 +12311,31 @@ static void
 ix86_code_end (void)
 {
   rtx xops[2];
-  int regno;
+  unsigned int regno;
+
+  if (indirect_return_needed)
+    output_indirect_thunk_function (false, INVALID_REGNUM, true);
+  if (indirect_return_bnd_needed)
+    output_indirect_thunk_function (true, INVALID_REGNUM, true);
+
+  if (indirect_return_via_cx)
+    output_indirect_thunk_function (false, CX_REG, true);
+  if (indirect_return_via_cx_bnd)
+    output_indirect_thunk_function (true, CX_REG, true);
 
   if (indirect_thunk_needed)
-    output_indirect_thunk_function (false, -1);
+    output_indirect_thunk_function (false, INVALID_REGNUM, false);
   if (indirect_thunk_bnd_needed)
-    output_indirect_thunk_function (true, -1);
+    output_indirect_thunk_function (true, INVALID_REGNUM, false);
 
   for (regno = FIRST_REX_INT_REG; regno <= LAST_REX_INT_REG; regno++)
     {
-      int i = regno - FIRST_REX_INT_REG + LAST_INT_REG + 1;
+      unsigned int i = regno - FIRST_REX_INT_REG + LAST_INT_REG + 1;
       if ((indirect_thunks_used & (1 << i)))
-	output_indirect_thunk_function (false, regno);
+	output_indirect_thunk_function (false, regno, false);
 
       if ((indirect_thunks_bnd_used & (1 << i)))
-	output_indirect_thunk_function (true, regno);
+	output_indirect_thunk_function (true, regno, false);
     }
 
   for (regno = AX_REG; regno <= SP_REG; regno++)
@@ -12335,10 +12344,10 @@ ix86_code_end (void)
       tree decl;
 
       if ((indirect_thunks_used & (1 << regno)))
-	output_indirect_thunk_function (false, regno);
+	output_indirect_thunk_function (false, regno, false);
 
       if ((indirect_thunks_bnd_used & (1 << regno)))
-	output_indirect_thunk_function (true, regno);
+	output_indirect_thunk_function (true, regno, false);
 
       if (!(pic_labels_used & (1 << regno)))
 	continue;
@@ -12785,10 +12794,16 @@ ix86_compute_frame_layout (void)
   /* 64-bit MS ABI seem to require stack alignment to be always 16,
      except for function prologues, leaf functions and when the defult
      incoming stack boundary is overriden at command line or via
-     force_align_arg_pointer attribute.  */
-  if ((TARGET_64BIT_MS_ABI && crtl->preferred_stack_boundary < 128)
+     force_align_arg_pointer attribute.
+
+     Darwin's ABI specifies 128b alignment for both 32 and  64 bit variants
+     at call sites, including profile function calls.
+ */
+  if (((TARGET_64BIT_MS_ABI || TARGET_MACHO)
+        && crtl->preferred_stack_boundary < 128)
       && (!crtl->is_leaf || cfun->calls_alloca != 0
 	  || ix86_current_function_calls_tls_descriptor
+	  || (TARGET_MACHO && crtl->profile)
 	  || ix86_incoming_stack_boundary < 128))
     {
       crtl->preferred_stack_boundary = 128;
@@ -14061,7 +14076,6 @@ ix86_expand_prologue (void)
 {
   struct machine_function *m = cfun->machine;
   rtx insn, t;
-  struct ix86_frame frame;
   HOST_WIDE_INT allocate;
   bool int_registers_saved;
   bool sse_registers_saved;
@@ -14085,7 +14099,7 @@ ix86_expand_prologue (void)
   m->fs.sp_valid = true;
 
   ix86_compute_frame_layout ();
-  frame = m->frame;
+  const struct ix86_frame &frame = cfun->machine->frame;
 
   if (!TARGET_64BIT && ix86_function_ms_hook_prologue (current_function_decl))
     {
@@ -14491,8 +14505,9 @@ ix86_expand_prologue (void)
 	}
       m->fs.sp_offset += allocate;
 
-      /* Use stack_pointer_rtx for relative addressing so that code
-	 works for realigned stack, too.  */
+      /* Use stack_pointer_rtx for relative addressing so that code works for
+	 realigned stack.  But this means that we need a blockage to prevent
+	 stores based on the frame pointer from being scheduled before.  */
       if (r10_live && eax_live)
         {
 	  t = gen_rtx_PLUS (Pmode, stack_pointer_rtx, eax);
@@ -14501,6 +14516,7 @@ ix86_expand_prologue (void)
 	  t = plus_constant (Pmode, t, UNITS_PER_WORD);
 	  emit_move_insn (gen_rtx_REG (word_mode, AX_REG),
 			  gen_frame_mem (word_mode, t));
+	  emit_insn (gen_memory_blockage ());
 	}
       else if (eax_live || r10_live)
 	{
@@ -14508,6 +14524,7 @@ ix86_expand_prologue (void)
 	  emit_move_insn (gen_rtx_REG (word_mode,
 				       (eax_live ? AX_REG : R10_REG)),
 			  gen_frame_mem (word_mode, t));
+	  emit_insn (gen_memory_blockage ());
 	}
     }
   gcc_assert (m->fs.sp_offset == frame.stack_pointer_offset);
@@ -14748,13 +14765,12 @@ ix86_expand_epilogue (int style)
 {
   struct machine_function *m = cfun->machine;
   struct machine_frame_state frame_state_save = m->fs;
-  struct ix86_frame frame;
   bool restore_regs_via_mov;
   bool using_drap;
 
   ix86_finalize_stack_realign_flags ();
   ix86_compute_frame_layout ();
-  frame = m->frame;
+  const struct ix86_frame &frame = cfun->machine->frame;
 
   m->fs.sp_valid = (!frame_pointer_needed
 		    || (crtl->sp_is_unchanging
@@ -14796,11 +14812,13 @@ ix86_expand_epilogue (int style)
 				  + UNITS_PER_WORD);
     }
 
+  HOST_WIDE_INT reg_save_offset = frame.reg_save_offset;
+
   /* Special care must be taken for the normal return case of a function
      using eh_return: the eax and edx registers are marked as saved, but
      not restored along this path.  Adjust the save location to match.  */
   if (crtl->calls_eh_return && style != 2)
-    frame.reg_save_offset -= 2 * UNITS_PER_WORD;
+    reg_save_offset -= 2 * UNITS_PER_WORD;
 
   /* EH_RETURN requires the use of moves to function properly.  */
   if (crtl->calls_eh_return)
@@ -14816,11 +14834,11 @@ ix86_expand_epilogue (int style)
   else if (TARGET_EPILOGUE_USING_MOVE
 	   && cfun->machine->use_fast_prologue_epilogue
 	   && (frame.nregs > 1
-	       || m->fs.sp_offset != frame.reg_save_offset))
+	       || m->fs.sp_offset != reg_save_offset))
     restore_regs_via_mov = true;
   else if (frame_pointer_needed
 	   && !frame.nregs
-	   && m->fs.sp_offset != frame.reg_save_offset)
+	   && m->fs.sp_offset != reg_save_offset)
     restore_regs_via_mov = true;
   else if (frame_pointer_needed
 	   && TARGET_USE_LEAVE
@@ -14858,7 +14876,7 @@ ix86_expand_epilogue (int style)
       rtx t;
 
       if (frame.nregs)
-	ix86_emit_restore_regs_using_mov (frame.reg_save_offset, style == 2);
+	ix86_emit_restore_regs_using_mov (reg_save_offset, style == 2);
 
       /* eh_return epilogues need %ecx added to the stack pointer.  */
       if (style == 2)
@@ -14948,19 +14966,19 @@ ix86_expand_epilogue (int style)
 	 epilogues.  */
       if (!m->fs.sp_valid
  	  || (TARGET_SEH
-	      && (m->fs.sp_offset - frame.reg_save_offset
+	      && (m->fs.sp_offset - reg_save_offset
 		  >= SEH_MAX_FRAME_SIZE)))
 	{
 	  pro_epilogue_adjust_stack (stack_pointer_rtx, hard_frame_pointer_rtx,
 				     GEN_INT (m->fs.fp_offset
-					      - frame.reg_save_offset),
+					      - reg_save_offset),
 				     style, false);
 	}
-      else if (m->fs.sp_offset != frame.reg_save_offset)
+      else if (m->fs.sp_offset != reg_save_offset)
 	{
 	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
 				     GEN_INT (m->fs.sp_offset
-					      - frame.reg_save_offset),
+					      - reg_save_offset),
 				     style,
 				     m->fs.cfa_reg == stack_pointer_rtx);
 	}
@@ -17376,7 +17394,7 @@ output_pic_addr_const (FILE *file, rtx x, int code)
       break;
 
     case SYMBOL_REF:
-      if (TARGET_64BIT || ! TARGET_MACHO_BRANCH_ISLANDS)
+      if (TARGET_64BIT || ! TARGET_MACHO_SYMBOL_STUBS)
 	output_addr_const (file, x);
       else
 	{
@@ -18161,6 +18179,7 @@ print_reg (rtx x, int code, FILE *file)
    ~ -- print "i" if TARGET_AVX2, "f" otherwise.
    @ -- print a segment register of thread base pointer load
    ^ -- print addr32 prefix if TARGET_64BIT and Pmode != word_mode
+   M -- print addr32 prefix for TARGET_X32 with VSIB address.
    ! -- print MPX prefix for jxx/call/ret instructions if required.
  */
 
@@ -18720,6 +18739,26 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	  putc (TARGET_AVX2 ? 'i' : 'f', file);
 	  return;
 
+	case 'M':
+	  if (TARGET_X32)
+	    {
+	      /* NB: 32-bit indices in VSIB address are sign-extended
+		 to 64 bits. In x32, if 32-bit address 0xf7fa3010 is
+		 sign-extended to 0xfffffffff7fa3010 which is invalid
+		 address.  Add addr32 prefix if there is no base
+		 register nor symbol.  */
+	      bool ok;
+	      struct ix86_address parts;
+	      ok = ix86_decompose_address (x, &parts);
+	      gcc_assert (ok && parts.index == NULL_RTX);
+	      if (parts.base == NULL_RTX
+		  && (parts.disp == NULL_RTX
+		      || !symbolic_operand (parts.disp,
+					    GET_MODE (parts.disp))))
+		fputs ("addr32 ", file);
+	    }
+	  return;
+
 	case '^':
 	  if (TARGET_64BIT && Pmode != word_mode)
 	    fputs ("addr32 ", file);
@@ -18842,7 +18881,8 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	 since we can in fact encode that into an immediate.  */
       if (GET_CODE (x) == CONST_VECTOR)
 	{
-	  gcc_assert (x == CONST0_RTX (GET_MODE (x)));
+	  if (x != CONST0_RTX (GET_MODE (x)))
+	    output_operand_lossage ("invalid vector immediate");
 	  x = const0_rtx;
 	}
 
@@ -19807,72 +19847,36 @@ emit_i387_cw_initialization (int mode)
   emit_insn (gen_x86_fnstcw_1 (stored_mode));
   emit_move_insn (reg, copy_rtx (stored_mode));
 
-  if (TARGET_64BIT || TARGET_PARTIAL_REG_STALL
-      || optimize_insn_for_size_p ())
+  switch (mode)
     {
-      switch (mode)
-	{
-	case I387_CW_TRUNC:
-	  /* round toward zero (truncate) */
-	  emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0c00)));
-	  slot = SLOT_CW_TRUNC;
-	  break;
+    case I387_CW_TRUNC:
+      /* round toward zero (truncate) */
+      emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0c00)));
+      slot = SLOT_CW_TRUNC;
+      break;
 
-	case I387_CW_FLOOR:
-	  /* round down toward -oo */
-	  emit_insn (gen_andhi3 (reg, reg, GEN_INT (~0x0c00)));
-	  emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0400)));
-	  slot = SLOT_CW_FLOOR;
-	  break;
+    case I387_CW_FLOOR:
+      /* round down toward -oo */
+      emit_insn (gen_andhi3 (reg, reg, GEN_INT (~0x0c00)));
+      emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0400)));
+      slot = SLOT_CW_FLOOR;
+      break;
 
-	case I387_CW_CEIL:
-	  /* round up toward +oo */
-	  emit_insn (gen_andhi3 (reg, reg, GEN_INT (~0x0c00)));
-	  emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0800)));
-	  slot = SLOT_CW_CEIL;
-	  break;
+    case I387_CW_CEIL:
+      /* round up toward +oo */
+      emit_insn (gen_andhi3 (reg, reg, GEN_INT (~0x0c00)));
+      emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0800)));
+      slot = SLOT_CW_CEIL;
+      break;
 
-	case I387_CW_MASK_PM:
-	  /* mask precision exception for nearbyint() */
-	  emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0020)));
-	  slot = SLOT_CW_MASK_PM;
-	  break;
+    case I387_CW_MASK_PM:
+      /* mask precision exception for nearbyint() */
+      emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0020)));
+      slot = SLOT_CW_MASK_PM;
+      break;
 
-	default:
-	  gcc_unreachable ();
-	}
-    }
-  else
-    {
-      switch (mode)
-	{
-	case I387_CW_TRUNC:
-	  /* round toward zero (truncate) */
-	  emit_insn (gen_insvsi_1 (reg, GEN_INT (0xc)));
-	  slot = SLOT_CW_TRUNC;
-	  break;
-
-	case I387_CW_FLOOR:
-	  /* round down toward -oo */
-	  emit_insn (gen_insvsi_1 (reg, GEN_INT (0x4)));
-	  slot = SLOT_CW_FLOOR;
-	  break;
-
-	case I387_CW_CEIL:
-	  /* round up toward +oo */
-	  emit_insn (gen_insvsi_1 (reg, GEN_INT (0x8)));
-	  slot = SLOT_CW_CEIL;
-	  break;
-
-	case I387_CW_MASK_PM:
-	  /* mask precision exception for nearbyint() */
-	  emit_insn (gen_iorhi3 (reg, reg, GEN_INT (0x0020)));
-	  slot = SLOT_CW_MASK_PM;
-	  break;
-
-	default:
-	  gcc_unreachable ();
-	}
+    default:
+      gcc_unreachable ();
     }
 
   gcc_assert (slot < MAX_386_STACK_LOCALS);
@@ -24143,6 +24147,8 @@ ix86_expand_sse_fp_minmax (rtx dest, enum rtx_code code, rtx cmp_op0,
   else
     {
       code = is_min ? SMIN : SMAX;
+      if (MEM_P (if_true) && MEM_P (if_false))
+	if_true = force_reg (mode, if_true);
       tmp = gen_rtx_fmt_ee (code, mode, if_true, if_false);
     }
 
@@ -24150,7 +24156,7 @@ ix86_expand_sse_fp_minmax (rtx dest, enum rtx_code code, rtx cmp_op0,
   return true;
 }
 
-/* Expand an sse vector comparison.  Return the register with the result.  */
+/* Expand an SSE comparison.  Return the register with the result.  */
 
 static rtx
 ix86_expand_sse_cmp (rtx dest, enum rtx_code code, rtx cmp_op0, rtx cmp_op1,
@@ -24176,9 +24182,12 @@ ix86_expand_sse_cmp (rtx dest, enum rtx_code code, rtx cmp_op0, rtx cmp_op1,
   else
     cmp_mode = cmp_ops_mode;
 
-
   cmp_op0 = force_reg (cmp_ops_mode, cmp_op0);
-  if (!nonimmediate_operand (cmp_op1, cmp_ops_mode))
+
+  int (*op1_predicate)(rtx, machine_mode)
+    = VECTOR_MODE_P (cmp_ops_mode) ? vector_operand : nonimmediate_operand;
+
+  if (!op1_predicate (cmp_op1, cmp_ops_mode))
     cmp_op1 = force_reg (cmp_ops_mode, cmp_op1);
 
   if (optimize
@@ -24298,7 +24307,7 @@ ix86_expand_sse_movcc (rtx dest, rtx cmp, rtx op_true, rtx op_false)
       rtx (*gen) (rtx, rtx, rtx, rtx) = NULL;
       rtx d = dest;
 
-      if (!nonimmediate_operand (op_true, mode))
+      if (!vector_operand (op_true, mode))
 	op_true = force_reg (mode, op_true);
 
       op_false = force_reg (mode, op_false);
@@ -28853,6 +28862,25 @@ ix86_nopic_noplt_attribute_p (rtx call_op)
   return false;
 }
 
+/* Helper to output the jmp/call.  */
+static void
+ix86_output_jmp_thunk_or_indirect (const char *thunk_name,
+				   bool need_bnd_p,
+				   const int regno)
+{
+  if (thunk_name != NULL)
+    {
+      if (need_bnd_p)
+	fprintf (asm_out_file, "\tbnd jmp\t");
+      else
+	fprintf (asm_out_file, "\tjmp\t");
+      assemble_name (asm_out_file, thunk_name);
+      putc ('\n', asm_out_file);
+    }
+  else
+    output_indirect_thunk (need_bnd_p, regno);
+}
+
 /* Output indirect branch via a call and return thunk.  CALL_OP is a
    register which contains the branch target.  XASM is the assembly
    template for CALL_OP.  Branch is a tail call if SIBCALL_P is true.
@@ -28893,25 +28921,17 @@ ix86_output_indirect_branch_via_reg (rtx call_op, bool sibcall_p)
     thunk_name = NULL;
 
   if (sibcall_p)
-    {
-      if (thunk_name != NULL)
-	{
-	  if (need_bnd_p)
-	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
-	  else
-	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
-	}
-      else
-	output_indirect_thunk (need_bnd_p, regno);
-    }
+    ix86_output_jmp_thunk_or_indirect (thunk_name, need_bnd_p, regno);
   else
     {
       if (thunk_name != NULL)
 	{
 	  if (need_bnd_p)
-	    fprintf (asm_out_file, "\tbnd call\t%s\n", thunk_name);
+	    fprintf (asm_out_file, "\tbnd call\t");
 	  else
-	    fprintf (asm_out_file, "\tcall\t%s\n", thunk_name);
+	    fprintf (asm_out_file, "\tcall\t");
+	  assemble_name (asm_out_file, thunk_name);
+	  putc ('\n', asm_out_file);
 	  return;
 	}
 
@@ -28935,15 +28955,7 @@ ix86_output_indirect_branch_via_reg (rtx call_op, bool sibcall_p)
 
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel1);
 
-      if (thunk_name != NULL)
-	{
-	  if (need_bnd_p)
-	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
-	  else
-	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
-	}
-      else
-	output_indirect_thunk (need_bnd_p, regno);
+      ix86_output_jmp_thunk_or_indirect (thunk_name, need_bnd_p, regno);
 
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
@@ -29007,15 +29019,7 @@ ix86_output_indirect_branch_via_push (rtx call_op, const char *xasm,
   if (sibcall_p)
     {
       output_asm_insn (push_buf, &call_op);
-      if (thunk_name != NULL)
-	{
-	  if (need_bnd_p)
-	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
-	  else
-	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
-	}
-      else
-	output_indirect_thunk (need_bnd_p, regno);
+      ix86_output_jmp_thunk_or_indirect (thunk_name, need_bnd_p, regno);
     }
   else
     {
@@ -29074,15 +29078,7 @@ ix86_output_indirect_branch_via_push (rtx call_op, const char *xasm,
 
       output_asm_insn (push_buf, &call_op);
 
-      if (thunk_name != NULL)
-	{
-	  if (need_bnd_p)
-	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
-	  else
-	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
-	}
-      else
-	output_indirect_thunk (need_bnd_p, regno);
+      ix86_output_jmp_thunk_or_indirect (thunk_name, need_bnd_p, regno);
 
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
@@ -29109,18 +29105,17 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
   else
     ix86_output_indirect_branch_via_push (call_op, xasm, sibcall_p);
 }
-/* Output indirect jump.  CALL_OP is the jump target.  Jump is a
-   function return if RET_P is true.  */
+
+/* Output indirect jump.  CALL_OP is the jump target.  */
 
 const char *
-ix86_output_indirect_jmp (rtx call_op, bool ret_p)
+ix86_output_indirect_jmp (rtx call_op)
 {
   if (cfun->machine->indirect_branch_type != indirect_branch_keep)
     {
-      /* We can't have red-zone if this isn't a function return since
-	 "call" in the indirect thunk pushes the return address onto
-	 stack, destroying red-zone.  */
-      if (!ret_p && ix86_red_zone_size != 0)
+      /* We can't have red-zone since "call" in the indirect thunk
+         pushes the return address onto stack, destroying red-zone.  */
+      if (ix86_red_zone_size != 0)
 	gcc_unreachable ();
 
       ix86_output_indirect_branch (call_op, "%0", true);
@@ -29146,20 +29141,23 @@ ix86_output_function_return (bool long_p)
 	{
 	  bool need_thunk = (cfun->machine->function_return_type
 			     == indirect_branch_thunk);
-	  indirect_thunk_name (thunk_name, -1, need_bnd_p, true);
+	  indirect_thunk_name (thunk_name, INVALID_REGNUM, need_bnd_p,
+			       true);
 	  if (need_bnd_p)
 	    {
-	      indirect_thunk_bnd_needed |= need_thunk;
-	      fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
+	      indirect_return_bnd_needed |= need_thunk;
+	      fprintf (asm_out_file, "\tbnd jmp\t");
 	    }
 	  else
 	    {
-	      indirect_thunk_needed |= need_thunk;
-	      fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
+	      indirect_return_needed |= need_thunk;
+	      fprintf (asm_out_file, "\tjmp\t");
 	    }
+	  assemble_name (asm_out_file, thunk_name);
+	  putc ('\n', asm_out_file);
 	}
       else
-	output_indirect_thunk (need_bnd_p, -1);
+	output_indirect_thunk (need_bnd_p, INVALID_REGNUM);
 
       return "";
     }
@@ -29168,6 +29166,88 @@ ix86_output_function_return (bool long_p)
     return "%!ret";
 
   return "rep%; ret";
+}
+
+/* Output indirect function return.  RET_OP is the function return
+   target.  */
+
+const char *
+ix86_output_indirect_function_return (rtx ret_op)
+{
+  if (cfun->machine->function_return_type != indirect_branch_keep)
+    {
+      char thunk_name[32];
+      bool need_bnd_p = ix86_bnd_prefixed_insn_p (current_output_insn);
+      unsigned int regno = REGNO (ret_op);
+      gcc_assert (regno == CX_REG);
+
+      if (cfun->machine->function_return_type
+	  != indirect_branch_thunk_inline)
+	{
+	  bool need_thunk = (cfun->machine->function_return_type
+			     == indirect_branch_thunk);
+	  indirect_thunk_name (thunk_name, regno, need_bnd_p, true);
+	  if (need_bnd_p)
+	    {
+	      if (need_thunk)
+		{
+		  indirect_return_via_cx_bnd = true;
+		  indirect_thunks_bnd_used |= 1 << CX_REG;
+		}
+	      fprintf (asm_out_file, "\tbnd jmp\t");
+	    }
+	  else
+	    {
+	      if (need_thunk)
+		{
+		  indirect_return_via_cx = true;
+		  indirect_thunks_used |= 1 << CX_REG;
+		}
+	      fprintf (asm_out_file, "\tjmp\t");
+	    }
+	  assemble_name (asm_out_file, thunk_name);
+	  putc ('\n', asm_out_file);
+	}
+      else
+	output_indirect_thunk (need_bnd_p, regno);
+
+      return "";
+    }
+  else
+    return "%!jmp\t%A0";
+}
+
+/* Split simple return with popping POPC bytes from stack to indirect
+   branch with stack adjustment .  */
+
+void
+ix86_split_simple_return_pop_internal (rtx popc)
+{
+  struct machine_function *m = cfun->machine;
+  rtx ecx = gen_rtx_REG (SImode, CX_REG);
+  rtx_insn *insn;
+
+  /* There is no "pascal" calling convention in any 64bit ABI.  */
+  gcc_assert (!TARGET_64BIT);
+
+  insn = emit_insn (gen_pop (ecx));
+  m->fs.cfa_offset -= UNITS_PER_WORD;
+  m->fs.sp_offset -= UNITS_PER_WORD;
+
+  rtx x = plus_constant (Pmode, stack_pointer_rtx, UNITS_PER_WORD);
+  x = gen_rtx_SET (stack_pointer_rtx, x);
+  add_reg_note (insn, REG_CFA_ADJUST_CFA, x);
+  add_reg_note (insn, REG_CFA_REGISTER, gen_rtx_SET (ecx, pc_rtx));
+  RTX_FRAME_RELATED_P (insn) = 1;
+
+  x = gen_rtx_PLUS (Pmode, stack_pointer_rtx, popc);
+  x = gen_rtx_SET (stack_pointer_rtx, x);
+  insn = emit_insn (x);
+  add_reg_note (insn, REG_CFA_ADJUST_CFA, x);
+  RTX_FRAME_RELATED_P (insn) = 1;
+
+  /* Now return address is in ECX.  */
+  emit_jump_insn (gen_simple_return_indirect_internal (ecx));
 }
 
 /* Output the assembly for a call instruction.  */
@@ -38340,6 +38420,16 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget,
           unsigned char lsb_index = INTVAL (op1) & 0xFF;
           op1 = GEN_INT (length);
           op2 = GEN_INT (lsb_index);
+
+	  mode1 = insn_data[icode].operand[1].mode;
+	  if (!insn_data[icode].operand[1].predicate (op0, mode1))
+	    op0 = copy_to_mode_reg (mode1, op0);
+
+	  mode0 = insn_data[icode].operand[0].mode;
+	  if (target == 0
+	      || !register_operand (target, mode0))
+	    target = gen_reg_rtx (mode0);
+
           pat = GEN_FCN (icode) (target, op0, op1, op2);
           if (pat)
             emit_insn (pat);
@@ -40430,7 +40520,7 @@ ix86_vectorize_builtin_scatter (const_tree vectype,
 static bool
 use_rsqrt_p ()
 {
-  return (TARGET_SSE_MATH
+  return (TARGET_SSE && TARGET_SSE_MATH
 	  && flag_finite_math_only
 	  && !flag_trapping_math
 	  && flag_unsafe_math_optimizations);
@@ -46128,8 +46218,10 @@ ix86_expand_floorceildf_32 (rtx operand0, rtx operand1, bool do_floor)
           x2 -= 1;
      Compensate.  Ceil:
         if (x2 < x)
-          x2 -= -1;
-        return x2;
+          x2 += 1;
+	if (HONOR_SIGNED_ZEROS (mode))
+	  x2 = copysign (x2, x);
+	return x2;
    */
   machine_mode mode = GET_MODE (operand0);
   rtx xa, TWO52, tmp, one, res, mask;
@@ -46155,17 +46247,16 @@ ix86_expand_floorceildf_32 (rtx operand0, rtx operand1, bool do_floor)
   /* xa = copysign (xa, operand1) */
   ix86_sse_copysign_to_positive (xa, xa, res, mask);
 
-  /* generate 1.0 or -1.0 */
-  one = force_reg (mode,
-	           const_double_from_real_value (do_floor
-						 ? dconst1 : dconstm1, mode));
+  /* generate 1.0 */
+  one = force_reg (mode, const_double_from_real_value (dconst1, mode));
 
   /* Compensate: xa = xa - (xa > operand1 ? 1 : 0) */
   tmp = ix86_expand_sse_compare_mask (UNGT, xa, res, !do_floor);
   emit_insn (gen_rtx_SET (tmp, gen_rtx_AND (mode, one, tmp)));
-  /* We always need to subtract here to preserve signed zero.  */
-  tmp = expand_simple_binop (mode, MINUS,
+  tmp = expand_simple_binop (mode, do_floor ? MINUS : PLUS,
 			     xa, tmp, NULL_RTX, 0, OPTAB_DIRECT);
+  if (!do_floor && HONOR_SIGNED_ZEROS (mode))
+    ix86_sse_copysign_to_positive (tmp, tmp, res, mask);
   emit_move_insn (res, tmp);
 
   emit_label (label);
@@ -46724,7 +46815,8 @@ static bool
 expand_vec_perm_blend (struct expand_vec_perm_d *d)
 {
   machine_mode mmode, vmode = d->vmode;
-  unsigned i, mask, nelt = d->nelt;
+  unsigned i, nelt = d->nelt;
+  unsigned HOST_WIDE_INT mask;
   rtx target, op0, op1, maskop, x;
   rtx rperm[32], vperm;
 
@@ -46778,7 +46870,7 @@ expand_vec_perm_blend (struct expand_vec_perm_d *d)
     case V16SImode:
     case V8DImode:
       for (i = 0; i < nelt; ++i)
-	mask |= (d->perm[i] >= nelt) << i;
+	mask |= ((unsigned HOST_WIDE_INT) (d->perm[i] >= nelt)) << i;
       break;
 
     case V2DImode:
@@ -51646,7 +51738,9 @@ ix86_simd_clone_compute_vecsize_and_simdlen (struct cgraph_node *node,
       case DFmode:
       /* case SCmode: */
       /* case DCmode: */
-	break;
+	if (!AGGREGATE_TYPE_P (ret_type))
+	  break;
+	/* FALLTHRU */
       default:
 	warning_at (DECL_SOURCE_LOCATION (node->decl), 0,
 		    "unsupported return type %qT for simd\n", ret_type);
@@ -51655,25 +51749,34 @@ ix86_simd_clone_compute_vecsize_and_simdlen (struct cgraph_node *node,
 
   tree t;
   int i;
+  tree type_arg_types = TYPE_ARG_TYPES (TREE_TYPE (node->decl));
+  bool decl_arg_p = (node->definition || type_arg_types == NULL_TREE);
 
-  for (t = DECL_ARGUMENTS (node->decl), i = 0; t; t = DECL_CHAIN (t), i++)
-    /* FIXME: Shouldn't we allow such arguments if they are uniform?  */
-    switch (TYPE_MODE (TREE_TYPE (t)))
-      {
-      case QImode:
-      case HImode:
-      case SImode:
-      case DImode:
-      case SFmode:
-      case DFmode:
-      /* case SCmode: */
-      /* case DCmode: */
-	break;
-      default:
-	warning_at (DECL_SOURCE_LOCATION (node->decl), 0,
-		    "unsupported argument type %qT for simd\n", TREE_TYPE (t));
-	return 0;
-      }
+  for (t = (decl_arg_p ? DECL_ARGUMENTS (node->decl) : type_arg_types), i = 0;
+       t && t != void_list_node; t = TREE_CHAIN (t), i++)
+    {
+      tree arg_type = decl_arg_p ? TREE_TYPE (t) : TREE_VALUE (t);
+      switch (TYPE_MODE (arg_type))
+	{
+	case QImode:
+	case HImode:
+	case SImode:
+	case DImode:
+	case SFmode:
+	case DFmode:
+	/* case SCmode: */
+	/* case DCmode: */
+	  if (!AGGREGATE_TYPE_P (arg_type))
+	    break;
+	  /* FALLTHRU */
+	default:
+	  if (clonei->args[i].arg_type == SIMD_CLONE_ARG_TYPE_UNIFORM)
+	    break;
+	  warning_at (DECL_SOURCE_LOCATION (node->decl), 0,
+		      "unsupported argument type %qT for simd\n", arg_type);
+	  return 0;
+	}
+    }
 
   if (clonei->cilk_elemental)
     {
@@ -51885,7 +51988,7 @@ ix86_float_exceptions_rounding_supported_p (void)
      there is no adddf3 pattern (since x87 floating point only has
      XFmode operations) so the default hook implementation gets this
      wrong.  */
-  return TARGET_80387 || TARGET_SSE_MATH;
+  return TARGET_80387 || (TARGET_SSE && TARGET_SSE_MATH);
 }
 
 /* Implement TARGET_ATOMIC_ASSIGN_EXPAND_FENV.  */
@@ -51893,7 +51996,7 @@ ix86_float_exceptions_rounding_supported_p (void)
 static void
 ix86_atomic_assign_expand_fenv (tree *hold, tree *clear, tree *update)
 {
-  if (!TARGET_80387 && !TARGET_SSE_MATH)
+  if (!TARGET_80387 && !(TARGET_SSE && TARGET_SSE_MATH))
     return;
   tree exceptions_var = create_tmp_var_raw (integer_type_node);
   if (TARGET_80387)
@@ -51928,7 +52031,7 @@ ix86_atomic_assign_expand_fenv (tree *hold, tree *clear, tree *update)
       tree update_fldenv = build_call_expr (fldenv, 1, fenv_addr);
       *update = build2 (COMPOUND_EXPR, void_type_node, *update, update_fldenv);
     }
-  if (TARGET_SSE_MATH)
+  if (TARGET_SSE && TARGET_SSE_MATH)
     {
       tree mxcsr_orig_var = create_tmp_var_raw (unsigned_type_node);
       tree mxcsr_mod_var = create_tmp_var_raw (unsigned_type_node);
@@ -52253,10 +52356,8 @@ ix86_expand_divmod_libfunc (rtx libfunc, machine_mode mode,
   rtx rem = assign_386_stack_local (mode, SLOT_TEMP);
 
   rtx quot = emit_library_call_value (libfunc, NULL_RTX, LCT_NORMAL,
-				    mode, 3,
-				    op0, GET_MODE (op0),
-				    op1, GET_MODE (op1),
-				    XEXP (rem, 0), Pmode);
+				      mode, 3, op0, mode, op1, mode,
+				      XEXP (rem, 0), Pmode);
   *quot_p = quot;
   *rem_p = rem;
 }
@@ -52287,7 +52388,7 @@ ix86_excess_precision (enum excess_precision_type type)
 	  return FLT_EVAL_METHOD_PROMOTE_TO_FLOAT;
 	else if (!TARGET_MIX_SSE_I387)
 	  {
-	    if (!TARGET_SSE_MATH)
+	    if (!(TARGET_SSE && TARGET_SSE_MATH))
 	      return FLT_EVAL_METHOD_PROMOTE_TO_LONG_DOUBLE;
 	    else if (TARGET_SSE2)
 	      return FLT_EVAL_METHOD_PROMOTE_TO_FLOAT;

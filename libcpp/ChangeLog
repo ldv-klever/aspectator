@@ -1,3 +1,46 @@
+2019-11-14  Release Manager
+
+	* GCC 7.5.0 released.
+
+2019-03-11  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2019-02-18  Martin Liska  <mliska@suse.cz>
+
+	PR c++/89383
+	* line-map.c (linemap_line_start): Use 1UL in order
+	to not overflow.
+
+2019-03-11  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2019-02-11  Martin Liska  <mliska@suse.cz>
+
+	PR lto/88147
+	* line-map.c (linemap_line_start): Don't reuse the existing line
+	map if the line offset is sufficiently large to cause overflow
+	when computing location_t values.
+
+2018-12-06  Release Manager
+
+	* GCC 7.4.0 released.
+
+2018-03-03  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2018-01-31  Jakub Jelinek  <jakub@redhat.com>
+
+	PR preprocessor/69869
+	* traditional.c (skip_macro_block_comment): Return bool, true if
+	the macro block comment is unterminated.
+	(copy_comment): Use return value from skip_macro_block_comment instead
+	of always false.
+
+	2018-01-27  Jakub Jelinek  <jakub@redhat.com>
+
+	* include/cpplib.h (enum cpp_builtin_type): Change BT_LAST_USER from
+	BT_FIRST_USER + 31 to BT_FIRST_USER + 63.
+
 2018-01-25  Release Manager
 
 	* GCC 7.3.0 released.

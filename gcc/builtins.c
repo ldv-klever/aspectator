@@ -2514,7 +2514,7 @@ expand_builtin_int_roundingfn (tree exp, rtx target)
   tree arg;
 
   if (!validate_arglist (exp, REAL_TYPE, VOID_TYPE))
-    gcc_unreachable ();
+    return NULL_RTX;
 
   arg = CALL_EXPR_ARG (exp, 0);
 
@@ -2650,7 +2650,7 @@ expand_builtin_int_roundingfn_2 (tree exp, rtx target)
   enum built_in_function fallback_fn = BUILT_IN_NONE;
 
   if (!validate_arglist (exp, REAL_TYPE, VOID_TYPE))
-     gcc_unreachable ();
+    return NULL_RTX;
 
   arg = CALL_EXPR_ARG (exp, 0);
 
@@ -7544,8 +7544,7 @@ builtin_mathfn_code (const_tree t)
   const_tree argtype, parmtype;
   const_call_expr_arg_iterator iter;
 
-  if (TREE_CODE (t) != CALL_EXPR
-      || TREE_CODE (CALL_EXPR_FN (t)) != ADDR_EXPR)
+  if (TREE_CODE (t) != CALL_EXPR)
     return END_BUILTINS;
 
   fndecl = get_callee_fndecl (t);
@@ -9286,7 +9285,7 @@ fold_builtin_strpbrk (location_t loc, tree s1, tree s2, tree type)
       if (p2[0] == '\0')
 	/* strpbrk(x, "") == NULL.
 	   Evaluate and ignore s1 in case it had side-effects.  */
-	return omit_one_operand_loc (loc, TREE_TYPE (s1), integer_zero_node, s1);
+	return omit_one_operand_loc (loc, type, integer_zero_node, s1);
 
       if (p2[1] != '\0')
 	return NULL_TREE;  /* Really call strpbrk.  */
@@ -9790,6 +9789,9 @@ maybe_emit_sprintf_chk_warning (tree exp, enum built_in_function fcode)
 static void
 maybe_emit_free_warning (tree exp)
 {
+  if (call_expr_nargs (exp) != 1)
+    return;
+
   tree arg = CALL_EXPR_ARG (exp, 0);
 
   STRIP_NOPS (arg);

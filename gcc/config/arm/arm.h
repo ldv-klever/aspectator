@@ -186,7 +186,7 @@ extern tree arm_fp16_type_node;
 /* FPU supports converting between HFmode and DFmode in a single hardware
    step.  */
 #define TARGET_FP16_TO_DOUBLE						\
-  (TARGET_HARD_FLOAT && (TARGET_FP16 && TARGET_VFP5))
+  (TARGET_HARD_FLOAT && TARGET_FP16 && TARGET_VFP5 && TARGET_VFP_DOUBLE)
 
 /* FPU supports fused-multiply-add operations.  */
 #define TARGET_FMA (bitmap_bit_p (arm_active_target.isa, isa_bit_VFPv4))
@@ -1420,6 +1420,9 @@ typedef struct GTY(()) machine_function
   machine_mode thumb1_cc_mode;
   /* Set to 1 after arm_reorg has started.  */
   int after_arm_reorg;
+  /* The number of bytes used to store the static chain register on the
+     stack, above the stack frame.  */
+  int static_chain_stack_bytes;
 }
 machine_function;
 #endif

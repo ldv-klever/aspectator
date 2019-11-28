@@ -1241,10 +1241,9 @@ use_blocks_for_decl_p (tree decl)
   if (!VAR_P (decl) && TREE_CODE (decl) != CONST_DECL)
     return false;
 
-  /* Detect decls created by dw2_force_const_mem.  Such decls are
-     special because DECL_INITIAL doesn't specify the decl's true value.
-     dw2_output_indirect_constants will instead call assemble_variable
-     with dont_output_data set to 1 and then print the contents itself.  */
+  /* DECL_INITIAL (decl) set to decl is a hack used for some decls that
+     are never used from code directly and we never want object block handling
+     for those.  */
   if (DECL_INITIAL (decl) == decl)
     return false;
 
@@ -2880,6 +2879,11 @@ decode_addr_const (tree exp, struct addr_const *value)
     case CONSTRUCTOR:
     case INTEGER_CST:
       x = output_constant_def (target, 1);
+      break;
+
+    case COMPOUND_LITERAL_EXPR:
+      gcc_assert (COMPOUND_LITERAL_EXPR_DECL (target));
+      x = DECL_RTL (COMPOUND_LITERAL_EXPR_DECL (target));
       break;
 
     default:
@@ -5176,7 +5180,7 @@ output_constructor_bitfield (oc_local_state *local, unsigned int bit_offset)
     {
       int this_time;
       int shift;
-      HOST_WIDE_INT value;
+      unsigned HOST_WIDE_INT value;
       HOST_WIDE_INT next_byte = next_offset / BITS_PER_UNIT;
       HOST_WIDE_INT next_bit = next_offset % BITS_PER_UNIT;
 
@@ -5208,15 +5212,13 @@ output_constructor_bitfield (oc_local_state *local, unsigned int bit_offset)
 	      this_time = end - shift + 1;
 	    }
 
-	  /* Now get the bits from the appropriate constant word.  */
-	  value = TREE_INT_CST_ELT (local->val, shift / HOST_BITS_PER_WIDE_INT);
-	  shift = shift & (HOST_BITS_PER_WIDE_INT - 1);
+	  /* Now get the bits we want to insert.  */
+	  value = wi::extract_uhwi (wi::to_widest (local->val),
+				    shift, this_time);
 
 	  /* Get the result.  This works only when:
 	     1 <= this_time <= HOST_BITS_PER_WIDE_INT.  */
-	  local->byte |= (((value >> shift)
-			   & (((HOST_WIDE_INT) 2 << (this_time - 1)) - 1))
-			  << (BITS_PER_UNIT - this_time - next_bit));
+	  local->byte |= value << (BITS_PER_UNIT - this_time - next_bit);
 	}
       else
 	{
@@ -5233,15 +5235,13 @@ output_constructor_bitfield (oc_local_state *local, unsigned int bit_offset)
 	    this_time
 	      = HOST_BITS_PER_WIDE_INT - (shift & (HOST_BITS_PER_WIDE_INT - 1));
 
-	  /* Now get the bits from the appropriate constant word.  */
-	  value = TREE_INT_CST_ELT (local->val, shift / HOST_BITS_PER_WIDE_INT);
-	  shift = shift & (HOST_BITS_PER_WIDE_INT - 1);
+	  /* Now get the bits we want to insert.  */
+	  value = wi::extract_uhwi (wi::to_widest (local->val),
+				    shift, this_time);
 
 	  /* Get the result.  This works only when:
 	     1 <= this_time <= HOST_BITS_PER_WIDE_INT.  */
-	  local->byte |= (((value >> shift)
-			   & (((HOST_WIDE_INT) 2 << (this_time - 1)) - 1))
-			  << next_bit);
+	  local->byte |= value << next_bit;
 	}
 
       next_offset += this_time;

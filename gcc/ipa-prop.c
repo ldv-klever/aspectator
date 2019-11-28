@@ -111,12 +111,13 @@ struct ipa_vr_ggc_hash_traits : public ggc_cache_remove <value_range *>
   typedef value_range *compare_type;
   static hashval_t
   hash (const value_range *p)
-  {
-    gcc_checking_assert (!p->equiv);
-    hashval_t t = (hashval_t) p->type;
-    t = iterative_hash_expr (p->min, t);
-    return iterative_hash_expr (p->max, t);
-  }
+    {
+      gcc_checking_assert (!p->equiv);
+      inchash::hash hstate (p->type);
+      hstate.add_ptr (p->min);
+      hstate.add_ptr (p->max);
+      return hstate.end ();
+    }
   static bool
   equal (const value_range *a, const value_range *b)
     {
@@ -1576,7 +1577,8 @@ determine_locally_known_aggregate_parts (gcall *call, tree arg,
       if (TREE_CODE (arg) == SSA_NAME)
 	{
 	  tree type_size;
-          if (!tree_fits_uhwi_p (TYPE_SIZE (TREE_TYPE (arg_type))))
+          if (!tree_fits_uhwi_p (TYPE_SIZE (TREE_TYPE (arg_type)))
+	      || !POINTER_TYPE_P (TREE_TYPE (arg)))
             return;
 	  check_ref = true;
 	  arg_base = arg;
@@ -4352,8 +4354,7 @@ ipa_modify_call_arguments (struct cgraph_edge *cs, gcall *stmt,
 
 	  gcc_checking_assert (adj->offset % BITS_PER_UNIT == 0);
 	  base = gimple_call_arg (stmt, adj->base_index);
-	  loc = DECL_P (base) ? DECL_SOURCE_LOCATION (base)
-			      : EXPR_LOCATION (base);
+	  loc = gimple_location (stmt);
 
 	  if (TREE_CODE (base) != ADDR_EXPR
 	      && POINTER_TYPE_P (TREE_TYPE (base)))
@@ -4445,6 +4446,7 @@ ipa_modify_call_arguments (struct cgraph_edge *cs, gcall *stmt,
 		  else
 		    expr = create_tmp_reg (TREE_TYPE (expr));
 		  gimple_assign_set_lhs (tem, expr);
+		  gimple_set_location (tem, loc);
 		  gsi_insert_before (&gsi, tem, GSI_SAME_STMT);
 		}
 	    }

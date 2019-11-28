@@ -654,7 +654,16 @@ default_options_optimization (struct gcc_options *opts,
   /* For -O1 only do loop invariant motion for very small loops.  */
   maybe_set_param_value
     (PARAM_LOOP_INVARIANT_MAX_BBS_IN_LOOP,
-     opt2 ? default_param_value (PARAM_LOOP_INVARIANT_MAX_BBS_IN_LOOP) : 1000,
+     opt2 ? default_param_value (PARAM_LOOP_INVARIANT_MAX_BBS_IN_LOOP)
+     : default_param_value (PARAM_LOOP_INVARIANT_MAX_BBS_IN_LOOP) / 10,
+     opts->x_param_values, opts_set->x_param_values);
+
+  /* For -O1 reduce the maximum number of active local stores for RTL DSE
+     since this can consume huge amounts of memory (PR89115).  */
+  maybe_set_param_value
+    (PARAM_MAX_DSE_ACTIVE_LOCAL_STORES,
+     opt2 ? default_param_value (PARAM_MAX_DSE_ACTIVE_LOCAL_STORES)
+     : default_param_value (PARAM_MAX_DSE_ACTIVE_LOCAL_STORES) / 10,
      opts->x_param_values, opts_set->x_param_values);
 
   /* At -Ofast, allow store motion to introduce potential race conditions.  */
@@ -1014,6 +1023,26 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
   if ((opts->x_flag_sanitize & SANITIZE_KERNEL_ADDRESS) && opts->x_flag_tm)
     sorry ("transactional memory is not supported with "
 	   "%<-fsanitize=kernel-address%>");
+
+  /* Comes from final.c -- no real reason to change it.  */
+#define MAX_CODE_ALIGN 16
+#define MAX_CODE_ALIGN_VALUE (1 << MAX_CODE_ALIGN)
+
+  if (opts->x_align_loops > MAX_CODE_ALIGN_VALUE)
+    error_at (loc, "-falign-loops=%d is not between 0 and %d",
+	      opts->x_align_loops, MAX_CODE_ALIGN_VALUE);
+
+  if (opts->x_align_jumps > MAX_CODE_ALIGN_VALUE)
+    error_at (loc, "-falign-jumps=%d is not between 0 and %d",
+	      opts->x_align_jumps, MAX_CODE_ALIGN_VALUE);
+
+  if (opts->x_align_functions > MAX_CODE_ALIGN_VALUE)
+    error_at (loc, "-falign-functions=%d is not between 0 and %d",
+	      opts->x_align_functions, MAX_CODE_ALIGN_VALUE);
+
+  if (opts->x_align_labels > MAX_CODE_ALIGN_VALUE)
+    error_at (loc, "-falign-labels=%d is not between 0 and %d",
+	      opts->x_align_labels, MAX_CODE_ALIGN_VALUE);
 }
 
 #define LEFT_COLUMN	27

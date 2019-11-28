@@ -1342,6 +1342,9 @@ record_store (rtx body, bb_info_t bb_info)
   else
     width = GET_MODE_SIZE (GET_MODE (mem));
 
+  if (width == 0)
+    return 0;
+
   if (group_id >= 0)
     {
       /* In the restrictive case where the base is a constant or the
@@ -1447,7 +1450,12 @@ record_store (rtx body, bb_info_t bb_info)
 	      && offset >= s_info->begin
 	      && offset + width <= s_info->end
 	      && all_positions_needed_p (s_info, offset - s_info->begin,
-					 width))
+					 width)
+	      /* We can only remove the later store if the earlier aliases
+		 at least all accesses the later one.  */
+	      && (MEM_ALIAS_SET (mem) == MEM_ALIAS_SET (s_info->mem)
+		  || alias_set_subset_of (MEM_ALIAS_SET (mem),
+					  MEM_ALIAS_SET (s_info->mem))))
 	    {
 	      if (GET_MODE (mem) == BLKmode)
 		{
@@ -2381,10 +2389,13 @@ scan_insn (bb_info_t bb_info, rtx_insn *insn)
 		clear_rhs_from_active_local_stores ();
 	    }
 	}
-      else if (SIBLING_CALL_P (insn) && reload_completed)
+      else if (SIBLING_CALL_P (insn)
+	       && (reload_completed || HARD_FRAME_POINTER_IS_ARG_POINTER))
 	/* Arguments for a sibling call that are pushed to memory are passed
 	   using the incoming argument pointer of the current function.  After
-	   reload that might be (and likely is) frame pointer based.  */
+	   reload that might be (and likely is) frame pointer based.  And, if
+	   it is a frame pointer on the target, even before reload we need to
+	   kill frame pointer based stores.  */
 	add_wild_read (bb_info);
       else
 	/* Every other call, including pure functions, may read any memory

@@ -3179,11 +3179,19 @@ expand_mult_const (machine_mode mode, rtx op0, HOST_WIDE_INT val,
 	      tem = gen_lowpart (nmode, op0);
 	    }
 
-          insn = get_last_insn ();
-          set_dst_reg_note (insn, REG_EQUAL,
-			    gen_rtx_MULT (nmode, tem,
-					  gen_int_mode (val_so_far, nmode)),
-			    accum_inner);
+	  /* Don't add a REG_EQUAL note if tem is a paradoxical SUBREG.
+	     In that case, only the low bits of accum would be guaranteed to
+	     be equal to the content of the REG_EQUAL note, the upper bits
+	     can be anything.  */
+	  if (!paradoxical_subreg_p (tem))
+	    {
+	      insn = get_last_insn ();
+	      set_dst_reg_note (insn, REG_EQUAL,
+				gen_rtx_MULT (nmode, tem,
+					      gen_int_mode (val_so_far,
+							    nmode)),
+				accum_inner);
+	    }
 	}
     }
 
@@ -4314,6 +4322,11 @@ expand_divmod (int rem_flag, enum tree_code code, machine_mode mode,
 		HOST_WIDE_INT d = INTVAL (op1);
 		unsigned HOST_WIDE_INT abs_d;
 
+		/* Not prepared to handle division/remainder by
+		   0xffffffffffffffff8000000000000000 etc.  */
+		if (d == HOST_WIDE_INT_MIN && size > HOST_BITS_PER_WIDE_INT)
+		  break;
+
 		/* Since d might be INT_MIN, we have to cast to
 		   unsigned HOST_WIDE_INT before negating to avoid
 		   undefined signed overflow.  */
@@ -4357,9 +4370,7 @@ expand_divmod (int rem_flag, enum tree_code code, machine_mode mode,
 						compute_mode)
 				 != CODE_FOR_nothing)))
 		  ;
-		else if (EXACT_POWER_OF_2_OR_ZERO_P (abs_d)
-			 && (size <= HOST_BITS_PER_WIDE_INT
-			     || abs_d != (unsigned HOST_WIDE_INT) d))
+		else if (EXACT_POWER_OF_2_OR_ZERO_P (abs_d))
 		  {
 		    if (rem_flag)
 		      {
@@ -5885,6 +5896,18 @@ emit_store_flag_force (rtx target, enum rtx_code code, rtx op0, rtx op1,
   tem = emit_store_flag (target, code, op0, op1, mode, unsignedp, normalizep);
   if (tem != 0)
     return tem;
+
+  /* If one operand is constant, make it the second one.  Only do this
+     if the other operand is not constant as well.  */
+
+  if (swap_commutative_operands_p (op0, op1))
+    {
+      std::swap (op0, op1);
+      code = swap_condition (code);
+    }
+
+  if (mode == VOIDmode)
+    mode = GET_MODE (op0);
 
   if (!target)
     target = gen_reg_rtx (word_mode);

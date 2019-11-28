@@ -154,9 +154,6 @@
    UNSPEC_BCDADD
    UNSPEC_BCDSUB
    UNSPEC_BCD_OVERFLOW
-   UNSPEC_CMPRB
-   UNSPEC_CMPRB2
-   UNSPEC_CMPEQB
    UNSPEC_VRLMI
    UNSPEC_VRLNM
 ])
@@ -414,7 +411,6 @@
 (define_insn "*restore_world"
  [(match_parallel 0 "restore_world_operation"
                   [(return)
-		   (use (reg:SI LR_REGNO))
                    (use (match_operand:SI 1 "call_operand" "s"))
                    (clobber (match_operand:SI 2 "gpc_reg_operand" "=r"))])]
  "TARGET_MACHO && (DEFAULT_ABI == ABI_DARWIN) && TARGET_32BIT"
@@ -2616,39 +2612,49 @@
   "lvx %0,%y1"
   [(set_attr "type" "vecload")])
 
+; The following patterns embody what lvx should usually look like.
+(define_expand "altivec_lvx_<VM2:mode>"
+  [(set (match_operand:VM2 0 "register_operand")
+	(match_operand:VM2 1 "altivec_indexed_or_indirect_operand"))]
+  "TARGET_ALTIVEC"
+{
+  rtx addr = XEXP (operand1, 0);
+  if (GET_CODE (addr) == PLUS
+      && REG_P (XEXP (addr, 0))
+      && REG_P (XEXP (addr, 1)))
+    {
+      rtx op1 = XEXP (addr, 0);
+      rtx op2 = XEXP (addr, 1);
+      if (TARGET_64BIT)
+	emit_insn (gen_altivec_lvx_<VM2:mode>_2op_di (operand0, op1, op2));
+      else
+	emit_insn (gen_altivec_lvx_<VM2:mode>_2op_si (operand0, op1, op2));
+    }
+  else
+    {
+      if (TARGET_64BIT)
+	emit_insn (gen_altivec_lvx_<VM2:mode>_1op_di (operand0, addr));
+      else
+	emit_insn (gen_altivec_lvx_<VM2:mode>_1op_si (operand0, addr));
+    }
+  DONE;
+})
+
 ; The next two patterns embody what lvx should usually look like.
-(define_insn "altivec_lvx_<mode>_2op"
+(define_insn "altivec_lvx_<VM2:mode>_2op_<P:mptrsize>"
   [(set (match_operand:VM2 0 "register_operand" "=v")
-        (mem:VM2 (and:DI (plus:DI (match_operand:DI 1 "register_operand" "b")
-                                  (match_operand:DI 2 "register_operand" "r"))
-		         (const_int -16))))]
-  "TARGET_ALTIVEC && TARGET_64BIT"
+	(mem:VM2 (and:P (plus:P (match_operand:P 1 "register_operand" "b")
+				(match_operand:P 2 "register_operand" "r"))
+			(const_int -16))))]
+  "TARGET_ALTIVEC"
   "lvx %0,%1,%2"
   [(set_attr "type" "vecload")])
 
-(define_insn "altivec_lvx_<mode>_1op"
+(define_insn "altivec_lvx_<VM2:mode>_1op_<P:mptrsize>"
   [(set (match_operand:VM2 0 "register_operand" "=v")
-        (mem:VM2 (and:DI (match_operand:DI 1 "register_operand" "r")
-			 (const_int -16))))]
-  "TARGET_ALTIVEC && TARGET_64BIT"
-  "lvx %0,0,%1"
-  [(set_attr "type" "vecload")])
-
-; 32-bit versions of the above.
-(define_insn "altivec_lvx_<mode>_2op_si"
-  [(set (match_operand:VM2 0 "register_operand" "=v")
-        (mem:VM2 (and:SI (plus:SI (match_operand:SI 1 "register_operand" "b")
-                                  (match_operand:SI 2 "register_operand" "r"))
-		         (const_int -16))))]
-  "TARGET_ALTIVEC && TARGET_32BIT"
-  "lvx %0,%1,%2"
-  [(set_attr "type" "vecload")])
-
-(define_insn "altivec_lvx_<mode>_1op_si"
-  [(set (match_operand:VM2 0 "register_operand" "=v")
-        (mem:VM2 (and:SI (match_operand:SI 1 "register_operand" "r")
-			 (const_int -16))))]
-  "TARGET_ALTIVEC && TARGET_32BIT"
+	(mem:VM2 (and:P (match_operand:P 1 "register_operand" "r")
+			(const_int -16))))]
+  "TARGET_ALTIVEC"
   "lvx %0,0,%1"
   [(set_attr "type" "vecload")])
 
@@ -2664,39 +2670,49 @@
   "stvx %1,%y0"
   [(set_attr "type" "vecstore")])
 
+; The following patterns embody what stvx should usually look like.
+(define_expand "altivec_stvx_<VM2:mode>"
+  [(set (match_operand:VM2 1 "altivec_indexed_or_indirect_operand")
+	(match_operand:VM2 0 "register_operand"))]
+  "TARGET_ALTIVEC"
+{
+  rtx addr = XEXP (operand1, 0);
+  if (GET_CODE (addr) == PLUS
+      && REG_P (XEXP (addr, 0))
+      && REG_P (XEXP (addr, 1)))
+    {
+      rtx op1 = XEXP (addr, 0);
+      rtx op2 = XEXP (addr, 1);
+      if (TARGET_64BIT)
+	emit_insn (gen_altivec_stvx_<VM2:mode>_2op_di (operand0, op1, op2));
+      else
+	emit_insn (gen_altivec_stvx_<VM2:mode>_2op_si (operand0, op1, op2));
+    }
+  else
+    {
+      if (TARGET_64BIT)
+	emit_insn (gen_altivec_stvx_<VM2:mode>_1op_di (operand0, addr));
+      else
+	emit_insn (gen_altivec_stvx_<VM2:mode>_1op_si (operand0, addr));
+    }
+  DONE;
+})
+
 ; The next two patterns embody what stvx should usually look like.
-(define_insn "altivec_stvx_<mode>_2op"
-  [(set (mem:VM2 (and:DI (plus:DI (match_operand:DI 1 "register_operand" "b")
-  	                          (match_operand:DI 2 "register_operand" "r"))
-	                 (const_int -16)))
-        (match_operand:VM2 0 "register_operand" "v"))]
-  "TARGET_ALTIVEC && TARGET_64BIT"
+(define_insn "altivec_stvx_<VM2:mode>_2op_<P:mptrsize>"
+  [(set (mem:VM2 (and:P (plus:P (match_operand:P 1 "register_operand" "b")
+				(match_operand:P 2 "register_operand" "r"))
+			(const_int -16)))
+	(match_operand:VM2 0 "register_operand" "v"))]
+  "TARGET_ALTIVEC"
   "stvx %0,%1,%2"
   [(set_attr "type" "vecstore")])
 
-(define_insn "altivec_stvx_<mode>_1op"
-  [(set (mem:VM2 (and:DI (match_operand:DI 1 "register_operand" "r")
-	                 (const_int -16)))
-        (match_operand:VM2 0 "register_operand" "v"))]
-  "TARGET_ALTIVEC && TARGET_64BIT"
-  "stvx %0,0,%1"
-  [(set_attr "type" "vecstore")])
-
-; 32-bit versions of the above.
-(define_insn "altivec_stvx_<mode>_2op_si"
-  [(set (mem:VM2 (and:SI (plus:SI (match_operand:SI 1 "register_operand" "b")
-  	                          (match_operand:SI 2 "register_operand" "r"))
-	                 (const_int -16)))
-        (match_operand:VM2 0 "register_operand" "v"))]
-  "TARGET_ALTIVEC && TARGET_32BIT"
-  "stvx %0,%1,%2"
-  [(set_attr "type" "vecstore")])
-
-(define_insn "altivec_stvx_<mode>_1op_si"
-  [(set (mem:VM2 (and:SI (match_operand:SI 1 "register_operand" "r")
-	                 (const_int -16)))
-        (match_operand:VM2 0 "register_operand" "v"))]
-  "TARGET_ALTIVEC && TARGET_32BIT"
+(define_insn "altivec_stvx_<VM2:mode>_1op_<P:mptrsize>"
+  [(set (mem:VM2 (and:P (match_operand:P 1 "register_operand" "r")
+			(const_int -16)))
+	(match_operand:VM2 0 "register_operand" "v"))]
+  "TARGET_ALTIVEC"
   "stvx %0,0,%1"
   [(set_attr "type" "vecstore")])
 
@@ -3767,223 +3783,6 @@
   "bcd<bcd_add_sub>. %0,%1,%2,%3"
   [(set_attr "length" "4")
    (set_attr "type" "vecsimple")])
-
-(define_insn "darn_32"
-  [(set (match_operand:SI 0 "register_operand" "=r")
-        (unspec:SI [(const_int 0)] UNSPEC_DARN_32))]
-  "TARGET_P9_MISC"
-  "darn %0,0"
-  [(set_attr "type" "integer")])
-
-(define_insn "darn_raw"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (unspec:DI [(const_int 0)] UNSPEC_DARN_RAW))]
-  "TARGET_P9_MISC && TARGET_64BIT"
-  "darn %0,2"
-  [(set_attr "type" "integer")])
-
-(define_insn "darn"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (unspec:DI [(const_int 0)] UNSPEC_DARN))]
-  "TARGET_P9_MISC && TARGET_64BIT"
-  "darn %0,1"
-  [(set_attr "type" "integer")])
-
-;; Test byte within range.
-;;
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the range specified by operand 2.
-;; The bytes of operand 2 are organized as xx:xx:hi:lo.
-;;
-;; Return in target register operand 0 a value of 1 if lo <= vv and
-;; vv <= hi.  Otherwise, set register operand 0 to 0.
-;;
-;; Though the instructions to which this expansion maps operate on
-;; 64-bit registers, the current implementation only operates on
-;; SI-mode operands as the high-order bits provide no information
-;; that is not already available in the low-order bits.  To avoid the
-;; costs of data widening operations, future enhancements might allow
-;; DI mode for operand 0 and/or might allow operand 1 to be QI mode.
-(define_expand "cmprb"
-  [(set (match_dup 3)
-	(unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		    (match_operand:SI 2 "gpc_reg_operand" "r")]
-	 UNSPEC_CMPRB))
-   (set (match_operand:SI 0 "gpc_reg_operand" "=r")
-	(if_then_else:SI (lt (match_dup 3)
-			     (const_int 0))
-			 (const_int -1)
-			 (if_then_else (gt (match_dup 3)
-					   (const_int 0))
-				       (const_int 1)
-				       (const_int 0))))]
-  "TARGET_P9_MISC"
-{
-  operands[3] = gen_reg_rtx (CCmode);
-})
-
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the range specified by operand 2.
-;; The bytes of operand 2 are organized as xx:xx:hi:lo.
-;;
-;; Set bit 1 (the GT bit, 0x4) of CR register operand 0 to 1 if
-;; lo <= vv and vv <= hi.  Otherwise, set the GT bit to 0.  The other
-;; 3 bits of the target CR register are all set to 0.
-(define_insn "*cmprb_internal"
-  [(set (match_operand:CC 0 "cc_reg_operand" "=y")
-	(unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		    (match_operand:SI 2 "gpc_reg_operand" "r")]
-	 UNSPEC_CMPRB))]
-  "TARGET_P9_MISC"
-  "cmprb %0,0,%1,%2"
-  [(set_attr "type" "logical")])
-
-;; Set operand 0 register to -1 if the LT bit (0x8) of condition
-;; register operand 1 is on.  Otherwise, set operand 0 register to 1
-;; if the GT bit (0x4) of condition register operand 1 is on.
-;; Otherwise, set operand 0 to 0.  Note that the result stored into
-;; register operand 0 is non-zero iff either the LT or GT bits are on
-;; within condition register operand 1.
-(define_insn "setb_signed"
-   [(set (match_operand:SI 0 "gpc_reg_operand" "=r")
-	 (if_then_else:SI (lt (match_operand:CC 1 "cc_reg_operand" "y")
-			      (const_int 0))
-			  (const_int -1)
-			  (if_then_else (gt (match_dup 1)
-					    (const_int 0))
-					(const_int 1)
-					(const_int 0))))]
-  "TARGET_P9_MISC"
-  "setb %0,%1"
-  [(set_attr "type" "logical")])
-
-(define_insn "setb_unsigned"
-   [(set (match_operand:SI 0 "gpc_reg_operand" "=r")
-	 (if_then_else:SI (ltu (match_operand:CCUNS 1 "cc_reg_operand" "y")
-			      (const_int 0))
-			  (const_int -1)
-			  (if_then_else (gtu (match_dup 1)
-					    (const_int 0))
-					(const_int 1)
-					(const_int 0))))]
-  "TARGET_P9_MISC"
-  "setb %0,%1"
-  [(set_attr "type" "logical")])
-
-;; Test byte within two ranges.
-;;
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the range specified by operand 2.
-;; The bytes of operand 2 are organized as hi_1:lo_1:hi_2:lo_2.
-;;
-;; Return in target register operand 0 a value of 1 if (lo_1 <= vv and
-;; vv <= hi_1) or if (lo_2 <= vv and vv <= hi_2).  Otherwise, set register
-;; operand 0 to 0.
-;;
-;; Though the instructions to which this expansion maps operate on
-;; 64-bit registers, the current implementation only operates on
-;; SI-mode operands as the high-order bits provide no information
-;; that is not already available in the low-order bits.  To avoid the
-;; costs of data widening operations, future enhancements might allow
-;; DI mode for operand 0 and/or might allow operand 1 to be QI mode.
-(define_expand "cmprb2"
-  [(set (match_dup 3)
-	(unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		    (match_operand:SI 2 "gpc_reg_operand" "r")]
-	 UNSPEC_CMPRB2))
-   (set (match_operand:SI 0 "gpc_reg_operand" "=r")
-	(if_then_else:SI (lt (match_dup 3)
-			     (const_int 0))
-			 (const_int -1)
-			 (if_then_else (gt (match_dup 3)
-					   (const_int 0))
-				       (const_int 1)
-				       (const_int 0))))]
-  "TARGET_P9_MISC"
-{
-  operands[3] = gen_reg_rtx (CCmode);
-})
-
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the ranges specified by operand 2.
-;; The bytes of operand 2 are organized as hi_1:lo_1:hi_2:lo_2.
-;;
-;; Set bit 1 (the GT bit, 0x4) of CR register operand 0 to 1 if
-;; (lo_1 <= vv and vv <= hi_1) or if (lo_2 <= vv and vv <= hi_2).
-;; Otherwise, set the GT bit to 0.  The other 3 bits of the target
-;; CR register are all set to 0.
-(define_insn "*cmprb2_internal"
-  [(set (match_operand:CC 0 "cc_reg_operand" "=y")
-	(unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		    (match_operand:SI 2 "gpc_reg_operand" "r")]
-	 UNSPEC_CMPRB2))]
-  "TARGET_P9_MISC"
-  "cmprb %0,1,%1,%2"
-  [(set_attr "type" "logical")])
-
-;; Test byte membership within set of 8 bytes.
-;;
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the set specified by operand 2.
-;; The bytes of operand 2 are organized as e0:e1:e2:e3:e4:e5:e6:e7.
-;;
-;; Return in target register operand 0 a value of 1 if vv equals one
-;; of the values e0, e1, e2, e3, e4, e5, e6, or e7.  Otherwise, set
-;; register operand 0 to 0.  Note that the 8 byte values held within
-;; operand 2 need not be unique.
-;;
-;; Though the instructions to which this expansion maps operate on
-;; 64-bit registers, the current implementation requires that operands
-;; 0 and 1 have mode SI as the high-order bits provide no information
-;; that is not already available in the low-order bits.  To avoid the
-;; costs of data widening operations, future enhancements might allow
-;; DI mode for operand 0 and/or might allow operand 1 to be QI mode.
-(define_expand "cmpeqb"
-  [(set (match_dup 3)
-	(unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		    (match_operand:DI 2 "gpc_reg_operand" "r")]
-	 UNSPEC_CMPEQB))
-   (set (match_operand:SI 0 "gpc_reg_operand" "=r")
-	(if_then_else:SI (lt (match_dup 3)
-			     (const_int 0))
-			 (const_int -1)
-			 (if_then_else (gt (match_dup 3)
-					   (const_int 0))
-				       (const_int 1)
-				       (const_int 0))))]
-  "TARGET_P9_MISC && TARGET_64BIT"
-{
-  operands[3] = gen_reg_rtx (CCmode);
-})
-
-;; The bytes of operand 1 are organized as xx:xx:xx:vv, where xx
-;; represents a byte whose value is ignored in this context and
-;; vv, the least significant byte, holds the byte value that is to
-;; be tested for membership within the set specified by operand 2.
-;; The bytes of operand 2 are organized as e0:e1:e2:e3:e4:e5:e6:e7.
-;;
-;; Set bit 1 (the GT bit, 0x4) of CR register operand 0 to 1 if vv
-;; equals one of the values e0, e1, e2, e3, e4, e5, e6, or e7.  Otherwise,
-;; set the GT bit to zero.  The other 3 bits of the target CR register
-;; are all set to 0.
-(define_insn "*cmpeqb_internal"
-  [(set (match_operand:CC 0 "cc_reg_operand" "=y")
-	 (unspec:CC [(match_operand:SI 1 "gpc_reg_operand" "r")
-		     (match_operand:DI 2 "gpc_reg_operand" "r")]
-	  UNSPEC_CMPEQB))]
-  "TARGET_P9_MISC && TARGET_64BIT"
-  "cmpeqb %0,%1,%2"
-  [(set_attr "type" "logical")])
 
 (define_expand "bcd<bcd_add_sub>_<code>"
   [(parallel [(set (reg:CCFP CR6_REGNO)
