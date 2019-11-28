@@ -1312,23 +1312,21 @@ gfc_match_omp_clauses (gfc_omp_clauses **cp, const omp_mask mask,
 	      else if (gfc_match_omp_variable_list (" val (",
 						    &c->lists[OMP_LIST_LINEAR],
 						    false, NULL, &head)
-		  == MATCH_YES)
+		       == MATCH_YES)
 		linear_op = OMP_LINEAR_VAL;
 	      else if (gfc_match_omp_variable_list (" uval (",
 						    &c->lists[OMP_LIST_LINEAR],
 						    false, NULL, &head)
-		  == MATCH_YES)
+		       == MATCH_YES)
 		linear_op = OMP_LINEAR_UVAL;
 	      else if (gfc_match_omp_variable_list ("",
 						    &c->lists[OMP_LIST_LINEAR],
 						    false, &end_colon, &head)
-		  == MATCH_YES)
+		       == MATCH_YES)
 		linear_op = OMP_LINEAR_DEFAULT;
 	      else
 		{
-		  gfc_free_omp_namelist (*head);
 		  gfc_current_locus = old_loc;
-		  *head = NULL;
 		  break;
 		}
 	      if (linear_op != OMP_LINEAR_DEFAULT)
@@ -1701,22 +1699,17 @@ gfc_match_omp_clauses (gfc_omp_clauses **cp, const omp_mask mask,
 	      locus old_loc2 = gfc_current_locus;
 	      do
 		{
-		  if (!c->sched_simd
-		      && gfc_match ("simd") == MATCH_YES)
+		  if (gfc_match ("simd") == MATCH_YES)
 		    {
 		      c->sched_simd = true;
 		      nmodifiers++;
 		    }
-		  else if (!c->sched_monotonic
-			   && !c->sched_nonmonotonic
-			   && gfc_match ("monotonic") == MATCH_YES)
+		  else if (gfc_match ("monotonic") == MATCH_YES)
 		    {
 		      c->sched_monotonic = true;
 		      nmodifiers++;
 		    }
-		  else if (!c->sched_monotonic
-			   && !c->sched_nonmonotonic
-			   && gfc_match ("nonmonotonic") == MATCH_YES)
+		  else if (gfc_match ("nonmonotonic") == MATCH_YES)
 		    {
 		      c->sched_nonmonotonic = true;
 		      nmodifiers++;
@@ -1727,7 +1720,7 @@ gfc_match_omp_clauses (gfc_omp_clauses **cp, const omp_mask mask,
 			gfc_current_locus = old_loc2;
 		      break;
 		    }
-		  if (nmodifiers == 0
+		  if (nmodifiers == 1
 		      && gfc_match (" , ") == MATCH_YES)
 		    continue;
 		  else if (gfc_match (" : ") == MATCH_YES)
@@ -4064,6 +4057,30 @@ resolve_omp_clauses (gfc_code *code, gfc_omp_clauses *omp_clauses,
 	gfc_warning (0, "INTEGER expression of SCHEDULE clause's chunk_size "
 		     "at %L must be positive", &expr->where);
     }
+  if (omp_clauses->sched_kind != OMP_SCHED_NONE
+      && omp_clauses->sched_nonmonotonic)
+    {
+      if (omp_clauses->sched_kind != OMP_SCHED_DYNAMIC
+	  && omp_clauses->sched_kind != OMP_SCHED_GUIDED)
+	{
+	  const char *p;
+	  switch (omp_clauses->sched_kind)
+	    {
+	    case OMP_SCHED_STATIC: p = "STATIC"; break;
+	    case OMP_SCHED_RUNTIME: p = "RUNTIME"; break;
+	    case OMP_SCHED_AUTO: p = "AUTO"; break;
+	    default: gcc_unreachable ();
+	    }
+	  gfc_error ("NONMONOTONIC modifier specified for %s schedule kind "
+		     "at %L", p, &code->loc);
+	}
+      else if (omp_clauses->sched_monotonic)
+	gfc_error ("Both MONOTONIC and NONMONOTONIC schedule modifiers "
+		   "specified at %L", &code->loc);
+      else if (omp_clauses->ordered)
+	gfc_error ("NONMONOTONIC schedule modifier specified with ORDERED "
+		   "clause at %L", &code->loc);
+    }
 
   /* Check that no symbol appears on multiple clauses, except that
      a symbol can appear on both firstprivate and lastprivate.  */
@@ -5577,8 +5594,6 @@ resolve_omp_do (gfc_code *code)
 			     "iteration space at %L", name, &do_code->loc);
 		  break;
 		}
-	      if (j < i)
-		break;
 	      do_code2 = do_code2->block->next;
 	    }
 	}
@@ -5742,12 +5757,10 @@ resolve_oacc_nested_loops (gfc_code *code, gfc_code* do_code, int collapse,
 		  || gfc_find_sym_in_expr (ivar, do_code->ext.iterator->end)
 		  || gfc_find_sym_in_expr (ivar, do_code->ext.iterator->step))
 		{
-		  gfc_error ("!$ACC LOOP %s loops don't form rectangular iteration space at %L",
-			     clause, &do_code->loc);
+		  gfc_error ("!$ACC LOOP %s loops don't form rectangular "
+			     "iteration space at %L", clause, &do_code->loc);
 		  break;
 		}
-	      if (j < i)
-		break;
 	      do_code2 = do_code2->block->next;
 	    }
 	}

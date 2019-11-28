@@ -3811,7 +3811,7 @@ prepare_cmp_insn (rtx x, rtx y, enum rtx_code comparison, rtx size,
 
 	  /* Must make sure the size fits the insn's mode.  */
 	  if ((CONST_INT_P (size)
-	       && INTVAL (size) >= (1 << GET_MODE_BITSIZE (cmp_mode)))
+	       && UINTVAL (size) > GET_MODE_MASK (cmp_mode))
 	      || (GET_MODE_BITSIZE (GET_MODE (size))
 		  > GET_MODE_BITSIZE (cmp_mode)))
 	    continue;
@@ -3830,7 +3830,7 @@ prepare_cmp_insn (rtx x, rtx y, enum rtx_code comparison, rtx size,
 	goto fail;
 
       /* Otherwise call a library function.  */
-      result = emit_block_comp_via_libcall (XEXP (x, 0), XEXP (y, 0), size);
+      result = emit_block_comp_via_libcall (x, y, size);
 
       x = result;
       y = const0_rtx;
@@ -4294,9 +4294,10 @@ emit_conditional_move (rtx target, enum rtx_code code, rtx op0, rtx op1,
 	  save_pending_stack_adjust (&save);
 	  last = get_last_insn ();
 	  do_pending_stack_adjust ();
+	  machine_mode cmpmode = cmode;
 	  prepare_cmp_insn (XEXP (comparison, 0), XEXP (comparison, 1),
 			    GET_CODE (comparison), NULL_RTX, unsignedp,
-			    OPTAB_WIDEN, &comparison, &cmode);
+			    OPTAB_WIDEN, &comparison, &cmpmode);
 	  if (comparison)
 	    {
 	      struct expand_operand ops[4];

@@ -3001,7 +3001,8 @@ arm_option_override_internal (struct gcc_options *opts,
 
   /* Thumb2 inline assembly code should always use unified syntax.
      This will apply to ARM and Thumb1 eventually.  */
-  opts->x_inline_asm_unified = TARGET_THUMB2_P (opts->x_target_flags);
+  if (TARGET_THUMB2_P (opts->x_target_flags))
+    opts->x_inline_asm_unified = true;
 
 #ifdef SUBTARGET_OVERRIDE_INTERNAL_OPTIONS
   SUBTARGET_OVERRIDE_INTERNAL_OPTIONS;
@@ -8711,11 +8712,16 @@ static bool
 arm_cannot_force_const_mem (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 {
   rtx base, offset;
+  split_const (x, &base, &offset);
 
-  if (ARM_OFFSETS_MUST_BE_WITHIN_SECTIONS_P)
+  if (SYMBOL_REF_P (base))
     {
-      split_const (x, &base, &offset);
-      if (GET_CODE (base) == SYMBOL_REF
+      /* Function symbols cannot have an offset due to the Thumb bit.  */
+      if ((SYMBOL_REF_FLAGS (base) & SYMBOL_FLAG_FUNCTION)
+	  && INTVAL (offset) != 0)
+	return true;
+
+      if (ARM_OFFSETS_MUST_BE_WITHIN_SECTIONS_P
 	  && !offset_within_block_p (base, INTVAL (offset)))
 	return true;
     }
@@ -11695,8 +11701,7 @@ neon_valid_immediate (rtx op, machine_mode mode, int inverse,
   else
     {
       n_elts = 1;
-      if (mode == VOIDmode)
-	mode = DImode;
+      gcc_assert (mode != VOIDmode);
     }
 
   innersize = GET_MODE_UNIT_SIZE (mode);
@@ -17367,7 +17372,11 @@ arm_reorg (void)
 
   if (use_cmse)
     cmse_nonsecure_call_clear_caller_saved ();
-  if (TARGET_THUMB1)
+
+  /* We cannot run the Thumb passes for thunks because there is no CFG.  */
+  if (cfun->is_thunk)
+    ;
+  else if (TARGET_THUMB1)
     thumb1_reorg ();
   else if (TARGET_THUMB2)
     thumb2_reorg ();
@@ -18187,12 +18196,18 @@ output_move_double (rtx *operands, bool emit, int *count)
       gcc_assert ((REGNO (operands[1]) != IP_REGNUM)
                   || (TARGET_ARM && TARGET_LDRD));
 
+      /* For TARGET_ARM the first source register of an STRD
+	 must be even.  This is usually the case for double-word
+	 values but user assembly constraints can force an odd
+	 starting register.  */
+      bool allow_strd = TARGET_LDRD
+			 && !(TARGET_ARM && (REGNO (operands[1]) & 1) == 1);
       switch (GET_CODE (XEXP (operands[0], 0)))
         {
 	case REG:
 	  if (emit)
 	    {
-	      if (TARGET_LDRD)
+	      if (allow_strd)
 		output_asm_insn ("strd%?\t%1, [%m0]", operands);
 	      else
 		output_asm_insn ("stm%?\t%m0, %M1", operands);
@@ -18200,7 +18215,7 @@ output_move_double (rtx *operands, bool emit, int *count)
 	  break;
 
         case PRE_INC:
-	  gcc_assert (TARGET_LDRD);
+	  gcc_assert (allow_strd);
 	  if (emit)
 	    output_asm_insn ("strd%?\t%1, [%m0, #8]!", operands);
 	  break;
@@ -18208,7 +18223,7 @@ output_move_double (rtx *operands, bool emit, int *count)
         case PRE_DEC:
 	  if (emit)
 	    {
-	      if (TARGET_LDRD)
+	      if (allow_strd)
 		output_asm_insn ("strd%?\t%1, [%m0, #-8]!", operands);
 	      else
 		output_asm_insn ("stmdb%?\t%m0!, %M1", operands);
@@ -18218,7 +18233,7 @@ output_move_double (rtx *operands, bool emit, int *count)
         case POST_INC:
 	  if (emit)
 	    {
-	      if (TARGET_LDRD)
+	      if (allow_strd)
 		output_asm_insn ("strd%?\t%1, [%m0], #8", operands);
 	      else
 		output_asm_insn ("stm%?\t%m0!, %M1", operands);
@@ -18226,7 +18241,7 @@ output_move_double (rtx *operands, bool emit, int *count)
 	  break;
 
         case POST_DEC:
-	  gcc_assert (TARGET_LDRD);
+	  gcc_assert (allow_strd);
 	  if (emit)
 	    output_asm_insn ("strd%?\t%1, [%m0], #-8", operands);
 	  break;
@@ -18237,8 +18252,8 @@ output_move_double (rtx *operands, bool emit, int *count)
 	  otherops[1] = XEXP (XEXP (XEXP (operands[0], 0), 1), 0);
 	  otherops[2] = XEXP (XEXP (XEXP (operands[0], 0), 1), 1);
 
-	  /* IWMMXT allows offsets larger than ldrd can handle,
-	     fix these up with a pair of ldr.  */
+	  /* IWMMXT allows offsets larger than strd can handle,
+	     fix these up with a pair of str.  */
 	  if (!TARGET_THUMB2
 	      && CONST_INT_P (otherops[2])
 	      && (INTVAL(otherops[2]) <= -256
@@ -18303,7 +18318,7 @@ output_move_double (rtx *operands, bool emit, int *count)
 		  return "";
 		}
 	    }
-	  if (TARGET_LDRD
+	  if (allow_strd
 	      && (REG_P (otherops[2])
 		  || TARGET_THUMB2
 		  || (CONST_INT_P (otherops[2])
@@ -19097,6 +19112,11 @@ arm_r3_live_at_start_p (void)
 static int
 arm_compute_static_chain_stack_bytes (void)
 {
+  /* Once the value is updated from the init value of -1, do not
+     re-compute.  */
+  if (cfun->machine->static_chain_stack_bytes != -1)
+    return cfun->machine->static_chain_stack_bytes;
+
   /* See the defining assertion in arm_expand_prologue.  */
   if (IS_NESTED (arm_current_func_type ())
       && ((TARGET_APCS_FRAME && frame_pointer_needed && TARGET_ARM)
@@ -19196,7 +19216,36 @@ arm_compute_save_reg_mask (void)
   return save_reg_mask;
 }
 
-/* Compute a bit mask of which registers need to be
+/* Return a mask for the call-clobbered low registers that are unused
+   at the end of the prologue.  */
+static unsigned long
+thumb1_prologue_unused_call_clobbered_lo_regs (void)
+{
+  unsigned long mask = 0;
+
+  for (int reg = 0; reg <= LAST_LO_REGNUM; reg++)
+    if (!callee_saved_reg_p (reg)
+	&& !REGNO_REG_SET_P (df_get_live_out (ENTRY_BLOCK_PTR_FOR_FN (cfun)),
+			     reg))
+      mask |= 1 << reg;
+  return mask;
+}
+
+/* Similarly for the start of the epilogue.  */
+static unsigned long
+thumb1_epilogue_unused_call_clobbered_lo_regs (void)
+{
+  unsigned long mask = 0;
+
+  for (int reg = 0; reg <= LAST_LO_REGNUM; reg++)
+    if (!callee_saved_reg_p (reg)
+	&& !REGNO_REG_SET_P (df_get_live_in (EXIT_BLOCK_PTR_FOR_FN (cfun)),
+			     reg))
+      mask |= 1 << reg;
+  return mask;
+}
+
+/* Compute a bit mask of which core registers need to be
    saved on the stack for the current function.  */
 static unsigned long
 thumb1_compute_save_reg_mask (void)
@@ -19227,10 +19276,19 @@ thumb1_compute_save_reg_mask (void)
   if (mask & 0xff || thumb_force_lr_save ())
     mask |= (1 << LR_REGNUM);
 
-  /* Make sure we have a low work register if we need one.
-     We will need one if we are going to push a high register,
-     but we are not currently intending to push a low register.  */
+  bool call_clobbered_scratch
+    = (thumb1_prologue_unused_call_clobbered_lo_regs ()
+       && thumb1_epilogue_unused_call_clobbered_lo_regs ());
+
+  /* Make sure we have a low work register if we need one.  We will
+     need one if we are going to push a high register, but we are not
+     currently intending to push a low register.  However if both the
+     prologue and epilogue have a spare call-clobbered low register,
+     then we won't need to find an additional work register.  It does
+     not need to be the same register in the prologue and
+     epilogue.  */
   if ((mask & 0xff) == 0
+      && !call_clobbered_scratch
       && ((mask & 0x0f00) || TARGET_BACKTRACE))
     {
       /* Use thumb_find_work_register to choose which register
@@ -21394,6 +21452,11 @@ arm_expand_prologue (void)
 	 handling of SP as restoring from the CFA.  */
       emit_insn (gen_movsi (stack_pointer_rtx, r1));
     }
+
+  /* Let's compute the static_chain_stack_bytes required and store it.  Right
+     now the value must the -1 as stored by arm_init_machine_status ().  */
+  cfun->machine->static_chain_stack_bytes
+    = arm_compute_static_chain_stack_bytes ();
 
   /* The static chain register is the same as the IP register.  If it is
      clobbered when creating the frame, we need to save and restore it.  */
@@ -24414,12 +24477,7 @@ thumb1_unexpanded_epilogue (void)
       unsigned long mask = live_regs_mask & 0xff;
       int next_hi_reg;
 
-      /* The available low registers depend on the size of the value we are
-         returning.  */
-      if (size <= 12)
-	mask |=  1 << 3;
-      if (size <= 8)
-	mask |= 1 << 2;
+      mask |= thumb1_epilogue_unused_call_clobbered_lo_regs ();
 
       if (mask == 0)
 	/* Oh dear!  We have no low registers into which we can pop
@@ -24427,7 +24485,7 @@ thumb1_unexpanded_epilogue (void)
 	internal_error
 	  ("no low registers available for popping high registers");
 
-      for (next_hi_reg = 8; next_hi_reg < 13; next_hi_reg++)
+      for (next_hi_reg = 12; next_hi_reg > LAST_LO_REGNUM; next_hi_reg--)
 	if (live_regs_mask & (1 << next_hi_reg))
 	  break;
 
@@ -24435,7 +24493,7 @@ thumb1_unexpanded_epilogue (void)
 	{
 	  /* Find lo register(s) into which the high register(s) can
              be popped.  */
-	  for (regno = 0; regno <= LAST_LO_REGNUM; regno++)
+	  for (regno = LAST_LO_REGNUM; regno >= 0; regno--)
 	    {
 	      if (mask & (1 << regno))
 		high_regs_pushed--;
@@ -24443,20 +24501,22 @@ thumb1_unexpanded_epilogue (void)
 		break;
 	    }
 
-	  mask &= (2 << regno) - 1;	/* A noop if regno == 8 */
+	  if (high_regs_pushed == 0 && regno >= 0)
+	    mask &= ~((1 << regno) - 1);
 
 	  /* Pop the values into the low register(s).  */
 	  thumb_pop (asm_out_file, mask);
 
 	  /* Move the value(s) into the high registers.  */
-	  for (regno = 0; regno <= LAST_LO_REGNUM; regno++)
+	  for (regno = LAST_LO_REGNUM; regno >= 0; regno--)
 	    {
 	      if (mask & (1 << regno))
 		{
 		  asm_fprintf (asm_out_file, "\tmov\t%r, %r\n", next_hi_reg,
 			       regno);
 
-		  for (next_hi_reg++; next_hi_reg < 13; next_hi_reg++)
+		  for (next_hi_reg--; next_hi_reg > LAST_LO_REGNUM;
+		       next_hi_reg--)
 		    if (live_regs_mask & (1 << next_hi_reg))
 		      break;
 		}
@@ -24542,6 +24602,7 @@ arm_init_machine_status (void)
 #if ARM_FT_UNKNOWN != 0
   machine->func_type = ARM_FT_UNKNOWN;
 #endif
+  machine->static_chain_stack_bytes = -1;
   return machine;
 }
 
@@ -24837,10 +24898,20 @@ thumb1_expand_prologue (void)
 	  break;
 
       /* Here we need to mask out registers used for passing arguments
-	 even if they can be pushed.  This is to avoid using them to stash the high
-	 registers.  Such kind of stash may clobber the use of arguments.  */
+	 even if they can be pushed.  This is to avoid using them to
+	 stash the high registers.  Such kind of stash may clobber the
+	 use of arguments.  */
       pushable_regs = l_mask & (~arg_regs_mask);
-      if (lr_needs_saving)
+      pushable_regs |= thumb1_prologue_unused_call_clobbered_lo_regs ();
+
+      /* Normally, LR can be used as a scratch register once it has been
+	 saved; but if the function examines its own return address then
+	 the value is still live and we need to avoid using it.  */
+      bool return_addr_live
+	= REGNO_REG_SET_P (df_get_live_out (ENTRY_BLOCK_PTR_FOR_FN (cfun)),
+			   LR_REGNUM);
+
+      if (lr_needs_saving || return_addr_live)
 	pushable_regs &= ~(1 << LR_REGNUM);
 
       if (pushable_regs == 0)
@@ -24881,6 +24952,11 @@ thumb1_expand_prologue (void)
 	      push_mask |= 1 << LR_REGNUM;
 	      real_regs_mask |= 1 << LR_REGNUM;
 	      lr_needs_saving = false;
+	      /* If the return address is not live at this point, we
+		 can add LR to the list of registers that we can use
+		 for pushes.  */
+	      if (!return_addr_live)
+		pushable_regs |= 1 << LR_REGNUM;
 	    }
 
 	  insn = thumb1_emit_multi_reg_push (push_mask, real_regs_mask);
@@ -26412,6 +26488,8 @@ static void
 arm32_output_mi_thunk (FILE *file, tree, HOST_WIDE_INT delta,
 		       HOST_WIDE_INT vcall_offset, tree function)
 {
+  const bool long_call_p = arm_is_long_call_p (function);
+
   /* On ARM, this_regno is R0 or R1 depending on
      whether the function returns an aggregate or not.
   */
@@ -26449,9 +26527,22 @@ arm32_output_mi_thunk (FILE *file, tree, HOST_WIDE_INT delta,
       TREE_USED (function) = 1;
     }
   rtx funexp = XEXP (DECL_RTL (function), 0);
+  if (long_call_p)
+    {
+      emit_move_insn (temp, funexp);
+      funexp = temp;
+    }
   funexp = gen_rtx_MEM (FUNCTION_MODE, funexp);
-  rtx_insn * insn = emit_call_insn (gen_sibcall (funexp, const0_rtx, NULL_RTX));
+  rtx_insn *insn = emit_call_insn (gen_sibcall (funexp, const0_rtx, NULL_RTX));
   SIBLING_CALL_P (insn) = 1;
+  emit_barrier ();
+
+  /* Indirect calls require a bit of fixup in PIC mode.  */
+  if (long_call_p)
+    {
+      split_all_insns_noflow ();
+      arm_reorg ();
+    }
 
   insn = get_insns ();
   shorten_branches (insn);
@@ -26853,7 +26944,10 @@ static bool
 arm_array_mode_supported_p (machine_mode mode,
 			    unsigned HOST_WIDE_INT nelems)
 {
-  if (TARGET_NEON
+  /* We don't want to enable interleaved loads and stores for BYTES_BIG_ENDIAN
+     for now, as the lane-swapping logic needs to be extended in the expanders.
+     See PR target/82518.  */
+  if (TARGET_NEON && !BYTES_BIG_ENDIAN
       && (VALID_NEON_DREG_MODE (mode) || VALID_NEON_QREG_MODE (mode))
       && (nelems >= 2 && nelems <= 4))
     return true;

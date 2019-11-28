@@ -1196,65 +1196,79 @@ static GTY(()) tree alloc_object_size_limit;
 static tree
 alloc_max_size (void)
 {
-  if (!alloc_object_size_limit)
+  if (alloc_object_size_limit)
+    return alloc_object_size_limit;
+
+  alloc_object_size_limit = TYPE_MAX_VALUE (ssizetype);
+
+  if (!warn_alloc_size_limit)
+    return alloc_object_size_limit;
+
+  const char *optname = "-Walloc-size-larger-than=";
+
+  char *end = NULL;
+  errno = 0;
+  unsigned HOST_WIDE_INT unit = 1;
+  unsigned HOST_WIDE_INT limit
+    = strtoull (warn_alloc_size_limit, &end, 10);
+
+  /* If the value is too large to be represented use the maximum
+     representable value that strtoull sets limit to (setting
+     errno to ERANGE).  */
+
+  if (end && *end)
     {
-      alloc_object_size_limit = TYPE_MAX_VALUE (ssizetype);
-
-      if (warn_alloc_size_limit)
+      /* Numeric option arguments are at most INT_MAX.  Make it
+	 possible to specify a larger value by accepting common
+	 suffixes.  */
+      if (!strcmp (end, "kB"))
+	unit = 1000;
+      else if (!strcasecmp (end, "KiB") || !strcmp (end, "KB"))
+	unit = 1024;
+      else if (!strcmp (end, "MB"))
+	unit = HOST_WIDE_INT_UC (1000) * 1000;
+      else if (!strcasecmp (end, "MiB"))
+	unit = HOST_WIDE_INT_UC (1024) * 1024;
+      else if (!strcasecmp (end, "GB"))
+	unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000;
+      else if (!strcasecmp (end, "GiB"))
+	unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024;
+      else if (!strcasecmp (end, "TB"))
+	unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000;
+      else if (!strcasecmp (end, "TiB"))
+	unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024;
+      else if (!strcasecmp (end, "PB"))
+	unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000 * 1000;
+      else if (!strcasecmp (end, "PiB"))
+	unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024 * 1024;
+      else if (!strcasecmp (end, "EB"))
+	unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000 * 1000
+	  * 1000;
+      else if (!strcasecmp (end, "EiB"))
+	unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024 * 1024
+	  * 1024;
+      else
 	{
-	  char *end = NULL;
-	  errno = 0;
-	  unsigned HOST_WIDE_INT unit = 1;
-	  unsigned HOST_WIDE_INT limit
-	    = strtoull (warn_alloc_size_limit, &end, 10);
-
-	  if (!errno)
-	    {
-	      if (end && *end)
-		{
-		  /* Numeric option arguments are at most INT_MAX.  Make it
-		     possible to specify a larger value by accepting common
-		     suffixes.  */
-		  if (!strcmp (end, "kB"))
-		    unit = 1000;
-		  else if (!strcasecmp (end, "KiB") || strcmp (end, "KB"))
-		    unit = 1024;
-		  else if (!strcmp (end, "MB"))
-		    unit = HOST_WIDE_INT_UC (1000) * 1000;
-		  else if (!strcasecmp (end, "MiB"))
-		    unit = HOST_WIDE_INT_UC (1024) * 1024;
-		  else if (!strcasecmp (end, "GB"))
-		    unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000;
-		  else if (!strcasecmp (end, "GiB"))
-		    unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024;
-		  else if (!strcasecmp (end, "TB"))
-		    unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000;
-		  else if (!strcasecmp (end, "TiB"))
-		    unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024;
-		  else if (!strcasecmp (end, "PB"))
-		    unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000 * 1000;
-		  else if (!strcasecmp (end, "PiB"))
-		    unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024 * 1024;
-		  else if (!strcasecmp (end, "EB"))
-		    unit = HOST_WIDE_INT_UC (1000) * 1000 * 1000 * 1000 * 1000
-			   * 1000;
-		  else if (!strcasecmp (end, "EiB"))
-		    unit = HOST_WIDE_INT_UC (1024) * 1024 * 1024 * 1024 * 1024
-			   * 1024;
-		  else
-		    unit = 0;
-		}
-
-	      if (unit)
-		{
-		  wide_int w = wi::uhwi (limit, HOST_BITS_PER_WIDE_INT + 64);
-		  w *= unit;
-		  if (wi::ltu_p (w, alloc_object_size_limit))
-		    alloc_object_size_limit = wide_int_to_tree (ssizetype, w);
-		}
-	    }
+	  /* This could mean an unknown suffix or a bad prefix, like
+	     "+-1".  */
+	  warning_at (UNKNOWN_LOCATION, 0,
+		      "invalid argument %qs to %qs",
+		      warn_alloc_size_limit, optname);
+	  /* Ignore the limit extracted by strtoull.  */
+	  unit = 0;
 	}
     }
+
+  if (unit)
+    {
+      widest_int w = wi::mul (limit, unit);
+      if (w < wi::to_widest (alloc_object_size_limit))
+	alloc_object_size_limit
+	  = wide_int_to_tree (ptrdiff_type_node, w);
+      else
+	alloc_object_size_limit = build_all_ones_cst (size_type_node);
+    }
+
   return alloc_object_size_limit;
 }
 
@@ -3133,9 +3147,14 @@ expand_call (tree exp, rtx target, int ignore)
 	if (CALL_EXPR_RETURN_SLOT_OPT (exp)
 	    && target
 	    && MEM_P (target)
-	    && !(MEM_ALIGN (target) < TYPE_ALIGN (rettype)
-		 && SLOW_UNALIGNED_ACCESS (TYPE_MODE (rettype),
-					   MEM_ALIGN (target))))
+	    /* If rettype is addressable, we may not create a temporary.
+	       If target is properly aligned at runtime and the compiler
+	       just doesn't know about it, it will work fine, otherwise it
+	       will be UB.  */
+	    && (TREE_ADDRESSABLE (rettype)
+		|| !(MEM_ALIGN (target) < TYPE_ALIGN (rettype)
+		     && SLOW_UNALIGNED_ACCESS (TYPE_MODE (rettype),
+					       MEM_ALIGN (target)))))
 	  structure_value_addr = XEXP (target, 0);
 	else
 	  {
@@ -3313,6 +3332,28 @@ expand_call (tree exp, rtx target, int ignore)
       || args_size.var
       || dbg_cnt (tail_call) == false)
     try_tail_call = 0;
+
+  /* Workaround buggy C/C++ wrappers around Fortran routines with
+     character(len=constant) arguments if the hidden string length arguments
+     are passed on the stack; if the callers forget to pass those arguments,
+     attempting to tail call in such routines leads to stack corruption.
+     Avoid tail calls in functions where at least one such hidden string
+     length argument is passed (partially or fully) on the stack in the
+     caller and the callee needs to pass any arguments on the stack.
+     See PR90329.  */
+  if (try_tail_call && args_size.constant != 0)
+    for (tree arg = DECL_ARGUMENTS (current_function_decl);
+	 arg; arg = DECL_CHAIN (arg))
+      if (DECL_HIDDEN_STRING_LENGTH (arg) && DECL_INCOMING_RTL (arg))
+	{
+	  subrtx_iterator::array_type array;
+	  FOR_EACH_SUBRTX (iter, array, DECL_INCOMING_RTL (arg), NONCONST)
+	    if (MEM_P (*iter))
+	      {
+		try_tail_call = 0;
+		break;
+	      }
+	}
 
   /* If the user has marked the function as requiring tail-call
      optimization, attempt it.  */

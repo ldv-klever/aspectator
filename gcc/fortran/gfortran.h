@@ -863,7 +863,7 @@ typedef struct
   unsigned alloc_comp:1, pointer_comp:1, proc_pointer_comp:1,
 	   private_comp:1, zero_comp:1, coarray_comp:1, lock_comp:1,
 	   event_comp:1, defined_assign_comp:1, unlimited_polymorphic:1,
-	   has_dtio_procs:1;
+	   has_dtio_procs:1, caf_token:1;
 
   /* This is a temporary selector for SELECT TYPE or an associate
      variable for SELECT_TYPE or ASSOCIATE.  */
@@ -1058,6 +1058,7 @@ typedef struct gfc_component
   struct gfc_typebound_proc *tb;
   /* When allocatable/pointer and in a coarray the associated token.  */
   tree caf_token;
+  bool finalized;
 }
 gfc_component;
 
@@ -1827,6 +1828,9 @@ typedef struct gfc_namespace
 
   /* Set to 1 for !$ACC ROUTINE namespaces.  */
   unsigned oacc_routine:1;
+
+  /* Set to 1 if there are any calls to procedures with implicit interface.  */
+  unsigned implicit_interface_calls:1;
 }
 gfc_namespace;
 
@@ -1854,6 +1858,7 @@ typedef struct gfc_gsymbol
   enum gfc_symbol_type type;
 
   int defined, used;
+  bool bind_c;
   locus where;
   gfc_namespace *ns;
 }
@@ -2106,6 +2111,9 @@ typedef struct gfc_expr
   /* Will require finalization after use.  */
   unsigned int must_finalize : 1;
 
+  /* Set this if no warning should be given somewhere in a lower level.  */
+
+  unsigned int do_not_warn : 1;
   /* If an expression comes from a Hollerith constant or compile-time
      evaluation of a transfer statement, it may have a prescribed target-
      memory representation, and these cannot always be backformed from
@@ -2856,6 +2864,8 @@ extern int gfc_charlen_int_kind;
 extern int gfc_numeric_storage_size;
 extern int gfc_character_storage_size;
 
+#define gfc_integer_4_kind 4
+
 /* symbol.c */
 void gfc_clear_new_implicit (void);
 bool gfc_add_new_implicit_range (int, int);
@@ -2986,7 +2996,7 @@ void gfc_enforce_clean_symbol_state (void);
 void gfc_free_dt_list (void);
 
 
-gfc_gsymbol *gfc_get_gsymbol (const char *);
+gfc_gsymbol *gfc_get_gsymbol (const char *, bool bind_c);
 gfc_gsymbol *gfc_find_gsymbol (gfc_gsymbol *, const char *);
 
 gfc_typebound_proc* gfc_get_typebound_proc (gfc_typebound_proc*);
@@ -3122,7 +3132,7 @@ int gfc_kind_max (gfc_expr *, gfc_expr *);
 
 bool gfc_check_conformance (gfc_expr *, gfc_expr *, const char *, ...) ATTRIBUTE_PRINTF_3;
 bool gfc_check_assign (gfc_expr *, gfc_expr *, int, bool c = true);
-bool gfc_check_pointer_assign (gfc_expr *, gfc_expr *);
+bool gfc_check_pointer_assign (gfc_expr *, gfc_expr *, bool is_init_expr = false);
 bool gfc_check_assign_symbol (gfc_symbol *, gfc_component *, gfc_expr *);
 
 gfc_expr *gfc_build_default_init_expr (gfc_typespec *, locus *);
@@ -3145,7 +3155,7 @@ bool gfc_expr_check_typed (gfc_expr*, gfc_namespace*, bool);
 gfc_component * gfc_get_proc_ptr_comp (gfc_expr *);
 bool gfc_is_proc_ptr_comp (gfc_expr *);
 bool gfc_is_alloc_class_scalar_function (gfc_expr *);
-bool gfc_is_alloc_class_array_function (gfc_expr *);
+bool gfc_is_class_array_function (gfc_expr *);
 
 bool gfc_ref_this_image (gfc_ref *ref);
 bool gfc_is_coindexed (gfc_expr *);
@@ -3267,7 +3277,7 @@ bool gfc_resolve_open (gfc_open *);
 void gfc_free_close (gfc_close *);
 bool gfc_resolve_close (gfc_close *);
 void gfc_free_filepos (gfc_filepos *);
-bool gfc_resolve_filepos (gfc_filepos *);
+bool gfc_resolve_filepos (gfc_filepos *, locus *);
 void gfc_free_inquire (gfc_inquire *);
 bool gfc_resolve_inquire (gfc_inquire *);
 void gfc_free_dt (gfc_dt *);

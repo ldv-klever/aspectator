@@ -460,7 +460,8 @@ gfc_omp_clause_default_ctor (tree clause, tree decl, tree outer)
 
   if ((! GFC_DESCRIPTOR_TYPE_P (type)
        || GFC_TYPE_ARRAY_AKIND (type) != GFC_ARRAY_ALLOCATABLE)
-      && !GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause)))
+      && (!GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause))
+	  || !POINTER_TYPE_P (type)))
     {
       if (gfc_has_alloc_comps (type, OMP_CLAUSE_DECL (clause)))
 	{
@@ -546,6 +547,9 @@ gfc_omp_clause_default_ctor (tree clause, tree decl, tree outer)
 			     build3_loc (input_location, COND_EXPR,
 					 void_type_node, cond, then_b,
 					 else_b));
+      /* Avoid -W*uninitialized warnings.  */
+      if (DECL_P (decl))
+	TREE_NO_WARNING (decl) = 1;
     }
   else
     gfc_add_expr_to_block (&block, then_b);
@@ -567,7 +571,8 @@ gfc_omp_clause_copy_ctor (tree clause, tree dest, tree src)
 
   if ((! GFC_DESCRIPTOR_TYPE_P (type)
        || GFC_TYPE_ARRAY_AKIND (type) != GFC_ARRAY_ALLOCATABLE)
-      && !GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause)))
+      && (!GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause))
+	  || !POINTER_TYPE_P (type)))
     {
       if (gfc_has_alloc_comps (type, OMP_CLAUSE_DECL (clause)))
 	{
@@ -651,6 +656,9 @@ gfc_omp_clause_copy_ctor (tree clause, tree dest, tree src)
   gfc_add_expr_to_block (&block,
 			 build3_loc (input_location, COND_EXPR,
 				     void_type_node, cond, then_b, else_b));
+  /* Avoid -W*uninitialized warnings.  */
+  if (DECL_P (dest))
+    TREE_NO_WARNING (dest) = 1;
 
   return gfc_finish_block (&block);
 }
@@ -667,7 +675,8 @@ gfc_omp_clause_assign_op (tree clause, tree dest, tree src)
 
   if ((! GFC_DESCRIPTOR_TYPE_P (type)
        || GFC_TYPE_ARRAY_AKIND (type) != GFC_ARRAY_ALLOCATABLE)
-      && !GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause)))
+      && (!GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause))
+	  || !POINTER_TYPE_P (type)))
     {
       if (gfc_has_alloc_comps (type, OMP_CLAUSE_DECL (clause)))
 	{
@@ -905,7 +914,8 @@ gfc_omp_clause_linear_ctor (tree clause, tree dest, tree src, tree add)
 
   if ((! GFC_DESCRIPTOR_TYPE_P (type)
        || GFC_TYPE_ARRAY_AKIND (type) != GFC_ARRAY_ALLOCATABLE)
-      && !GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause)))
+      && (!GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause))
+	  || !POINTER_TYPE_P (type)))
     {
       gcc_assert (TREE_CODE (type) == ARRAY_TYPE);
       if (!TYPE_DOMAIN (type)
@@ -989,7 +999,8 @@ gfc_omp_clause_dtor (tree clause, tree decl)
 
   if ((! GFC_DESCRIPTOR_TYPE_P (type)
        || GFC_TYPE_ARRAY_AKIND (type) != GFC_ARRAY_ALLOCATABLE)
-      && !GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause)))
+      && (!GFC_DECL_GET_SCALAR_ALLOCATABLE (OMP_CLAUSE_DECL (clause))
+	  || !POINTER_TYPE_P (type)))
     {
       if (gfc_has_alloc_comps (type, OMP_CLAUSE_DECL (clause)))
 	return gfc_walk_alloc_comps (decl, NULL_TREE,
@@ -1949,9 +1960,32 @@ gfc_trans_omp_clauses (stmtblock_t *block, gfc_omp_clauses *clauses,
 			  }
 			else
 			  {
-			    tree type = gfc_typenode_for_spec (&n->sym->ts);
-			    OMP_CLAUSE_LINEAR_STEP (node)
-			      = fold_convert (type, last_step);
+			    if (kind == OMP_CLAUSE_LINEAR_REF)
+			      {
+				tree type;
+				if (n->sym->attr.flavor == FL_PROCEDURE)
+				  {
+				    type = gfc_get_function_type (n->sym);
+				    type = build_pointer_type (type);
+				  }
+				else
+				  type = gfc_sym_type (n->sym);
+				if (POINTER_TYPE_P (type))
+				  type = TREE_TYPE (type);
+				/* Otherwise to be determined what exactly
+				   should be done.  */
+				tree t = fold_convert (sizetype, last_step);
+				t = size_binop (MULT_EXPR, t,
+						TYPE_SIZE_UNIT (type));
+				OMP_CLAUSE_LINEAR_STEP (node) = t;
+			      }
+			    else
+			      {
+				tree type
+				  = gfc_typenode_for_spec (&n->sym->ts);
+				OMP_CLAUSE_LINEAR_STEP (node)
+				  = fold_convert (type, last_step);
+			      }
 			  }
 			if (n->sym->attr.dimension || n->sym->attr.allocatable)
 			  OMP_CLAUSE_LINEAR_ARRAY (node) = 1;

@@ -84,6 +84,7 @@
    UNSPEC_TLSGD_PIC
    UNSPEC_TLSLDM_PIC
    UNSPEC_TLSIE_PIC
+   UNSPEC_MEMORY_BARRIER
   ])
 
 ;; UNSPEC_VOLATILE:
@@ -2536,24 +2537,40 @@
 
   xoperands[0] = operands[0];
   xoperands[1] = operands[1];
-  xoperands[2] = gen_label_rtx ();
 
-  (*targetm.asm_out.internal_label) (asm_out_file, \"L\",
-				     CODE_LABEL_NUMBER (xoperands[2]));
-  output_asm_insn (\"mfia %0\", xoperands);
-
-  /* If we're trying to load the address of a label that happens to be
-     close, then we can use a shorter sequence.  */
   if (GET_CODE (operands[1]) == LABEL_REF
-      && !LABEL_REF_NONLOCAL_P (operands[1])
-      && INSN_ADDRESSES_SET_P ()
-      && abs (INSN_ADDRESSES (INSN_UID (XEXP (operands[1], 0)))
-	        - INSN_ADDRESSES (INSN_UID (insn))) < 8100)
-    output_asm_insn (\"ldo %1-%2(%0),%0\", xoperands);
+      && !LABEL_REF_NONLOCAL_P (operands[1]))
+    {
+      xoperands[2] = gen_label_rtx ();
+      (*targetm.asm_out.internal_label) (asm_out_file, \"L\",
+					 CODE_LABEL_NUMBER (xoperands[2]));
+      output_asm_insn (\"mfia %0\", xoperands);
+
+      /* If we're trying to load the address of a label that happens to be
+	 close, then we can use a shorter sequence.  */
+      if (INSN_ADDRESSES_SET_P ()
+	  && abs (INSN_ADDRESSES (INSN_UID (XEXP (operands[1], 0)))
+		  - INSN_ADDRESSES (INSN_UID (insn))) < 8100)
+	output_asm_insn (\"ldo %1-%2(%0),%0\", xoperands);
+      else
+	{
+	  output_asm_insn (\"addil L%%%1-%2,%0\", xoperands);
+	  output_asm_insn (\"ldo R%%%1-%2(%0),%0\", xoperands);
+	}
+    }
   else
     {
-      output_asm_insn (\"addil L%%%1-%2,%0\", xoperands);
-      output_asm_insn (\"ldo R%%%1-%2(%0),%0\", xoperands);
+      /* Load using linkage table.  */
+      if (TARGET_64BIT)
+	{
+	  output_asm_insn (\"addil LT%%%1,%%r27\", xoperands);
+	  output_asm_insn (\"ldd RT%%%1(%0),%0\", xoperands);
+	}
+      else
+	{
+	  output_asm_insn (\"addil LT%%%1,%%r19\", xoperands);
+	  output_asm_insn (\"ldw RT%%%1(%0),%0\", xoperands);
+	}
     }
   return \"\";
 }"
@@ -2570,25 +2587,33 @@
 
   xoperands[0] = operands[0];
   xoperands[1] = operands[1];
-  xoperands[2] = gen_label_rtx ();
 
-  output_asm_insn (\"bl .+8,%0\", xoperands);
-  output_asm_insn (\"depi 0,31,2,%0\", xoperands);
-  (*targetm.asm_out.internal_label) (asm_out_file, \"L\",
-				     CODE_LABEL_NUMBER (xoperands[2]));
-
-  /* If we're trying to load the address of a label that happens to be
-     close, then we can use a shorter sequence.  */
   if (GET_CODE (operands[1]) == LABEL_REF
-      && !LABEL_REF_NONLOCAL_P (operands[1])
-      && INSN_ADDRESSES_SET_P ()
-      && abs (INSN_ADDRESSES (INSN_UID (XEXP (operands[1], 0)))
-	        - INSN_ADDRESSES (INSN_UID (insn))) < 8100)
-    output_asm_insn (\"ldo %1-%2(%0),%0\", xoperands);
+      && !LABEL_REF_NONLOCAL_P (operands[1]))
+    {
+      xoperands[2] = gen_label_rtx ();
+      output_asm_insn (\"bl .+8,%0\", xoperands);
+      output_asm_insn (\"depi 0,31,2,%0\", xoperands);
+      (*targetm.asm_out.internal_label) (asm_out_file, \"L\",
+					 CODE_LABEL_NUMBER (xoperands[2]));
+
+      /* If we're trying to load the address of a label that happens to be
+	 close, then we can use a shorter sequence.  */
+      if (INSN_ADDRESSES_SET_P ()
+	  && abs (INSN_ADDRESSES (INSN_UID (XEXP (operands[1], 0)))
+		  - INSN_ADDRESSES (INSN_UID (insn))) < 8100)
+	output_asm_insn (\"ldo %1-%2(%0),%0\", xoperands);
+      else
+	{
+	  output_asm_insn (\"addil L%%%1-%2,%0\", xoperands);
+	  output_asm_insn (\"ldo R%%%1-%2(%0),%0\", xoperands);
+	}
+    }
   else
     {
-      output_asm_insn (\"addil L%%%1-%2,%0\", xoperands);
-      output_asm_insn (\"ldo R%%%1-%2(%0),%0\", xoperands);
+      /* Load using linkage table.  */
+      output_asm_insn (\"addil LT%%%1,%%r19\", xoperands);
+      output_asm_insn (\"ldw RT%%%1(%0),%0\", xoperands);
     }
   return \"\";
 }"
@@ -5294,8 +5319,8 @@
 
 (define_insn "umulsidi3"
   [(set (match_operand:DI 0 "register_operand" "=f")
-	(mult:DI (zero_extend:DI (match_operand:SI 1 "nonimmediate_operand" "f"))
-		 (zero_extend:DI (match_operand:SI 2 "nonimmediate_operand" "f"))))]
+	(mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "f"))
+		 (zero_extend:DI (match_operand:SI 2 "register_operand" "f"))))]
   "TARGET_PA_11 && ! TARGET_DISABLE_FPREGS && ! TARGET_SOFT_FLOAT"
   "xmpyu %1,%2,%0"
   [(set_attr "type" "fpmuldbl")
@@ -5303,7 +5328,7 @@
 
 (define_insn ""
   [(set (match_operand:DI 0 "register_operand" "=f")
-	(mult:DI (zero_extend:DI (match_operand:SI 1 "nonimmediate_operand" "f"))
+	(mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "f"))
 		 (match_operand:DI 2 "uint32_operand" "f")))]
   "TARGET_PA_11 && ! TARGET_DISABLE_FPREGS && ! TARGET_SOFT_FLOAT && !TARGET_64BIT"
   "xmpyu %1,%R2,%0"
@@ -5312,7 +5337,7 @@
 
 (define_insn ""
   [(set (match_operand:DI 0 "register_operand" "=f")
-	(mult:DI (zero_extend:DI (match_operand:SI 1 "nonimmediate_operand" "f"))
+	(mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "f"))
 		 (match_operand:DI 2 "uint32_operand" "f")))]
   "TARGET_PA_11 && ! TARGET_DISABLE_FPREGS && ! TARGET_SOFT_FLOAT && TARGET_64BIT"
   "xmpyu %1,%2R,%0"
@@ -6879,20 +6904,23 @@
   rtx stack = operands[2];
   rtx fp = operands[3];
 
-  lab = copy_to_reg (lab);
-
   emit_clobber (gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (VOIDmode)));
   emit_clobber (gen_rtx_MEM (BLKmode, hard_frame_pointer_rtx));
 
-  /* Restore the frame pointer.  The virtual_stack_vars_rtx is saved
-     instead of the hard_frame_pointer_rtx in the save area.  As a
-     result, an extra instruction is needed to adjust for the offset
-     of the virtual stack variables and the hard frame pointer.  */
-  if (GET_CODE (fp) != REG)
-    fp = force_reg (Pmode, fp);
-  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
+  lab = copy_to_reg (lab);
 
+  /* Restore the stack and frame pointers.  The virtual_stack_vars_rtx
+     is saved instead of the hard_frame_pointer_rtx in the save area.
+     As a result, an extra instruction is needed to adjust for the offset
+     of the virtual stack variables and the hard frame pointer.  */
+  fp = copy_to_reg (fp);
   emit_stack_restore (SAVE_NONLOCAL, stack);
+
+  /* Ensure the frame pointer move is not optimized.  */
+  emit_insn (gen_blockage ());
+  emit_clobber (hard_frame_pointer_rtx);
+  emit_clobber (frame_pointer_rtx);
+  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
 
   emit_use (hard_frame_pointer_rtx);
   emit_use (stack_pointer_rtx);
@@ -8670,22 +8698,25 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
   emit_clobber (gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (VOIDmode)));
   emit_clobber (gen_rtx_MEM (BLKmode, hard_frame_pointer_rtx));
 
-  /* Restore the frame pointer.  The virtual_stack_vars_rtx is saved
-     instead of the hard_frame_pointer_rtx in the save area.  We need
-     to adjust for the offset between these two values.  */
-  if (GET_CODE (fp) != REG)
-    fp = force_reg (Pmode, fp);
-  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
-
-  /* This bit is the same as expand_builtin_longjmp.  */
-  emit_stack_restore (SAVE_NONLOCAL, stack);
-  emit_use (hard_frame_pointer_rtx);
-  emit_use (stack_pointer_rtx);
-
   /* Load the label we are jumping through into r1 so that we know
      where to look for it when we get back to setjmp's function for
      restoring the gp.  */
   emit_move_insn (pv, lab);
+
+  /* Restore the stack and frame pointers.  The virtual_stack_vars_rtx
+     is saved instead of the hard_frame_pointer_rtx in the save area.
+     We need to adjust for the offset between these two values.  */
+  fp = copy_to_reg (fp);
+  emit_stack_restore (SAVE_NONLOCAL, stack);
+
+  /* Ensure the frame pointer move is not optimized.  */
+  emit_insn (gen_blockage ());
+  emit_clobber (hard_frame_pointer_rtx);
+  emit_clobber (frame_pointer_rtx);
+  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
+
+  emit_use (hard_frame_pointer_rtx);
+  emit_use (stack_pointer_rtx);
 
   /* Prevent the insns above from being scheduled into the delay slot
      of the interspace jump because the space register could change.  */
@@ -9931,13 +9962,7 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
 ;; doubleword loads and stores are not guaranteed to be atomic
 ;; when referencing the I/O address space.
 
-;; The kernel cmpxchg operation on linux is not atomic with respect to
-;; memory stores on SMP machines, so we must do stores using a cmpxchg
-;; operation.
-
 ;; These patterns are at the bottom so the non atomic versions are preferred.
-
-;; Implement atomic QImode store using exchange.
 
 (define_expand "atomic_storeqi"
   [(match_operand:QI 0 "memory_operand")                ;; memory
@@ -9991,25 +10016,7 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
   FAIL;
 })
 
-;; Implement atomic SFmode store using exchange.
-
-(define_expand "atomic_storesf"
-  [(match_operand:SF 0 "memory_operand")                ;; memory
-   (match_operand:SF 1 "register_operand")              ;; val out
-   (match_operand:SI 2 "const_int_operand")]            ;; model
-  ""
-{
-  if (TARGET_SYNC_LIBCALL)
-    {
-      rtx mem = operands[0];
-      rtx val = operands[1];
-      if (pa_maybe_emit_compare_and_swap_exchange_loop (NULL_RTX, mem, val))
-	DONE;
-    }
-  FAIL;
-})
-
-;; Implement atomic DImode load using 64-bit floating point load.
+;; Implement atomic DImode load.
 
 (define_expand "atomic_loaddi"
   [(match_operand:DI 0 "register_operand")              ;; val out
@@ -10024,29 +10031,27 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
 
   model = memmodel_from_int (INTVAL (operands[2]));
   operands[1] = force_reg (SImode, XEXP (operands[1], 0));
-  expand_mem_thread_fence (model);
-  emit_insn (gen_atomic_loaddi_1 (operands[0], operands[1]));
   if (is_mm_seq_cst (model))
     expand_mem_thread_fence (model);
+  emit_insn (gen_atomic_loaddi_1 (operands[0], operands[1]));
+  expand_mem_thread_fence (model);
   DONE;
 })
 
 (define_insn "atomic_loaddi_1"
-  [(set (match_operand:DI 0 "register_operand" "=f,r")
-        (mem:DI (match_operand:SI 1 "register_operand" "r,r")))
-   (clobber (match_scratch:DI 2 "=X,f"))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mem:DI (match_operand:SI 1 "register_operand" "r")))
+   (clobber (match_scratch:DI 2 "=f"))]
   "!TARGET_64BIT && !TARGET_DISABLE_FPREGS && !TARGET_SOFT_FLOAT"
-  "@
-   {fldds|fldd} 0(%1),%0
-   {fldds|fldd} 0(%1),%2\n\t{fstds|fstd} %2,-16(%%sp)\n\t{ldws|ldw} -16(%%sp),%0\n\t{ldws|ldw} -12(%%sp),%R0"
-  [(set_attr "type" "move,move")
-   (set_attr "length" "4,16")])
+  "{fldds|fldd} 0(%1),%2\n\t{fstds|fstd} %2,-16(%%sp)\n\t{ldws|ldw} -16(%%sp),%0\n\t{ldws|ldw} -12(%%sp),%R0"
+  [(set_attr "type" "move")
+   (set_attr "length" "16")])
 
 ;; Implement atomic DImode store.
 
 (define_expand "atomic_storedi"
   [(match_operand:DI 0 "memory_operand")                ;; memory
-   (match_operand:DI 1 "register_operand")              ;; val out
+   (match_operand:DI 1 "reg_or_cint_move_operand")      ;; val out
    (match_operand:SI 2 "const_int_operand")]            ;; model
   ""
 {
@@ -10065,6 +10070,8 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
 
   model = memmodel_from_int (INTVAL (operands[2]));
   operands[0] = force_reg (SImode, XEXP (operands[0], 0));
+  if (operands[1] != CONST0_RTX (DImode))
+    operands[1] = force_reg (DImode, operands[1]);
   expand_mem_thread_fence (model);
   emit_insn (gen_atomic_storedi_1 (operands[0], operands[1]));
   if (is_mm_seq_cst (model))
@@ -10074,87 +10081,33 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
 
 (define_insn "atomic_storedi_1"
   [(set (mem:DI (match_operand:SI 0 "register_operand" "r,r"))
-        (match_operand:DI 1 "register_operand" "f,r"))
+        (match_operand:DI 1 "reg_or_0_operand" "M,r"))
    (clobber (match_scratch:DI 2 "=X,f"))]
-  "!TARGET_64BIT && !TARGET_DISABLE_FPREGS
-   && !TARGET_SOFT_FLOAT && !TARGET_SYNC_LIBCALL"
-  "@
-   {fstds|fstd} %1,0(%0)
-   {stws|stw} %1,-16(%%sp)\n\t{stws|stw} %R1,-12(%%sp)\n\t{fldds|fldd} -16(%%sp),%2\n\t{fstds|fstd} %2,0(%0)"
-  [(set_attr "type" "move,move")
-   (set_attr "length" "4,16")])
-
-;; Implement atomic DFmode load using 64-bit floating point load.
-
-(define_expand "atomic_loaddf"
-  [(match_operand:DF 0 "register_operand")              ;; val out
-   (match_operand:DF 1 "memory_operand")                ;; memory
-   (match_operand:SI 2 "const_int_operand")]            ;; model
-  ""
-{
-  enum memmodel model;
-
-  if (TARGET_64BIT || TARGET_DISABLE_FPREGS || TARGET_SOFT_FLOAT)
-    FAIL;
-
-  model = memmodel_from_int (INTVAL (operands[2]));
-  operands[1] = force_reg (SImode, XEXP (operands[1], 0));
-  expand_mem_thread_fence (model);
-  emit_insn (gen_atomic_loaddf_1 (operands[0], operands[1]));
-  if (is_mm_seq_cst (model))
-    expand_mem_thread_fence (model);
-  DONE;
-})
-
-(define_insn "atomic_loaddf_1"
-  [(set (match_operand:DF 0 "register_operand" "=f,r")
-        (mem:DF (match_operand:SI 1 "register_operand" "r,r")))
-   (clobber (match_scratch:DF 2 "=X,f"))]
   "!TARGET_64BIT && !TARGET_DISABLE_FPREGS && !TARGET_SOFT_FLOAT"
   "@
-   {fldds|fldd} 0(%1),%0
-   {fldds|fldd} 0(%1),%2\n\t{fstds|fstd} %2,-16(%%sp)\n\t{ldws|ldw} -16(%%sp),%0\n\t{ldws|ldw} -12(%%sp),%R0"
-  [(set_attr "type" "move,move")
-   (set_attr "length" "4,16")])
-
-;; Implement atomic DFmode store using 64-bit floating point store.
-
-(define_expand "atomic_storedf"
-  [(match_operand:DF 0 "memory_operand")                ;; memory
-   (match_operand:DF 1 "register_operand")              ;; val out
-   (match_operand:SI 2 "const_int_operand")]            ;; model
-  ""
-{
-  enum memmodel model;
-
-  if (TARGET_SYNC_LIBCALL)
-    {
-      rtx mem = operands[0];
-      rtx val = operands[1];
-      if (pa_maybe_emit_compare_and_swap_exchange_loop (NULL_RTX, mem, val))
-	DONE;
-    }
-
-  if (TARGET_64BIT || TARGET_DISABLE_FPREGS || TARGET_SOFT_FLOAT)
-    FAIL;
-
-  model = memmodel_from_int (INTVAL (operands[2]));
-  operands[0] = force_reg (SImode, XEXP (operands[0], 0));
-  expand_mem_thread_fence (model);
-  emit_insn (gen_atomic_storedf_1 (operands[0], operands[1]));
-  if (is_mm_seq_cst (model))
-    expand_mem_thread_fence (model);
-  DONE;
-})
-
-(define_insn "atomic_storedf_1"
-  [(set (mem:DF (match_operand:SI 0 "register_operand" "r,r"))
-        (match_operand:DF 1 "register_operand" "f,r"))
-   (clobber (match_scratch:DF 2 "=X,f"))]
-  "!TARGET_64BIT && !TARGET_DISABLE_FPREGS
-   && !TARGET_SOFT_FLOAT && !TARGET_SYNC_LIBCALL"
-  "@
-   {fstds|fstd} %1,0(%0)
+   {fstds|fstd} %%fr0,0(%0)
    {stws|stw} %1,-16(%%sp)\n\t{stws|stw} %R1,-12(%%sp)\n\t{fldds|fldd} -16(%%sp),%2\n\t{fstds|fstd} %2,0(%0)"
   [(set_attr "type" "move,move")
    (set_attr "length" "4,16")])
+
+;; PA 2.0 hardware supports out-of-order execution of loads and stores, so
+;; we need a memory barrier to enforce program order for memory references.
+;; Since we want PA 1.x code to be PA 2.0 compatible, we also need the
+;; barrier when generating PA 1.x code.
+
+(define_expand "memory_barrier"
+  [(set (match_dup 0)
+        (unspec:BLK [(match_dup 0)] UNSPEC_MEMORY_BARRIER))]
+  ""
+{
+  operands[0] = gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (Pmode));
+  MEM_VOLATILE_P (operands[0]) = 1;
+})
+
+(define_insn "*memory_barrier"
+  [(set (match_operand:BLK 0 "" "")
+        (unspec:BLK [(match_dup 0)] UNSPEC_MEMORY_BARRIER))]
+  ""
+  "sync"
+  [(set_attr "type" "binary")
+   (set_attr "length" "4")])

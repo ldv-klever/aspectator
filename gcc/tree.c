@@ -5454,9 +5454,10 @@ free_lang_data_in_decl (tree decl)
 	 At this point, it is not needed anymore.  */
       DECL_SAVED_TREE (decl) = NULL_TREE;
 
-      /* Clear the abstract origin if it refers to a method.  Otherwise
-         dwarf2out.c will ICE as we clear TYPE_METHODS and thus the
-	 origin will not be output correctly.  */
+      /* Clear the abstract origin if it refers to a method.
+         Otherwise dwarf2out.c will ICE as we splice functions out of
+         TYPE_FIELDS and thus the origin will not be output
+         correctly.  */
       if (DECL_ABSTRACT_ORIGIN (decl)
 	  && DECL_CONTEXT (DECL_ABSTRACT_ORIGIN (decl))
 	  && RECORD_OR_UNION_TYPE_P
@@ -6455,6 +6456,11 @@ handle_dll_attribute (tree * pnode, tree name, tree args, int flags,
 	     a function global scope, unless declared static.  */
 	  if (current_function_decl != NULL_TREE && !TREE_STATIC (node))
 	    TREE_PUBLIC (node) = 1;
+	  /* Clear TREE_STATIC because DECL_EXTERNAL is set, unless
+	     it is a C++ static data member.  */
+	  if (DECL_CONTEXT (node) == NULL_TREE
+	      || !RECORD_OR_UNION_TYPE_P (DECL_CONTEXT (node)))
+	    TREE_STATIC (node) = 0;
 	}
 
       if (*no_add_attrs == false)
@@ -7886,6 +7892,9 @@ add_expr (const_tree t, inchash::hash &hstate, unsigned int flags)
     case TREE_VEC:
       for (i = 0; i < TREE_VEC_LENGTH (t); ++i)
 	inchash::add_expr (TREE_VEC_ELT (t, i), hstate, flags);
+      return;
+    case IDENTIFIER_NODE:
+      hstate.add_object (IDENTIFIER_HASH_VALUE (t));
       return;
     case FUNCTION_DECL:
       /* When referring to a built-in FUNCTION_DECL, use the __builtin__ form.
@@ -10305,8 +10314,7 @@ build_common_tree_nodes (bool signed_char)
       TYPE_SIZE (int_n_trees[i].signed_type) = bitsize_int (int_n_data[i].bitsize);
       TYPE_SIZE (int_n_trees[i].unsigned_type) = bitsize_int (int_n_data[i].bitsize);
 
-      if (int_n_data[i].bitsize > LONG_LONG_TYPE_SIZE
-	  && int_n_enabled_p[i])
+      if (int_n_enabled_p[i])
 	{
 	  integer_types[itk_intN_0 + i * 2] = int_n_trees[i].signed_type;
 	  integer_types[itk_unsigned_intN_0 + i * 2] = int_n_trees[i].unsigned_type;

@@ -1354,7 +1354,7 @@ nvptx_output_softstack_switch (FILE *file, bool entering,
       fputs (";\n", file);
       if (!CONST_INT_P (size) || UINTVAL (align) > GET_MODE_SIZE (DImode))
 	fprintf (file,
-		 "\t\tand.u%d %%r%d, %%r%d, -" HOST_WIDE_INT_PRINT_DEC ";\n",
+		 "\t\tand.b%d %%r%d, %%r%d, -" HOST_WIDE_INT_PRINT_DEC ";\n",
 		 bits, regno, regno, UINTVAL (align));
     }
   if (cfun->machine->has_softstack)
@@ -1875,9 +1875,15 @@ output_init_frag (rtx sym)
   
   if (sym)
     {
-      fprintf (asm_out_file, "generic(");
+      bool function = (SYMBOL_REF_DECL (sym)
+		       && (TREE_CODE (SYMBOL_REF_DECL (sym)) == FUNCTION_DECL));
+      if (!function)
+	fprintf (asm_out_file, "generic(");
       output_address (VOIDmode, sym);
-      fprintf (asm_out_file, val ? ") + " : ")");
+      if (!function)
+	fprintf (asm_out_file, ")");
+      if (val)
+	fprintf (asm_out_file, " + ");
     }
 
   if (!sym || val)
@@ -2002,6 +2008,9 @@ static void
 nvptx_assemble_decl_begin (FILE *file, const char *name, const char *section,
 			   const_tree type, HOST_WIDE_INT size, unsigned align)
 {
+  bool atype = (TREE_CODE (type) == ARRAY_TYPE)
+    && (TYPE_DOMAIN (type) == NULL_TREE);
+
   while (TREE_CODE (type) == ARRAY_TYPE)
     type = TREE_TYPE (type);
 
@@ -2041,6 +2050,8 @@ nvptx_assemble_decl_begin (FILE *file, const char *name, const char *section,
     /* We make everything an array, to simplify any initialization
        emission.  */
     fprintf (file, "[" HOST_WIDE_INT_PRINT_DEC "]", init_frag.remaining);
+  else if (atype)
+    fprintf (file, "[]");
 }
 
 /* Called when the initializer for a decl has been completely output through

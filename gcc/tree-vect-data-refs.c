@@ -50,6 +50,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "expr.h"
 #include "builtins.h"
 #include "params.h"
+#include "internal-fn.h"
 
 /* Return true if load- or store-lanes optab OPTAB is implemented for
    COUNT vectors of type VECTYPE.  NAME is the name of OPTAB.  */
@@ -131,6 +132,30 @@ vect_get_smallest_scalar_type (gimple *stmt, HOST_WIDE_INT *lhs_size_unit,
       if (rhs < lhs)
         scalar_type = rhs_type;
     }
+  else if (gcall *call = dyn_cast <gcall *> (stmt))
+    {
+      unsigned int i = 0;
+      if (gimple_call_internal_p (call))
+	{
+	  internal_fn ifn = gimple_call_internal_fn (call);
+	  if (internal_load_fn_p (ifn) || internal_store_fn_p (ifn))
+	    /* gimple_expr_type already picked the type of the loaded
+	       or stored data.  */
+	    i = ~0U;
+	  else if (internal_fn_mask_index (ifn) == 0)
+	    i = 1;
+	}
+      if (i < gimple_call_num_args (call))
+	{
+	  tree rhs_type = TREE_TYPE (gimple_call_arg (call, i));
+	  if (tree_fits_uhwi_p (TYPE_SIZE_UNIT (rhs_type)))
+	    {
+	      rhs = TREE_INT_CST_LOW (TYPE_SIZE_UNIT (rhs_type));
+	      if (rhs < lhs)
+		scalar_type = rhs_type;
+	    }
+	}
+    }
 
   *lhs_size_unit = lhs;
   *rhs_size_unit = rhs;
@@ -192,6 +217,45 @@ vect_mark_for_runtime_alias_test (ddr_p ddr, loop_vec_info loop_vinfo)
 
   LOOP_VINFO_MAY_ALIAS_DDRS (loop_vinfo).safe_push (ddr);
   return true;
+}
+
+
+/* Return true if we know that the order of vectorized STMT_A and
+   vectorized STMT_B will be the same as the order of STMT_A and STMT_B.
+   At least one of the statements is a write.  */
+
+static bool
+vect_preserves_scalar_order_p (gimple *stmt_a, gimple *stmt_b)
+{
+  stmt_vec_info stmtinfo_a = vinfo_for_stmt (stmt_a);
+  stmt_vec_info stmtinfo_b = vinfo_for_stmt (stmt_b);
+
+  /* Single statements are always kept in their original order.  */
+  if (!STMT_VINFO_GROUPED_ACCESS (stmtinfo_a)
+      && !STMT_VINFO_GROUPED_ACCESS (stmtinfo_b))
+    return true;
+
+  /* STMT_A and STMT_B belong to overlapping groups.  All loads in a
+     group are emitted at the position of the last scalar load and all
+     stores in a group are emitted at the position of the last scalar store.
+     Compute that position and check whether the resulting order matches
+     the current one.  */
+  gimple *last_a = GROUP_FIRST_ELEMENT (stmtinfo_a);
+  if (last_a)
+    for (gimple *s = GROUP_NEXT_ELEMENT (vinfo_for_stmt (last_a)); s;
+	 s = GROUP_NEXT_ELEMENT (vinfo_for_stmt (s)))
+      last_a = get_later_stmt (last_a, s);
+  else
+    last_a = stmt_a;
+  gimple *last_b = GROUP_FIRST_ELEMENT (stmtinfo_b);
+  if (last_b)
+    for (gimple *s = GROUP_NEXT_ELEMENT (vinfo_for_stmt (last_b)); s;
+	 s = GROUP_NEXT_ELEMENT (vinfo_for_stmt (s)))
+      last_b = get_later_stmt (last_b, s);
+  else
+    last_b = stmt_b;
+  return ((get_later_stmt (last_a, last_b) == last_a)
+	  == (get_later_stmt (stmt_a, stmt_b) == stmt_a));
 }
 
 
@@ -378,20 +442,23 @@ vect_analyze_data_ref_dependence (struct data_dependence_relation *ddr,
 		... = a[i];
 		a[i+1] = ...;
 	     where loads from the group interleave with the store.  */
-	  if (STMT_VINFO_GROUPED_ACCESS (stmtinfo_a)
-	      || STMT_VINFO_GROUPED_ACCESS (stmtinfo_b))
+	  if (!vect_preserves_scalar_order_p (DR_STMT (dra), DR_STMT (drb)))
 	    {
-	      gimple *earlier_stmt;
-	      earlier_stmt = get_earlier_stmt (DR_STMT (dra), DR_STMT (drb));
-	      if (DR_IS_WRITE
-		    (STMT_VINFO_DATA_REF (vinfo_for_stmt (earlier_stmt))))
-		{
-		  if (dump_enabled_p ())
-		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-				     "READ_WRITE dependence in interleaving."
-				     "\n");
-		  return true;
-		}
+	      if (dump_enabled_p ())
+		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				 "READ_WRITE dependence in interleaving."
+				 "\n");
+	      return true;
+	    }
+
+	  unsigned int step_prec = TYPE_PRECISION (TREE_TYPE (DR_STEP (dra)));
+	  if (loop->safelen < 2
+	      && !expr_not_equal_to (DR_STEP (dra), wi::zero (step_prec)))
+	    {
+	      if (dump_enabled_p ())
+		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				 "step could be zero.\n");
+	      return true;
 	    }
 
 	  continue;
@@ -403,8 +470,19 @@ vect_analyze_data_ref_dependence (struct data_dependence_relation *ddr,
 	     reversed (to make distance vector positive), and the actual
 	     distance is negative.  */
 	  if (dump_enabled_p ())
-	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+	    dump_printf_loc (MSG_NOTE, vect_location,
 	                     "dependence distance negative.\n");
+	  /* When doing outer loop vectorization, we need to check if there is
+	     a backward dependence at the inner loop level if the dependence
+	     at the outer loop is reversed.  See PR81740.  */
+	  if (nested_in_vect_loop_p (loop, DR_STMT (dra))
+	      || nested_in_vect_loop_p (loop, DR_STMT (drb)))
+	    {
+	      unsigned inner_depth = index_in_loop_nest (loop->inner->num,
+							 DDR_LOOP_NEST (ddr));
+	      if (dist_v[inner_depth] < 0)
+		return true;
+	    }
 	  /* Record a negative dependence distance to later limit the
 	     amount of stmt copying / unrolling we can perform.
 	     Only need to handle read-after-write dependence.  */
@@ -2515,7 +2593,7 @@ vect_analyze_data_ref_access (struct data_reference *dr)
       /* Allow references with zero step for outer loops marked
 	 with pragma omp simd only - it guarantees absence of
 	 loop-carried dependencies between inner loop iterations.  */
-      if (!loop->force_vectorize)
+      if (!loop->force_vectorize || loop->safelen < 2)
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_NOTE, vect_location,

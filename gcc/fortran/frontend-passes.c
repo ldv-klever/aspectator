@@ -48,6 +48,8 @@ static gfc_code * create_do_loop (gfc_expr *, gfc_expr *, gfc_expr *,
 				  locus *, gfc_namespace *,
 				  char *vname=NULL);
 
+static bool is_fe_temp (gfc_expr *e);
+
 #ifdef CHECKING_P
 static void check_locus (gfc_namespace *);
 #endif
@@ -135,6 +137,10 @@ gfc_run_passes (gfc_namespace *ns)
   check_locus (ns);
 #endif
 
+  gfc_get_errors (&w, &e);
+  if (e > 0)
+   return;
+
   if (flag_frontend_optimize)
     {
       optimize_namespace (ns);
@@ -144,10 +150,6 @@ gfc_run_passes (gfc_namespace *ns)
 
       expr_array.release ();
     }
-
-  gfc_get_errors (&w, &e);
-  if (e > 0)
-   return;
 
   if (flag_realloc_lhs)
     realloc_strings (ns);
@@ -231,22 +233,29 @@ realloc_string_callback (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
       || !expr1->ts.deferred)
     return 0;
 
+  if (is_fe_temp (expr1))
+    return 0;
+
   expr2 = gfc_discard_nops (co->expr2);
-  if (expr2->expr_type != EXPR_VARIABLE)
-    return 0;
 
-  found_substr = false;
-  for (ref = expr2->ref; ref; ref = ref->next)
+  if (expr2->expr_type == EXPR_VARIABLE)
     {
-      if (ref->type == REF_SUBSTRING)
+      found_substr = false;
+      for (ref = expr2->ref; ref; ref = ref->next)
 	{
-	  found_substr = true;
-	  break;
+	  if (ref->type == REF_SUBSTRING)
+	    {
+	      found_substr = true;
+	      break;
+	    }
 	}
+      if (!found_substr)
+	return 0;
     }
-  if (!found_substr)
+  else if (expr2->expr_type != EXPR_OP
+	   || expr2->value.op.op != INTRINSIC_CONCAT)
     return 0;
-
+  
   if (!gfc_check_dependency (expr1, expr2, true))
     return 0;
 
@@ -619,7 +628,8 @@ constant_string_length (gfc_expr *e)
 
   /* Return length of char symbol, if constant.  */
 
-  if (e->symtree->n.sym->ts.u.cl && e->symtree->n.sym->ts.u.cl->length
+  if (e->symtree && e->symtree->n.sym->ts.u.cl
+      && e->symtree->n.sym->ts.u.cl->length
       && e->symtree->n.sym->ts.u.cl->length->expr_type == EXPR_CONSTANT)
     return gfc_copy_expr (e->symtree->n.sym->ts.u.cl->length);
 
@@ -691,6 +701,11 @@ create_var (gfc_expr * e, const char *vname)
   if (e->expr_type == EXPR_CONSTANT || is_fe_temp (e))
     return gfc_copy_expr (e);
 
+  /* Creation of an array of unknown size requires realloc on assignment.
+     If that is not possible, just return NULL.  */
+  if (flag_realloc_lhs == 0 && e->rank > 0 && e->shape == NULL)
+    return NULL;
+
   ns = insert_block ();
 
   if (vname)
@@ -738,7 +753,7 @@ create_var (gfc_expr * e, const char *vname)
     }
 
   deferred = 0;
-  if (e->ts.type == BT_CHARACTER && e->rank == 0)
+  if (e->ts.type == BT_CHARACTER)
     {
       gfc_expr *length;
 
@@ -749,6 +764,8 @@ create_var (gfc_expr * e, const char *vname)
       else
 	{
 	  symbol->attr.allocatable = 1;
+	  symbol->ts.u.cl->length = NULL;
+	  symbol->ts.deferred = 1;
 	  deferred = 1;
 	}
     }
@@ -761,7 +778,7 @@ create_var (gfc_expr * e, const char *vname)
 
   result = gfc_get_expr ();
   result->expr_type = EXPR_VARIABLE;
-  result->ts = e->ts;
+  result->ts = symbol->ts;
   result->ts.deferred = deferred;
   result->rank = e->rank;
   result->shape = gfc_copy_shape (e->shape, e->rank);
@@ -1348,6 +1365,10 @@ combine_array_constructor (gfc_expr *e)
   if (iterator_level > 0)
     return false;
 
+  /* WHERE also doesn't work.  */
+  if (in_where > 0)
+    return false;
+
   op1 = e->value.op.op1;
   op2 = e->value.op.op2;
 
@@ -1406,84 +1427,6 @@ combine_array_constructor (gfc_expr *e)
 
   e->value.constructor = newbase;
   return true;
-}
-
-/* Change (-1)**k into 1-ishift(iand(k,1),1) and
- 2**k into ishift(1,k) */
-
-static bool
-optimize_power (gfc_expr *e)
-{
-  gfc_expr *op1, *op2;
-  gfc_expr *iand, *ishft;
-
-  if (e->ts.type != BT_INTEGER)
-    return false;
-
-  op1 = e->value.op.op1;
-
-  if (op1 == NULL || op1->expr_type != EXPR_CONSTANT)
-    return false;
-
-  if (mpz_cmp_si (op1->value.integer, -1L) == 0)
-    {
-      gfc_free_expr (op1);
-
-      op2 = e->value.op.op2;
-
-      if (op2 == NULL)
-	return false;
-
-      iand = gfc_build_intrinsic_call (current_ns, GFC_ISYM_IAND,
-				       "_internal_iand", e->where, 2, op2,
-				       gfc_get_int_expr (e->ts.kind,
-							 &e->where, 1));
-
-      ishft = gfc_build_intrinsic_call (current_ns, GFC_ISYM_ISHFT,
-					"_internal_ishft", e->where, 2, iand,
-					gfc_get_int_expr (e->ts.kind,
-							  &e->where, 1));
-
-      e->value.op.op = INTRINSIC_MINUS;
-      e->value.op.op1 = gfc_get_int_expr (e->ts.kind, &e->where, 1);
-      e->value.op.op2 = ishft;
-      return true;
-    }
-  else if (mpz_cmp_si (op1->value.integer, 2L) == 0)
-    {
-      gfc_free_expr (op1);
-
-      op2 = e->value.op.op2;
-      if (op2 == NULL)
-	return false;
-
-      ishft = gfc_build_intrinsic_call (current_ns, GFC_ISYM_ISHFT,
-					"_internal_ishft", e->where, 2,
-					gfc_get_int_expr (e->ts.kind,
-							  &e->where, 1),
-					op2);
-      *e = *ishft;
-      return true;
-    }
-
-  else if (mpz_cmp_si (op1->value.integer, 1L) == 0)
-    {
-      op2 = e->value.op.op2;
-      if (op2 == NULL)
-	return false;
-
-      gfc_free_expr (op1);
-      gfc_free_expr (op2);
-
-      e->expr_type = EXPR_CONSTANT;
-      e->value.op.op1 = NULL;
-      e->value.op.op2 = NULL;
-      mpz_init_set_si (e->value.integer, 1);
-      /* Typespec and location are still OK.  */
-      return true;
-    }
-
-  return false;
 }
 
 /* Recursive optimization of operators.  */
@@ -1545,9 +1488,6 @@ optimize_op (gfc_expr *e)
     case INTRINSIC_TIMES:
     case INTRINSIC_DIVIDE:
       return combine_array_constructor (e) || changed;
-
-    case INTRINSIC_POWER:
-      return optimize_power (e);
 
     default:
       break;
@@ -2750,10 +2690,26 @@ scalarized_expr (gfc_expr *e_in, gfc_expr **index, int count_index)
 			 is the lbound of a full ref.  */
 		      int j;
 		      gfc_array_ref *ar;
+		      int to;
 
 		      ar = &ref->u.ar;
-		      ar->type = AR_FULL;
-		      for (j = 0; j < ar->dimen; j++)
+
+		      /* For assumed size, we need to keep around the final
+			 reference in order not to get an error on resolution
+			 below, and we cannot use AR_FULL.  */
+			 
+		      if (ar->as->type == AS_ASSUMED_SIZE)
+			{
+			  ar->type = AR_SECTION;
+			  to = ar->dimen - 1;
+			}
+		      else
+			{
+			  to = ar->dimen;
+			  ar->type = AR_FULL;
+			}
+
+		      for (j = 0; j < to; j++)
 			{
 			  gfc_free_expr (ar->start[j]);
 			  ar->start[j] = NULL;

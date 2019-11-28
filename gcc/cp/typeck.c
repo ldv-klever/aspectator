@@ -37,6 +37,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "c-family/c-ubsan.h"
 #include "params.h"
 #include "gcc-rich-location.h"
+#include "gimplify.h"
 
 static tree cp_build_addr_expr_strict (tree, tsubst_flags_t);
 static tree cp_build_function_call (tree, tree, tsubst_flags_t);
@@ -905,14 +906,14 @@ merge_types (tree t1, tree t2)
       return t1;
 
     default:;
+      if (attribute_list_equal (TYPE_ATTRIBUTES (t1), attributes))
+	return t1;
+      else if (attribute_list_equal (TYPE_ATTRIBUTES (t2), attributes))
+	return t2;
+      break;
     }
 
-  if (attribute_list_equal (TYPE_ATTRIBUTES (t1), attributes))
-    return t1;
-  else if (attribute_list_equal (TYPE_ATTRIBUTES (t2), attributes))
-    return t2;
-  else
-    return cp_build_type_attribute_variant (t1, attributes);
+  return cp_build_type_attribute_variant (t1, attributes);
 }
 
 /* Return the ARRAY_TYPE type without its domain.  */
@@ -2362,7 +2363,13 @@ build_class_member_access_expr (cp_expr object, tree member,
   {
     tree temp = unary_complex_lvalue (ADDR_EXPR, object);
     if (temp)
-      object = cp_build_indirect_ref (temp, RO_NULL, complain);
+      {
+	temp = cp_build_indirect_ref (temp, RO_NULL, complain);
+	if (xvalue_p (object) && !xvalue_p (temp))
+	  /* Preserve xvalue kind.  */
+	  temp = move (temp);
+	object = temp;
+      }
   }
 
   /* In [expr.ref], there is an explicit list of the valid choices for
@@ -2372,6 +2379,12 @@ build_class_member_access_expr (cp_expr object, tree member,
       /* A static data member.  */
       result = member;
       mark_exp_read (object);
+
+      if (tree wrap = maybe_get_tls_wrapper_call (result))
+	/* Replace an evaluated use of the thread_local variable with
+	   a call to its wrapper.  */
+	result = wrap;
+
       /* If OBJECT has side-effects, they are supposed to occur.  */
       if (TREE_SIDE_EFFECTS (object))
 	result = build2 (COMPOUND_EXPR, TREE_TYPE (result), object, result);
@@ -5713,19 +5726,6 @@ cp_build_addr_expr_1 (tree arg, bool strict_lvalue, tsubst_flags_t complain)
       return arg;
     }
 
-  /* ??? Cope with user tricks that amount to offsetof.  */
-  if (TREE_CODE (argtype) != FUNCTION_TYPE
-      && TREE_CODE (argtype) != METHOD_TYPE
-      && argtype != unknown_type_node
-      && (val = get_base_address (arg))
-      && COMPLETE_TYPE_P (TREE_TYPE (val))
-      && INDIRECT_REF_P (val)
-      && TREE_CONSTANT (TREE_OPERAND (val, 0)))
-    {
-      tree type = build_pointer_type (argtype);
-      return fold_convert (type, fold_offsetof_1 (arg));
-    }
-
   /* Handle complex lvalues (when permitted)
      by reduction to simpler cases.  */
   val = unary_complex_lvalue (ADDR_EXPR, arg);
@@ -6177,6 +6177,25 @@ build_unary_op (location_t /*location*/,
   return cp_build_unary_op (code, xarg, noconvert, tf_warning_or_error);
 }
 
+/* Adjust LVALUE, an MODIFY_EXPR, PREINCREMENT_EXPR or PREDECREMENT_EXPR,
+   so that it is a valid lvalue even for GENERIC by replacing
+   (lhs = rhs) with ((lhs = rhs), lhs)
+   (--lhs) with ((--lhs), lhs)
+   (++lhs) with ((++lhs), lhs)
+   and if lhs has side-effects, calling cp_stabilize_reference on it, so
+   that it can be evaluated multiple times.  */
+
+tree
+genericize_compound_lvalue (tree lvalue)
+{
+  if (TREE_SIDE_EFFECTS (TREE_OPERAND (lvalue, 0)))
+    lvalue = build2 (TREE_CODE (lvalue), TREE_TYPE (lvalue),
+		     cp_stabilize_reference (TREE_OPERAND (lvalue, 0)),
+		     TREE_OPERAND (lvalue, 1));
+  return build2 (COMPOUND_EXPR, TREE_TYPE (TREE_OPERAND (lvalue, 0)),
+		 lvalue, TREE_OPERAND (lvalue, 0));
+}
+
 /* Apply unary lvalue-demanding operator CODE to the expression ARG
    for certain kinds of expressions which are not really lvalues
    but which we can accept as lvalues.
@@ -6211,17 +6230,7 @@ unary_complex_lvalue (enum tree_code code, tree arg)
   if (TREE_CODE (arg) == MODIFY_EXPR
       || TREE_CODE (arg) == PREINCREMENT_EXPR
       || TREE_CODE (arg) == PREDECREMENT_EXPR)
-    {
-      tree lvalue = TREE_OPERAND (arg, 0);
-      if (TREE_SIDE_EFFECTS (lvalue))
-	{
-	  lvalue = cp_stabilize_reference (lvalue);
-	  arg = build2 (TREE_CODE (arg), TREE_TYPE (arg),
-			lvalue, TREE_OPERAND (arg, 1));
-	}
-      return unary_complex_lvalue
-	(code, build2 (COMPOUND_EXPR, TREE_TYPE (lvalue), arg, lvalue));
-    }
+    return unary_complex_lvalue (code, genericize_compound_lvalue (arg));
 
   if (code != ADDR_EXPR)
     return NULL_TREE;
@@ -7617,11 +7626,7 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
     case PREINCREMENT_EXPR:
       if (compound_side_effects_p)
 	newrhs = rhs = stabilize_expr (rhs, &preeval);
-      if (TREE_SIDE_EFFECTS (TREE_OPERAND (lhs, 0)))
-	lhs = build2 (TREE_CODE (lhs), TREE_TYPE (lhs),
-		      cp_stabilize_reference (TREE_OPERAND (lhs, 0)),
-		      TREE_OPERAND (lhs, 1));
-      lhs = build2 (COMPOUND_EXPR, lhstype, lhs, TREE_OPERAND (lhs, 0));
+      lhs = genericize_compound_lvalue (lhs);
     maybe_add_compound:
       /* If we had (bar, --foo) = 5; or (bar, (baz, --foo)) = 5;
 	 and looked through the COMPOUND_EXPRs, readd them now around
@@ -7644,11 +7649,7 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
     case MODIFY_EXPR:
       if (compound_side_effects_p)
 	newrhs = rhs = stabilize_expr (rhs, &preeval);
-      if (TREE_SIDE_EFFECTS (TREE_OPERAND (lhs, 0)))
-	lhs = build2 (TREE_CODE (lhs), TREE_TYPE (lhs),
-		      cp_stabilize_reference (TREE_OPERAND (lhs, 0)),
-		      TREE_OPERAND (lhs, 1));
-      lhs = build2 (COMPOUND_EXPR, lhstype, lhs, TREE_OPERAND (lhs, 0));
+      lhs = genericize_compound_lvalue (lhs);
       goto maybe_add_compound;
 
     case MIN_EXPR:
@@ -7676,8 +7677,6 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
 	/* Produce (a ? (b = rhs) : (c = rhs))
 	   except that the RHS goes through a save-expr
 	   so the code to compute it is only emitted once.  */
-	tree cond;
-
 	if (VOID_TYPE_P (TREE_TYPE (rhs)))
 	  {
 	    if (complain & tf_error)
@@ -7692,13 +7691,20 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
 	if (!lvalue_or_else (lhs, lv_assign, complain))
 	  return error_mark_node;
 
-	cond = build_conditional_expr
-	  (input_location, TREE_OPERAND (lhs, 0),
-	   cp_build_modify_expr (loc, TREE_OPERAND (lhs, 1),
-				 modifycode, rhs, complain),
-	   cp_build_modify_expr (loc, TREE_OPERAND (lhs, 2),
-				 modifycode, rhs, complain),
-           complain);
+	tree op1 = cp_build_modify_expr (loc, TREE_OPERAND (lhs, 1),
+					 modifycode, rhs, complain);
+	/* When sanitizing undefined behavior, even when rhs doesn't need
+	   stabilization at this point, the sanitization might add extra
+	   SAVE_EXPRs in there and so make sure there is no tree sharing
+	   in the rhs, otherwise those SAVE_EXPRs will have initialization
+	   only in one of the two branches.  */
+	if (flag_sanitize & (SANITIZE_UNDEFINED | SANITIZE_NONDEFAULT))
+	  rhs = unshare_expr (rhs);
+	tree op2 = cp_build_modify_expr (loc, TREE_OPERAND (lhs, 2),
+					 modifycode, rhs, complain);
+	tree cond = build_conditional_expr (input_location,
+					    TREE_OPERAND (lhs, 0), op1, op2,
+					    complain);
 
 	if (cond == error_mark_node)
 	  return cond;

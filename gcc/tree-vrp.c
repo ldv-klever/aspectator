@@ -2535,10 +2535,13 @@ extract_range_from_binary_expr_1 (value_range *vr,
 		max_ovf = 1;
 	    }
 
-	  /* If we have overflow for the constant part and the resulting
-	     range will be symbolic, drop to VR_VARYING.  */
-	  if ((min_ovf && sym_min_op0 != sym_min_op1)
-	      || (max_ovf && sym_max_op0 != sym_max_op1))
+	  /* If the resulting range will be symbolic, we need to eliminate any
+	     explicit or implicit overflow introduced in the above computation
+	     because compare_values could make an incorrect use of it.  That's
+	     why we require one of the ranges to be a singleton.  */
+	  if ((sym_min_op0 != sym_min_op1 || sym_max_op0 != sym_max_op1)
+	      && (min_ovf || max_ovf
+		  || (min_op0 != max_op0 && min_op1 != max_op1)))
 	    {
 	      set_value_range_to_varying (vr);
 	      return;
@@ -8671,9 +8674,9 @@ union_ranges (enum value_range_type *vr0type,
 	  if (TREE_CODE (*vr0min) == INTEGER_CST)
 	    {
 	      *vr0type = vr1type;
-	      *vr0min = vr1min;
 	      *vr0max = int_const_binop (MINUS_EXPR, *vr0min,
 					 build_int_cst (TREE_TYPE (*vr0min), 1));
+	      *vr0min = vr1min;
 	    }
 	  else
 	    goto give_up;

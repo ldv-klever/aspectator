@@ -1139,7 +1139,8 @@ gfc_typenode_for_spec (gfc_typespec * spec, int codim)
         {
           spec->type = BT_INTEGER;
           spec->kind = gfc_index_integer_kind;
-          spec->f90_type = BT_VOID;
+	  spec->f90_type = BT_VOID;
+	  spec->is_c_interop = 1;  /* Mark as escaping later.  */
         }
       break;
     case BT_VOID:
@@ -1156,6 +1157,9 @@ gfc_typenode_for_spec (gfc_typespec * spec, int codim)
 	    basetype = pfunc_type_node;
 	}
        break;
+    case BT_PROCEDURE:
+      basetype = pfunc_type_node;
+      break;
     default:
       gcc_unreachable ();
     }
@@ -1804,7 +1808,7 @@ gfc_get_array_descriptor_base (int dimen, int codimen, bool restricted)
       TREE_NO_WARNING (decl) = 1;
     }
 
-  if (flag_coarray == GFC_FCOARRAY_LIB && codimen)
+  if (flag_coarray == GFC_FCOARRAY_LIB)
     {
       decl = gfc_add_field_to_struct_1 (fat_type,
 					get_identifier ("token"),
@@ -2168,6 +2172,14 @@ gfc_sym_type (gfc_symbol * sym)
   if (sym->backend_decl && !sym->attr.function)
     return TREE_TYPE (sym->backend_decl);
 
+  if (sym->attr.result
+      && sym->ts.type == BT_CHARACTER
+      && sym->ts.u.cl->backend_decl == NULL_TREE
+      && sym->ns->proc_name
+      && sym->ns->proc_name->ts.u.cl
+      && sym->ns->proc_name->ts.u.cl->backend_decl != NULL_TREE)
+    sym->ts.u.cl->backend_decl = sym->ns->proc_name->ts.u.cl->backend_decl;
+
   if (sym->ts.type == BT_CHARACTER
       && ((sym->attr.function && sym->attr.is_bind_c)
 	  || (sym->attr.result
@@ -2334,6 +2346,7 @@ gfc_copy_dt_decls_ifequal (gfc_symbol *from, gfc_symbol *to,
   for (; to_cm; to_cm = to_cm->next, from_cm = from_cm->next)
     {
       to_cm->backend_decl = from_cm->backend_decl;
+      to_cm->caf_token = from_cm->caf_token;
       if (from_cm->ts.type == BT_UNION)
         gfc_get_union_type (to_cm->ts.u.derived);
       else if (from_cm->ts.type == BT_DERIVED
@@ -2444,6 +2457,10 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
   gfc_dt_list *dt;
   gfc_namespace *ns;
   tree tmp;
+  bool coarray_flag;
+
+  coarray_flag = flag_coarray == GFC_FCOARRAY_LIB
+		 && derived->module && !derived->attr.vtype;
 
   if (derived->attr.unlimited_polymorphic
       || (flag_coarray == GFC_FCOARRAY_LIB
@@ -2636,7 +2653,9 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 	  field_type = build_pointer_type (tmp);
 	}
       else if (c->ts.type == BT_DERIVED || c->ts.type == BT_CLASS)
-        field_type = c->ts.u.derived->backend_decl;
+	field_type = c->ts.u.derived->backend_decl;
+      else if (c->attr.caf_token)
+	field_type = pvoid_type_node;
       else
 	{
 	  if (c->ts.type == BT_CHARACTER && !c->ts.deferred)
@@ -2715,19 +2734,6 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
       gcc_assert (field);
       if (!c->backend_decl)
 	c->backend_decl = field;
-
-      /* Do not add a caf_token field for classes' data components.  */
-      if (codimen && !c->attr.dimension && !c->attr.codimension
-	  && (c->attr.allocatable || c->attr.pointer)
-	  && c->caf_token == NULL_TREE && strcmp ("_data", c->name) != 0)
-	{
-	  char caf_name[GFC_MAX_SYMBOL_LEN];
-	  snprintf (caf_name, GFC_MAX_SYMBOL_LEN, "_caf_%s", c->name);
-	  c->caf_token = gfc_add_field_to_struct (typenode,
-						  get_identifier (caf_name),
-						  pvoid_type_node, &chain);
-	  TREE_NO_WARNING (c->caf_token) = 1;
-	}
     }
 
   /* Now lay out the derived type, including the fields.  */
@@ -2752,6 +2758,24 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
   derived->backend_decl = typenode;
 
 copy_derived_types:
+
+  for (c = derived->components; c; c = c->next)
+    {
+      /* Do not add a caf_token field for class container components.  */
+      if ((codimen || coarray_flag)
+	  && !c->attr.dimension && !c->attr.codimension
+	  && (c->attr.allocatable || c->attr.pointer)
+	  && !derived->attr.is_class)
+	{
+	  char caf_name[GFC_MAX_SYMBOL_LEN];
+	  gfc_component *token;
+	  snprintf (caf_name, GFC_MAX_SYMBOL_LEN, "_caf_%s", c->name);
+	  token = gfc_find_component (derived, caf_name, true, true, NULL);
+	  gcc_assert (token);
+	  c->caf_token = token->backend_decl;
+	  TREE_NO_WARNING (c->caf_token) = 1;
+	}
+    }
 
   for (dt = gfc_derived_types; dt; dt = dt->next)
     gfc_copy_dt_decls_ifequal (derived, dt->derived, false);
@@ -2864,7 +2888,8 @@ create_fn_spec (gfc_symbol *sym, tree fntype)
 		    || f->sym->ts.u.derived->attr.pointer_comp))
 	    || (f->sym->ts.type == BT_CLASS
 		&& (CLASS_DATA (f->sym)->ts.u.derived->attr.proc_pointer_comp
-		    || CLASS_DATA (f->sym)->ts.u.derived->attr.pointer_comp)))
+		    || CLASS_DATA (f->sym)->ts.u.derived->attr.pointer_comp))
+	    || (f->sym->ts.type == BT_INTEGER && f->sym->ts.is_c_interop))
 	  spec[spec_len++] = '.';
 	else if (f->sym->attr.intent == INTENT_IN)
 	  spec[spec_len++] = 'r';
@@ -2877,9 +2902,65 @@ create_fn_spec (gfc_symbol *sym, tree fntype)
   return build_type_attribute_variant (fntype, tmp);
 }
 
+/* Helper function - if we do not find an interface for a procedure,
+   construct it from the actual arglist.  Luckily, this can only
+   happen for call by reference, so the information we actually need
+   to provide (and which would be impossible to guess from the call
+   itself) is not actually needed.  */
+
+static void
+get_formal_from_actual_arglist (gfc_symbol *sym, gfc_actual_arglist *actual_args)
+{
+  gfc_actual_arglist *a;
+  gfc_formal_arglist **f;
+  gfc_symbol *s;
+  char name[GFC_MAX_SYMBOL_LEN + 1];
+  static int var_num;
+
+  f = &sym->formal;
+  for (a = actual_args; a != NULL; a = a->next)
+    {
+      (*f) = gfc_get_formal_arglist ();
+      if (a->expr)
+	{
+	  snprintf (name, GFC_MAX_SYMBOL_LEN, "_formal_%d", var_num ++);
+	  gfc_get_symbol (name, gfc_current_ns, &s);
+	  if (a->expr->ts.type == BT_PROCEDURE)
+	    {
+	      s->attr.flavor = FL_PROCEDURE;
+	    }
+	  else
+	    {
+	      s->ts = a->expr->ts;
+
+	      if (s->ts.type == BT_CHARACTER)
+		s->ts.u.cl = gfc_get_charlen ();
+
+ 	      s->ts.deferred = 0;
+ 	      s->ts.is_iso_c = 0;
+ 	      s->ts.is_c_interop = 0;
+	      s->attr.flavor = FL_VARIABLE;
+	      if (a->expr->rank > 0)
+		{
+		  s->attr.dimension = 1;
+		  s->as = gfc_get_array_spec ();
+		  s->as->type = AS_ASSUMED_SIZE;
+		}
+	    }
+	  s->attr.dummy = 1;
+	  s->attr.artificial = 1;
+	  s->attr.intent = INTENT_UNKNOWN;
+	  (*f)->sym = s;
+	}
+      else  /* If a->expr is NULL, this is an alternate rerturn.  */
+	(*f)->sym = NULL;
+
+      f = &((*f)->next);
+    }
+}
 
 tree
-gfc_get_function_type (gfc_symbol * sym)
+gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
 {
   tree type;
   vec<tree, va_gc> *typelist = NULL;
@@ -2937,6 +3018,10 @@ gfc_get_function_type (gfc_symbol * sym)
 	    vec_safe_push (typelist, build_pointer_type(gfc_charlen_type_node));
 	}
     }
+  if (sym->backend_decl == error_mark_node && actual_args != NULL
+      && sym->formal == NULL && (sym->attr.proc == PROC_EXTERNAL
+				 || sym->attr.proc == PROC_UNKNOWN))
+    get_formal_from_actual_arglist (sym, actual_args);
 
   /* Build the argument types for the function.  */
   for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)

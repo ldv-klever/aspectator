@@ -2643,7 +2643,12 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        */
       void
       param(const param_type& __param)
-      { _M_param = __param; }
+      {
+	_M_param = __param;
+	typedef typename std::gamma_distribution<result_type>::param_type
+	  param_type;
+	_M_gd.param(param_type{__param.n() / 2});
+      }
 
       /**
        * @brief Returns the greatest lower bound value of the distribution.
@@ -5977,9 +5982,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     size_t size() const noexcept
     { return _M_v.size(); }
 
-    template<typename OutputIterator>
+    template<typename _OutputIterator>
       void
-      param(OutputIterator __dest) const
+      param(_OutputIterator __dest) const
       { std::copy(_M_v.begin(), _M_v.end(), __dest); }
 
     // no copy functions

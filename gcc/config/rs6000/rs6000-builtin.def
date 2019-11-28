@@ -1,5 +1,5 @@
 /* Builtin functions for rs6000/powerpc.
-   Copyright (C) 2009-2017 Free Software Foundation, Inc.
+   Copyright (C) 2009-2018 Free Software Foundation, Inc.
    Contributed by Michael Meissner (meissner@linux.vnet.ibm.com)
 
    This file is part of GCC.
@@ -659,6 +659,14 @@
 		     | RS6000_BTC_BINARY),				\
 		    CODE_FOR_ ## ICODE)			/* ICODE */
 
+#define BU_P7_POWERPC64_MISC_2(ENUM, NAME, ATTR, ICODE)			\
+  RS6000_BUILTIN_2 (MISC_BUILTIN_ ## ENUM,		/* ENUM */      \
+		    "__builtin_" NAME,			/* NAME */      \
+		    RS6000_BTM_POPCNTD			/* MASK */	\
+		    | RS6000_BTM_POWERPC64,				\
+		    (RS6000_BTC_ ## ATTR		/* ATTR */      \
+		    | RS6000_BTC_BINARY),				\
+		    CODE_FOR_ ## ICODE)			/* ICODE */
 
 /* Miscellaneous builtins for instructions added in ISA 2.07.  These
    instructions do require the ISA 2.07 vector support, but they aren't vector
@@ -992,6 +1000,7 @@ BU_ALTIVEC_3 (VSEL_1TI_UNS,   "vsel_1ti_uns",   CONST, 	vector_select_v1ti_uns)
 BU_ALTIVEC_3 (VSLDOI_16QI,    "vsldoi_16qi",    CONST, 	altivec_vsldoi_v16qi)
 BU_ALTIVEC_3 (VSLDOI_8HI,     "vsldoi_8hi",     CONST, 	altivec_vsldoi_v8hi)
 BU_ALTIVEC_3 (VSLDOI_4SI,     "vsldoi_4si",     CONST, 	altivec_vsldoi_v4si)
+BU_ALTIVEC_3 (VSLDOI_2DI,     "vsldoi_2di",     CONST, 	altivec_vsldoi_v2di)
 BU_ALTIVEC_3 (VSLDOI_4SF,     "vsldoi_4sf",     CONST, 	altivec_vsldoi_v4sf)
 BU_ALTIVEC_3 (VSLDOI_2DF,     "vsldoi_2df",     CONST, 	altivec_vsldoi_v2df)
 
@@ -1980,6 +1989,9 @@ BU_P9V_OVERLOAD_1 (VSTDCNSP,	"scalar_test_neg_sp")
 
 BU_P9V_OVERLOAD_1 (REVB,	"revb")
 
+BU_P9V_OVERLOAD_1 (VEXTRACT_FP_FROM_SHORTH, "vextract_fp_from_shorth")
+BU_P9V_OVERLOAD_1 (VEXTRACT_FP_FROM_SHORTL, "vextract_fp_from_shortl")
+
 /* ISA 3.0 vector scalar overloaded 2 argument functions.  */
 BU_P9V_OVERLOAD_2 (VSIEDP,	"scalar_insert_exp")
 
@@ -1997,6 +2009,8 @@ BU_P9V_VSX_1 (VEEDP, "extract_exp_dp", CONST, xvxexpdp)
 BU_P9V_VSX_1 (VEESP, "extract_exp_sp", CONST, xvxexpsp)
 BU_P9V_VSX_1 (VESDP, "extract_sig_dp", CONST, xvxsigdp)
 BU_P9V_VSX_1 (VESSP, "extract_sig_sp", CONST, xvxsigsp)
+BU_P9V_VSX_1 (VEXTRACT_FP_FROM_SHORTH, "vextract_fp_from_shorth", CONST, vextract_fp_from_shorth)
+BU_P9V_VSX_1 (VEXTRACT_FP_FROM_SHORTL, "vextract_fp_from_shortl", CONST, vextract_fp_from_shortl)
 
 /* 2 argument vsx vector functions added in ISA 3.0 (power9).  */
 BU_P9V_VSX_2 (VIEDP, "insert_exp_dp", CONST, xviexpdp)
@@ -2034,8 +2048,8 @@ BU_P9V_AV_2 (VEXTUWRX, "vextuwrx",		CONST,	vextuwrx)
 
 /* Insert/extract 4 byte word into a vector.  */
 BU_P9V_VSX_2 (VEXTRACT4B,   "vextract4b",	CONST,	vextract4b)
-BU_P9V_VSX_3 (VINSERT4B,    "vinsert4b",	CONST,	vinsert4b)
-BU_P9V_VSX_3 (VINSERT4B_DI, "vinsert4b_di",	CONST,	vinsert4b_di)
+BU_P9V_VSX_3 (INSERT4B,    "insert4b",		CONST,  insert4b)
+BU_P9V_VSX_2 (EXTRACT4B,   "extract4b", 	CONST,  extract4b)
 
 /* 3 argument vector functions returning void, treated as SPECIAL,
    added in ISA 3.0 (power9).  */
@@ -2084,10 +2098,11 @@ BU_P9V_OVERLOAD_2 (LXVL,	"lxvl")
 BU_P9V_OVERLOAD_2 (VEXTULX,	"vextulx")
 BU_P9V_OVERLOAD_2 (VEXTURX,	"vexturx")
 BU_P9V_OVERLOAD_2 (VEXTRACT4B,	"vextract4b")
+BU_P9V_OVERLOAD_2 (EXTRACT4B,  "extract4b")
 
 /* ISA 3.0 Vector scalar overloaded 3 argument functions */
 BU_P9V_OVERLOAD_3 (STXVL,	"stxvl")
-BU_P9V_OVERLOAD_3 (VINSERT4B,	"vinsert4b")
+BU_P9V_OVERLOAD_3 (INSERT4B,    "insert4b")
 
 /* Overloaded CMPNE support was implemented prior to Power 9,
    so is not mentioned here.  */
@@ -2103,13 +2118,9 @@ BU_P9V_OVERLOAD_1 (VCTZLSBB,	"vctzlsbb")
 
 /* 2 argument extended divide functions added in ISA 2.06.  */
 BU_P7_MISC_2 (DIVWE,		"divwe",	CONST,	dive_si)
-BU_P7_MISC_2 (DIVWEO,		"divweo",	CONST,	diveo_si)
 BU_P7_MISC_2 (DIVWEU,		"divweu",	CONST,	diveu_si)
-BU_P7_MISC_2 (DIVWEUO,		"divweuo",	CONST,	diveuo_si)
-BU_P7_MISC_2 (DIVDE,		"divde",	CONST,	dive_di)
-BU_P7_MISC_2 (DIVDEO,		"divdeo",	CONST,	diveo_di)
-BU_P7_MISC_2 (DIVDEU,		"divdeu",	CONST,	diveu_di)
-BU_P7_MISC_2 (DIVDEUO,		"divdeuo",	CONST,	diveuo_di)
+BU_P7_POWERPC64_MISC_2 (DIVDE,	"divde",	CONST,	dive_di)
+BU_P7_POWERPC64_MISC_2 (DIVDEU,	"divdeu",	CONST,	diveu_di)
 
 /* 1 argument DFP (decimal floating point) functions added in ISA 2.05.  */
 BU_DFP_MISC_1 (DXEX,		"dxex",		CONST,	dfp_dxex_dd)
@@ -2228,13 +2239,22 @@ BU_FLOAT128_1 (FABSQ,		"fabsq",       CONST, abskf2)
 BU_FLOAT128_2 (COPYSIGNQ,	"copysignq",   CONST, copysignkf3)
 
 /* 1 argument crypto functions.  */
-BU_CRYPTO_1 (VSBOX,		"vsbox",	  CONST, crypto_vsbox)
+BU_CRYPTO_1 (VSBOX,		"vsbox",	  CONST, crypto_vsbox_v2di)
+BU_CRYPTO_1 (VSBOX_BE,		"vsbox_be",	  CONST, crypto_vsbox_v16qi)
 
 /* 2 argument crypto functions.  */
-BU_CRYPTO_2 (VCIPHER,		"vcipher",	  CONST, crypto_vcipher)
-BU_CRYPTO_2 (VCIPHERLAST,	"vcipherlast",	  CONST, crypto_vcipherlast)
-BU_CRYPTO_2 (VNCIPHER,		"vncipher",	  CONST, crypto_vncipher)
-BU_CRYPTO_2 (VNCIPHERLAST,	"vncipherlast",	  CONST, crypto_vncipherlast)
+BU_CRYPTO_2 (VCIPHER,		"vcipher",	  CONST, crypto_vcipher_v2di)
+BU_CRYPTO_2 (VCIPHER_BE,	"vcipher_be",	  CONST, crypto_vcipher_v16qi)
+BU_CRYPTO_2 (VCIPHERLAST,	"vcipherlast",
+	     CONST, crypto_vcipherlast_v2di)
+BU_CRYPTO_2 (VCIPHERLAST_BE,	"vcipherlast_be",
+	     CONST, crypto_vcipherlast_v16qi)
+BU_CRYPTO_2 (VNCIPHER,		"vncipher",	  CONST, crypto_vncipher_v2di)
+BU_CRYPTO_2 (VNCIPHER_BE,	"vncipher_be",	  CONST, crypto_vncipher_v16qi)
+BU_CRYPTO_2 (VNCIPHERLAST,	"vncipherlast",
+	     CONST, crypto_vncipherlast_v2di)
+BU_CRYPTO_2 (VNCIPHERLAST_BE,	"vncipherlast_be",
+	     CONST, crypto_vncipherlast_v16qi)
 BU_CRYPTO_2A (VPMSUMB,		"vpmsumb",	  CONST, crypto_vpmsumb)
 BU_CRYPTO_2A (VPMSUMH,		"vpmsumh",	  CONST, crypto_vpmsumh)
 BU_CRYPTO_2A (VPMSUMW,		"vpmsumw",	  CONST, crypto_vpmsumw)

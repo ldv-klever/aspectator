@@ -3666,6 +3666,9 @@ extern void init_lower_subreg (void);
 /* In gcse.c */
 extern bool can_copy_p (machine_mode);
 extern bool can_assign_to_reg_without_clobbers_p (rtx, machine_mode);
+extern rtx_insn *prepare_copy_insn (rtx, rtx);
+
+/* In cprop.c */
 extern rtx fis_get_condition (rtx_insn *);
 
 /* In ira.c */
@@ -3832,6 +3835,25 @@ load_extend_op (machine_mode mode)
   return UNKNOWN;
 }
 
+/* Return true if X is an operation that always operates on the full
+   registers for WORD_REGISTER_OPERATIONS architectures.  */
+
+inline bool
+word_register_operation_p (const_rtx x)
+{
+  switch (GET_CODE (x))
+    {
+    case ROTATE:
+    case ROTATERT:
+    case SIGN_EXTRACT:
+    case ZERO_EXTRACT:
+      return false;
+    
+    default:
+      return true;
+    }
+}
+    
 /* gtype-desc.c.  */
 extern void gt_ggc_mx (rtx &);
 extern void gt_pch_nx (rtx &);
