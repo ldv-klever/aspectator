@@ -50,6 +50,7 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
   ldv_aspect_pattern_param_ptr param = NULL, param_cur = NULL;
   const char *text = NULL;
   unsigned int number;
+  const char *sign = NULL;
   ldv_str_ptr str;
 
   while (1)
@@ -65,8 +66,9 @@ ldv_consume_aspect_pattern_param (ldv_list_ptr_ptr aspect_pattern_params, LDV_EV
         {
           /* To keep evaluated values of parameters use parameters themselves
              since parameter evaluation may lead to either string or integer,
-             and parameters themselves may be either strings or integers. */
-          evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number);
+             and parameters themselves may be either strings or integers.
+             Parameter signatures are of interest here. */
+          evaluate_aspect_pattern_func (param_cur->aspect_pattern, &text, &number, &sign);
           if (text)
             {
               param_cur->string = text;
@@ -279,7 +281,7 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 }
 
 void
-ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number)
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number, const char **sign)
 {
   char *arg_value = NULL;
   ldv_list_ptr arg_value_list = NULL;

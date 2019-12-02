@@ -86,7 +86,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pointcut-matcher.h"
 
 
-#define LDV_ASPECTED_NAME_PREFIX    "ldv"
+#define LDV_AUX_FUNC_NAME_PREFIX    "ldv"
 #define LDV_FUNC_ARG_NAME           "ldv_func_arg"
 #define LDV_FUNC_ARG_TYPE           "ldv_func_arg_type"
 #define LDV_FUNC_RET_TYPE           "ldv_func_ret_type"
@@ -101,6 +101,9 @@ typedef enum { LDV_PADDING_AFTER, LDV_PADDING_BEFORE, LDV_PADDING_NONE } ldv_pad
 
 
 expanded_location ldv_decl_beginning_location;
+/* Hash table to store auxiliary function names. */
+static htab_t ldv_aux_func_names;
+
 
 static const char *ldv_aspect_func_name = NULL;
 static ldv_list_ptr ldv_func_arg_type_decl_list = NULL;
@@ -128,7 +131,6 @@ static const char *ldv_type_decl = NULL;
 
 
 static void ldv_add_id_declarator (ldv_pps_decl_ptr, const char *);
-static char *ldv_create_aspected_name (const char *);
 static void ldv_create_aux_func_params (ldv_i_type_ptr, ldv_i_type_ptr);
 static const char *ldv_create_aux_func_param (unsigned int);
 static ldv_decl_for_print_ptr ldv_create_decl_for_print (void);
@@ -144,6 +146,7 @@ static const char *ldv_get_arg_sign (unsigned int);
 static const char *ldv_get_arg_type_name (unsigned int);
 static int ldv_get_arg_size (unsigned int);
 static const char *ldv_get_arg_value (unsigned int);
+static const char *ldv_get_body_sign (ldv_ab_ptr);
 static const char *ldv_get_param_name (unsigned int);
 static char *ldv_print_arg_type_str (unsigned int);
 static void ldv_print_c (unsigned int);
@@ -174,8 +177,8 @@ static void ldv_print_types_typedefs (ldv_ab_ptr, bool);
 static void ldv_print_var_init_values (ldv_i_initializer_ptr, ldv_text_ptr);
 static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
 static void ldv_free_func_arg_type_decl_list (void);
-static void ldv_weave_func_source (ldv_i_func_ptr, ldv_ppk);
-static void ldv_weave_var_source (ldv_i_var_ptr, ldv_ppk);
+static void ldv_weave_func_source (const char *, const char *, ldv_ppk);
+static void ldv_weave_var_source (const char *, const char *, ldv_ppk);
 
 
 void
@@ -213,23 +216,6 @@ ldv_add_id_declarator (ldv_pps_decl_ptr decl, const char *name)
     }
 
   internal_error ("can't add identifier declarator to the end of declarator chain");
-}
-
-char *
-ldv_create_aspected_name (const char *name)
-{
-  char *aspected_name = NULL;
-  const char *aspected_name_numb;
-
-  aspected_name_numb = ldv_itoa (ldv_get_unique_numb ());
-
-  /* Aspected name = ldv prefix + _ + original name + _ + unique number. */
-  aspected_name = XCNEWVEC (char, strlen (LDV_ASPECTED_NAME_PREFIX) + 1 + strlen (name) + 1 + strlen (aspected_name_numb) + 1);
-  sprintf (aspected_name, "%s_%s_%s", LDV_ASPECTED_NAME_PREFIX, name, aspected_name_numb);
-
-  free (CONST_CAST (char *, aspected_name_numb));
-
-  return aspected_name;
 }
 
 const char *
@@ -362,7 +348,7 @@ ldv_delete_id_declarator (ldv_list_ptr declarator_list)
 
 /* Aspect patterns that can be evaluated basing on matching information. */
 void
-ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number)
+ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number, const char **sign)
 {
   const char *func_arg = NULL;
   int func_arg_size;
@@ -401,7 +387,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
           ldv_print_info (LDV_INFO_WEAVE, "generate stub \"0\" for aspect pattern \"%s\"", pattern->name);
         }
       else
-        *text = ldv_copy_str (func_arg);
+        *sign = *text = ldv_copy_str (func_arg);
     }
   else if (!strcmp (pattern->name, "actual_arg_func_names"))
     {
@@ -565,7 +551,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
         internal_error ("no variable type name was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "arg_sign"))
-    *text = ldv_copy_str (ldv_get_arg_sign (pattern->arg_numb));
+    *sign = *text = ldv_copy_str (ldv_get_arg_sign (pattern->arg_numb));
   else if (!strcmp (pattern->name, "var_init_list"))
     {
       ldv_text = ldv_create_text ();
@@ -768,6 +754,60 @@ ldv_get_arg_value (unsigned int arg_numb)
     }
 
   internal_error ("required argument value has number \"%d\" that exceeds the maximum one \"%d\"", arg_numb, (i - 1));
+}
+
+const char *
+ldv_get_body_sign (ldv_ab_ptr body)
+{
+  const char *body_c = NULL;
+  int body_p;
+  ldv_list_ptr body_patterns = NULL;
+  ldv_ab_aspect_pattern_ptr body_pattern = NULL;
+  ldv_aspect_pattern_ptr pattern = NULL;
+  const char *text = NULL;
+  unsigned int number;
+  const char *sign = NULL;
+  ldv_str_ptr body_sign = NULL;
+
+  /* Walk through a body text to find out body patterns that can affect body signature. */
+  for (body_c = ldv_get_body_text (body), body_p = 0; *body_c; body_c++, body_p++)
+    {
+      /* Evaluate aspect patterns if so was placed at a given point of a body
+         and print corresponding text instead of it. */
+      for (body_patterns = body->patterns
+        ; body_patterns
+        ; body_patterns = ldv_list_get_next (body_patterns))
+        {
+          body_pattern = (ldv_ab_aspect_pattern_ptr) ldv_list_get_data (body_patterns);
+
+          if (body_pattern->place == body_p)
+            {
+              pattern = body_pattern->pattern;
+
+              if (strcmp (pattern->name, "fprintf"))
+                {
+                  ldv_evaluate_aspect_pattern (pattern, &text, &number, &sign);
+                  if (sign)
+                    {
+                      if (body_sign)
+                        /* Separate several pattern signatures by "_". */
+                        ldv_putc_string ('_', body_sign);
+                      else
+                        body_sign = ldv_create_string ();
+
+                      ldv_puts_string (sign, body_sign);
+                      /* Forget about evaluated signature since it is used in
+                         condition above. */
+                      sign = NULL;
+                    }
+                }
+
+              break;
+            }
+        }
+    }
+
+  return body_sign ? ldv_get_str(body_sign) : NULL;
 }
 
 const char *
@@ -992,6 +1032,7 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
   char *body_text = NULL;
   const char *text = NULL;
   unsigned int number;
+  const char *sign = NULL;
   const char *func_call = NULL;
   ldv_text_ptr body_with_patterns = NULL;
   const char *body_c = NULL;
@@ -1047,7 +1088,8 @@ ldv_print_body (ldv_ab_ptr body, ldv_ak a_kind)
                 ldv_process_aspect_pattern_fprintf (pattern->params, ldv_evaluate_aspect_pattern);
               else
                 {
-                  ldv_evaluate_aspect_pattern (pattern, &text, &number);
+                  /* Parameter signatures are of interest here. */
+                  ldv_evaluate_aspect_pattern (pattern, &text, &number, &sign);
                   if (text)
                     {
                       ldv_puts_text (text, body_with_patterns);
@@ -2035,11 +2077,19 @@ ldv_free_func_arg_type_decl_list (void)
   ldv_func_arg_type_decl_list = NULL;
 }
 
+static int
+htab_eq_string (const void *s1, const void *s2)
+{
+  return strcmp ((const char*)s1, (const char*)s2) == 0;
+}
+
 void
 ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 {
   ldv_ak a_kind;
-  char *aspected_name = NULL;
+  char *aux_func_name = NULL;
+  ldv_str_ptr aux_func_name_str = NULL;
+  void **slot = NULL;
   ldv_decl_for_print_ptr aspect_func_decl_for_print_new = NULL
     , func_decl_for_print_new = NULL
     , typedecl_for_print_new = NULL;
@@ -2053,6 +2103,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   ldv_i_var_ptr var = NULL;
   ldv_i_param_ptr param_new = NULL;
   ldv_str_ptr var_param_name = NULL;
+  const char *body_sign = NULL;
 
   /* Check whether something was matched. */
   if (!ldv_i_match)
@@ -2153,10 +2204,34 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     case LDV_I_FUNC:
       func_aspect = ldv_i_match->i_func_aspect;
       func_source = ldv_i_match->i_func;
+      body_sign = ldv_get_body_sign (ldv_i_match->a_definition->a_body);
+      aux_func_name_str = ldv_create_string ();
+      ldv_puts_string (LDV_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
+      ldv_puts_string (ldv_get_id_name (func_aspect->name), aux_func_name_str);
+
+      if (body_sign)
+        ldv_puts_string (body_sign, aux_func_name_str);
+
+      aux_func_name = ldv_copy_str (ldv_get_str (aux_func_name_str));
+      ldv_free_str (aux_func_name_str);
+
+      if (!ldv_aux_func_names)
+        ldv_aux_func_names = htab_create (1, htab_hash_string, htab_eq_string, NULL);
+
+      slot = htab_find_slot (ldv_aux_func_names, aux_func_name, INSERT);
 
       if (ldv_instrumentation ())
         {
-          ldv_func_call = ldv_create_text ();
+          /* Auxiliary function was already created.  */
+          if (*slot)
+            {
+              free (aux_func_name);
+              ldv_free_info_match (ldv_i_match);
+              break;
+            }
+
+          /* Store a new auxiliary function name in hash table. */
+          *slot =  aux_func_name;
 
           if (!ldv_func_defs_for_print)
             ldv_func_defs_for_print = ldv_create_text ();
@@ -2182,8 +2257,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              function declaration and a pointcut function signature. */
           ldv_create_aux_func_params (func_source->type, func_aspect->type);
 
-          aspected_name = ldv_create_aspected_name (ldv_get_id_name (func_aspect->name));
-
           /* Create a function declaration. */
           ldv_text_printed = ldv_create_text ();
 
@@ -2191,7 +2264,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           if (pp_kind == LDV_PP_EXECUTION)
             {
-              func_name = aspected_name;
+              func_name = aux_func_name;
               ldv_aspect_func_name = func_name;
             }
           else if (pp_kind == LDV_PP_CALL)
@@ -2221,7 +2294,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
           else if (pp_kind == LDV_PP_CALL)
             {
-              func_name = aspected_name;
+              func_name = aux_func_name;
               ldv_aspect_func_name = func_name;
             }
 
@@ -2243,7 +2316,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_text_printed = ldv_create_text ();
 
           if (pp_kind == LDV_PP_EXECUTION)
-            func_name = aspected_name;
+            func_name = aux_func_name;
           else if (pp_kind == LDV_PP_CALL)
             func_name = ldv_get_id_name (func_aspect->name);
 
@@ -2263,6 +2336,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           ldv_putc_text (')', ldv_text_printed);
+          ldv_func_call = ldv_create_text ();
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
           ldv_free_text (ldv_text_printed);
 
@@ -2274,7 +2348,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           if (pp_kind == LDV_PP_EXECUTION)
             func_name = ldv_get_id_name (func_aspect->name);
           else if (pp_kind == LDV_PP_CALL)
-            func_name = aspected_name;
+            func_name = aux_func_name;
 
           ldv_puts_text ("\n/* AUX_FUNC  ", ldv_text_printed);
           ldv_puts_text (func_name, ldv_text_printed);
@@ -2297,7 +2371,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_putc_text ('\n', ldv_text_printed);
           ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
 
-          free (aspected_name);
+          free (aux_func_name);
           ldv_free_pps_decl (ldv_func_ret_type_decl);
           ldv_list_delete_all (ldv_func_arg_type_decl_list);
 
@@ -2337,7 +2411,9 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           if (pp_kind == LDV_PP_EXECUTION && ldv_isweaved (ldv_get_id_name (func_aspect->name), false))
             return ;
 
-          ldv_weave_func_source (func_aspect, pp_kind);
+          ldv_weave_func_source (ldv_get_id_name (func_source->name), aux_func_name, pp_kind);
+
+          free (aux_func_name);
         }
 
       ldv_free_info_match (ldv_i_match);
@@ -2389,104 +2465,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     case LDV_I_VAR:
       var = ldv_i_match->i_var;
 
-      if (ldv_instrumentation ())
-        {
-          ldv_func_call = ldv_create_text ();
 
-          if (!ldv_func_defs_for_print)
-            ldv_func_defs_for_print = ldv_create_text ();
-
-          aspect_func_decl_for_print_new = ldv_create_decl_for_print ();
-
-          /* Add information on a location where an aspect function declaration
-             will be placed. */
-          /* Place an aspect function declaration directly before a function
-             definition for local variables and parameters declarations. */
-          if (var->decl_func_context)
-            {
-              aspect_func_decl_for_print_new->file = ldv_decl_beginning_location.file;
-              aspect_func_decl_for_print_new->line = ldv_decl_beginning_location.line;
-              /* Place an aspect function declaration directly before a first
-                 declaration specifier of a function return type. */
-              aspect_func_decl_for_print_new->column = ldv_decl_beginning_location.column - 1;
-            }
-          /* Place an aspect function declaration after a variable declaration
-             for global variables. */
-          else
-            {
-              aspect_func_decl_for_print_new->file = (*open_brace).file;
-              aspect_func_decl_for_print_new->line = (*open_brace).line;
-              aspect_func_decl_for_print_new->column = (*open_brace).column;
-            }
-
-          /* A variable signature has the form: 'variable type + variable name'.
-             An aspect function declaration and a declaration of definition will
-             have the form: 'variable type + aspected variable name + ( +
-             variable type + variable argument name)'.*/
-
-          /* Create aspect function declaration. */
-          func_aspect = ldv_create_info_func ();
-          func_aspect->name = ldv_create_id ();
-          ldv_puts_id (ldv_create_aspected_name (ldv_get_id_name (var->name)), func_aspect->name);
-          ldv_aspect_func_name = ldv_get_id_name (func_aspect->name);
-          func_aspect->type = ldv_create_info_type ();
-          func_aspect->type->it_kind = LDV_IT_FUNC;
-          func_aspect->type->ret_type = var->type;
-          param_new = ldv_create_info_param ();
-          param_new->name = ldv_create_id ();
-          ldv_puts_id (LDV_VAR_ARG_NAME, param_new->name);
-          param_new->type = var->type;
-          ldv_list_push_back (&func_aspect->type->param, param_new);
-
-          ldv_text_printed = ldv_create_text ();
-          ldv_putc_text ('\n', ldv_text_printed);
-          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
-          ldv_print_decl (decl);
-          ldv_free_pps_decl (decl);
-          ldv_puts_text (";\n", ldv_text_printed);
-          ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
-          ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
-
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
-
-          /* Create a function call. */
-          ldv_text_printed = ldv_create_text ();
-          ldv_puts_text (LDV_VAR_ARG_NAME, ldv_text_printed);
-          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
-
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" variable name reference for weaving", LDV_VAR_ARG_NAME);
-
-          /* Create an aspect function definition. */
-          ldv_text_printed = ldv_create_text ();
-          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
-          ldv_print_decl (decl);
-          ldv_free_pps_decl (decl);
-
-          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
-
-          /* Store a function argument name. */
-          var_param_name = ldv_create_string ();
-          ldv_puts_string (LDV_VAR_ARG_NAME, var_param_name);
-          ldv_list_push_back (&ldv_func_param_list, var_param_name);
-
-          /* Store information on a function return type and a function argument
-             type that will be used in a body patterns weaving. */
-          ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (func_aspect->type->ret_type, NULL);
-          ldv_store_func_arg_type_decl_list (func_aspect->type);
-
-          ldv_putc_text ('\n', ldv_text_printed);
-          ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
-          ldv_putc_text ('\n', ldv_text_printed);
-          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
-
-          /* Remove auxiliary entities. */
-          ldv_aspect_func_name = NULL;
-          ldv_func_ret_type_decl = NULL;
-          ldv_func_arg_type_decl_list = NULL;
-          ldv_func_arg_type_name_list = NULL;
-        }
-      else if (ldv_compilation ())
-        ldv_weave_var_source (var, pp_kind);
 
       ldv_free_info_match (ldv_i_match);
 
@@ -2498,68 +2477,44 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 }
 
 void
-ldv_weave_func_source (ldv_i_func_ptr func, ldv_ppk pp_kind)
+ldv_weave_func_source (const char *func_name, const char *aux_func_name, ldv_ppk pp_kind)
 {
-  char *aspected_name = NULL;
   tree id = NULL_TREE;
 
-  /* Obtain a corresponding aspected name for a function. */
-  aspected_name = ldv_create_aspected_name (ldv_get_id_name (func->name));
-
-  /* Obtain a function declaratation with a corresponding name. */
   if (pp_kind == LDV_PP_EXECUTION)
     {
-      /* Change a source function name for an execution join point. */
+      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function definition from \"%s\" to \"%s\" for execution join point", func_name, aux_func_name);
+
       /* Override an existing declaration name since its identifier has constant
          qualifier. */
-    /*  id = DECL_NAME (ldv_func_decl_matched); */
-      DECL_NAME (ldv_func_decl_matched) = get_identifier (aspected_name);
-      /* Release a binding between a name and an entity. */
-    /*  ldv_release_binding (id); */
-
-      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function definition from \"%s\" to \"%s\" for execution join point", ldv_get_id_name (func->name), aspected_name);
+      DECL_NAME (ldv_func_decl_matched) = get_identifier (aux_func_name);
     }
   else if (pp_kind == LDV_PP_CALL)
     {
-      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function call from \"%s\" to \"%s\" for call join point", ldv_get_id_name (func->name), aspected_name);
+      ldv_print_info (LDV_INFO_WEAVE, "change source function name in function call from \"%s\" to \"%s\" for call join point", func_name, aux_func_name);
 
-      /* Get an identifier corresponding to an aspected name - it's an
-         identifier of an aspect function declaration. */
-      id = get_identifier (aspected_name);
-
-      /* Obtain an aspect function declaration through an identifier. */
+      /* Get identifier corresponding to auxiliary function name. */
+      id = get_identifier (aux_func_name);
+      /* Obtain auxiliary function declaration through identifier. */
       ldv_func_called_matched = lookup_name (id);
     }
-
-  free (aspected_name);
-
-  return ;
 }
 
 void
-ldv_weave_var_source (ldv_i_var_ptr var, ldv_ppk pp_kind)
+ldv_weave_var_source (const char *var_name, const char *aux_func_name, ldv_ppk pp_kind)
 {
-  const char *aspected_name = NULL;
   tree id = NULL_TREE;
 
-  /* Obtain a corresponding aspected name for a function. */
-  aspected_name = ldv_create_aspected_name (ldv_get_id_name (var->name));
-
-  /* Obtain a function declaratation with a corresponding name. */
   if (pp_kind == LDV_PP_SET
     || pp_kind == LDV_PP_SET_LOCAL || pp_kind == LDV_PP_SET_GLOBAL
     || pp_kind == LDV_PP_GET
     || pp_kind == LDV_PP_GET_LOCAL || pp_kind == LDV_PP_GET_GLOBAL)
     {
-      ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aspected_name, ldv_get_id_name (var->name));
+      ldv_print_info (LDV_INFO_WEAVE, "insert function call \"%s\" for variable \"%s\" for set or get join point", aux_func_name, var_name);
 
-      /* Get an identifier corresponding to an aspect name - it's an identifier
-         of an aspect function declaration. */
-      id = get_identifier (aspected_name);
-
-      /* Obtain an aspect function declaration through an identifier. */
+      /* Get identifier corresponding to auxiliary function name. */
+      id = get_identifier (aux_func_name);
+      /* Obtain auxiliary function declaration through identifier. */
       ldv_func_called_matched = lookup_name (id);
     }
-
-  return ;
 }

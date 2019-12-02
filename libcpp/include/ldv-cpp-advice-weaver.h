@@ -23,7 +23,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-aspect-types.h"
 
 
-typedef void LDV_EVALUATE_ASPECT_PATTERN_FUNC (ldv_aspect_pattern_ptr, const char **, unsigned int *);
+typedef void LDV_EVALUATE_ASPECT_PATTERN_FUNC (ldv_aspect_pattern_ptr, const char **, unsigned int *, const char **);
 
 struct cpp_reader;
 extern void ldv_cpp_define (struct cpp_reader *);

@@ -81,9 +81,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-opts.h"
 
 
-static unsigned int ldv_unique_numb = 0;
-
-
 ldv_aspect_pattern_ptr
 ldv_create_aspect_pattern (void)
 {
@@ -386,45 +383,6 @@ ldv_get_int (ldv_int_ptr integer)
     return integer->numb;
   else
     internal_error ("integer pointer wasn't initialized");
-}
-
-unsigned int
-ldv_get_unique_numb(void)
-{
-  const char *file_name = NULL;
-  FILE *stream;
-  unsigned int first_unique_numb = 0;
-
-  /* Try to initialize first unique number on the basis of value stored in a
-   * special file or use default value as initializer (0). */
-  if (!ldv_unique_numb
-    && (file_name = getenv ("LDV_UNIQUE_NUMB"))
-    && (stream = ldv_open_file_stream (file_name, "r")))
-    {
-      if (fscanf (stream, "%u", &first_unique_numb) == 1)
-        {
-          ldv_unique_numb = first_unique_numb;
-          fclose (stream);
-        }
-      else
-        internal_error ("can't read unsigned integer from file '%s'", file_name);
-    }
-
-  /* Next unique number is following for the current one. */
-  ldv_unique_numb++;
-
-  /* Try to dump a current unique number to the special file. Do not do this at
-   * the third stage since the fourth stage should use the same set of numbers
-   * as the third one. */
-  if (!ldv_instrumentation ()
-    && (file_name = getenv ("LDV_UNIQUE_NUMB"))
-    && (stream = ldv_open_file_stream (file_name, "w")))
-    {
-      fprintf (stream, "%u", ldv_unique_numb);
-      fclose (stream);
-    }
-
-  return ldv_unique_numb;
 }
 
 unsigned int

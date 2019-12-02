@@ -61,8 +61,6 @@ extern char *ldv_get_file_name (ldv_file_ptr);
 extern char *ldv_get_id_name (ldv_id_ptr);
 extern int ldv_get_int (ldv_int_ptr);
 
-extern unsigned int ldv_get_unique_numb(void);
-
 extern unsigned int ldv_get_current_line_number(const char *);
 
 extern void ldv_putc_body (unsigned char, ldv_ab_ptr);
