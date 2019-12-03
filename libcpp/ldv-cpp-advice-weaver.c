@@ -303,7 +303,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **te
           break;
         }
       }
-      if (!text)
+      if (!*text)
         {
           LDV_CPP_FATAL_ERROR ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", pattern->arg_numb, (i - 1));
         }
@@ -313,7 +313,7 @@ ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **te
   else if (!strcmp (pattern->name, "actual_args"))
     {
       *text = ldv_get_actual_args ();
-      if (!text)
+      if (!*text)
           *text = ldv_copy_str ("NULL");
     }
   else if (!strcmp (pattern->name, "path"))
