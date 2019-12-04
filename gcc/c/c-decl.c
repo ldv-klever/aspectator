@@ -2056,7 +2056,7 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 		     definitions. */
 		  if (ldv ())
 		  {
-		    tree name = DECL_NAME (olddecl);
+		    tree name = DECL_NAME (newdecl);
 		    const char *name_str = NULL;
 
 		    if (name && (name_str = IDENTIFIER_POINTER (name)) && ldv_isweaved (name_str, true))
