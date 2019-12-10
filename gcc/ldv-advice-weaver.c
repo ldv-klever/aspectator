@@ -2204,6 +2204,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     case LDV_I_FUNC:
       func_aspect = ldv_i_match->i_func_aspect;
       func_source = ldv_i_match->i_func;
+
+      /* Create list of function parameter names on the basis of a source
+         function declaration and a pointcut function signature. */
+      ldv_create_aux_func_params (func_source->type, func_aspect->type);
+
       body_sign = ldv_get_body_sign (ldv_i_match->a_definition->a_body);
       aux_func_name_str = ldv_create_string ();
       ldv_puts_string (LDV_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
@@ -2251,10 +2256,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
              end ('}' or ';') use the location directly before it. */
           func_decl_for_print_new->column = (*close_brace).column - 1;
           aspect_func_decl_for_print_new->column = (*close_brace).column - 1;
-
-          /* Create list of function parameter names on the basis of a source
-             function declaration and a pointcut function signature. */
-          ldv_create_aux_func_params (func_source->type, func_aspect->type);
 
           /* Create a function declaration. */
           ldv_text_printed = ldv_create_text ();
