@@ -2464,6 +2464,119 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
     case LDV_I_VAR:
       var = ldv_i_match->i_var;
 
+      /* Store a function argument name. */
+      var_param_name = ldv_create_string ();
+      ldv_puts_string (LDV_VAR_ARG_NAME, var_param_name);
+      ldv_list_push_back (&ldv_func_param_list, var_param_name);
+
+      body_sign = ldv_get_body_sign (ldv_i_match->a_definition->a_body);
+      aux_func_name_str = ldv_create_string ();
+      ldv_puts_string (LDV_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
+      ldv_puts_string (pp_kind == LDV_PP_SET ||
+                       pp_kind == LDV_PP_SET_LOCAL ||
+                       pp_kind == LDV_PP_SET_GLOBAL ? "set_" : "get_", aux_func_name_str);
+      ldv_puts_string (ldv_get_id_name (var->name), aux_func_name_str);
+
+      if (body_sign)
+        ldv_puts_string (body_sign, aux_func_name_str);
+
+      aux_func_name = ldv_copy_str (ldv_get_str (aux_func_name_str));
+      ldv_free_str (aux_func_name_str);
+
+      if (ldv_instrumentation ())
+        {
+          ldv_func_call = ldv_create_text ();
+
+          if (!ldv_func_defs_for_print)
+            ldv_func_defs_for_print = ldv_create_text ();
+
+          aspect_func_decl_for_print_new = ldv_create_decl_for_print ();
+
+          /* Add information on a location where an aspect function declaration
+             will be placed. */
+          /* Place an aspect function declaration directly before a function
+             definition for local variables and parameters declarations. */
+          if (var->decl_func_context)
+            {
+              aspect_func_decl_for_print_new->file = ldv_decl_beginning_location.file;
+              aspect_func_decl_for_print_new->line = ldv_decl_beginning_location.line;
+              /* Place an aspect function declaration directly before a first
+                 declaration specifier of a function return type. */
+              aspect_func_decl_for_print_new->column = ldv_decl_beginning_location.column - 1;
+            }
+          /* Place an aspect function declaration after a variable declaration
+             for global variables. */
+          else
+            {
+              aspect_func_decl_for_print_new->file = (*open_brace).file;
+              aspect_func_decl_for_print_new->line = (*open_brace).line;
+              aspect_func_decl_for_print_new->column = (*open_brace).column;
+            }
+
+          /* A variable signature has the form: 'variable type + variable name'.
+             An aspect function declaration and a declaration of definition will
+             have the form: 'variable type + aspected variable name + ( +
+             variable type + variable argument name)'.*/
+
+          /* Create aspect function declaration. */
+          func_aspect = ldv_create_info_func ();
+          func_aspect->name = ldv_create_id ();
+          ldv_puts_id (aux_func_name, func_aspect->name);
+          ldv_aspect_func_name = aux_func_name;
+          func_aspect->type = ldv_create_info_type ();
+          func_aspect->type->it_kind = LDV_IT_FUNC;
+          func_aspect->type->ret_type = var->type;
+          param_new = ldv_create_info_param ();
+          param_new->name = ldv_create_id ();
+          ldv_puts_id (LDV_VAR_ARG_NAME, param_new->name);
+          param_new->type = var->type;
+          ldv_list_push_back (&func_aspect->type->param, param_new);
+
+          ldv_text_printed = ldv_create_text ();
+          ldv_putc_text ('\n', ldv_text_printed);
+          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
+          ldv_print_decl (decl);
+          ldv_free_pps_decl (decl);
+          ldv_puts_text (";\n", ldv_text_printed);
+          ldv_puts_text (ldv_get_text (ldv_text_printed), aspect_func_decl_for_print_new->decl);
+          ldv_list_push_back (&ldv_decl_for_print_list, aspect_func_decl_for_print_new);
+
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
+
+          /* Create a function call. */
+          ldv_text_printed = ldv_create_text ();
+          ldv_puts_text (LDV_VAR_ARG_NAME, ldv_text_printed);
+          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_call);
+
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" variable name reference for weaving", LDV_VAR_ARG_NAME);
+
+          /* Create an aspect function definition. */
+          ldv_text_printed = ldv_create_text ();
+          decl = ldv_convert_internal_to_declaration (func_aspect->type, ldv_get_id_name (func_aspect->name));
+          ldv_print_decl (decl);
+          ldv_free_pps_decl (decl);
+
+          ldv_print_info (LDV_INFO_WEAVE, "create \"%s\" aspect function declaration for \"%s\" variable weaving", ldv_get_id_name (func_aspect->name), ldv_get_id_name (var->name));
+
+          /* Store information on a function return type and a function argument
+             type that will be used in a body patterns weaving. */
+          ldv_func_ret_type_decl = ldv_convert_internal_to_declaration (func_aspect->type->ret_type, NULL);
+          ldv_store_func_arg_type_decl_list (func_aspect->type);
+
+          ldv_putc_text ('\n', ldv_text_printed);
+          ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
+          ldv_putc_text ('\n', ldv_text_printed);
+          ldv_puts_text (ldv_get_text (ldv_text_printed), ldv_func_defs_for_print);
+
+          /* Remove auxiliary entities. */
+          ldv_aspect_func_name = NULL;
+          ldv_func_ret_type_decl = NULL;
+          ldv_func_arg_type_decl_list = NULL;
+          ldv_func_arg_type_name_list = NULL;
+        }
+      else if (ldv_compilation ())
+        ldv_weave_var_source (ldv_get_id_name (var->name), aux_func_name, pp_kind);
+
       ldv_free_info_match (ldv_i_match);
 
       break;
