@@ -86,7 +86,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pointcut-matcher.h"
 
 
-#define LDV_AUX_FUNC_NAME_PREFIX    "ldv"
+#define LDV_AUX_FUNC_NAME_PREFIX    "ldv_"
 #define LDV_FUNC_ARG_NAME           "ldv_func_arg"
 #define LDV_FUNC_ARG_TYPE           "ldv_func_arg_type"
 #define LDV_FUNC_RET_TYPE           "ldv_func_ret_type"
@@ -2350,7 +2350,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           else if (pp_kind == LDV_PP_CALL)
             func_name = aux_func_name;
 
-          ldv_puts_text ("\n/* AUX_FUNC  ", ldv_text_printed);
+          ldv_puts_text ("\n/* LDV_AUX_FUNC ", ldv_text_printed);
           ldv_puts_text (func_name, ldv_text_printed);
           ldv_puts_text (" */\n", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
