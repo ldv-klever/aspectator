@@ -773,7 +773,7 @@ ldv_get_body_sign (ldv_ab_ptr body)
   for (body_c = ldv_get_body_text (body), body_p = 0; *body_c; body_c++, body_p++)
     {
       /* Evaluate aspect patterns if so was placed at a given point of a body
-         and print corresponding text instead of it. */
+         and remember corresponding signatures if so. */
       for (body_patterns = body->patterns
         ; body_patterns
         ; body_patterns = ldv_list_get_next (body_patterns))
@@ -2215,15 +2215,13 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       aux_func_name = ldv_copy_str (ldv_get_str (aux_func_name_str));
       ldv_free_str (aux_func_name_str);
 
-      if (!ldv_aux_func_names)
-        ldv_aux_func_names = htab_create (1, htab_hash_string, htab_eq_string, NULL);
-
-      slot = htab_find_slot (ldv_aux_func_names, aux_func_name, INSERT);
-
       if (ldv_instrumentation ())
         {
-          /* Auxiliary function was already created.  */
-          if (*slot)
+          if (!ldv_aux_func_names)
+            ldv_aux_func_names = htab_create (10, htab_hash_string, htab_eq_string, NULL);
+
+          /* Auxiliary function was already created. */
+          if (htab_find_with_hash (ldv_aux_func_names, aux_func_name, htab_hash_string (aux_func_name)))
             {
               free (aux_func_name);
               ldv_free_info_match (ldv_i_match);
@@ -2231,7 +2229,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             }
 
           /* Store a new auxiliary function name in hash table. */
-          *slot =  aux_func_name;
+          slot = htab_find_slot_with_hash (ldv_aux_func_names, aux_func_name, htab_hash_string (aux_func_name), INSERT);
+          *slot = ldv_copy_str (aux_func_name);
 
           if (!ldv_func_defs_for_print)
             ldv_func_defs_for_print = ldv_create_text ();
@@ -2464,8 +2463,6 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
     case LDV_I_VAR:
       var = ldv_i_match->i_var;
-
-
 
       ldv_free_info_match (ldv_i_match);
 
