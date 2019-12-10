@@ -86,7 +86,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pointcut-matcher.h"
 
 
-#define LDV_AUX_FUNC_NAME_PREFIX    "ldv_"
+#define CIF_AUX_FUNC_NAME_PREFIX    "cif_"
 #define LDV_FUNC_ARG_NAME           "ldv_func_arg"
 #define LDV_FUNC_ARG_TYPE           "ldv_func_arg_type"
 #define LDV_FUNC_RET_TYPE           "ldv_func_ret_type"
@@ -2211,7 +2211,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       body_sign = ldv_get_body_sign (ldv_i_match->a_definition->a_body);
       aux_func_name_str = ldv_create_string ();
-      ldv_puts_string (LDV_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
+      ldv_puts_string (CIF_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
       ldv_puts_string (ldv_get_id_name (func_aspect->name), aux_func_name_str);
 
       if (body_sign)
@@ -2472,7 +2472,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       body_sign = ldv_get_body_sign (ldv_i_match->a_definition->a_body);
       aux_func_name_str = ldv_create_string ();
-      ldv_puts_string (LDV_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
+      ldv_puts_string (CIF_AUX_FUNC_NAME_PREFIX, aux_func_name_str);
       ldv_puts_string (pp_kind == LDV_PP_SET ||
                        pp_kind == LDV_PP_SET_LOCAL ||
                        pp_kind == LDV_PP_SET_GLOBAL ? "set_" : "get_", aux_func_name_str);
