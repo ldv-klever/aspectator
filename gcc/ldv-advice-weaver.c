@@ -2215,7 +2215,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_puts_string (ldv_get_id_name (func_aspect->name), aux_func_name_str);
 
       if (body_sign)
-        ldv_puts_string (body_sign, aux_func_name_str);
+        {
+          ldv_putc_string ('_', aux_func_name_str);
+          ldv_puts_string (body_sign, aux_func_name_str);
+        }
 
       aux_func_name = ldv_copy_str (ldv_get_str (aux_func_name_str));
       ldv_free_str (aux_func_name_str);
@@ -2479,7 +2482,10 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_puts_string (ldv_get_id_name (var->name), aux_func_name_str);
 
       if (body_sign)
-        ldv_puts_string (body_sign, aux_func_name_str);
+        {
+          ldv_putc_string ('_', aux_func_name_str);
+          ldv_puts_string (body_sign, aux_func_name_str);
+        }
 
       aux_func_name = ldv_copy_str (ldv_get_str (aux_func_name_str));
       ldv_free_str (aux_func_name_str);
