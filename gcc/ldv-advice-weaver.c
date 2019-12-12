@@ -2353,9 +2353,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           else if (pp_kind == LDV_PP_CALL)
             func_name = aux_func_name;
 
-          ldv_puts_text ("\n/* LDV_AUX_FUNC ", ldv_text_printed);
-          ldv_puts_text (func_name, ldv_text_printed);
-          ldv_puts_text (" */\n", ldv_text_printed);
+          ldv_puts_text ("\n/* CIF_AUX_FUNC */\n", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
           if (pp_kind == LDV_PP_EXECUTION)
             decl->pps_declspecs->isstatic = true;
