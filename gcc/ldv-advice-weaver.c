@@ -2355,7 +2355,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
           ldv_puts_text ("\n/* CIF_AUX_FUNC */\n", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
-          if (pp_kind == LDV_PP_EXECUTION)
+          if (pp_kind == LDV_PP_CALL)
             decl->pps_declspecs->isstatic = true;
           ldv_print_decl (decl);
           ldv_free_pps_decl (decl);
