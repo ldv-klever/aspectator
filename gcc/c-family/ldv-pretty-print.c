@@ -911,10 +911,6 @@ ldv_print_aux_init (void)
          warnings. */
       ldv_c_backend_print (0, false, "typedef struct __va_list_tag __va_list_tag;\n");
 
-      /* Print function declaration for inline Assembler stubs. */
-      if (ldv_inline_asm_stub)
-        ldv_c_backend_print (0, false, "void ldv_inline_asm(void);\n");
-
       once = true;
     }
 }
