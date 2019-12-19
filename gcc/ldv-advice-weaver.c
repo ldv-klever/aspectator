@@ -296,7 +296,7 @@ ldv_create_aux_func_params (ldv_i_type_ptr src_func_type, ldv_i_type_ptr aspect_
 
         ldv_func_va_init = ldv_create_text ();
 
-        ldv_puts_text ("\n  char * ", ldv_func_va_init);
+        ldv_puts_text ("\n  __builtin_va_list ", ldv_func_va_init);
         ldv_puts_text (param_name, ldv_func_va_init);
         ldv_puts_text (";\n  __builtin_va_start (", ldv_func_va_init);
         ldv_puts_text (param_name, ldv_func_va_init);
@@ -2353,9 +2353,11 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           else if (pp_kind == LDV_PP_CALL)
             func_name = aux_func_name;
 
-          ldv_puts_text ("\n/* CIF Instrumented function \"", ldv_text_printed);
+          ldv_puts_text ("\n/* CIF Original function \"", ldv_text_printed);
           ldv_puts_text (ldv_get_id_name (func_aspect->name), ldv_text_printed);
-          ldv_puts_text ("\" */\n", ldv_text_printed);
+          ldv_puts_text ("\". Instrumenting function \"", ldv_text_printed);
+	  ldv_puts_text (func_name, ldv_text_printed);
+	  ldv_puts_text ("\". */\n", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
           if (pp_kind == LDV_PP_CALL)
             decl->pps_declspecs->isstatic = true;

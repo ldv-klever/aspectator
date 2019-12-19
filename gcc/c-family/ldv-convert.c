@@ -1064,7 +1064,7 @@ static ldv_cast_expr_ptr
 ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
 {
   ldv_cast_expr_ptr cast_expr;
-  tree type, op1;
+  tree type, pointer_type, op1;
 
   cast_expr = XCNEW (struct ldv_cast_expr);
 
@@ -1099,6 +1099,30 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
             }
           else
             LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
+
+          /* Avoid casts to internal GCC structure __va_list_tag. */
+          if (TREE_CODE (type) == POINTER_TYPE)
+            {
+              pointer_type = TREE_TYPE (type);
+              if (TREE_CODE (pointer_type) == RECORD_TYPE && TYPE_NAME (pointer_type) && DECL_P (TYPE_NAME (pointer_type)))
+                {
+                  if (!strcmp (LDV_IDENTIFIER_STR (ldv_convert_identifier (TYPE_NAME (pointer_type))), "__va_list_tag"))
+                    {
+                      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+                      if ((op1 = LDV_OP_FIRST (t)))
+                        {
+                          if ((op1 = LDV_OP_FIRST (op1)))
+                            LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
+                          else
+                            LDV_ERROR ("can't find the first operand of expression");
+
+                          break;
+                        }
+                      else
+                        LDV_ERROR ("can't find the first operand of cast expression");
+                    }
+                }
+            }
 
           if ((op1 = LDV_OP_FIRST (t)))
             LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
@@ -3928,6 +3952,9 @@ static ldv_param_decl_ptr
 ldv_convert_param_decl (tree t)
 {
   ldv_param_decl_ptr param_decl;
+  ldv_decl_spec_ptr decl_spec;
+  ldv_type_spec_ptr type_spec;
+  ldv_typedef_name_ptr typedef_name;
   tree param_type;
 
   param_decl = XCNEW (struct ldv_param_decl);
@@ -3946,7 +3973,20 @@ ldv_convert_param_decl (tree t)
           break;
         }
 
-      LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (param_type, false);
+      decl_spec = LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (param_type, false);
+      type_spec = LDV_DECL_SPEC_TYPE_SPEC (decl_spec);
+
+      /* Avoid pointers to GCC internal structure __va_list_tag - replace them with va_list. */
+      if (type_spec && LDV_TYPE_SPEC_KIND (type_spec) == LDV_TYPE_SPEC_THIRD)
+        {
+          typedef_name = LDV_TYPE_SPEC_TYPEDEF_NAME (type_spec);
+          if (typedef_name && !strcmp (LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)), "__va_list_tag"))
+            {
+              LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("va_list");
+              break;
+            }
+        }
+
       LDV_PARAM_DECL_ABSTRACT_DECLARATOR (param_decl) = ldv_convert_abstract_declarator_internal (param_type);
 
       break;

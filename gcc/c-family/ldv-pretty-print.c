@@ -907,10 +907,6 @@ ldv_print_aux_init (void)
       ldv_c_backend_print (0, false, "#define LDV_LROTATE(X,Y) (((X) << (Y)) | ((X) >> (__CHAR_BIT__ * sizeof (X) - Y)))\n");
       ldv_c_backend_print (0, false, "#define LDV_RROTATE(X,Y) (((X) >> (Y)) | ((X) << (__CHAR_BIT__ * sizeof (X) - Y)))\n");
 
-      /* Print special typedef for __va_list_tag to prevent compile errors and
-         warnings. */
-      ldv_c_backend_print (0, false, "typedef struct __va_list_tag __va_list_tag;\n");
-
       once = true;
     }
 }
