@@ -1079,33 +1079,27 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
         {
           LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
 
-          if ((type = TREE_TYPE (t)))
+          /* It was noticed that on x86 (32 bit) architecture there is a "problem"
+             with __builtin_va_start and similar functions because of their
+             parameters have reference type. Thus in their calls casting to
+             reference type is performed. But we wouldn't like to introduce
+             references in C so just ignore this casting at all.
+             In addition we wouldn't like to introduce casts for bitfields since
+             artificial types that haven't names are used for them. */
+          if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
             {
-              /* It was noticed that on x86 (32 bit) architecture there is a "problem"
-                with __builtin_va_start and similar functions because of their
-                parameters have reference type. Thus in their calls casting to
-                reference type is performed. But we wouldn't like to introduce
-                references in C so just ignore this casting at all.
-                In addition we wouldn't like to introduce casts for bitfields since
-                artificial types that haven't names are used for them. */
-              if (TREE_CODE (type) == REFERENCE_TYPE || (TREE_CODE (type) == INTEGER_TYPE && !(TYPE_NAME (type))))
-                {
-                  LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+              LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
 
-                  if ((op1 = LDV_OP_FIRST (t)))
-                    LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
-                  else
-                    LDV_ERROR ("can't find the first operand of cast expression");
-
-                  break;
-                }
+              if ((op1 = LDV_OP_FIRST (t)))
+                LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (op1, recursion_limit);
               else
-                LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
+                LDV_ERROR ("can't find the first operand of cast expression");
+
+              break;
             }
           else
-            LDV_ERROR ("can't find type name of cast expression");
+            LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
 
-          /* TODO: This code is now unreachangle when type != TREE_TYPE (t). Fix it*/
           if ((op1 = LDV_OP_FIRST (t)))
             LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
           else
