@@ -2251,7 +2251,7 @@ func_mode_install ()
 	  # are installed into $libdir/../bin (currently, that works fine)
 	  # but it's something to keep an eye on.
 	  test "$inst_prefix_dir" = "$destdir" && \
-	    func_fatal_error "error: cannot install \`$file' to a directory not ending in $libdir"
+	    func_warning "error: cannot install \`$file' to a directory not ending in $libdir"
 
 	  if test -n "$inst_prefix_dir"; then
 	    # Stick the inst_prefix_dir data into the link command.
