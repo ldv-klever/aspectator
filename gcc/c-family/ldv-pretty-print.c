@@ -3486,7 +3486,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
       else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
         ldv_c_backend_print (indent_level, true, ">>");
 
-      ldv_c_backend_print (indent_level, true, "(__CHAR_BIT__ * sizeof(");
+      ldv_c_backend_print (indent_level, true, "(8 * sizeof(");
 
       if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
         ldv_print_shift_expr (indent_level, shift_expr_next);
