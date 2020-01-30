@@ -83,7 +83,6 @@ static void ldv_print_asm_statement (unsigned int, ldv_asm_statement_ptr);
 static void ldv_print_asm_str_literal (unsigned int, ldv_asm_str_literal_ptr);
 static void ldv_print_assignment_expr (unsigned int, ldv_assignment_expr_ptr);
 static void ldv_print_assignment_operator (unsigned int, ldv_assignment_operator_ptr);
-static void ldv_print_aux_init (void);
 static void ldv_print_block_item (unsigned int, ldv_block_item_ptr);
 static void ldv_print_block_item_list (unsigned int, ldv_block_item_list_ptr);
 static void ldv_print_cast_expr (unsigned int, ldv_cast_expr_ptr);
@@ -886,31 +885,6 @@ ldv_print_assignment_operator (unsigned int indent_level, ldv_assignment_operato
   LDV_XDELETE_ON_PRINTING (assignment_operator);
 }
 
-static void
-ldv_print_aux_init (void)
-{
-  static bool once = false;
-
-  /* Print some auxiliary entities at the beginning of the generated file. */
-  if (!once)
-    {
-      /* Print LDV_MIN and LDV_MAX macros required to expand MIN_EXPR and
-         MAX_EXPR correspondingly. */
-      ldv_c_backend_print (0, false, "#define LDV_MIN(X,Y) ((X) < (Y) ? (X) : (Y))\n");
-      ldv_c_backend_print (0, false, "#define LDV_MAX(X,Y) ((X) > (Y) ? (X) : (Y))\n");
-
-      /* Print LDV_ABS macro required to expand ABS_EXPR. */
-      ldv_c_backend_print (0, false, "#define LDV_ABS(X) ((X) < 0 ? -(X) : (X))\n");
-
-      /* Print LDV_LROTATE and LDV_RROTATE macros required to expand
-         LROTATE_EXPR and RROTATE_EXPR correspondingly. */
-      ldv_c_backend_print (0, false, "#define LDV_LROTATE(X,Y) (((X) << (Y)) | ((X) >> (__CHAR_BIT__ * sizeof (X) - Y)))\n");
-      ldv_c_backend_print (0, false, "#define LDV_RROTATE(X,Y) (((X) >> (Y)) | ((X) << (__CHAR_BIT__ * sizeof (X) - Y)))\n");
-
-      once = true;
-    }
-}
-
 /*
 block-item:
     declaration
@@ -1111,54 +1085,132 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
 
     case LDV_COND_EXPR_SECOND:
     case LDV_COND_EXPR_THIRD:
-    case LDV_COND_EXPR_FOURTH:
-    case LDV_COND_EXPR_FIFTH:
-    case LDV_COND_EXPR_SIXTH:
-      if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FOURTH)
-        ldv_c_backend_print (indent_level, true, "LDV_MIN (");
-      else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FIFTH)
-        ldv_c_backend_print (indent_level, true, "LDV_MAX (");
-      else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_SIXTH)
-        ldv_c_backend_print (indent_level, true, "LDV_ABS (");
+      if ((logical_or_expr = LDV_COND_EXPR_LOGICAL_OR_EXPR (cond_expr)))
+        ldv_print_logical_or_expr (indent_level, logical_or_expr);
       else
-        {
-          if ((logical_or_expr = LDV_COND_EXPR_LOGICAL_OR_EXPR (cond_expr)))
-            ldv_print_logical_or_expr (indent_level, logical_or_expr);
-          else
-            LDV_PRETTY_PRINT_ERROR (indent_level, "logical or expression of conditional expression was not printed");
+        LDV_PRETTY_PRINT_ERROR (indent_level, "logical or expression of conditional expression was not printed");
 
-          ldv_c_backend_print (indent_level, true, "?");
-        }
-
-      if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_SIXTH && (location = LDV_COND_EXPR_LOCATION (cond_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+      ldv_c_backend_print (indent_level, true, "?");
 
       if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         ldv_print_expr (indent_level, expr);
       else if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_THIRD)
         LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
 
-      if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_SIXTH && (location = LDV_COND_EXPR_LOCATION (cond_expr)))
+      if ((location = LDV_COND_EXPR_LOCATION (cond_expr)))
         ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
-      if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_SECOND
-        || LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_THIRD)
-        ldv_c_backend_print (indent_level, true, ":");
-      else if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FOURTH
-        || LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FIFTH)
-        ldv_c_backend_print (indent_level, true, ",");
+      ldv_c_backend_print (indent_level, true, ":");
 
-      if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_SIXTH)
+      if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
+        ldv_print_cond_expr (indent_level, cond_expr_next);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "conditional expression of conditional expression was not printed");
+
+      break;
+
+    case LDV_COND_EXPR_FOURTH:
+    case LDV_COND_EXPR_FIFTH:
+      ldv_c_backend_print (indent_level, true, "(");
+
+      /* Do not free memory for expressions since they are reused below. */
+      ldv_free_on_printing = false;
+
+      if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         {
-          if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
-            ldv_print_cond_expr (indent_level, cond_expr_next);
-          else
-            LDV_PRETTY_PRINT_ERROR (indent_level, "conditional expression of conditional expression was not printed");
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_expr (indent_level, expr);
+          ldv_c_backend_print (indent_level, true, ")");
         }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
 
-      if (LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_SECOND
-        && LDV_COND_EXPR_KIND (cond_expr) != LDV_COND_EXPR_THIRD)
-        ldv_c_backend_print (indent_level, true, ")");
+      if (LDV_COND_EXPR_KIND (cond_expr) == LDV_COND_EXPR_FOURTH)
+        ldv_c_backend_print (indent_level, true, "<");
+      else
+        ldv_c_backend_print (indent_level, true, ">");
+
+      if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_cond_expr (indent_level, cond_expr_next);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "conditional expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, "?");
+
+      ldv_free_on_printing = true;
+
+      if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_expr (indent_level, expr);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ":");
+
+      if ((cond_expr_next = LDV_COND_EXPR_COND_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_cond_expr (indent_level, cond_expr_next);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "conditional expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      break;
+
+    case LDV_COND_EXPR_SIXTH:
+      if ((location = LDV_COND_EXPR_LOCATION (cond_expr)))
+        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+
+      ldv_c_backend_print (indent_level, true, "(");
+
+      /* Do not free memory for expressions since they are reused below. */
+      ldv_free_on_printing = false;
+
+      if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_expr (indent_level, expr);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, "< 0 ?");
+
+      if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "-(");
+          ldv_print_expr (indent_level, expr);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ":");
+
+      ldv_free_on_printing = true;
+
+      if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_expr (indent_level, expr);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
       break;
 
     default:
@@ -3360,13 +3412,6 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
 
     case LDV_SHIFT_EXPR_SECOND:
     case LDV_SHIFT_EXPR_THIRD:
-    case LDV_SHIFT_EXPR_FOURTH:
-    case LDV_SHIFT_EXPR_FIFTH:
-      if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH)
-        ldv_c_backend_print (indent_level, true, "LDV_LROTATE (");
-      else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
-        ldv_c_backend_print (indent_level, true, "LDV_RROTATE (");
-
       if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
         ldv_print_shift_expr (indent_level, shift_expr_next);
       else
@@ -3379,17 +3424,89 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
         ldv_c_backend_print (indent_level, true, "<<");
       else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_THIRD)
         ldv_c_backend_print (indent_level, true, ">>");
-      else
-        ldv_c_backend_print (indent_level, true, ",");
 
       if ((additive_expr = LDV_SHIFT_EXPR_ADDITIVE_EXPR (shift_expr)))
         ldv_print_additive_expr (indent_level, additive_expr);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "additive expression of shift expression was not printed");
 
-      if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH
-        || LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
-        ldv_c_backend_print (indent_level, true, ")");
+      break;
+
+    case LDV_SHIFT_EXPR_FOURTH:
+    case LDV_SHIFT_EXPR_FIFTH:
+      ldv_c_backend_print (indent_level, true, "(");
+
+      ldv_c_backend_print (indent_level, true, "(");
+
+      /* Do not free memory for expressions since they are reused below. */
+      ldv_free_on_printing = false;
+
+      if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_shift_expr (indent_level, shift_expr_next);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "shift expression of shift expression was not printed");
+
+      if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH)
+        ldv_c_backend_print (indent_level, true, "<<");
+      else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
+        ldv_c_backend_print (indent_level, true, ">>");
+
+      if ((additive_expr = LDV_SHIFT_EXPR_ADDITIVE_EXPR (shift_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_additive_expr (indent_level, additive_expr);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "additive expression of shift expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      ldv_c_backend_print (indent_level, true, "|");
+
+      ldv_c_backend_print (indent_level, true, "(");
+
+      if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
+        {
+          ldv_c_backend_print (indent_level, true, "(");
+          ldv_print_shift_expr (indent_level, shift_expr_next);
+          ldv_c_backend_print (indent_level, true, ")");
+        }
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "shift expression of shift expression was not printed");
+
+      ldv_free_on_printing = true;
+
+      if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH)
+        ldv_c_backend_print (indent_level, true, "<<");
+      else if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FIFTH)
+        ldv_c_backend_print (indent_level, true, ">>");
+
+      ldv_c_backend_print (indent_level, true, "(__CHAR_BIT__ * sizeof(");
+
+      if ((shift_expr_next = LDV_SHIFT_EXPR_SHIFT_EXPR (shift_expr)))
+        ldv_print_shift_expr (indent_level, shift_expr_next);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "shift expression of shift expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ") - (");
+
+      if ((additive_expr = LDV_SHIFT_EXPR_ADDITIVE_EXPR (shift_expr)))
+        ldv_print_additive_expr (indent_level, additive_expr);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "additive expression of shift expression was not printed");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      ldv_c_backend_print (indent_level, true, ")");
+
+      ldv_c_backend_print (indent_level, true, ")");
 
       break;
 
@@ -3939,9 +4056,6 @@ ldv_print_translation_unit (tree t, bool isdecl)
 {
   ldv_translation_unit_ptr translation_unit;
   ldv_ext_decl_ptr ext_decl;
-
-  /* At the beginning of the whole file print auxiliary initialization. */
-  ldv_print_aux_init ();
 
   /* To prevent redefinition of global variables print them just one time. In
      fact this causes problem when we have something like this in source code:
