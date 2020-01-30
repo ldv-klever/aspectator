@@ -3593,7 +3593,7 @@ ldv_convert_location (tree t)
   if (DECL_P (t))
     {
       if ((file = DECL_SOURCE_FILE (t)))
-        LDV_LOCATION_FILE (location) = file;
+        LDV_LOCATION_FILE (location) = ldv_get_realpath (file);
       else
         LDV_ERROR ("can't find location file for declaration");
 
@@ -3612,7 +3612,7 @@ ldv_convert_location (tree t)
         }
 
       if ((file = EXPR_FILENAME (t)))
-        LDV_LOCATION_FILE (location) = file;
+        LDV_LOCATION_FILE (location) = ldv_get_realpath (file);
       else
         LDV_ERROR ("can't find location file for expression");
 
