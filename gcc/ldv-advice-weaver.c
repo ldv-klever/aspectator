@@ -2233,6 +2233,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
             {
               free (aux_func_name);
               ldv_free_info_match (ldv_i_match);
+              ldv_func_va_init = NULL;
               break;
             }
 
