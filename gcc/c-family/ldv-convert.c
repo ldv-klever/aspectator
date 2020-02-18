@@ -1075,7 +1075,11 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
     case FLOAT_EXPR:
     case FIX_TRUNC_EXPR:
     case VIEW_CONVERT_EXPR:
-      if ((type = TREE_TYPE (t)) && (!TYPE_NAME (type) || DECL_P (TYPE_NAME (type)) || TREE_CODE (type) != INTEGER_TYPE))
+      if ((type = TREE_TYPE (t)) &&
+          /* Do not consider casts to anonymous structures. */
+          ((!TYPE_NAME (type) && TREE_CODE (type) != RECORD_TYPE) ||
+          /* Do not consider casts to integer types. */
+          (TYPE_NAME (type) && (DECL_P (TYPE_NAME (type)) || TREE_CODE (type) != INTEGER_TYPE))))
         {
           LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
 
