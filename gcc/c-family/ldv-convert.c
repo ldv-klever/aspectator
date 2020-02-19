@@ -1483,6 +1483,10 @@ ldv_convert_compound_statement (tree t)
 
   switch (TREE_CODE (t))
     {
+    case ASM_EXPR:
+      LDV_COMPOUND_STATEMENT_BLOCK_ITEM_LIST (compound_statement) = ldv_convert_block_item_list (t);
+      break;
+
     case BIND_EXPR:
       for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
         {
@@ -4435,6 +4439,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
 
       break;
 
+    case ASM_EXPR:
     case BIND_EXPR:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FIFTH;
       LDV_PRIMARY_EXPR_COMPOUND_STATEMENT (primary_expr) = ldv_convert_compound_statement (t);
