@@ -436,6 +436,7 @@ typedef struct ldv_info_func_internal
   unsigned int use_line;
   struct ldv_info_func_internal *func_context;
   char *decl;
+  bool isgnu_inline;
 } ldv_info_func;
 typedef ldv_info_func *ldv_i_func_ptr;
 

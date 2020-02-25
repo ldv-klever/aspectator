@@ -2277,6 +2277,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
               ldv_func_name = func_name;
             }
 
+          if (func_source->isgnu_inline)
+            ldv_puts_text ("__attribute__((gnu_inline)) ", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
           ldv_print_decl (decl);
           ldv_free_pps_decl (decl);
@@ -2302,6 +2304,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
               ldv_aspect_func_name = func_name;
             }
 
+          if (func_source->isgnu_inline)
+            ldv_puts_text ("__attribute__((gnu_inline)) ", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
           /* Make auxiliary functions static to avoid duplicates
            * (http://forge.ispras.ru/issues/7100). */
@@ -2359,6 +2363,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text ("\". Instrumenting function \"", ldv_text_printed);
 	  ldv_puts_text (func_name, ldv_text_printed);
 	  ldv_puts_text ("\". */\n", ldv_text_printed);
+          if (func_source->isgnu_inline)
+            ldv_puts_text ("__attribute__((gnu_inline)) ", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
           if (pp_kind == LDV_PP_CALL)
             decl->pps_declspecs->isstatic = true;

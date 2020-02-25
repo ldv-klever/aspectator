@@ -899,6 +899,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
   const char *func_decl_printed;
   htab_t called_func_names = NULL;
   bool isfunc_ptr = false;
+  tree attrs;
 
   /* TODO: Even if there is no advice definitions at all we should proceed since
      callers of this function expect that information on a given function will
@@ -990,6 +991,11 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
 
   if (TREE_CODE (t) == FUNCTION_DECL)
     func->decl = ldv_convert_and_print_decl (t);
+
+  if ((attrs = DECL_ATTRIBUTES(t)))
+    for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
+      if (!strcmp (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "gnu_inline"))
+        func->isgnu_inline = true;
 
   /* Walk through an advice definitions list to find matches. */
   for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
