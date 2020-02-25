@@ -281,7 +281,7 @@ ldv_cpp_undef (struct cpp_reader *pfile)
 }
 
 void
-ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number, const char **sign)
+ldv_cpp_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, unsigned int *number, __attribute__((unused)) const char **sign)
 {
   char *arg_value = NULL;
   ldv_list_ptr arg_value_list = NULL;
