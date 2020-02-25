@@ -994,7 +994,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
 
   if ((attrs = DECL_ATTRIBUTES(t)))
     for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
-      if (!strcmp (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "gnu_inline"))
+      if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "gnu_inline"))
         func->isgnu_inline = true;
 
   /* Walk through an advice definitions list to find matches. */
