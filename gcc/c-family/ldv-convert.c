@@ -5207,7 +5207,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
   ldv_type_spec_ptr type_spec;
   ldv_struct_or_union_spec_ptr struct_or_union_spec;
   ldv_struct_decl_list_ptr fields_list;
-  tree struct_or_union_name, struct_or_union_fields;
+  tree struct_or_union_name, struct_or_union_fields, attrs;
   const char *struct_or_union_name_str;
 
   decl_spec = XCNEW (struct ldv_decl_spec);
@@ -5238,6 +5238,11 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
 
               if ((fields_list = ldv_convert_struct_decl_list (struct_or_union_fields)))
                 LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST (struct_or_union_spec) = fields_list;
+
+              if ((attrs = TYPE_ATTRIBUTES(t)))
+                for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
+                  if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "packed"))
+                    LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec) = true;
             }
           else
             LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) = LDV_STRUCT_OR_UNION_SPEC_THIRD;

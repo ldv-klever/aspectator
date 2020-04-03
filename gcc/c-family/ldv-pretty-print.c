@@ -3952,6 +3952,9 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
             }
 
           ldv_c_backend_print (indent_level, true, "}");
+
+          if (LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec))
+            ldv_c_backend_print (indent_level, true, "__attribute__((__packed__))");
         }
 
       break;

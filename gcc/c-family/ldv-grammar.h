@@ -1731,12 +1731,14 @@ struct ldv_struct_or_union_spec
   ldv_struct_or_union_ptr struct_or_union;
   const char *id;
   ldv_struct_decl_list_ptr struct_decl_list;
+  bool ispacked;
 };
 typedef struct ldv_struct_or_union_spec *ldv_struct_or_union_spec_ptr;
 #define LDV_STRUCT_OR_UNION_SPEC_KIND(struct_or_union_spec)             (struct_or_union_spec->kind)
 #define LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION(struct_or_union_spec)  (struct_or_union_spec->struct_or_union)
 #define LDV_STRUCT_OR_UNION_SPEC_ID(struct_or_union_spec)               (struct_or_union_spec->id)
 #define LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST(struct_or_union_spec) (struct_or_union_spec->struct_decl_list)
+#define LDV_STRUCT_OR_UNION_SPEC_ISPACKED(struct_or_union_spec)         (struct_or_union_spec->ispacked)
 
 /*
 type-specifier:
