@@ -3954,7 +3954,19 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
           ldv_c_backend_print (indent_level, true, "}");
 
           if (LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec))
-            ldv_c_backend_print (indent_level, true, "__attribute__((__packed__))");
+            ldv_c_backend_print (indent_level, true, "__attribute__ ((__packed__))");
+
+          if (LDV_STRUCT_OR_UNION_SPEC_ISALIGNED (struct_or_union_spec))
+            {
+              if (LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec))
+                {
+                  ldv_c_backend_print (indent_level, true, "__attribute__ ((__aligned__ (");
+                  ldv_print_integer_constant (indent_level, LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec));
+                  ldv_c_backend_print (indent_level, false, ")))");
+                }
+              else
+                ldv_c_backend_print (indent_level, true, "__attribute__ ((__aligned__))");
+            }
         }
 
       break;

@@ -5241,8 +5241,16 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
 
               if ((attrs = TYPE_ATTRIBUTES(t)))
                 for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
-                  if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "packed"))
-                    LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec) = true;
+                  {
+                    if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "packed"))
+                      LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec) = true;
+                    else if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "aligned"))
+                      {
+                        LDV_STRUCT_OR_UNION_SPEC_ISALIGNED (struct_or_union_spec) = true;
+                        if (TREE_VALUE (attrs))
+                          LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec) = ldv_convert_integer_constant (TREE_VALUE (TREE_VALUE (attrs)));
+                      }
+                  }
             }
           else
             LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) = LDV_STRUCT_OR_UNION_SPEC_THIRD;
