@@ -26,6 +26,9 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-aspect-types.h"
 
 
+#define CIF_AUX_FUNC_NAME_PREFIX "cif_"
+
+
 extern expanded_location ldv_decl_beginning_location;
 
 

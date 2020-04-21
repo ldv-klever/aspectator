@@ -86,7 +86,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-pointcut-matcher.h"
 
 
-#define CIF_AUX_FUNC_NAME_PREFIX    "cif_"
 #define LDV_FUNC_ARG_NAME           "ldv_func_arg"
 #define LDV_FUNC_ARG_TYPE           "ldv_func_arg_type"
 #define LDV_FUNC_RET_TYPE           "ldv_func_ret_type"
@@ -2361,8 +2360,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           ldv_puts_text ("\n/* CIF Original function \"", ldv_text_printed);
           ldv_puts_text (ldv_get_id_name (func_aspect->name), ldv_text_printed);
           ldv_puts_text ("\". Instrumenting function \"", ldv_text_printed);
-	  ldv_puts_text (func_name, ldv_text_printed);
-	  ldv_puts_text ("\". */\n", ldv_text_printed);
+          ldv_puts_text (func_name, ldv_text_printed);
+          ldv_puts_text ("\". */\n", ldv_text_printed);
           if (func_source->isgnu_inline)
             ldv_puts_text ("__attribute__((gnu_inline)) ", ldv_text_printed);
           decl = ldv_convert_internal_to_declaration (func_aspect->type, func_name);
