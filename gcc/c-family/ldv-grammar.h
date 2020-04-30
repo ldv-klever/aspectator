@@ -1733,16 +1733,18 @@ struct ldv_struct_or_union_spec
   ldv_struct_decl_list_ptr struct_decl_list;
   bool ispacked;
   bool isaligned;
+  bool istransparent_union;
   ldv_integer_constant_ptr alignment;
 };
 typedef struct ldv_struct_or_union_spec *ldv_struct_or_union_spec_ptr;
-#define LDV_STRUCT_OR_UNION_SPEC_KIND(struct_or_union_spec)             (struct_or_union_spec->kind)
-#define LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION(struct_or_union_spec)  (struct_or_union_spec->struct_or_union)
-#define LDV_STRUCT_OR_UNION_SPEC_ID(struct_or_union_spec)               (struct_or_union_spec->id)
-#define LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST(struct_or_union_spec) (struct_or_union_spec->struct_decl_list)
-#define LDV_STRUCT_OR_UNION_SPEC_ISPACKED(struct_or_union_spec)         (struct_or_union_spec->ispacked)
-#define LDV_STRUCT_OR_UNION_SPEC_ISALIGNED(struct_or_union_spec)        (struct_or_union_spec->isaligned)
-#define LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT(struct_or_union_spec)        (struct_or_union_spec->alignment)
+#define LDV_STRUCT_OR_UNION_SPEC_KIND(struct_or_union_spec)                (struct_or_union_spec->kind)
+#define LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION(struct_or_union_spec)     (struct_or_union_spec->struct_or_union)
+#define LDV_STRUCT_OR_UNION_SPEC_ID(struct_or_union_spec)                  (struct_or_union_spec->id)
+#define LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST(struct_or_union_spec)    (struct_or_union_spec->struct_decl_list)
+#define LDV_STRUCT_OR_UNION_SPEC_ISPACKED(struct_or_union_spec)            (struct_or_union_spec->ispacked)
+#define LDV_STRUCT_OR_UNION_SPEC_ISALIGNED(struct_or_union_spec)           (struct_or_union_spec->isaligned)
+#define LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT(struct_or_union_spec)           (struct_or_union_spec->alignment)
+#define LDV_STRUCT_OR_UNION_SPEC_ISTRANSPARENT_UNION(struct_or_union_spec) (struct_or_union_spec->istransparent_union)
 
 /*
 type-specifier:

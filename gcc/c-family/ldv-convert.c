@@ -5239,7 +5239,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
               if ((fields_list = ldv_convert_struct_decl_list (struct_or_union_fields)))
                 LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST (struct_or_union_spec) = fields_list;
 
-              if ((attrs = TYPE_ATTRIBUTES(t)))
+              if ((attrs = TYPE_ATTRIBUTES (t)))
                 for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
                   {
                     if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "packed"))
@@ -5251,6 +5251,9 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
                           LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec) = ldv_convert_integer_constant (TREE_VALUE (TREE_VALUE (attrs)));
                       }
                   }
+
+              if (TYPE_TRANSPARENT_AGGR (t))
+                LDV_STRUCT_OR_UNION_SPEC_ISTRANSPARENT_UNION (struct_or_union_spec) = true;
             }
           else
             LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) = LDV_STRUCT_OR_UNION_SPEC_THIRD;
