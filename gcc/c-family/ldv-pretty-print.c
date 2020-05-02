@@ -2318,10 +2318,12 @@ ldv_print_integer_constant (unsigned int indent_level, ldv_integer_constant_ptr 
       /* Print LLONG_MIN as (-LLONG_MAX - 1) where LLONG_MAX = -LLONG_MIN - 1. */
       if (LDV_INTEGER_CONSTANT_ISSIGNED (integer_constant) && decimal_constant == LLONG_MIN)
         {
+          ldv_c_backend_print (indent_level, true, "(");
           ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_DEC, decimal_constant + 1);
           ldv_c_backend_print (indent_level, true, "LL");
           ldv_c_backend_print (indent_level, true, "-");
           ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_UNSIGNED, 1L);
+          ldv_c_backend_print (indent_level, true, ")");
         }
       else
         {
