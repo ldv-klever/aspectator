@@ -2320,6 +2320,8 @@ ldv_print_integer_constant (unsigned int indent_level, ldv_integer_constant_ptr 
         {
           ldv_c_backend_print (indent_level, true, "(");
           ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_DEC, decimal_constant + 1);
+          /* Join suffix to the previously printed integer constant. */
+          ldv_c_backend_padding_cancel ();
           ldv_c_backend_print (indent_level, true, "LL");
           ldv_c_backend_print (indent_level, true, "-");
           ldv_c_backend_print (indent_level, true, HOST_WIDE_INT_PRINT_UNSIGNED, 1L);
