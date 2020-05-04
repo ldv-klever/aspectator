@@ -3951,6 +3951,24 @@ ldv_convert_nested_func_def (tree t)
   return NULL;
 }
 
+static bool
+ldv_replace_va_list_tag (ldv_type_spec_ptr type_spec)
+{
+  ldv_typedef_name_ptr typedef_name;
+
+  if (type_spec && LDV_TYPE_SPEC_KIND (type_spec) == LDV_TYPE_SPEC_THIRD)
+    {
+      typedef_name = LDV_TYPE_SPEC_TYPEDEF_NAME (type_spec);
+      if (typedef_name && !strcmp (LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)), "__va_list_tag"))
+        {
+          LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("va_list");
+          return true;
+        }
+    }
+
+  return false;
+}
+
 /*
 parameter-declaration:
     declaration-specifiers declarator
@@ -3960,9 +3978,6 @@ static ldv_param_decl_ptr
 ldv_convert_param_decl (tree t)
 {
   ldv_param_decl_ptr param_decl;
-  ldv_decl_spec_ptr decl_spec;
-  ldv_type_spec_ptr type_spec;
-  ldv_typedef_name_ptr typedef_name;
   tree param_type;
 
   param_decl = XCNEW (struct ldv_param_decl);
@@ -3970,8 +3985,13 @@ ldv_convert_param_decl (tree t)
   switch (TREE_CODE (t))
     {
     case PARM_DECL:
-      LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (t, false);
       LDV_PARAM_DECL_DECLARATOR (param_decl) = ldv_convert_declarator_internal (t, false);
+      LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (t, false);
+
+      /* Replace "__va_list_tag *param_name" with "va_list param_name". */
+      if (ldv_replace_va_list_tag (LDV_DECL_SPEC_TYPE_SPEC (LDV_PARAM_DECL_DECL_SPEC (param_decl))))
+        (LDV_PARAM_DECL_DECLARATOR (param_decl))->pointer = NULL;
+
       break;
 
     case TREE_LIST:
@@ -3981,21 +4001,11 @@ ldv_convert_param_decl (tree t)
           break;
         }
 
-      decl_spec = LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (param_type, false);
-      type_spec = LDV_DECL_SPEC_TYPE_SPEC (decl_spec);
+      LDV_PARAM_DECL_DECL_SPEC (param_decl) = ldv_convert_decl_spec (param_type, false);
 
-      /* Avoid pointers to GCC internal structure __va_list_tag - replace them with va_list. */
-      if (type_spec && LDV_TYPE_SPEC_KIND (type_spec) == LDV_TYPE_SPEC_THIRD)
-        {
-          typedef_name = LDV_TYPE_SPEC_TYPEDEF_NAME (type_spec);
-          if (typedef_name && !strcmp (LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)), "__va_list_tag"))
-            {
-              LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("va_list");
-              break;
-            }
-        }
-
-      LDV_PARAM_DECL_ABSTRACT_DECLARATOR (param_decl) = ldv_convert_abstract_declarator_internal (param_type);
+      /* Replace "__va_list_tag *" with "va_list". */
+      if (!ldv_replace_va_list_tag (LDV_DECL_SPEC_TYPE_SPEC (LDV_PARAM_DECL_DECL_SPEC (param_decl))))
+        LDV_PARAM_DECL_ABSTRACT_DECLARATOR (param_decl) = ldv_convert_abstract_declarator_internal (param_type);
 
       break;
 
