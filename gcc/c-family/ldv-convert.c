@@ -3961,7 +3961,7 @@ ldv_replace_va_list_tag (ldv_type_spec_ptr type_spec)
       typedef_name = LDV_TYPE_SPEC_TYPEDEF_NAME (type_spec);
       if (typedef_name && !strcmp (LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)), "__va_list_tag"))
         {
-          LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("va_list");
+          LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("__builtin_va_list");
           return true;
         }
     }
