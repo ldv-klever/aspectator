@@ -1072,6 +1072,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
   ldv_expr_ptr expr;
   ldv_cond_expr_ptr cond_expr_next;
   ldv_location_ptr location;
+  bool is_free_on_printing_disabled = !ldv_free_on_printing;
 
   switch (LDV_COND_EXPR_KIND (cond_expr))
     {
@@ -1141,7 +1142,8 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
 
       ldv_c_backend_print (indent_level, true, "?");
 
-      ldv_free_on_printing = true;
+      if (!is_free_on_printing_disabled)
+        ldv_free_on_printing = true;
 
       if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         {
@@ -1198,7 +1200,8 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
 
       ldv_c_backend_print (indent_level, true, ":");
 
-      ldv_free_on_printing = true;
+      if (!is_free_on_printing_disabled)
+        ldv_free_on_printing = true;
 
       if ((expr = LDV_COND_EXPR_EXPR (cond_expr)))
         {
@@ -3415,6 +3418,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
   ldv_additive_expr_ptr additive_expr;
   ldv_shift_expr_ptr shift_expr_next;
   ldv_location_ptr location;
+  bool is_free_on_printing_disabled = !ldv_free_on_printing;
 
   switch (LDV_SHIFT_EXPR_KIND (shift_expr))
     {
@@ -3495,7 +3499,8 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "shift expression of shift expression was not printed");
 
-      ldv_free_on_printing = true;
+      if (!is_free_on_printing_disabled)
+        ldv_free_on_printing = true;
 
       if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_FOURTH)
         ldv_c_backend_print (indent_level, true, "<<");
