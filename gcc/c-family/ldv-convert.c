@@ -3648,7 +3648,7 @@ static ldv_logical_and_expr_ptr
 ldv_convert_logical_and_expr (tree t, unsigned int recursion_limit)
 {
   ldv_logical_and_expr_ptr logical_and_expr;
-  tree op1, op2;
+  tree op1, op2, tmp;
 
   logical_and_expr = XCNEW (struct ldv_logical_and_expr);
 
@@ -3658,15 +3658,22 @@ ldv_convert_logical_and_expr (tree t, unsigned int recursion_limit)
     case TRUTH_AND_EXPR:
       LDV_LOGICAL_AND_EXPR_KIND (logical_and_expr) = LDV_LOGICAL_AND_EXPR_SECOND;
 
-      if ((op1 = LDV_OP_FIRST (t)))
-        LDV_LOGICAL_AND_EXPR_LOGICAL_AND_EXPR (logical_and_expr) = ldv_convert_logical_and_expr (op1, recursion_limit);
+      if (!(op1 = LDV_OP_FIRST (t)) || !(op2 = LDV_OP_SECOND (t)))
+        LDV_ERROR ("can't find operands of logical and expression");
       else
-        LDV_ERROR ("can't find the first operand of logical and expression");
+        {
+          /* Due to some optimizations at the "-O2" level second operand can
+             have invalid type. */
+          if (TREE_CODE (op2) == TRUTH_ANDIF_EXPR)
+            {
+              tmp = op2;
+              op2 = op1;
+              op1 = tmp;
+            }
 
-      if ((op2 = LDV_OP_SECOND (t)))
-        LDV_LOGICAL_AND_EXPR_INCLUSIVE_OR_EXPR (logical_and_expr) = ldv_convert_inclusive_or_expr (op2, recursion_limit);
-      else
-        LDV_ERROR ("can't find the second operand of logical and expression");
+          LDV_LOGICAL_AND_EXPR_LOGICAL_AND_EXPR (logical_and_expr) = ldv_convert_logical_and_expr (op1, recursion_limit);
+          LDV_LOGICAL_AND_EXPR_INCLUSIVE_OR_EXPR (logical_and_expr) = ldv_convert_inclusive_or_expr (op2, recursion_limit);
+        }
 
       LDV_LOGICAL_AND_EXPR_LOCATION (logical_and_expr) = ldv_convert_location (t);
 
@@ -3696,7 +3703,7 @@ static ldv_logical_or_expr_ptr
 ldv_convert_logical_or_expr (tree t, unsigned int recursion_limit)
 {
   ldv_logical_or_expr_ptr logical_or_expr;
-  tree op1, op2;
+  tree op1, op2, tmp;
 
   logical_or_expr = XCNEW (struct ldv_logical_or_expr);
 
@@ -3706,15 +3713,21 @@ ldv_convert_logical_or_expr (tree t, unsigned int recursion_limit)
     case TRUTH_OR_EXPR:
       LDV_LOGICAL_OR_EXPR_KIND (logical_or_expr) = LDV_LOGICAL_OR_EXPR_SECOND;
 
-      if ((op1 = LDV_OP_FIRST (t)))
-        LDV_LOGICAL_OR_EXPR_LOGICAL_OR_EXPR (logical_or_expr) = ldv_convert_logical_or_expr (op1, recursion_limit);
+      /* Like in ldv_convert_logical_and_expr(). */
+      if (!(op1 = LDV_OP_FIRST (t)) || !(op2 = LDV_OP_SECOND (t)))
+        LDV_ERROR ("can't find operands of logical or expression");
       else
-        LDV_ERROR ("can't find the first operand of logical or expression");
+        {
+          if (TREE_CODE (op2) == TRUTH_ORIF_EXPR)
+            {
+              tmp = op2;
+              op2 = op1;
+              op1 = tmp;
+            }
 
-      if ((op2 = LDV_OP_SECOND (t)))
-        LDV_LOGICAL_OR_EXPR_LOGICAL_AND_EXPR (logical_or_expr) = ldv_convert_logical_and_expr (op2, recursion_limit);
-      else
-        LDV_ERROR ("can't find the second operand of logical or expression");
+          LDV_LOGICAL_OR_EXPR_LOGICAL_OR_EXPR (logical_or_expr) = ldv_convert_logical_or_expr (op1, recursion_limit);
+          LDV_LOGICAL_OR_EXPR_LOGICAL_AND_EXPR (logical_or_expr) = ldv_convert_logical_and_expr (op2, recursion_limit);
+        }
 
       LDV_LOGICAL_OR_EXPR_LOCATION (logical_or_expr) = ldv_convert_location (t);
 
