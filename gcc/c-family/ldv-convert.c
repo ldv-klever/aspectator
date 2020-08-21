@@ -5733,6 +5733,9 @@ ldv_convert_typedef_name (tree t)
       LDV_TYPE_SPEC_KIND (type_spec) = LDV_TYPE_SPEC_THIRD;
       LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name) = ldv_convert_identifier (t);
 
+      if (!strcmp (LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)), "__va_list"))
+        LDV_IDENTIFIER_STR (LDV_TYPEDEF_NAME_IDENTIFIER (typedef_name)) = xstrdup ("__builtin_va_list");
+
       break;
 
     default:
