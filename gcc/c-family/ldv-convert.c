@@ -1098,7 +1098,7 @@ static ldv_attr_ptr ldv_convert_attr (tree t)
 
 static ldv_attr_list_ptr ldv_convert_attr_list (tree t)
 {
-  ldv_attr_list_ptr attr_list_head, attr_list_prev = NULL;
+  ldv_attr_list_ptr attr_list_head = NULL, attr_list_prev = NULL;
 
   /* Add attributes to list in reverse order corresponding to the original one. */
   for (; t != NULL_TREE; t = TREE_CHAIN (t))
@@ -5582,6 +5582,8 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
   tree decl_type, decl_type_original;
   tree array_type, func_ret_type, pointer_type;
   tree type_name;
+  tree attrs;
+  ldv_decl_spec_ptr decl_spec;
 
   switch (TREE_CODE (t))
     {
@@ -5593,7 +5595,14 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
       /* Here is typedef name is also processed. It depends on whether type has
          an another main variant or not. */
       if ((type_name = TYPE_NAME (t)) && TREE_CODE(type_name) == TYPE_DECL)
-        return ldv_convert_typedef_name (type_name);
+        {
+          decl_spec = ldv_convert_typedef_name (type_name);
+
+          if ((attrs = TYPE_ATTRIBUTES (t)))
+            decl_spec->type_spec->attr_list = ldv_convert_attr_list (attrs);
+
+          return decl_spec;
+        }
 
       return ldv_convert_type_spec_internal (t);
 
