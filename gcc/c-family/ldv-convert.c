@@ -1058,6 +1058,171 @@ ldv_convert_assignment_operator (tree t)
 }
 
 /*
+attr:
+    name
+    name ( param )
+    name ( param , expr-list )
+    name ( expr-list )
+*/
+static ldv_attr_ptr ldv_convert_attr (tree t)
+{
+  ldv_attr_ptr attr;
+  tree attr_args;
+
+  attr = XCNEW (struct ldv_attr);
+
+  attr->name = ldv_convert_identifier (TREE_PURPOSE (t));
+
+  attr_args = TREE_VALUE (t);
+
+  /* First form. */
+  if (!attr_args)
+    return attr;
+
+  /* Second or third form. */
+  if (TREE_CODE (TREE_VALUE (attr_args)) == IDENTIFIER_NODE)
+    {
+      attr->param = ldv_convert_identifier (TREE_VALUE (attr_args));
+      attr_args = TREE_CHAIN (attr_args);
+    }
+
+  /* Second form. */
+  if (!attr_args)
+    return attr;
+
+  /* Third or fourth form. */
+  attr->expr = ldv_convert_expr (attr_args, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+  return attr;
+}
+
+static ldv_attr_list_ptr ldv_convert_attr_list (tree t)
+{
+  ldv_attr_list_ptr attr_list_head, attr_list_prev = NULL;
+
+  /* Add attributes to list in reverse order corresponding to the original one. */
+  for (; t != NULL_TREE; t = TREE_CHAIN (t))
+    {
+      attr_list_head = XCNEW (struct ldv_attr_list);
+      attr_list_head->attr = ldv_convert_attr (t);
+      attr_list_head->attr_list = attr_list_prev;
+      attr_list_prev = attr_list_head;
+    }
+
+  return attr_list_head;
+}
+
+/*
+block-item:
+    declaration
+    statement
+
+GNU extensions:
+
+block-item:
+    declaration -> nested-declaration
+*/
+static ldv_block_item_ptr
+ldv_convert_block_item (tree t)
+{
+  ldv_block_item_ptr block_item;
+
+  block_item = XCNEW (struct ldv_block_item);
+
+  switch (TREE_CODE (t))
+    {
+    case ENUMERAL_TYPE:
+    case RECORD_TYPE:
+    case UNION_TYPE:
+    case TYPE_DECL:
+    case VAR_DECL:
+    case FUNCTION_DECL:
+      LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_FIRST;
+      LDV_BLOCK_ITEM_NESTED_DECL (block_item) = ldv_convert_nested_decl (t);
+
+      break;
+
+    default:
+      LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_SECOND;
+      LDV_BLOCK_ITEM_STATEMENT (block_item) = ldv_convert_statement (t);
+    }
+
+  if (LDV_BLOCK_ITEM_KIND (block_item))
+    return block_item;
+
+  LDV_ERROR ("block item wasn't converted");
+
+  XDELETE (block_item);
+
+  return NULL;
+}
+
+/*
+block-item-list:
+    block-item
+    block-item-list block-item
+*/
+static ldv_block_item_list_ptr
+ldv_convert_block_item_list (tree t)
+{
+  ldv_block_item_list_ptr block_item_list, block_item_list_next;
+  ldv_block_item_ptr block_item;
+  tree_stmt_iterator si;
+  tree statement;
+
+  block_item_list = XCNEW (struct ldv_block_item_list);
+  block_item_list_next = NULL;
+
+  switch (TREE_CODE (t))
+    {
+    case STATEMENT_LIST:
+      /* Reverse the order of block items to correspond to the grammar. */
+      for (si = tsi_last (t); !tsi_end_p (si); tsi_prev (&si))
+        {
+          if ((statement = tsi_stmt (si)))
+            switch (TREE_CODE (statement))
+              {
+              case DECL_EXPR:
+              case SAVE_EXPR:
+              case PREDICT_EXPR:
+                break;
+
+              default:
+                if ((block_item = ldv_convert_block_item (statement)))
+                  {
+                    if (!block_item_list_next)
+                      block_item_list_next = block_item_list;
+                    else
+                      block_item_list_next = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_next) = XCNEW (struct ldv_block_item_list);
+
+                    LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list_next) = block_item;
+                  }
+                else
+                  LDV_ERROR ("block item wasn't converted");
+              }
+          else
+            LDV_ERROR ("can't find statement");
+        }
+      break;
+
+    default:
+      if ((block_item = ldv_convert_block_item (t)))
+        LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) = block_item;
+      else
+        LDV_ERROR ("block item wasn't converted");
+    }
+
+  if (LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) || LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list))
+    return block_item_list;
+
+  LDV_ERROR ("block item list wasn't converted");
+
+  XDELETE (block_item_list);
+
+  return NULL;
+}
+
+/*
 cast-expression:
     unary-expression
     ( type-name ) cast-expression
@@ -1264,171 +1429,6 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
   LDV_ERROR ("conditional expression wasn't converted");
 
   XDELETE (cond_expr);
-
-  return NULL;
-}
-
-/*
-attr:
-    name
-    name ( param )
-    name ( param , expr-list )
-    name ( expr-list )
-*/
-static ldv_attr_ptr ldv_convert_attr (tree t)
-{
-  ldv_attr_ptr attr;
-  tree attr_args;
-
-  attr = XCNEW (struct ldv_attr);
-
-  attr->name = ldv_convert_identifier (TREE_PURPOSE (t));
-
-  attr_args = TREE_VALUE (t);
-
-  /* First form. */
-  if (!attr_args)
-    return attr;
-
-  /* Second or third form. */
-  if (TREE_CODE (TREE_VALUE (attr_args)) == IDENTIFIER_NODE)
-    {
-      attr->param = ldv_convert_identifier (TREE_VALUE (attr_args));
-      attr_args = TREE_CHAIN (attr_args);
-    }
-
-  /* Second form. */
-  if (!attr_args)
-    return attr;
-
-  /* Third or fourth form. */
-  attr->expr = ldv_convert_expr (attr_args, LDV_CONVERT_EXPR_RECURSION_LIMIT);
-
-  return attr;
-}
-
-static ldv_attr_list_ptr ldv_convert_attr_list (tree t)
-{
-  ldv_attr_list_ptr attr_list_head, attr_list_prev = NULL;
-
-  /* Add attributes to list in reverse order corresponding to the original one. */
-  for (; t != NULL_TREE; t = TREE_CHAIN (t))
-    {
-      attr_list_head = XCNEW (struct ldv_attr_list);
-      attr_list_head->attr = ldv_convert_attr (t);
-      attr_list_head->attr_list = attr_list_prev;
-      attr_list_prev = attr_list_head;
-    }
-
-  return attr_list_head;
-}
-
-/*
-block-item:
-    declaration
-    statement
-
-GNU extensions:
-
-block-item:
-    declaration -> nested-declaration
-*/
-static ldv_block_item_ptr
-ldv_convert_block_item (tree t)
-{
-  ldv_block_item_ptr block_item;
-
-  block_item = XCNEW (struct ldv_block_item);
-
-  switch (TREE_CODE (t))
-    {
-    case ENUMERAL_TYPE:
-    case RECORD_TYPE:
-    case UNION_TYPE:
-    case TYPE_DECL:
-    case VAR_DECL:
-    case FUNCTION_DECL:
-      LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_FIRST;
-      LDV_BLOCK_ITEM_NESTED_DECL (block_item) = ldv_convert_nested_decl (t);
-
-      break;
-
-    default:
-      LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_SECOND;
-      LDV_BLOCK_ITEM_STATEMENT (block_item) = ldv_convert_statement (t);
-    }
-
-  if (LDV_BLOCK_ITEM_KIND (block_item))
-    return block_item;
-
-  LDV_ERROR ("block item wasn't converted");
-
-  XDELETE (block_item);
-
-  return NULL;
-}
-
-/*
-block-item-list:
-    block-item
-    block-item-list block-item
-*/
-static ldv_block_item_list_ptr
-ldv_convert_block_item_list (tree t)
-{
-  ldv_block_item_list_ptr block_item_list, block_item_list_next;
-  ldv_block_item_ptr block_item;
-  tree_stmt_iterator si;
-  tree statement;
-
-  block_item_list = XCNEW (struct ldv_block_item_list);
-  block_item_list_next = NULL;
-
-  switch (TREE_CODE (t))
-    {
-    case STATEMENT_LIST:
-      /* Reverse the order of block items to correspond to the grammar. */
-      for (si = tsi_last (t); !tsi_end_p (si); tsi_prev (&si))
-        {
-          if ((statement = tsi_stmt (si)))
-            switch (TREE_CODE (statement))
-              {
-              case DECL_EXPR:
-              case SAVE_EXPR:
-              case PREDICT_EXPR:
-                break;
-
-              default:
-                if ((block_item = ldv_convert_block_item (statement)))
-                  {
-                    if (!block_item_list_next)
-                      block_item_list_next = block_item_list;
-                    else
-                      block_item_list_next = LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list_next) = XCNEW (struct ldv_block_item_list);
-
-                    LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list_next) = block_item;
-                  }
-                else
-                  LDV_ERROR ("block item wasn't converted");
-              }
-          else
-            LDV_ERROR ("can't find statement");
-        }
-      break;
-
-    default:
-      if ((block_item = ldv_convert_block_item (t)))
-        LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) = block_item;
-      else
-        LDV_ERROR ("block item wasn't converted");
-    }
-
-  if (LDV_BLOCK_ITEM_LIST_BLOCK_ITEM (block_item_list) || LDV_BLOCK_ITEM_LIST_BLOCK_ITEM_LIST (block_item_list))
-    return block_item_list;
-
-  LDV_ERROR ("block item list wasn't converted");
-
-  XDELETE (block_item_list);
 
   return NULL;
 }
