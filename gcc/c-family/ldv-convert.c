@@ -5508,15 +5508,10 @@ ldv_convert_type_spec (tree t, bool is_decl_decl_spec)
     //case FIXED_POINT_TYPE:
       /* Here is typedef name is also processed. It depends on whether type has
          an another main variant or not. */
-      if (TYPE_MAIN_VARIANT (t) == t)
-        return ldv_convert_type_spec_internal (t);
-      else
-        {
-          if ((type_name = TYPE_NAME (t)))
-            return ldv_convert_typedef_name (type_name);
-          else
-            LDV_ERROR ("can't find type declaration");
-        }
+      if ((type_name = TYPE_NAME (t)) && TREE_CODE(type_name) == TYPE_DECL)
+        return ldv_convert_typedef_name (type_name);
+
+      return ldv_convert_type_spec_internal (t);
 
       break;
 
