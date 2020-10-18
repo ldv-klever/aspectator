@@ -62,6 +62,8 @@ static ldv_asm_operands_ptr ldv_convert_asm_operands (tree);
 static ldv_asm_statement_ptr ldv_convert_asm_statement (tree);
 static ldv_asm_str_literal_ptr ldv_convert_asm_str_literal (tree);
 static ldv_assignment_operator_ptr ldv_convert_assignment_operator (tree);
+static ldv_attr_ptr ldv_convert_attr (tree);
+static ldv_attr_list_ptr ldv_convert_attr_list (tree);
 static ldv_block_item_ptr ldv_convert_block_item (tree);
 static ldv_block_item_list_ptr ldv_convert_block_item_list (tree);
 static ldv_cast_expr_ptr ldv_convert_cast_expr (tree, unsigned int);
@@ -1264,6 +1266,61 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
   XDELETE (cond_expr);
 
   return NULL;
+}
+
+/*
+attr:
+    name
+    name ( param )
+    name ( param , expr-list )
+    name ( expr-list )
+*/
+static ldv_attr_ptr ldv_convert_attr (tree t)
+{
+  ldv_attr_ptr attr;
+  tree attr_args;
+
+  attr = XCNEW (struct ldv_attr);
+
+  attr->name = ldv_convert_identifier (TREE_PURPOSE (t));
+
+  attr_args = TREE_VALUE (t);
+
+  /* First form. */
+  if (!attr_args)
+    return attr;
+
+  /* Second or third form. */
+  if (TREE_CODE (TREE_VALUE (attr_args)) == IDENTIFIER_NODE)
+    {
+      attr->param = ldv_convert_identifier (TREE_VALUE (attr_args));
+      attr_args = TREE_CHAIN (attr_args);
+    }
+
+  /* Second form. */
+  if (!attr_args)
+    return attr;
+
+  /* Third or fourth form. */
+  attr->expr = ldv_convert_expr (attr_args, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+  return attr;
+}
+
+static ldv_attr_list_ptr ldv_convert_attr_list (tree t)
+{
+  ldv_attr_list_ptr attr_list_head, attr_list_prev = NULL;
+
+  /* Add attributes to list in reverse order corresponding to the original one. */
+  for (; t != NULL_TREE; t = TREE_CHAIN (t))
+    {
+      attr_list_head = XCNEW (struct ldv_attr_list);
+      attr_list_head->attr = ldv_convert_attr (t);
+      attr_list_head->attr_list = attr_list_prev;
+      attr_list_prev = attr_list_head;
+    }
+
+  return attr_list_head;
 }
 
 /*
@@ -2642,6 +2699,19 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
           else
             LDV_ERROR ("assigment expression wasn't converted");
         }
+
+      break;
+
+    case TREE_LIST:
+      if (TREE_CHAIN (t))
+        {
+          LDV_EXPR_KIND (expr) = LDV_EXPR_SECOND;
+          LDV_EXPR_EXPR (expr) = ldv_convert_expr (TREE_CHAIN (t), recursion_limit);
+        }
+      else
+        LDV_EXPR_KIND (expr) = LDV_EXPR_FIRST;
+
+      LDV_EXPR_ASSIGNMENT_EXPR (expr) = ldv_convert_assignment_expr (TREE_VALUE (t), recursion_limit);
 
       break;
 
@@ -5263,20 +5333,34 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
                 LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST (struct_or_union_spec) = fields_list;
 
               if ((attrs = TYPE_ATTRIBUTES (t)))
-                for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
-                  {
-                    if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "packed"))
-                      LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec) = true;
-                    else if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "aligned"))
-                      {
-                        LDV_STRUCT_OR_UNION_SPEC_ISALIGNED (struct_or_union_spec) = true;
-                        if (TREE_VALUE (attrs))
-                          LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec) = ldv_convert_integer_constant (TREE_VALUE (TREE_VALUE (attrs)));
-                      }
-                  }
+                type_spec->attr_list = ldv_convert_attr_list (attrs);
 
+              /* Attribute transparent_union does not belong to TYPE_ATTRIBUTES (t)
+               * and it is processed separately. */
               if (TYPE_TRANSPARENT_AGGR (t))
-                LDV_STRUCT_OR_UNION_SPEC_ISTRANSPARENT_UNION (struct_or_union_spec) = true;
+                {
+                  ldv_attr_list_ptr attr_list;
+                  ldv_attr_ptr attr;
+                  ldv_identifier_ptr name;
+
+                  attr_list = XCNEW (struct ldv_attr_list);
+                  attr = XCNEW (struct ldv_attr);
+                  name = XCNEW (struct ldv_identifier);
+
+                  name->str = xstrdup("__transparent_union__");
+                  attr->name = name;
+                  attr_list->attr = attr;
+
+                  /* Add attribute transparent_union at the beginning of type
+                   * attributes list. Let's hope that order does not matter. */
+                  if (type_spec->attr_list)
+                    {
+                      attr_list->attr_list = type_spec->attr_list;
+                      type_spec->attr_list = attr_list;
+                    }
+                  else
+                    type_spec->attr_list = attr_list;
+                }
             }
           else
             LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) = LDV_STRUCT_OR_UNION_SPEC_THIRD;

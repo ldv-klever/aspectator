@@ -1731,20 +1731,34 @@ struct ldv_struct_or_union_spec
   ldv_struct_or_union_ptr struct_or_union;
   const char *id;
   ldv_struct_decl_list_ptr struct_decl_list;
-  bool ispacked;
-  bool isaligned;
-  bool istransparent_union;
-  ldv_integer_constant_ptr alignment;
 };
 typedef struct ldv_struct_or_union_spec *ldv_struct_or_union_spec_ptr;
 #define LDV_STRUCT_OR_UNION_SPEC_KIND(struct_or_union_spec)                (struct_or_union_spec->kind)
 #define LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION(struct_or_union_spec)     (struct_or_union_spec->struct_or_union)
 #define LDV_STRUCT_OR_UNION_SPEC_ID(struct_or_union_spec)                  (struct_or_union_spec->id)
 #define LDV_STRUCT_OR_UNION_SPEC_STRUCT_DECL_LIST(struct_or_union_spec)    (struct_or_union_spec->struct_decl_list)
-#define LDV_STRUCT_OR_UNION_SPEC_ISPACKED(struct_or_union_spec)            (struct_or_union_spec->ispacked)
-#define LDV_STRUCT_OR_UNION_SPEC_ISALIGNED(struct_or_union_spec)           (struct_or_union_spec->isaligned)
-#define LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT(struct_or_union_spec)           (struct_or_union_spec->alignment)
-#define LDV_STRUCT_OR_UNION_SPEC_ISTRANSPARENT_UNION(struct_or_union_spec) (struct_or_union_spec->istransparent_union)
+
+/*
+attr:
+    name
+    name ( param )
+    name ( param , expr-list )
+    name ( expr-list )
+*/
+struct ldv_attr
+{
+  ldv_identifier_ptr name;
+  ldv_identifier_ptr param;
+  ldv_expr_ptr expr;
+};
+typedef struct ldv_attr *ldv_attr_ptr;
+
+struct ldv_attr_list
+{
+  ldv_attr_ptr attr;
+  struct ldv_attr_list *attr_list;
+};
+typedef struct ldv_attr_list *ldv_attr_list_ptr;
 
 /*
 type-specifier:
@@ -1801,6 +1815,7 @@ struct ldv_type_spec
   ldv_struct_or_union_spec_ptr struct_or_union_spec;
   ldv_enum_spec_ptr enum_spec;
   ldv_typedef_name_ptr typedef_name;
+  ldv_attr_list_ptr attr_list;
 };
 typedef struct ldv_type_spec *ldv_type_spec_ptr;
 #define LDV_TYPE_SPEC_KIND(type_spec)                 (type_spec->kind)

@@ -83,6 +83,8 @@ static void ldv_print_asm_statement (unsigned int, ldv_asm_statement_ptr);
 static void ldv_print_asm_str_literal (unsigned int, ldv_asm_str_literal_ptr);
 static void ldv_print_assignment_expr (unsigned int, ldv_assignment_expr_ptr);
 static void ldv_print_assignment_operator (unsigned int, ldv_assignment_operator_ptr);
+static void ldv_print_attr (unsigned int, ldv_attr_ptr);
+static void ldv_print_attr_list (unsigned int, ldv_attr_list_ptr);
 static void ldv_print_block_item (unsigned int, ldv_block_item_ptr);
 static void ldv_print_block_item_list (unsigned int, ldv_block_item_list_ptr);
 static void ldv_print_cast_expr (unsigned int, ldv_cast_expr_ptr);
@@ -883,6 +885,65 @@ ldv_print_assignment_operator (unsigned int indent_level, ldv_assignment_operato
     }
 
   LDV_XDELETE_ON_PRINTING (assignment_operator);
+}
+
+/*
+attr:
+    name
+    name ( param )
+    name ( param , expr-list )
+    name ( expr-list )
+*/
+static void
+ldv_print_attr (unsigned int indent_level, ldv_attr_ptr attr)
+{
+  ldv_c_backend_print (indent_level, true, "__attribute__((");
+  ldv_c_backend_padding_cancel ();
+  ldv_print_identifier (indent_level, attr->name);
+
+  /* First form. */
+  if (!attr->param && !attr->expr)
+    {
+      ldv_c_backend_print (indent_level, false, "))");
+      ldv_c_backend_padding_force ();
+      return;
+    }
+
+  ldv_c_backend_print (indent_level, false, "(");
+  /* Second form. */
+  if (!attr->expr)
+    ldv_print_identifier (indent_level, attr->param);
+  /* Fourth form. */
+  else if (!attr->param)
+    ldv_print_expr (indent_level, attr->expr);
+  /* Third form. */
+  else
+    {
+      ldv_print_identifier (indent_level, attr->param);
+      ldv_c_backend_print (indent_level, true, ",");
+      ldv_c_backend_padding_force ();
+      ldv_print_expr (indent_level, attr->expr);
+    }
+
+  ldv_c_backend_print (indent_level, false, ")))");
+  ldv_c_backend_padding_force ();
+
+  LDV_XDELETE_ON_PRINTING (attr);
+}
+
+static void
+ldv_print_attr_list (unsigned int indent_level, ldv_attr_list_ptr attr_list)
+{
+  ldv_attr_list_ptr attr_list_cur = attr_list, attr_list_next;
+
+  while (attr_list_cur)
+    {
+      ldv_print_attr (indent_level, attr_list_cur->attr);
+
+      attr_list_next = attr_list_cur->attr_list;
+      LDV_XDELETE_ON_PRINTING (attr_list_cur);
+      attr_list_cur = attr_list_next;
+    }
 }
 
 /*
@@ -3973,24 +4034,6 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
             }
 
           ldv_c_backend_print (indent_level, true, "}");
-
-          if (LDV_STRUCT_OR_UNION_SPEC_ISPACKED (struct_or_union_spec))
-            ldv_c_backend_print (indent_level, true, "__attribute__ ((__packed__))");
-
-          if (LDV_STRUCT_OR_UNION_SPEC_ISALIGNED (struct_or_union_spec))
-            {
-              if (LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec))
-                {
-                  ldv_c_backend_print (indent_level, true, "__attribute__ ((__aligned__ (");
-                  ldv_print_integer_constant (indent_level, LDV_STRUCT_OR_UNION_SPEC_ALIGNMENT (struct_or_union_spec));
-                  ldv_c_backend_print (indent_level, false, ")))");
-                }
-              else
-                ldv_c_backend_print (indent_level, true, "__attribute__ ((__aligned__))");
-            }
-
-          if (LDV_STRUCT_OR_UNION_SPEC_ISTRANSPARENT_UNION (struct_or_union_spec))
-            ldv_c_backend_print (indent_level, true, "__attribute__ ((__transparent_union__))");
         }
 
       break;
@@ -4343,6 +4386,9 @@ ldv_print_type_spec (unsigned int indent_level, ldv_type_spec_ptr type_spec)
     default:
       LDV_PRETTY_PRINT_ERROR (indent_level, "type specifier was not printed");
     }
+
+  if (type_spec->attr_list)
+    ldv_print_attr_list (indent_level, type_spec->attr_list);
 
   LDV_XDELETE_ON_PRINTING (type_spec);
 }
