@@ -1188,6 +1188,14 @@ ldv_convert_block_item_list (tree t)
                 break;
 
               default:
+                /* Skip artificial function call expressions added instead of
+                 * "__attribute__((__fallthrough__));" within switch cases.
+                 * TODO: it would be better to support this kind of statement
+                 *       though this should not affect verification results
+                 *       anyhow. */
+                if (TREE_CODE (statement) == CALL_EXPR && CALL_EXPR_IFN (statement) == IFN_FALLTHROUGH)
+                  break;
+
                 if ((block_item = ldv_convert_block_item (statement)))
                   {
                     if (!block_item_list_next)
