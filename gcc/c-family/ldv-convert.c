@@ -1590,11 +1590,11 @@ ldv_convert_compound_statement (tree t)
               break;
 
             /* TODO: make a special function for that (search __func__). */
-            /* Skip artificial __func__ variable. */
+            /* Skip artificial variables. */
             case VAR_DECL:
               if ((identifier = ldv_convert_identifier (block_decl)))
                 {
-                  if (LDV_IDENTIFIER_STR (identifier) && !strcmp (LDV_IDENTIFIER_STR (identifier), "__func__"))
+                  if (LDV_IDENTIFIER_STR (identifier) && (!strcmp (LDV_IDENTIFIER_STR (identifier), "__func__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__FUNCTION__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__PRETTY_FUNCTION__")))
                     block_decl_type = NULL;
 
                   XDELETE (LDV_IDENTIFIER_STR (identifier));
@@ -5904,8 +5904,8 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
 
       /* String constants are always taken by their addresses. To prevent this
          skip address expression and go directly to string constant itself.
-         This also arises for __func__ GNU extension represented as address to
-         variable having corresponding name. */
+         This also arises for __func__/__FUNCTION__/__PRETTY_FUNCTION__
+         represented as address to variable having corresponding name. */
       if (TREE_CODE (t) == ADDR_EXPR)
         {
           switch (TREE_CODE (op1))
@@ -5919,7 +5919,7 @@ ldv_convert_unary_expr (tree t, unsigned int recursion_limit)
             case VAR_DECL:
               if ((identifier = ldv_convert_identifier (op1)))
                 {
-                  if ((str = LDV_IDENTIFIER_STR (identifier)) && !strcmp (str, "__func__"))
+                  if ((str = LDV_IDENTIFIER_STR (identifier)) && (!strcmp (str, "__func__") || !strcmp (str, "__FUNCTION__") || !strcmp (str, "__PRETTY_FUNCTION__")))
                     {
                       LDV_UNARY_EXPR_KIND (unary_expr) = LDV_UNARY_EXPR_FIRST;
                       LDV_UNARY_EXPR_POSTFIX_EXPR (unary_expr) = ldv_convert_postfix_expr (op1, recursion_limit);
