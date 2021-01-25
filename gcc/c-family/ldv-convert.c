@@ -2145,7 +2145,11 @@ ldv_convert_direct_declarator (tree t, bool is_decl_decl_spec, tree decl, ldv_de
         switch (TREE_CODE (array_type))
           {
           case ARRAY_TYPE:
-            ldv_convert_direct_declarator (array_type, is_decl_decl_spec, NULL, declarator_first_ptr, direct_declarator_next, NULL);
+            /* Handle typedefs. */
+            if ((type_name = TYPE_NAME (array_type)) && TREE_CODE(type_name) == TYPE_DECL)
+              ldv_convert_declarator (array_type, is_decl_decl_spec, declarator_first_ptr, direct_declarator_next, NULL);
+            else
+              ldv_convert_direct_declarator (array_type, is_decl_decl_spec, NULL, declarator_first_ptr, direct_declarator_next, NULL);
             break;
 
           case VOID_TYPE:
