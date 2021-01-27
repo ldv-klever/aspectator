@@ -1252,9 +1252,7 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
     case VIEW_CONVERT_EXPR:
       if ((type = TREE_TYPE (t)) &&
           /* Do not consider casts to anonymous structures. */
-          ((!TYPE_NAME (type) && TREE_CODE (type) != RECORD_TYPE) ||
-          /* Do not consider casts to integer types. */
-          (TYPE_NAME (type) && (DECL_P (TYPE_NAME (type)) || TREE_CODE (type) != INTEGER_TYPE))))
+          ((!TYPE_NAME (type) && TREE_CODE (type) != RECORD_TYPE) || TYPE_NAME (type)))
         {
           LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_SECOND;
 
@@ -5706,98 +5704,94 @@ ldv_convert_type_spec_internal (tree t)
 {
   ldv_decl_spec_ptr decl_spec, decl_spec_cur;
   bool is_type_spec;
-  tree type_decl, type_name;
+  tree type_name, decl_name;
   tree type = NULL_TREE;
-  const char *type_name_str;
+  const char *decl_name_str;
 
   decl_spec_cur = decl_spec = XCNEW (struct ldv_decl_spec);
   is_type_spec = false;
 
-  if (!(type_decl = TYPE_NAME (t)))
+  type_name = TYPE_NAME (t);
+
+  if (!type_name || TREE_CODE (type_name) == IDENTIFIER_NODE)
     {
       if (!(type = c_common_type_for_mode (TYPE_MODE (t), TYPE_UNSIGNED (t))))
-        LDV_ERROR ("can't find appropriate type");
+        LDV_ERROR ("can't find appropriate common type");
+
+      if (!(type_name = TYPE_NAME (type)))
+        LDV_ERROR ("can't find type name");
     }
   else
     type = t;
 
-  if (type && (type_decl = TYPE_NAME (type)))
+  if (!(decl_name = DECL_NAME (type_name)))
+    LDV_ERROR ("can't find declaraion name of type name");
+
+  if (!(decl_name_str = IDENTIFIER_POINTER ((decl_name))))
+    LDV_ERROR ("can't find type name");
+
+  /* Here we match type names with the corresponding ones
+     from gcc/builtin-types.def. */
+  if (strstr (decl_name_str, "short"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_SHORT);
+
+  if (strstr (decl_name_str, "long long"))
     {
-      if ((type_name = DECL_NAME (type_decl)))
-        {
-          if ((type_name_str = IDENTIFIER_POINTER ((type_name))))
-            {
-              /* Here we match type names with the corresponding ones
-                 from gcc/builtin-types.def. */
-              if (strstr (type_name_str, "short"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_SHORT);
-
-              if (strstr (type_name_str, "long long"))
-                {
-                  ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
-                  ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
-                }
-              else if (strstr (type_name_str, "long"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
-
-              if (strstr (type_name_str, "unsigned"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNSIGNED);
-              else if (strstr (type_name_str, "signed"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_SIGNED);
-
-              if (strstr (type_name_str, "void"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_VOID);
-
-              if (strstr (type_name_str, "char"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_CHAR);
-
-              if (strstr (type_name_str, "int"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_INT);
-
-              if (strstr (type_name_str, "float"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT);
-
-              if (strstr (type_name_str, "double"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_DOUBLE);
-
-              if (strstr (type_name_str, "_Bool"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_BOOL);
-
-              if (strstr (type_name_str, "_Float32x"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32X);
-              else if (strstr (type_name_str, "_Float32"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32);
-
-              if (strstr (type_name_str, "_Float64x"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64X);
-              else if (strstr (type_name_str, "_Float64"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64);
-
-              if (strstr (type_name_str, "_Float128"))
-                ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT128);
-
-              /* Sometimes a new type specifier may arise. In this case say
-                 about it and generate artificial type specifier to print
-                 warning message later. */
-              if (!is_type_spec)
-                {
-                  ldv_str_ptr str = ldv_create_string ();
-                  ldv_puts_string ("type specifier \"", str);
-                  ldv_puts_string (type_name_str, str);
-                  ldv_puts_string ("\" wasn't converted", str);
-                  LDV_ERROR (ldv_get_str (str));
-                  ldv_free_string (str);
-                  ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNKNOWN);
-                }
-            }
-          else
-            LDV_ERROR ("can't find type name");
-        }
-      else
-        LDV_ERROR ("can't find type name identifier");
+        ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
+        ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
     }
-  else
-    LDV_ERROR ("can't find type declaration");
+  else if (strstr (decl_name_str, "long"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_LONG);
+
+  if (strstr (decl_name_str, "unsigned"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNSIGNED);
+  else if (strstr (decl_name_str, "signed"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_SIGNED);
+
+  if (strstr (decl_name_str, "void"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_VOID);
+
+  if (strstr (decl_name_str, "char"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_CHAR);
+
+  if (strstr (decl_name_str, "int"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_INT);
+
+  if (strstr (decl_name_str, "float"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT);
+
+  if (strstr (decl_name_str, "double"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_DOUBLE);
+
+  if (strstr (decl_name_str, "_Bool"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_BOOL);
+
+  if (strstr (decl_name_str, "_Float32x"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32X);
+  else if (strstr (decl_name_str, "_Float32"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT32);
+
+  if (strstr (decl_name_str, "_Float64x"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64X);
+  else if (strstr (decl_name_str, "_Float64"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT64);
+
+  if (strstr (decl_name_str, "_Float128"))
+    ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_FLOAT128);
+
+  /* Sometimes a new type specifier may arise. In this case say
+     about it and generate artificial type specifier to print
+     warning message later. */
+  if (!is_type_spec)
+    {
+      ldv_str_ptr str = ldv_create_string ();
+      ldv_puts_string ("type specifier \"", str);
+      ldv_puts_string (decl_name_str, str);
+      ldv_puts_string ("\" wasn't converted", str);
+      LDV_ERROR (ldv_get_str (str));
+      ldv_free_string (str);
+      ldv_new_type_spec (&is_type_spec, &decl_spec_cur, LDV_TYPE_SPEC_UNKNOWN);
+    }
 
   if (is_type_spec)
     return decl_spec;
