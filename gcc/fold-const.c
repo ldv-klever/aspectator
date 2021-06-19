@@ -10743,6 +10743,12 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 	    return omit_one_operand_loc (loc, type, rslt, arg0);
 	}
 
+  /* LDV extension begin. */
+
+  /* Omit these conversions since they result in complicated experssions with
+     artificial bit fields and memory references. */
+  if (!ldv_is_c_backend_enabled ())
+    {
       /* If this is a comparison of a field, we may be able to simplify it.  */
       if ((TREE_CODE (arg0) == COMPONENT_REF
 	   || TREE_CODE (arg0) == BIT_FIELD_REF)
@@ -10754,6 +10760,9 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 	  if (t1)
 	    return t1;
 	}
+    }
+
+  /* LDV extension end. */
 
       /* Optimize comparisons of strlen vs zero to a compare of the
 	 first character of the string vs zero.  To wit,
