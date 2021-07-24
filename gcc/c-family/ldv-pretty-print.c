@@ -4212,7 +4212,7 @@ type-qualifier:
     const
     restrict
     volatile
-
+    _Atomic
 */
 static void
 ldv_print_type_qual (unsigned int indent_level, ldv_type_qual_ptr type_qual)
@@ -4229,6 +4229,10 @@ ldv_print_type_qual (unsigned int indent_level, ldv_type_qual_ptr type_qual)
 
     case LDV_TYPE_QUAL_VOLATILE:
       ldv_c_backend_print (indent_level, true, "volatile");
+      break;
+
+    case LDV_TYPE_QUAL_ATOMIC:
+      ldv_c_backend_print (indent_level, true, "_Atomic");
       break;
 
     default:

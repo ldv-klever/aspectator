@@ -5504,6 +5504,9 @@ ldv_convert_type_qual_internal (tree t)
       if (type_quals & TYPE_QUAL_VOLATILE)
         ldv_new_type_qual (&is_type_qual, &decl_spec_cur, LDV_TYPE_QUAL_VOLATILE);
 
+      if (type_quals & TYPE_QUAL_ATOMIC)
+        ldv_new_type_qual (&is_type_qual, &decl_spec_cur, LDV_TYPE_QUAL_ATOMIC);
+
       /* Sometimes a new type qualifier may arise. In this case say about it and
          generate artificial type qualifier to print warning message later. */
       if (!is_type_qual)

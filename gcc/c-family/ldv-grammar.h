@@ -1518,13 +1518,15 @@ type-qualifier:
     const
     restrict
     volatile
+    _Atomic
 */
 enum ldv_type_qual_kind
 {
   LDV_TYPE_QUAL_UNKNOWN,
   LDV_TYPE_QUAL_CONST,
   LDV_TYPE_QUAL_RESTRICT,
-  LDV_TYPE_QUAL_VOLATILE
+  LDV_TYPE_QUAL_VOLATILE,
+  LDV_TYPE_QUAL_ATOMIC
 };
 struct ldv_type_qual
 {
