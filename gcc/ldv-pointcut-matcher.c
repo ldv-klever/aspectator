@@ -571,6 +571,7 @@ ldv_match_expr (tree t, tree context)
         case INDIRECT_REF:
         case REALPART_EXPR:
         case IMAGPART_EXPR:
+        case VIEW_CONVERT_EXPR:
           ldv_match_expr (LDV_OP1, t);
 
           break;
