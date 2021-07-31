@@ -4217,27 +4217,28 @@ type-qualifier:
 static void
 ldv_print_type_qual (unsigned int indent_level, ldv_type_qual_ptr type_qual)
 {
-  switch (LDV_TYPE_QUAL_KIND (type_qual))
-    {
-    case LDV_TYPE_QUAL_CONST:
-      ldv_c_backend_print (indent_level, true, "const");
-      break;
+  if (!getenv ("LDV_C_BACKEND_OMIT_TYPE_QUALS"))
+    switch (LDV_TYPE_QUAL_KIND (type_qual))
+      {
+      case LDV_TYPE_QUAL_CONST:
+        ldv_c_backend_print (indent_level, true, "const");
+        break;
 
-    case LDV_TYPE_QUAL_RESTRICT:
-      ldv_c_backend_print (indent_level, true, "restrict");
-      break;
+      case LDV_TYPE_QUAL_RESTRICT:
+        ldv_c_backend_print (indent_level, true, "restrict");
+        break;
 
-    case LDV_TYPE_QUAL_VOLATILE:
-      ldv_c_backend_print (indent_level, true, "volatile");
-      break;
+      case LDV_TYPE_QUAL_VOLATILE:
+        ldv_c_backend_print (indent_level, true, "volatile");
+        break;
 
-    case LDV_TYPE_QUAL_ATOMIC:
-      ldv_c_backend_print (indent_level, true, "_Atomic");
-      break;
+      case LDV_TYPE_QUAL_ATOMIC:
+        ldv_c_backend_print (indent_level, true, "_Atomic");
+        break;
 
-    default:
-      LDV_PRETTY_PRINT_ERROR (indent_level, "type qualifier was not printed");
-    }
+      default:
+        LDV_PRETTY_PRINT_ERROR (indent_level, "type qualifier was not printed");
+      }
 
   LDV_XDELETE_ON_PRINTING (type_qual);
 }
