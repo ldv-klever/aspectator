@@ -62,3 +62,6 @@ REVISION
 # IDE settings
 .vscode
 .idea
+
+# macOS
+.DS_Store
