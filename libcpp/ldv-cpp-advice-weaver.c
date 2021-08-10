@@ -454,7 +454,7 @@ ldv_open_aspect_pattern_fprintf_file_stream (const char *file_name)
         if (*p == '/')
           {
             *p = 0;
-            if (mkdir(tmp, S_IRWXU) == -1)
+            if (mkdir(tmp, 0755) == -1)
               if (errno != EEXIST)
                 {
                   LDV_CPP_FATAL_ERROR ("can't create directory '%s'", tmp);
