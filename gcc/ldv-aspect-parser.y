@@ -300,6 +300,21 @@ input: /* It's the advice definitions and named pointcuts list. */
     }
   | input named_pointcut /* More one named pointcut after readed input. */
     {
+      ldv_np_ptr n_pointcut = NULL;
+      ldv_list_ptr n_pointcut_list = NULL;
+
+      /* Walk through a named pointcuts list to find name collisions. */
+      for (n_pointcut_list = ldv_n_pointcut_list; n_pointcut_list ; n_pointcut_list = ldv_list_get_next (n_pointcut_list))
+        {
+          n_pointcut = (ldv_np_ptr) ldv_list_get_data (n_pointcut_list);
+
+          if (!strcmp(n_pointcut->p_name, $2->p_name))
+            {
+              ldv_print_info_location (@1, LDV_ERROR_BISON, "duplicate pointcut name \"%s\" was used", $2->p_name);
+              internal_error ("pointcut names should be unique");
+            }
+        }
+
       ldv_list_push_back (&ldv_n_pointcut_list, $2);
     };
 
