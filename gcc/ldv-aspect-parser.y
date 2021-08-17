@@ -310,8 +310,7 @@ input: /* It's the advice definitions and named pointcuts list. */
 
           if (!strcmp(n_pointcut->p_name, $2->p_name))
             {
-              ldv_print_info_location (@1, LDV_ERROR_BISON, "duplicate pointcut name \"%s\" was used", $2->p_name);
-              internal_error ("pointcut names should be unique");
+              internal_error ("duplicate pointcut name \"%s\" was used", $2->p_name);
             }
         }
 
