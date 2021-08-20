@@ -386,6 +386,10 @@ ldv_make_includes (void)
       /* Then copy a file itself. */
       ldv_copy_file (main_input_filename, LDV_FILE_PREPARED_STREAM);
 
+      /* Add artificial empty declaration ";" after all original declarations to bypass an issue with
+       * instrumentation of the last function (#10907). This declaration will be removed by C Backend. */
+      ldv_puts ("\n;", LDV_FILE_PREPARED_STREAM);
+
       /* Refer to the auxiliary file (fix #6487). */
       line_cur_str = ldv_itoa (line_cur);
       ldv_puts ("\n#line ", LDV_FILE_PREPARED_STREAM);
