@@ -594,6 +594,12 @@ ldv_print_to_awfile (void)
                         }
 
                       ldv_puts (ldv_get_text (decl_for_print->decl), LDV_INSTRUMENTED_FILE_STREAM);
+
+                      /* Maintain original numbers of lines for source code by inserting additional
+                       * line directives after all inserted auxiliary declarations. */
+                      ldv_puts ("#line ", LDV_INSTRUMENTED_FILE_STREAM);
+                      ldv_puts (ldv_itoa(line_numb), LDV_INSTRUMENTED_FILE_STREAM);
+                      ldv_puts ("\n", LDV_INSTRUMENTED_FILE_STREAM);
                     }
                 }
             }
