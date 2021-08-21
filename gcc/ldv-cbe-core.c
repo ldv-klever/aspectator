@@ -148,7 +148,8 @@ ldv_c_backend_print (unsigned int indent_level, bool padding, const char *format
      Note that this very slows the total processing time. */
   /* fflush (ldv_c_backend_out_stream); */
 
-  ldv_c_backend_last_char = format[strlen (format) - 1];
+  if (!ldv_c_backend_buffer_enabled)
+    ldv_c_backend_last_char = format[strlen (format) - 1];
 
   /* Count the current line. */
   for (c = format; *c; c++)
