@@ -4002,12 +4002,20 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
   ldv_struct_or_union_ptr struct_or_union;
   ldv_struct_decl_list_ptr struct_decl_list;
   const char *struct_or_union_name;
+  ldv_location_ptr location;
 
   switch (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec))
     {
     case LDV_STRUCT_OR_UNION_SPEC_FIRST:
     case LDV_STRUCT_OR_UNION_SPEC_SECOND:
     case LDV_STRUCT_OR_UNION_SPEC_THIRD:
+      if (LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) == LDV_STRUCT_OR_UNION_SPEC_FIRST)
+        {
+          location = LDV_STRUCT_OR_UNION_SPEC_STRUCT_LOCATION (struct_or_union_spec);
+          if (location)
+            ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+        }
+
       if ((struct_or_union = LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION (struct_or_union_spec)))
         ldv_print_struct_or_union (indent_level, struct_or_union);
       else

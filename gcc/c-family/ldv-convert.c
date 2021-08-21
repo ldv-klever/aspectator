@@ -5310,7 +5310,7 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
   ldv_type_spec_ptr type_spec;
   ldv_struct_or_union_spec_ptr struct_or_union_spec;
   ldv_struct_decl_list_ptr fields_list;
-  tree struct_or_union_name, struct_or_union_fields, attrs;
+  tree struct_or_union_name, struct_or_union_fields, attrs, type_stub_decl;
   const char *struct_or_union_name_str;
 
   decl_spec = XCNEW (struct ldv_decl_spec);
@@ -5371,6 +5371,11 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
                   else
                     type_spec->attr_list = attr_list;
                 }
+
+                /* Besides, we should remember location of struct/union declaration to properly relate
+                 * it with original source code. */
+                if ((type_stub_decl = TYPE_STUB_DECL (t)))
+                  LDV_STRUCT_OR_UNION_SPEC_STRUCT_LOCATION (struct_or_union_spec) = ldv_convert_location (type_stub_decl);
             }
           else
             LDV_STRUCT_OR_UNION_SPEC_KIND (struct_or_union_spec) = LDV_STRUCT_OR_UNION_SPEC_THIRD;
