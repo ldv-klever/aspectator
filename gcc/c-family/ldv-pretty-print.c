@@ -1363,8 +1363,16 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
 
+  /* There is a bug in representation of definitions of typedefs since for them there is init-declarator-list
+   * that represents the typedef name like the variable name. Indeed, it should be provided as one more type
+   * specifier. Consider the storage class specifier in addition to bypass this issue. */
+  if (!(decl_spec = LDV_DECL_DECL_SPEC (decl)))
+    LDV_PRETTY_PRINT_ERROR (indent_level, "declaration specifiers of declaration were not printed");
+
   /* Print #line directive before variable declaration. */
-  if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)))
+  if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)) &&
+      (!LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec) ||
+       LDV_STORAGE_CLASS_SPEC_KIND (LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec)) != LDV_STORAGE_CLASS_SPEC_TYPEDEF))
     {
       if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
         && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator))
@@ -1374,10 +1382,7 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for variable declaration was not printed");
     }
 
-  if ((decl_spec = LDV_DECL_DECL_SPEC (decl)))
-    ldv_print_decl_spec (indent_level, decl_spec);
-  else
-    LDV_PRETTY_PRINT_ERROR (indent_level, "declaration specifiers of declaration were not printed");
+  ldv_print_decl_spec (indent_level, decl_spec);
 
   if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)))
     ldv_print_init_declarator_list (indent_level, init_declarator_list);
