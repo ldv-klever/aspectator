@@ -1362,18 +1362,20 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
   ldv_init_declarator_ptr init_declarator;
   ldv_declarator_ptr declarator;
   ldv_location_ptr location;
+  bool is_typedef;
 
   /* There is a bug in representation of definitions of typedefs since for them there is init-declarator-list
    * that represents the typedef name like the variable name. Indeed, it should be provided as one more type
    * specifier. Consider the storage class specifier in addition to bypass this issue. */
-  /* TODO: after all line directives for typedef names are not printed at all. */
+  /* TODO: fix typedef representation. */
   if (!(decl_spec = LDV_DECL_DECL_SPEC (decl)))
     LDV_PRETTY_PRINT_ERROR (indent_level, "declaration specifiers of declaration were not printed");
 
+  is_typedef = LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec) &&
+               LDV_STORAGE_CLASS_SPEC_KIND (LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec)) == LDV_STORAGE_CLASS_SPEC_TYPEDEF;
+
   /* Print #line directive before variable declaration. */
-  if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)) &&
-      (!LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec) ||
-       LDV_STORAGE_CLASS_SPEC_KIND (LDV_DECL_SPEC_STORAGE_CLASS_SPEC (decl_spec)) != LDV_STORAGE_CLASS_SPEC_TYPEDEF))
+  if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)) && !is_typedef)
     {
       if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
         && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator))
@@ -1385,7 +1387,19 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
 
   ldv_print_decl_spec (indent_level, decl_spec);
 
-  if ((init_declarator_list = LDV_DECL_INIT_DECLARATOR_LIST (decl)))
+  /* Print #line directive before typedef name. */
+  /* TODO: get rid of this after typedef representation will be fixed. */
+  if (init_declarator_list && is_typedef)
+    {
+      if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
+        && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator))
+        && (location = ldv_declarator_location (declarator)))
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for typedef name was not printed");
+    }
+
+  if (init_declarator_list)
     ldv_print_init_declarator_list (indent_level, init_declarator_list);
 
   ldv_c_backend_print (indent_level, false, ";");
