@@ -124,7 +124,7 @@ static void ldv_print_integer_suffix (unsigned int, ldv_integer_suffix_ptr);
 static void ldv_print_jump_statement (unsigned int, ldv_jump_statement_ptr);
 static void ldv_print_label_decls (unsigned int, ldv_label_decls_ptr);
 static void ldv_print_labeled_statement (unsigned int, ldv_labeled_statement_ptr);
-static void ldv_print_line_directive (bool, int, ldv_location_ptr);
+static void ldv_print_line_directive (int, ldv_location_ptr);
 static void ldv_print_logical_and_expr (unsigned int, ldv_logical_and_expr_ptr);
 static void ldv_print_logical_or_expr (unsigned int, ldv_logical_or_expr_ptr);
 static void ldv_print_long_long_suffix (unsigned int, ldv_long_long_suffix_ptr);
@@ -302,7 +302,7 @@ ldv_print_additive_expr (unsigned int indent_level, ldv_additive_expr_ptr additi
         LDV_PRETTY_PRINT_ERROR (indent_level, "additive expression of additive expression was not printed");
 
       if ((location = LDV_ADDITIVE_EXPR_LOCATION (additive_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_ADDITIVE_EXPR_KIND (additive_expr) == LDV_ADDITIVE_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "+");
@@ -353,7 +353,7 @@ ldv_print_and_expr (unsigned int indent_level, ldv_and_expr_ptr and_expr)
         LDV_PRETTY_PRINT_ERROR (indent_level, "and expression of and expression was not printed");
 
       if ((location = LDV_AND_EXPR_LOCATION (and_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "&");
 
@@ -711,7 +711,7 @@ ldv_print_asm_statement (unsigned int indent_level, ldv_asm_statement_ptr asm_st
     case LDV_ASM_STATEMENT_FIRST:
     case LDV_ASM_STATEMENT_SECOND:
       if ((location = LDV_ASM_STATEMENT_LOCATION (asm_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
 
       ldv_c_backend_print (indent_level, true, "asm");
 
@@ -806,7 +806,7 @@ ldv_print_assignment_expr (unsigned int indent_level, ldv_assignment_expr_ptr as
         LDV_PRETTY_PRINT_ERROR (indent_level, "unary expression of assignment expression was not printed");
 
       if ((location = LDV_ASSIGNMENT_EXPR_LOCATION (assignment_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if ((assignment_operator = LDV_ASSIGNMENT_EXPR_ASSIGNMENT_OPERATOR (assignment_expr)))
         ldv_print_assignment_operator (indent_level, assignment_operator);
@@ -1038,7 +1038,7 @@ ldv_print_cast_expr (unsigned int indent_level, ldv_cast_expr_ptr cast_expr)
 
     case LDV_CAST_EXPR_SECOND:
       if ((location = LDV_CAST_EXPR_LOCATION (cast_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       /* See comment for this variable. */
       if (ldv_disable_cast_printing && !ldv_c_backend_printing_disabled)
@@ -1160,7 +1160,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
         LDV_PRETTY_PRINT_ERROR (indent_level, "expression of conditional expression was not printed");
 
       if ((location = LDV_COND_EXPR_LOCATION (cond_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, ":");
 
@@ -1232,7 +1232,7 @@ ldv_print_cond_expr (unsigned int indent_level, ldv_cond_expr_ptr cond_expr)
 
     case LDV_COND_EXPR_SIXTH:
       if ((location = LDV_COND_EXPR_LOCATION (cond_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "(");
 
@@ -1366,6 +1366,7 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
   /* There is a bug in representation of definitions of typedefs since for them there is init-declarator-list
    * that represents the typedef name like the variable name. Indeed, it should be provided as one more type
    * specifier. Consider the storage class specifier in addition to bypass this issue. */
+  /* TODO: after all line directives for typedef names are not printed at all. */
   if (!(decl_spec = LDV_DECL_DECL_SPEC (decl)))
     LDV_PRETTY_PRINT_ERROR (indent_level, "declaration specifiers of declaration were not printed");
 
@@ -1377,7 +1378,7 @@ ldv_print_decl (unsigned int indent_level, ldv_decl_ptr decl)
       if ((init_declarator = LDV_INIT_DECLARATOR_LIST_INIT_DECLARATOR (init_declarator_list))
         && (declarator = LDV_INIT_DECLARATOR_DECLARATOR (init_declarator))
         && (location = ldv_declarator_location (declarator)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_DECL, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for variable declaration was not printed");
     }
@@ -1879,7 +1880,7 @@ ldv_print_equality_expr (unsigned int indent_level, ldv_equality_expr_ptr equali
         LDV_PRETTY_PRINT_ERROR (indent_level, "equality expression of equality expression was not printed");
 
       if ((location = LDV_EQUALITY_EXPR_LOCATION (equality_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_EQUALITY_EXPR_KIND (equality_expr) == LDV_EQUALITY_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "==");
@@ -1930,7 +1931,7 @@ ldv_print_exclusive_or_expr (unsigned int indent_level, ldv_exclusive_or_expr_pt
         LDV_PRETTY_PRINT_ERROR (indent_level, "exclusive or expression of exclusive or expression was not printed");
 
       if ((location = LDV_EXCLUSIVE_OR_EXPR_LOCATION (exclusive_or_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "^");
 
@@ -2000,7 +2001,7 @@ ldv_print_expr_statement (unsigned int indent_level, ldv_expr_statement_ptr expr
   ldv_location_ptr location;
 
   if ((location = LDV_EXPR_STATEMENT_LOCATION (expr_statement)))
-    ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+    ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
 
   if ((expr = LDV_EXPR_STATEMENT_EXPR (expr_statement)))
     ldv_print_expr (indent_level, expr);
@@ -2088,7 +2089,7 @@ ldv_print_func_def (unsigned int indent_level, ldv_func_def_ptr func_def)
   /* Print #line directive before function definition. */
   if ((declarator = LDV_FUNC_DEF_DECLARATOR (func_def))
     && (location = ldv_declarator_location (declarator)))
-    ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+    ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_DECL, location);
   else
     LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for function definition was not printed");
 
@@ -2187,7 +2188,7 @@ ldv_print_inclusive_or_expr (unsigned int indent_level, ldv_inclusive_or_expr_pt
         LDV_PRETTY_PRINT_ERROR (indent_level, "inclusive or expression of inclusive or expression was not printed");
 
       if ((location = LDV_INCLUSIVE_OR_EXPR_LOCATION (inclusive_or_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "|");
 
@@ -2502,7 +2503,7 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
       case LDV_JUMP_STATEMENT_GOTO:
       case LDV_JUMP_STATEMENT_RETURN:
         if ((location = LDV_JUMP_STATEMENT_LOCATION (jump_statement)))
-          ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+          ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
 
         if (LDV_JUMP_STATEMENT_KIND (jump_statement) == LDV_JUMP_STATEMENT_GOTO)
           {
@@ -2605,7 +2606,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
     {
     case LDV_LABELED_STATEMENT_LABEL:
       if ((location = LDV_LABELED_STATEMENT_LOCATION (labeled_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
 
       if ((id = LDV_LABELED_STATEMENT_ID (labeled_statement)))
         ldv_c_backend_print (indent_level, true, id);
@@ -2625,7 +2626,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
     case LDV_LABELED_STATEMENT_CASE:
     case LDV_LABELED_STATEMENT_CASE_RANGE:
       if ((location = LDV_LABELED_STATEMENT_LOCATION (labeled_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for labeled statement was not printed");
 
@@ -2652,7 +2653,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
 
     case LDV_LABELED_STATEMENT_DEFAULT:
       if ((location = LDV_LABELED_STATEMENT_LOCATION (labeled_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for labeled statement was not printed");
 
@@ -2674,7 +2675,7 @@ ldv_print_labeled_statement (unsigned int indent_level, ldv_labeled_statement_pt
 }
 
 static void
-ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr location)
+ldv_print_line_directive (int lines_level, ldv_location_ptr location)
 {
   const char *file;
   unsigned int line = LDV_LOCATION_LINE (location);
@@ -2706,14 +2707,16 @@ ldv_print_line_directive (bool new_line, int lines_level, ldv_location_ptr locat
         }
     }
 
-  if (new_line)
+  /* Print new line before upcoming line directive just in that case when the last printed character was not
+   * a new line. */
+  if (ldv_c_backend_get_last_char () && ldv_c_backend_get_last_char () != '\n')
     ldv_c_backend_print (0, false, "\n");
 
-  ldv_c_backend_print (0, true, "#line");
+  ldv_c_backend_print (0, false, "#line");
 
   /* Line is either normal line from some source file or 0 for built-in stuff,
    * e.g. for artificial return expressions added by GCC for function main. */
-  ldv_c_backend_print (0, true, "%d", line);
+  ldv_c_backend_print (0, true, " %d", line);
 
   if ((file = LDV_LOCATION_FILE (location)))
     ldv_c_backend_print (0, true, "\"%s\"", file);
@@ -2760,7 +2763,7 @@ ldv_print_logical_and_expr (unsigned int indent_level, ldv_logical_and_expr_ptr 
         LDV_PRETTY_PRINT_ERROR (indent_level, "logical and expression of logical and expression was not printed");
 
       if ((location = LDV_LOGICAL_AND_EXPR_LOCATION (logical_and_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "&&");
 
@@ -2808,7 +2811,7 @@ ldv_print_logical_or_expr (unsigned int indent_level, ldv_logical_or_expr_ptr lo
         LDV_PRETTY_PRINT_ERROR (indent_level, "logical or expression of logical or expression was not printed");
 
       if ((location = LDV_LOGICAL_OR_EXPR_LOCATION (logical_or_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "||");
 
@@ -2914,7 +2917,7 @@ ldv_print_multiplicative_expr (unsigned int indent_level, ldv_multiplicative_exp
         LDV_PRETTY_PRINT_ERROR (indent_level, "multiplicative expression of multiplicative expression was not printed");
 
       if ((location = LDV_MULTIPLICATIVE_EXPR_LOCATION (multiplicative_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_MULTIPLICATIVE_EXPR_KIND (multiplicative_expr) == LDV_MULTIPLICATIVE_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "*");
@@ -3152,7 +3155,7 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
         }
 
       if ((location = LDV_POSTFIX_EXPR_LOCATION (postfix_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_SECOND)
         {
@@ -3356,7 +3359,7 @@ ldv_print_relational_expr (unsigned int indent_level, ldv_relational_expr_ptr re
         LDV_PRETTY_PRINT_ERROR (indent_level, "relational expression of relational expression was not printed");
 
       if ((location = LDV_RELATIONAL_EXPR_LOCATION (relational_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_RELATIONAL_EXPR_KIND (relational_expr) == LDV_RELATIONAL_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "<");
@@ -3400,7 +3403,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
     {
     case LDV_SELECTION_STATEMENT_SWITCH:
       if ((location = LDV_SELECTION_STATEMENT_LOCATION (selection_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for selection statement was not printed");
 
@@ -3426,7 +3429,7 @@ ldv_print_selection_statement (unsigned int indent_level, ldv_selection_statemen
     case LDV_SELECTION_STATEMENT_IF_THEN:
     case LDV_SELECTION_STATEMENT_IF_THEN_ELSE:
       if ((location = LDV_SELECTION_STATEMENT_LOCATION (selection_statement)))
-        ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for selection statement was not printed");
 
@@ -3504,7 +3507,7 @@ ldv_print_shift_expr (unsigned int indent_level, ldv_shift_expr_ptr shift_expr)
         LDV_PRETTY_PRINT_ERROR (indent_level, "shift expression of shift expression was not printed");
 
       if ((location = LDV_SHIFT_EXPR_LOCATION (shift_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_SHIFT_EXPR_KIND (shift_expr) == LDV_SHIFT_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "<<");
@@ -3947,7 +3950,7 @@ ldv_print_struct_declarator (unsigned int indent_level, ldv_struct_declarator_pt
     {
       /* Print #line directive before a given field declaration. */
       if ((location = ldv_declarator_location (declarator)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_DECL, location);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "line directive for field declaration was not printed");
 
@@ -4018,7 +4021,7 @@ ldv_print_struct_or_union_spec (unsigned int indent_level, ldv_struct_or_union_s
         {
           location = LDV_STRUCT_OR_UNION_SPEC_STRUCT_LOCATION (struct_or_union_spec);
           if (location)
-            ldv_print_line_directive (false, LDV_C_BACKEND_LINES_LEVEL_DECL, location);
+            ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_DECL, location);
         }
 
       if ((struct_or_union = LDV_STRUCT_OR_UNION_SPEC_STRUCT_OR_UNION (struct_or_union_spec)))
@@ -4465,7 +4468,7 @@ ldv_print_unary_expr (unsigned int indent_level, ldv_unary_expr_ptr unary_expr)
     case LDV_UNARY_EXPR_THIRD:
     case LDV_UNARY_EXPR_FOURTH:
       if ((location = LDV_UNARY_EXPR_LOCATION (unary_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_SECOND)
         ldv_c_backend_print (indent_level, true, "++");
@@ -4497,7 +4500,7 @@ ldv_print_unary_expr (unsigned int indent_level, ldv_unary_expr_ptr unary_expr)
     /* Taking address of a label */
     case LDV_UNARY_EXPR_FIFTH:
       if ((location = LDV_UNARY_EXPR_LOCATION (unary_expr)))
-        ldv_print_line_directive (true, LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
+        ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       ldv_c_backend_print (indent_level, true, "&&");
 

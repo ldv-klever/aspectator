@@ -110,6 +110,12 @@ ldv_c_backend_padding_force (void)
   ldv_c_backend_padding = true;
 }
 
+char
+ldv_c_backend_get_last_char (void)
+{
+  return ldv_c_backend_last_char;
+}
+
 void
 ldv_c_backend_print (unsigned int indent_level, bool padding, const char *format, ...)
 {

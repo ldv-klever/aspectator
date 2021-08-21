@@ -55,6 +55,7 @@ extern char *ldv_c_backend_get_buffer (void);
 extern int ldv_c_backend_get_lines_level (void);
 extern void ldv_c_backend_padding_cancel (void);
 extern void ldv_c_backend_padding_force (void);
+extern char ldv_c_backend_get_last_char (void);
 extern void ldv_c_backend_print (unsigned int, bool, const char *, ...) ATTRIBUTE_PRINTF_3;
 extern void ldv_c_backend_print_to_buffer (void);
 extern void ldv_c_backend_print_to_file (void);
