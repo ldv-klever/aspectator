@@ -1142,6 +1142,12 @@ ldv_convert_block_item (tree t)
 
       break;
 
+    case DECL_EXPR:
+      LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_FIRST;
+      LDV_BLOCK_ITEM_NESTED_DECL (block_item) = ldv_convert_nested_decl (DECL_EXPR_DECL (t));
+
+      break;
+
     default:
       LDV_BLOCK_ITEM_KIND (block_item) = LDV_BLOCK_ITEM_SECOND;
       LDV_BLOCK_ITEM_STATEMENT (block_item) = ldv_convert_statement (t);
@@ -1169,6 +1175,7 @@ ldv_convert_block_item_list (tree t)
   ldv_block_item_ptr block_item;
   tree_stmt_iterator si;
   tree statement;
+  ldv_identifier_ptr identifier;
 
   block_item_list = XCNEW (struct ldv_block_item_list);
   block_item_list_next = NULL;
@@ -1182,7 +1189,6 @@ ldv_convert_block_item_list (tree t)
           if ((statement = tsi_stmt (si)))
             switch (TREE_CODE (statement))
               {
-              case DECL_EXPR:
               case SAVE_EXPR:
               case PREDICT_EXPR:
                 break;
@@ -1195,6 +1201,33 @@ ldv_convert_block_item_list (tree t)
                  *       anyhow. */
                 if (TREE_CODE (statement) == CALL_EXPR && CALL_EXPR_IFN (statement) == IFN_FALLTHROUGH)
                   break;
+
+                if (TREE_CODE (statement) == DECL_EXPR)
+                  {
+                    /* Label declarations were already parsed. They always preceed any other declarations and statements. */
+                    if (TREE_CODE (DECL_EXPR_DECL (statement)) == LABEL_DECL)
+                      break;
+
+                    /* TODO: make a special function for that (search __func__). */
+                    /* Skip artificial variables. */
+                    if (TREE_CODE (DECL_EXPR_DECL (statement)) == VAR_DECL)
+                      {
+                        if ((identifier = ldv_convert_identifier (DECL_EXPR_DECL (statement))))
+                          {
+                            bool is_artificial_var = false;
+                            if (LDV_IDENTIFIER_STR (identifier) && (!strcmp (LDV_IDENTIFIER_STR (identifier), "__func__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__FUNCTION__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__PRETTY_FUNCTION__")))
+                              is_artificial_var = true;
+
+                            XDELETE (LDV_IDENTIFIER_STR (identifier));
+                            XDELETE (identifier);
+
+                            if (is_artificial_var)
+                              break;
+                          }
+                        else
+                          LDV_ERROR ("can't find variable name");
+                      }
+                    }
 
                 if ((block_item = ldv_convert_block_item (statement)))
                   {
@@ -1537,7 +1570,6 @@ ldv_convert_compound_statement (tree t)
   ldv_block_item_list_ptr block_item_list, block_item_list_next, decl_block_item_list, decl_block_item_list_next, statement_block_item_list;
   tree block_decl, block_decl_type, block_statement;
   ldv_label_decls_ptr label_decls_next, label_decls_next_old;
-  ldv_identifier_ptr identifier;
 
   compound_statement = XCNEW (struct ldv_compound_statement);
   decl_block_item_list = statement_block_item_list = NULL;
@@ -1553,7 +1585,7 @@ ldv_convert_compound_statement (tree t)
     case BIND_EXPR:
       for (block_decl = BIND_EXPR_VARS (t); block_decl; block_decl = TREE_CHAIN (block_decl))
         {
-          /* Skip constant declarations and use type of type declarations without name. */
+          /* Skip constant and variable declarations and use type of type declarations without name. */
           block_decl_type = block_decl;
 
           switch (TREE_CODE (block_decl))
@@ -1566,6 +1598,7 @@ ldv_convert_compound_statement (tree t)
               break;
 
             case CONST_DECL:
+            case VAR_DECL:
               block_decl_type = NULL;
 
               break;
@@ -1586,20 +1619,6 @@ ldv_convert_compound_statement (tree t)
               block_decl_type = NULL;
 
               break;
-
-            /* TODO: make a special function for that (search __func__). */
-            /* Skip artificial variables. */
-            case VAR_DECL:
-              if ((identifier = ldv_convert_identifier (block_decl)))
-                {
-                  if (LDV_IDENTIFIER_STR (identifier) && (!strcmp (LDV_IDENTIFIER_STR (identifier), "__func__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__FUNCTION__") || !strcmp (LDV_IDENTIFIER_STR (identifier), "__PRETTY_FUNCTION__")))
-                    block_decl_type = NULL;
-
-                  XDELETE (LDV_IDENTIFIER_STR (identifier));
-                  XDELETE (identifier);
-                }
-              else
-                LDV_ERROR ("can't find variable name");
 
             default:
               ;
@@ -1632,7 +1651,6 @@ ldv_convert_compound_statement (tree t)
 
               break;
 
-            case DECL_EXPR:
             case SAVE_EXPR:
               break;
 
@@ -6204,7 +6222,6 @@ ldv_is_not_empty_statement_list (tree t)
           if ((statement = tsi_stmt (si)))
             switch (TREE_CODE (statement))
               {
-              case DECL_EXPR:
               case SAVE_EXPR:
                 break;
 
