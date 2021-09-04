@@ -1590,6 +1590,15 @@ ldv_convert_compound_statement (tree t)
 
           switch (TREE_CODE (block_decl))
             {
+            case FUNCTION_DECL:
+              /* Omit printing missed function declarations. Later this can result in mismatches with
+               * proper declarations and definitions since printed implicit function declarations may
+               * be invalid. */
+              if (C_DECL_IMPLICIT (block_decl))
+                block_decl_type = NULL;
+
+              break;
+
             case TYPE_DECL:
               if (!DECL_NAME (block_decl))
                 if (!(block_decl_type = TREE_TYPE (block_decl)))
