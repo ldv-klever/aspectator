@@ -489,11 +489,8 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
 
   /* Compare functions types. */
   if (!ldv_match_type (func_source->type, func_aspect->type))
-    {
-      ldv_free_info_func (func_aspect);
-      i_match->i_func_aspect = NULL;
-      return false;
-    }
+    return false;
+
 
   /* Specify that a function was matched by a whole signature not just by a
      name. */

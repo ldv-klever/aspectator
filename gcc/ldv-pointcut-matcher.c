@@ -1043,7 +1043,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
          functions if it's needed. */
       else if (match->ismatched_by_name)
         {
-          if (ldv_isprint_signature_of_matched_by_name)
+          if (ldv_isprint_signature_of_matched_by_name && ldv_instrumentation ())
             {
               ldv_puts ("\nThese functions were matched by name but have different signatures:\n  source function declaration: ", LDV_MATCHED_BY_NAME);
               func_decl_printed = ldv_print_func_decl (match->i_func);
@@ -1054,6 +1054,8 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
               ldv_puts ("\n", LDV_MATCHED_BY_NAME);
             }
 
+          ldv_free_info_func (match->i_func_aspect);
+          match->i_func_aspect = NULL;
           match->ismatched_by_name = false;
         }
     }
