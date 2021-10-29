@@ -462,6 +462,9 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   func_source = i_match->i_func;
   func_aspect = ldv_convert_func_signature_to_internal (pps_func);
 
+  /* Specify that a function was not matched even by name yet. */
+  i_match->ismatched_by_name = false;
+
   /* Set an aspect function declaration. */
   i_match->i_func_aspect = func_aspect;
 
