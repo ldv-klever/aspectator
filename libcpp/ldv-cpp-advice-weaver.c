@@ -608,7 +608,7 @@ void
 ldv_print_macro (ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
-  ldv_id_ptr i_macro_param = NULL;
+  ldv_i_macro_func_param_ptr i_macro_param = NULL;
 
   fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro->macro_name));
 
@@ -616,12 +616,15 @@ ldv_print_macro (ldv_i_macro_ptr i_macro)
     ; i_macro_param_list
     ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
     {
-      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+      i_macro_param = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_list);
 
       if (i_macro_param_list == i_macro->macro_param)
         fprintf (LDV_MATCHED_BY_NAME, "(");
 
-      fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro_param));
+      if (i_macro_param->name)
+        fprintf (LDV_MATCHED_BY_NAME, "%s", ldv_cpp_get_id_name (i_macro_param->name));
+      else
+        fprintf (LDV_MATCHED_BY_NAME, "...");
 
       if (ldv_list_get_next (i_macro_param_list))
         fprintf (LDV_MATCHED_BY_NAME, ", ");

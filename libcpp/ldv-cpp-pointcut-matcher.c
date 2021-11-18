@@ -409,6 +409,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
               fprintf (LDV_MATCHED_BY_NAME, "\n");
             }
 
+          ldv_free_info_macro (match->i_macro_aspect);
           match->ismatched_by_name = false;
         }
     }
@@ -589,18 +590,12 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
       if ((i_macro_param_first->isvar_params && !i_macro_param_second->isvar_params) ||
           (!i_macro_param_first->isvar_params && i_macro_param_second->isvar_params))
-        {
-          ldv_free_info_macro (macro_aspect);
           return false;
-        }
 
       if (i_macro_param_first->name && i_macro_param_second->name && i_macro_param_second->name->isany_chars)
         {
           if (ldv_cmp_str (i_macro_param_second->name, ldv_cpp_get_id_name (i_macro_param_first->name)))
-            {
-              ldv_free_info_macro (macro_aspect);
               return false;
-            }
 
           ldv_free_id (i_macro_param_second->name);
           i_macro_param_second->name = ldv_create_id();
@@ -610,10 +605,7 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 
   /* I.e. the numbers of macro parameters aren't equal. */
   if (i_macro_param_first_list || i_macro_param_second_list)
-    {
-      ldv_free_info_macro (macro_aspect);
       return false;
-    }
 
   /* Specify that a macro was matched by a whole signature not just by a
      name. */
