@@ -36,12 +36,12 @@
 &	// char (ichar (f(:,:)(2:2)) + mod (i, 3))
   end do
   do i = 1, 64
-    if (any (index (c, char (ichar ('0') + i)) .eq. 0)) call abort
-    if (any (index (d, char (ichar ('0') + i)) .eq. 0)) call abort
+    if (any (index (c, char (ichar ('0') + i)) .eq. 0)) stop 1
+    if (any (index (d, char (ichar ('0') + i)) .eq. 0)) stop 2
   end do
-  if (any (e.ne.char (ichar ('0') + 64))) call abort
-  if (any (f(:,:)(1:1).ne.char (ichar ('0') + 32))) call abort
-  if (any (f(:,:)(2:2).ne.char (ichar ('0') + 64))) call abort
+  if (any (e.ne.char (ichar ('0') + 64))) stop 3
+  if (any (f(:,:)(1:1).ne.char (ichar ('0') + 32))) stop 4
+  if (any (f(:,:)(2:2).ne.char (ichar ('0') + 64))) stop 5
 end
 elemental function fn (x, y)
   character (len=64), intent (in) :: x, y

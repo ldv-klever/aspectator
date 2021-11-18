@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -68,6 +68,10 @@ package Errout is
    --  error message tag. The -gnatw.d switch sets this flag True, -gnatw.D
    --  sets this flag False.
 
+   Current_Node : Node_Id := Empty;
+   --  Used by Error_Msg as a default Node_Id.
+   --  Relevant only when Opt.Include_Subprogram_In_Messages is set.
+
    -----------------------------------
    -- Suppression of Error Messages --
    -----------------------------------
@@ -108,8 +112,8 @@ package Errout is
    --        already placed an error (not warning) message at that location,
    --        then we assume this is cascaded junk and delete the message.
 
-   --  This normal suppression action may be overridden in cases 2-5 (but not
-   --  in case 1 or 7 by setting All_Errors mode, or by setting the special
+   --  This normal suppression action may be overridden in cases 2-5 (but
+   --  not in case 1 or 7) by setting All_Errors mode, or by setting the
    --  unconditional message insertion character (!) as described below.
 
    ---------------------------------------------------------
@@ -214,7 +218,7 @@ package Errout is
    --    Insertion character } (Right brace: insert type reference)
    --      The character } is replaced by a string describing the type
    --      referenced by the entity whose Id is stored in Error_Msg_Node_1.
-   --      the string gives the name or description of the type, and also
+   --      The string gives the name or description of the type, and also
    --      where appropriate the location of its declaration. Special cases
    --      like "some integer type" are handled appropriately. Only one } is
    --      allowed in a message, since there is not enough room for two (the
@@ -301,7 +305,9 @@ package Errout is
    --      Note: this usage is obsolete, use ?? ?*? ?$? ?x? ?X? to specify
    --      the string to be added when Warn_Doc_Switch is set to True. If this
    --      switch is True, then for simple ? messages it has no effect. This
-   --      simple form is to ease transition and will be removed later.
+   --      simple form is to ease transition and may be removed later except
+   --      for GNATprove-specific messages (info and warnings) which are not
+   --      subject to the same GNAT warning switches.
 
    --    Insertion character ?? (Two question marks: default warning)
    --      Like ?, but if the flag Warn_Doc_Switch is True, adds the string
@@ -375,12 +381,11 @@ package Errout is
    --      continuations are being gathered into a single message.
 
    --    Insertion character | (Vertical bar: non-serious error)
-   --      By default, error messages (other than warning messages) are
-   --      considered to be fatal error messages which prevent expansion or
-   --      generation of code in the presence of the -gnatQ switch. If the
-   --      insertion character | appears, the message is considered to be
-   --      non-serious, and does not cause Serious_Errors_Detected to be
-   --      incremented (so expansion is not prevented by such a msg). This
+   --      By default, error messages (but not warning messages) are considered
+   --      to be fatal error messages, which prevent expansion and generation
+   --      of code. If the insertion character | appears, the message is
+   --      considered to be nonserious, and Serious_Errors_Detected is not
+   --      incremented, so expansion is not prevented by such a msg. This
    --      insertion character is ignored in continuation messages.
 
    --    Insertion character ~ (Tilde: insert string)
@@ -446,6 +451,15 @@ package Errout is
 
    --  Note that is mandatory that the caller ensure that global variables
    --  are set before the Error_Msg call, otherwise the result is undefined.
+
+   --  Also note that calls to Error_Msg and its variants destroy the value of
+   --  these global variables, as a way to support the inclusion of multiple
+   --  insertion characters of the same type. For example, support for
+   --  multiple characters % for a name in the message (up to 3) is
+   --  implemented by unconditionally shifting the value for Error_Msg_Nam_2
+   --  to Error_Msg_Nam_1 and from Error_Msg_Nam_3 to Error_Msg_Nam_2 after
+   --  dealing with insertion character %. The caller should ensure that all
+   --  global variables are restored if needed prior to calling Error_Msg.
 
    Error_Msg_Col : Column_Number renames Err_Vars.Error_Msg_Col;
    --  Column for @ insertion character in message
@@ -641,8 +655,8 @@ package Errout is
    --  CODEFIX Facility --
    -----------------------
 
-   --  The GPS and GNATBench IDE's have a codefix facility that allows for
-   --  automatic correction of a subset of the errors and warnings issued
+   --  The GNAT Studio and GNATBench IDE's have a codefix facility that allows
+   --  for automatic correction of a subset of the errors and warnings issued
    --  by the compiler. This is done by recognizing the text of specific
    --  messages using appropriate matching patterns.
 
@@ -686,9 +700,21 @@ package Errout is
    --  Output list of messages, including messages giving number of detected
    --  errors and warnings.
 
-   procedure Error_Msg (Msg : String; Flag_Location : Source_Ptr);
+   procedure Error_Msg
+     (Msg : String; Flag_Location : Source_Ptr);
+   procedure Error_Msg
+     (Msg : String; Flag_Location : Source_Ptr; N : Node_Id);
    --  Output a message at specified location. Can be called from the parser
-   --  or the semantic analyzer.
+   --  or the semantic analyzer. If N is set, points to the relevant node for
+   --  this message.
+
+   procedure Error_Msg
+     (Msg                    : String;
+      Flag_Location          : Source_Ptr;
+      Is_Compile_Time_Pragma : Boolean);
+   --  Same as Error_Msg (String, Source_Ptr) except Is_Compile_Time_Pragma
+   --  lets the caller specify whether this is a Compile_Time_Warning or
+   --  Compile_Time_Error pragma.
 
    procedure Error_Msg_S (Msg : String);
    --  Output a message at current scan pointer location. This routine can be
@@ -724,6 +750,8 @@ package Errout is
    --  suppressed if the node N already has a message posted, or if it is a
    --  warning and N is an entity node for which warnings are suppressed.
 
+   --  WARNING: There is a matching C declaration of this subprogram in fe.h
+
    procedure Error_Msg_F (Msg : String; N : Node_Id);
    --  Similar to Error_Msg_N except that the message is placed on the first
    --  node of the construct N (First_Node (N)). Note that this procedure uses
@@ -739,6 +767,8 @@ package Errout is
    --  routines, where this is a common error message situation. The Msg text
    --  will contain a & or } as usual to mark the insertion point. This
    --  routine can be called from the parser or the analyzer.
+
+   --  WARNING: There is a matching C declaration of this subprogram in fe.h
 
    procedure Error_Msg_FE
      (Msg : String;
@@ -872,13 +902,21 @@ package Errout is
    --  overridden interface primitive Iface_Prim) indicating wrong mode of the
    --  first formal (RM 9.4(11.9/3)).
 
+   procedure Error_Msg_Ada_2005_Extension (Extension : String);
+   --  Analogous to Error_Msg_Ada_2012_Feature, but phrase the message using
+   --  "extension" and not "feature". This routine is only used in the parser,
+   --  so the error is always placed at the Token_Ptr.
+
    procedure Error_Msg_Ada_2012_Feature (Feature : String; Loc : Source_Ptr);
-   --  If not operating in Ada 2012 mode, posts errors complaining that Feature
-   --  is only supported in Ada 2012, with appropriate suggestions to fix this.
-   --  Loc is the location at which the flag is to be posted. Feature, which
-   --  appears at the start of the first generated message, may contain error
-   --  message insertion characters in the normal manner, and in particular
-   --  may start with | to flag a non-serious error.
+   --  If not operating in Ada 2012 mode or higher, posts errors complaining
+   --  that Feature is only supported in Ada 2012, with appropriate suggestions
+   --  to fix this. Loc is the location at which the flag is to be posted.
+   --  Feature, which appears at the start of the first generated message, may
+   --  contain error message insertion characters in the normal manner, and in
+   --  particular may start with | to flag a non-serious error.
+
+   procedure Error_Msg_Ada_2020_Feature (Feature : String; Loc : Source_Ptr);
+   --  Analogous to Error_Msg_Ada_2012_Feature
 
    procedure dmsg (Id : Error_Msg_Id) renames Erroutc.dmsg;
    --  Debugging routine to dump an error message
@@ -937,5 +975,15 @@ package Errout is
    --  return, the name is in Name_Buffer, null terminated with Name_Len set.
    --  This name is the identifier name as passed, cased according to the
    --  default identifier casing for the given file.
+
+   --  WARNING: There is a matching C declaration of this subprogram in fe.h
+
+   function Is_Size_Too_Small_Message (S : String) return Boolean;
+   Size_Too_Small_Message : constant String :=
+     "size for& too small, minimum allowed is ^";
+   --  This message is printed in Freeze and Sem_Ch13. We also test for it in
+   --  the body of this package (see Special_Msg_Delete) ???which is somewhat
+   --  questionable. The Is_Size_Too_Small_Message function tests for it by
+   --  testing a prefix. The function and constant should be kept in synch.
 
 end Errout;

@@ -25,7 +25,7 @@ dnl provide a builtin type for TImode.
 dnl
 AC_DEFUN([LIBAT_HAVE_INT_MODE],[
   AC_CACHE_CHECK([for $2 byte integer],[libat_cv_have_mode_$1],
-    [AC_COMPILE_IFELSE([int x __attribute__((mode($1)));],
+    [AC_COMPILE_IFELSE([AC_LANG_SOURCE([int x __attribute__((mode($1)));])],
       [libat_cv_have_mode_$1=yes],[libat_cv_have_mode_$1=no])])
   LIBAT_DEFINE_YESNO([HAVE_INT$2], [$libat_cv_have_mode_$1],
       [Have support for $2 byte integers.])
@@ -195,7 +195,8 @@ AC_DEFUN([LIBAT_CHECK_IFUNC], [
   CFLAGS="$CFLAGS -Werror"
   AC_TRY_LINK([
     int foo_alt(void) { return 0; }
-    void *foo_sel(void) { return foo_alt; }
+    typedef int F (void);
+    F *foo_sel(void) { return foo_alt; }
     int foo(void) __attribute__((ifunc("foo_sel")));],
     [return foo();], libat_cv_have_ifunc=yes, libat_cv_have_ifunc=no)])
   LIBAT_DEFINE_YESNO([HAVE_IFUNC], [$libat_cv_have_ifunc],
@@ -335,7 +336,7 @@ AC_DEFUN([LIBAT_CHECK_LINKER_FEATURES], [
   fi
   changequote(,)
   ldver=`$LD --version 2>/dev/null |
-         sed -e 's/GNU gold /GNU ld /;s/GNU ld version /GNU ld /;s/GNU ld ([^)]*) /GNU ld /;s/GNU ld \([0-9.][0-9.]*\).*/\1/; q'`
+         sed -e 's/[. ][0-9]\{8\}$//;s/.* \([^ ]\{1,\}\)$/\1/; q'`
   changequote([,])
   libat_gnu_ld_version=`echo $ldver | \
          $AWK -F. '{ if (NF<3) [$]3=0; print ([$]1*100+[$]2)*100+[$]3 }'`
@@ -437,7 +438,7 @@ AC_DEFUN([LIBAT_CHECK_LINKER_FEATURES], [
   fi
   changequote(,)
   ldver=`$LD --version 2>/dev/null |
-         sed -e 's/GNU gold /GNU ld /;s/GNU ld version /GNU ld /;s/GNU ld ([^)]*) /GNU ld /;s/GNU ld \([0-9.][0-9.]*\).*/\1/; q'`
+         sed -e 's/[. ][0-9]\{8\}$//;s/.* \([^ ]\{1,\}\)$/\1/; q'`
   changequote([,])
   libat_gnu_ld_version=`echo $ldver | \
          $AWK -F. '{ if (NF<3) [$]3=0; print ([$]1*100+[$]2)*100+[$]3 }'`
@@ -631,6 +632,8 @@ AC_MSG_NOTICE(versioning on shared library symbols is $enable_symvers)
 
 dnl ----------------------------------------------------------------------
 sinclude(../libtool.m4)
+sinclude(../config/enable.m4)
+sinclude(../config/cet.m4)
 dnl The lines below arrange for aclocal not to bring an installed
 dnl libtool.m4 into aclocal.m4, while still arranging for automake to
 dnl add a definition of LIBTOOL to Makefile.in.

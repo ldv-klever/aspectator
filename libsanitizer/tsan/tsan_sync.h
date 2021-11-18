@@ -1,7 +1,8 @@
 //===-- tsan_sync.h ---------------------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +22,31 @@
 
 namespace __tsan {
 
+// These need to match __tsan_mutex_* flags defined in tsan_interface.h.
+// See documentation there as well.
+enum MutexFlags {
+  MutexFlagLinkerInit          = 1 << 0, // __tsan_mutex_linker_init
+  MutexFlagWriteReentrant      = 1 << 1, // __tsan_mutex_write_reentrant
+  MutexFlagReadReentrant       = 1 << 2, // __tsan_mutex_read_reentrant
+  MutexFlagReadLock            = 1 << 3, // __tsan_mutex_read_lock
+  MutexFlagTryLock             = 1 << 4, // __tsan_mutex_try_lock
+  MutexFlagTryLockFailed       = 1 << 5, // __tsan_mutex_try_lock_failed
+  MutexFlagRecursiveLock       = 1 << 6, // __tsan_mutex_recursive_lock
+  MutexFlagRecursiveUnlock     = 1 << 7, // __tsan_mutex_recursive_unlock
+  MutexFlagNotStatic           = 1 << 8, // __tsan_mutex_not_static
+
+  // The following flags are runtime private.
+  // Mutex API misuse was detected, so don't report any more.
+  MutexFlagBroken              = 1 << 30,
+  // We did not intercept pre lock event, so handle it on post lock.
+  MutexFlagDoPreLockOnPostLock = 1 << 29,
+  // Must list all mutex creation flags.
+  MutexCreationFlagMask        = MutexFlagLinkerInit |
+                                 MutexFlagWriteReentrant |
+                                 MutexFlagReadReentrant |
+                                 MutexFlagNotStatic,
+};
+
 struct SyncVar {
   SyncVar();
 
@@ -33,10 +59,7 @@ struct SyncVar {
   int owner_tid;  // Set only by exclusive owners.
   u64 last_lock;
   int recursion;
-  bool is_rw;
-  bool is_recursive;
-  bool is_broken;
-  bool is_linker_init;
+  atomic_uint32_t flags;
   u32 next;  // in MetaMap
   DDMutex dd;
   SyncClock read_clock;  // Used for rw mutexes only.
@@ -58,6 +81,26 @@ struct SyncVar {
   static uptr SplitId(u64 id, u64 *uid) {
     *uid = id >> 48;
     return (uptr)GetLsb(id, 48);
+  }
+
+  bool IsFlagSet(u32 f) const {
+    return atomic_load_relaxed(&flags) & f;
+  }
+
+  void SetFlags(u32 f) {
+    atomic_store_relaxed(&flags, atomic_load_relaxed(&flags) | f);
+  }
+
+  void UpdateFlags(u32 flagz) {
+    // Filter out operation flags.
+    if (!(flagz & MutexCreationFlagMask))
+      return;
+    u32 current = atomic_load_relaxed(&flags);
+    if (current & MutexCreationFlagMask)
+      return;
+    // Note: this can be called from MutexPostReadLock which holds only read
+    // lock on the SyncVar.
+    atomic_store_relaxed(&flags, current | (flagz & MutexCreationFlagMask));
   }
 };
 

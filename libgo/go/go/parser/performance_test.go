@@ -6,16 +6,21 @@ package parser
 
 import (
 	"go/token"
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
-func BenchmarkParse(b *testing.B) {
-	src, err := ioutil.ReadFile("parser.go")
+var src = readFile("parser.go")
+
+func readFile(filename string) []byte {
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		b.Fatal(err)
+		panic(err)
 	}
-	b.ResetTimer()
+	return data
+}
+
+func BenchmarkParse(b *testing.B) {
 	b.SetBytes(int64(len(src)))
 	for i := 0; i < b.N; i++ {
 		if _, err := ParseFile(token.NewFileSet(), "", src, ParseComments); err != nil {

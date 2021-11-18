@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 // The VxWorks kernel headers define their own UINT32
-#if defined __vxworks && !defined __RTP__
+#if defined __vxworks
 #define UINT32 my_UINT32
 #endif
 
@@ -53,6 +53,8 @@ UINT32 bar (const C * sPtr)
 
   if (a.xy[0] != ((SINT16) 0xffff << 2))
 	abort ();
+
+  return 0;
 }
 
 int main()

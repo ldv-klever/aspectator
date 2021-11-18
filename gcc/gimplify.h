@@ -1,5 +1,5 @@
 /* Header file for gimplification.
-   Copyright (C) 2013-2017 Free Software Foundation, Inc.
+   Copyright (C) 2013-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -57,11 +57,12 @@ extern gbind *gimple_current_bind_expr (void);
 extern vec<gbind *> gimple_bind_expr_stack (void);
 extern void gimplify_and_add (tree, gimple_seq *);
 extern tree get_formal_tmp_var (tree, gimple_seq *);
-extern tree get_initialized_tmp_var (tree, gimple_seq *, gimple_seq *,
+extern tree get_initialized_tmp_var (tree, gimple_seq *, gimple_seq * = NULL,
 				     bool = true);
 extern void declare_vars (tree, gimple *, bool);
 extern void gimple_add_tmp_var (tree);
 extern void gimple_add_tmp_var_fn (struct function *, tree);
+extern void copy_if_shared (tree *, void * = NULL);
 extern tree unshare_expr (tree);
 extern tree unshare_expr_without_location (tree);
 extern tree voidify_wrapper_expr (tree, tree);
@@ -75,6 +76,8 @@ extern void omp_firstprivatize_variable (struct gimplify_omp_ctx *, tree);
 extern enum gimplify_status gimplify_expr (tree *, gimple_seq *, gimple_seq *,
 					   bool (*) (tree), fallback_t);
 
+int omp_construct_selector_matches (enum tree_code *, int, int *);
+
 extern void gimplify_type_sizes (tree, gimple_seq *);
 extern void gimplify_one_sizepos (tree *, gimple_seq *);
 extern gbind *gimplify_body (tree, bool);
@@ -83,25 +86,7 @@ extern enum gimplify_status gimplify_arg (tree *, gimple_seq *, location_t,
 extern void gimplify_function_tree (tree);
 extern enum gimplify_status gimplify_va_arg_expr (tree *, gimple_seq *,
 						  gimple_seq *);
+extern bool generic_expr_could_trap_p (tree expr);
 gimple *gimplify_assign (tree, tree, gimple_seq *);
-
-/* Return true if gimplify_one_sizepos doesn't need to gimplify
-   expr (when in TYPE_SIZE{,_UNIT} and similar type/decl size/bitsize
-   fields).  */
-
-static inline bool
-is_gimple_sizepos (tree expr)
-{
-  /* gimplify_one_sizepos doesn't need to do anything if the value isn't there,
-     is constant, or contains A PLACEHOLDER_EXPR.  We also don't want to do
-     anything if it's already a VAR_DECL.  If it's a VAR_DECL from another
-     function, the gimplifier will want to replace it with a new variable,
-     but that will cause problems if this type is from outside the function.
-     It's OK to have that here.  */
-  return (expr == NULL_TREE
-	  || TREE_CODE (expr) == INTEGER_CST
-	  || TREE_CODE (expr) == VAR_DECL
-	  || CONTAINS_PLACEHOLDER_P (expr));
-}                                        
 
 #endif /* GCC_GIMPLIFY_H */

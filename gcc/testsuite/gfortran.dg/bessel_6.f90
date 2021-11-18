@@ -1,11 +1,7 @@
-! { dg-do run { xfail spu-*-* } }
 ! { dg-add-options ieee }
 !
 ! PR fortran/36158
 ! PR fortran/33197
-!
-! XFAILed for SPU targets since we don't have an accurate library
-! implementation of the single-precision Bessel functions.
 !
 ! Run-time tests for transformations BESSEL_JN
 !
@@ -43,7 +39,7 @@ do i = 0, mymax
 !        rec(i) == lib(i), abs((rec(i)-lib(i))/rec(i)) < myeps
 if (rec(i) == lib(i)) CYCLE
 if (abs((rec(i)-lib(i))/rec(i)) > myeps) &
-  call abort()
+  STOP 1
 end do
 
 end

@@ -30,6 +30,6 @@
     s = s + l
     t%x = t%x + l
   end do
-  if (r.ne.2700.or.j.ne.70.or.k.ne.80.or.s.ne.2700) call abort
-  if (t%x.ne.2700) call abort
+  if (r.ne.2700.or.j.ne.70.or.k.ne.80.or.s.ne.2700) stop 1
+  if (t%x.ne.2700) stop 2
 end

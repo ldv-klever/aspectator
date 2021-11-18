@@ -1,5 +1,5 @@
 /* GNU Runtime ABI version 8
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
    Contributed by Iain Sandoe (split from objc-act.c)
 
 This file is part of GCC.
@@ -22,7 +22,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "options.h"
+#include "tree.h"
 #include "stringpool.h"
+#include "attribs.h"
 
 #ifdef OBJCPLUS
 #include "cp/cp-tree.h"
@@ -128,7 +130,8 @@ objc_gnu_runtime_abi_01_init (objc_runtime_hooks *rthooks)
   /* GNU runtime does not need the compiler to change code in order to do GC. */
   if (flag_objc_gc)
     {
-      warning_at (0, 0, "%<-fobjc-gc%> is ignored for %<-fgnu-runtime%>");
+      warning_at (UNKNOWN_LOCATION, 0,
+		  "%<-fobjc-gc%> is ignored for %<-fgnu-runtime%>");
       flag_objc_gc = 0;
     }
 
@@ -204,6 +207,13 @@ static void gnu_runtime_01_initialize (void)
   type = xref_tag (RECORD_TYPE, get_identifier (TAG_SELECTOR));
   type = build_qualified_type (type, TYPE_QUAL_CONST);
   objc_selector_type = build_pointer_type (type);
+
+  /* SEL typedef.  */
+  type = lang_hooks.decls.pushdecl (build_decl (input_location,
+						TYPE_DECL,
+						objc_selector_name,
+						objc_selector_type));
+  TREE_NO_WARNING (type) = 1;
 
   /* typedef id (*IMP)(id, SEL, ...); */
   ftype = build_varargs_function_type_list (objc_object_type,
@@ -818,7 +828,7 @@ gnu_runtime_abi_01_get_class_super_ref (location_t loc ATTRIBUTE_UNUSED,
 	ucls_super_ref =
 		objc_build_component_ref (imp->class_decl,
 					  get_identifier ("super_class"));
-	return ucls_super_ref;
+      return ucls_super_ref;
     }
   else
     {
@@ -826,7 +836,7 @@ gnu_runtime_abi_01_get_class_super_ref (location_t loc ATTRIBUTE_UNUSED,
 	uucls_super_ref =
 		objc_build_component_ref (imp->meta_decl,
 					  get_identifier ("super_class"));
-	return uucls_super_ref;
+      return uucls_super_ref;
     }
 }
 
@@ -888,7 +898,7 @@ objc_add_static_instance (tree constructor, tree class_decl)
   /* We may be writing something else just now.
      Postpone till end of input. */
   DECL_DEFER_OUTPUT (decl) = 1;
-  pushdecl_top_level (decl);
+  lang_hooks.decls.pushdecl (decl);
   rest_of_decl_compilation (decl, 1, 0);
 
   /* Add the DECL to the head of this CLASS' list.  */
@@ -1537,25 +1547,14 @@ build_shared_structure_initializer (tree type, tree isa, tree super,
       CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, expr);
     }
 
-  /* FIXME: Remove NeXT runtime code.  */
-  if (flag_next_runtime)
-    {
-      ltyp = build_pointer_type (xref_tag (RECORD_TYPE,
-					   get_identifier ("objc_cache")));
-      /* method_cache = */
-      CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, convert (ltyp, null_pointer_node));
-    }
-  else
-    {
-      /* dtable = */
-      CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
+  /* dtable = */
+  CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
 
-      /* subclass_list = */
-      CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
+  /* subclass_list = */
+  CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
 
-      /* sibling_class = */
-      CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
-    }
+  /* sibling_class = */
+  CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
 
   /* protocol_list = */
   ltyp = build_pointer_type (build_pointer_type (objc_protocol_template));
@@ -1568,11 +1567,6 @@ build_shared_structure_initializer (tree type, tree isa, tree super,
 				      protocol_list, 0));
       CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, expr);
     }
-
-  /* FIXME: Remove NeXT runtime code.  */
-  if (flag_next_runtime)
-    /* sel_id = NULL */
-    CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
 
   /* gc_object_type = NULL */
   CONSTRUCTOR_APPEND_ELT (v, NULL_TREE, build_int_cst (NULL_TREE, 0));
@@ -1860,10 +1854,6 @@ generate_static_references (void)
   int num_inst, num_class;
   char buf[BUFSIZE];
   vec<constructor_elt, va_gc> *decls = NULL;
-
-  /* FIXME: Remove NeXT runtime code.  */
-  if (flag_next_runtime)
-    gcc_unreachable ();
 
   for (cl_chain = objc_static_instances, num_class = 0;
        cl_chain; cl_chain = TREE_CHAIN (cl_chain), num_class++)
@@ -2165,7 +2155,7 @@ objc_eh_runtime_type (tree type)
 	 we use the c++ typeinfo decl. */
       return build_eh_type_type (type);
 #else
-      error ("non-objective-c type '%T' cannot be caught", type);
+      error ("non-objective-c type %qT cannot be caught", type);
       ident = get_identifier ("ErrorMarkNode");
       goto make_err_class;
 #endif

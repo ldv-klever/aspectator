@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1991-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1991-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -203,24 +203,27 @@ package body Errutil is
 
       Errors.Append
         (New_Val =>
-           (Text     => new String'(Msg_Buffer (1 .. Msglen)),
-            Next     => No_Error_Msg,
-            Prev     => No_Error_Msg,
-            Sfile    => Get_Source_File_Index (Sptr),
-            Sptr     => Sptr,
-            Optr     => Optr,
-            Line     => Get_Physical_Line_Number (Sptr),
-            Col      => Get_Column_Number (Sptr),
-            Warn     => Is_Warning_Msg,
-            Info     => Is_Info_Msg,
-            Check    => Is_Check_Msg,
-            Warn_Err => Warning_Mode = Treat_As_Error,
-            Warn_Chr => Warning_Msg_Char,
-            Style    => Is_Style_Msg,
-            Serious  => Is_Serious_Error,
-            Uncond   => Is_Unconditional_Msg,
-            Msg_Cont => Continuation,
-            Deleted  => False));
+           (Text                => new String'(Msg_Buffer (1 .. Msglen)),
+            Next                => No_Error_Msg,
+            Prev                => No_Error_Msg,
+            Sfile               => Get_Source_File_Index (Sptr),
+            Sptr                => Sptr,
+            Optr                => Optr,
+            Insertion_Sloc      => No_Location,
+            Line                => Get_Physical_Line_Number (Sptr),
+            Col                 => Get_Column_Number (Sptr),
+            Compile_Time_Pragma => Is_Compile_Time_Msg,
+            Warn                => Is_Warning_Msg,
+            Info                => Is_Info_Msg,
+            Check               => Is_Check_Msg,
+            Warn_Err            => Warning_Mode = Treat_As_Error,
+            Warn_Chr            => Warning_Msg_Char,
+            Style               => Is_Style_Msg,
+            Serious             => Is_Serious_Error,
+            Uncond              => Is_Unconditional_Msg,
+            Msg_Cont            => Continuation,
+            Deleted             => False,
+            Node                => Empty));
 
       Cur_Msg  := Errors.Last;
       Prev_Msg := No_Error_Msg;
@@ -305,12 +308,14 @@ package body Errutil is
       --  Bump appropriate statistics counts
 
       if Errors.Table (Cur_Msg).Info then
-         Info_Messages := Info_Messages + 1;
 
          --  Could be (usually is) both "info" and "warning"
 
          if Errors.Table (Cur_Msg).Warn then
+            Warning_Info_Messages := Warning_Info_Messages + 1;
             Warnings_Detected := Warnings_Detected + 1;
+         else
+            Report_Info_Messages := Report_Info_Messages + 1;
          end if;
 
       elsif Errors.Table (Cur_Msg).Warn
@@ -548,19 +553,19 @@ package body Errutil is
             Write_Str (" errors");
          end if;
 
-         if Warnings_Detected - Info_Messages  /= 0 then
+         if Warnings_Detected - Warning_Info_Messages /= 0 then
             Write_Str (", ");
-            Write_Int (Warnings_Detected - Info_Messages);
+            Write_Int (Warnings_Detected - Warning_Info_Messages);
             Write_Str (" warning");
 
-            if Warnings_Detected - Info_Messages /= 1 then
+            if Warnings_Detected - Warning_Info_Messages /= 1 then
                Write_Char ('s');
             end if;
 
             if Warning_Mode = Treat_As_Error then
                Write_Str (" (treated as error");
 
-               if Warnings_Detected - Info_Messages /= 1 then
+               if Warnings_Detected - Warning_Info_Messages /= 1 then
                   Write_Char ('s');
                end if;
 
@@ -586,10 +591,13 @@ package body Errutil is
          end if;
       end if;
 
+      --  Even though Warning_Info_Messages are a subclass of warnings, they
+      --  must not be treated as errors when -gnatwe is in effect.
+
       if Warning_Mode = Treat_As_Error then
          Total_Errors_Detected :=
-           Total_Errors_Detected + Warnings_Detected - Info_Messages;
-         Warnings_Detected := Info_Messages;
+           Total_Errors_Detected + Warnings_Detected - Warning_Info_Messages;
+         Warnings_Detected := Warning_Info_Messages;
       end if;
 
       --  Prevent displaying the same messages again in the future
@@ -609,7 +617,8 @@ package body Errutil is
       Serious_Errors_Detected := 0;
       Total_Errors_Detected := 0;
       Warnings_Detected := 0;
-      Info_Messages := 0;
+      Warning_Info_Messages := 0;
+      Report_Info_Messages := 0;
       Cur_Msg := No_Error_Msg;
 
       --  Initialize warnings table, if all warnings are suppressed, supply

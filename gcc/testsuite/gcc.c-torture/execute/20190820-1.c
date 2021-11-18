@@ -1,5 +1,6 @@
 /* PR rtl-optimization/91347 */
 /* Reported by John David Anglin <danglin@gcc.gnu.org> */
+/* { dg-require-effective-target int32plus } */
 
 typedef unsigned short __u16;
 typedef __signed__ int __s32;
@@ -18,7 +19,7 @@ typedef u64 uint64_t;
 char hex_asc_upper[16];
 u16 decpair[100];
 
-static __attribute__((noinline, noclone)) void
+static __attribute__ ((noipa)) void
 put_dec_full4 (char *buf, unsigned r)
 {
  unsigned q;
@@ -28,7 +29,7 @@ put_dec_full4 (char *buf, unsigned r)
  *((u16 *)buf) = decpair[q];
 }
 
-static __attribute__((noinline, noclone)) unsigned
+static __attribute__ ((noipa)) unsigned
 put_dec_helper4 (char *buf, unsigned x)
 {
   uint32_t q = (x * (uint64_t)0x346DC5D7) >> 43;
@@ -36,7 +37,7 @@ put_dec_helper4 (char *buf, unsigned x)
   return q;
 }
 
-static __attribute__((noinline, noclone)) char *
+static __attribute__ ((noipa)) char *
 put_dec (char *buf, unsigned long long n)
 {
  uint32_t d3, d2, d1, q, h;
@@ -61,7 +62,7 @@ struct printf_spec {
  signed int precision:16;
 } __attribute__((__packed__));
 
-static __attribute__((noinline, noclone)) char *
+static __attribute__ ((noipa)) char *
 number (char *buf, char *end, unsigned long long num, struct printf_spec spec)
 {
 
@@ -94,7 +95,7 @@ number (char *buf, char *end, unsigned long long num, struct printf_spec spec)
  return buf;
 }
 
-static __attribute__((noinline, noclone)) char *
+static __attribute__ ((noipa)) char *
 pointer_string (char *buf, char *end, const void *ptr, struct printf_spec spec)
 {
  spec.base = 16;

@@ -1,7 +1,8 @@
 //===-- sanitizer_internal_defs.h -------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,10 +18,16 @@
 # define SANITIZER_DEBUG 0
 #endif
 
+#define SANITIZER_STRINGIFY_(S) #S
+#define SANITIZER_STRINGIFY(S) SANITIZER_STRINGIFY_(S)
+
 // Only use SANITIZER_*ATTRIBUTE* before the function return type!
 #if SANITIZER_WINDOWS
+#if SANITIZER_IMPORT_INTERFACE
+# define SANITIZER_INTERFACE_ATTRIBUTE __declspec(dllimport)
+#else
 # define SANITIZER_INTERFACE_ATTRIBUTE __declspec(dllexport)
-// FIXME find out what we need on Windows, if anything.
+#endif
 # define SANITIZER_WEAK_ATTRIBUTE
 #elif SANITIZER_GO
 # define SANITIZER_INTERFACE_ATTRIBUTE
@@ -30,24 +37,92 @@
 # define SANITIZER_WEAK_ATTRIBUTE  __attribute__((weak))
 #endif
 
-#if (SANITIZER_LINUX || SANITIZER_WINDOWS) && !SANITIZER_GO
+// TLS is handled differently on different platforms
+#if SANITIZER_LINUX || SANITIZER_NETBSD || \
+  SANITIZER_FREEBSD
+# define SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE \
+    __attribute__((tls_model("initial-exec"))) thread_local
+#else
+# define SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE
+#endif
+
+//--------------------------- WEAK FUNCTIONS ---------------------------------//
+// When working with weak functions, to simplify the code and make it more
+// portable, when possible define a default implementation using this macro:
+//
+// SANITIZER_INTERFACE_WEAK_DEF(<return_type>, <name>, <parameter list>)
+//
+// For example:
+//   SANITIZER_INTERFACE_WEAK_DEF(bool, compare, int a, int b) { return a > b; }
+//
+#if SANITIZER_WINDOWS
+#include "sanitizer_win_defs.h"
+# define SANITIZER_INTERFACE_WEAK_DEF(ReturnType, Name, ...)                   \
+  WIN_WEAK_EXPORT_DEF(ReturnType, Name, __VA_ARGS__)
+#else
+# define SANITIZER_INTERFACE_WEAK_DEF(ReturnType, Name, ...)                   \
+  extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE            \
+  ReturnType Name(__VA_ARGS__)
+#endif
+
+// SANITIZER_SUPPORTS_WEAK_HOOKS means that we support real weak functions that
+// will evaluate to a null pointer when not defined.
+#ifndef SANITIZER_SUPPORTS_WEAK_HOOKS
+#if (SANITIZER_LINUX || SANITIZER_SOLARIS) && !SANITIZER_GO
+# define SANITIZER_SUPPORTS_WEAK_HOOKS 1
+// Before Xcode 4.5, the Darwin linker doesn't reliably support undefined
+// weak symbols.  Mac OS X 10.9/Darwin 13 is the first release only supported
+// by Xcode >= 4.5.
+#elif SANITIZER_MAC && \
+    __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 1090 && !SANITIZER_GO
 # define SANITIZER_SUPPORTS_WEAK_HOOKS 1
 #else
 # define SANITIZER_SUPPORTS_WEAK_HOOKS 0
 #endif
+#endif // SANITIZER_SUPPORTS_WEAK_HOOKS
+// For some weak hooks that will be called very often and we want to avoid the
+// overhead of executing the default implementation when it is not necessary,
+// we can use the flag SANITIZER_SUPPORTS_WEAK_HOOKS to only define the default
+// implementation for platforms that doesn't support weak symbols. For example:
+//
+//   #if !SANITIZER_SUPPORT_WEAK_HOOKS
+//     SANITIZER_INTERFACE_WEAK_DEF(bool, compare_hook, int a, int b) {
+//       return a > b;
+//     }
+//   #endif
+//
+// And then use it as: if (compare_hook) compare_hook(a, b);
+//----------------------------------------------------------------------------//
+
 
 // We can use .preinit_array section on Linux to call sanitizer initialization
 // functions very early in the process startup (unless PIC macro is defined).
+//
+// On FreeBSD, .preinit_array functions are called with rtld_bind_lock writer
+// lock held. It will lead to dead lock if unresolved PLT functions (which helds
+// rtld_bind_lock reader lock) are called inside .preinit_array functions.
+//
 // FIXME: do we have anything like this on Mac?
-#if SANITIZER_LINUX && !SANITIZER_ANDROID && !defined(PIC)
+#ifndef SANITIZER_CAN_USE_PREINIT_ARRAY
+#if (SANITIZER_LINUX || SANITIZER_FUCHSIA || SANITIZER_NETBSD) && !defined(PIC)
+#define SANITIZER_CAN_USE_PREINIT_ARRAY 1
+// Before Solaris 11.4, .preinit_array is fully supported only with GNU ld.
+// FIXME: Check for those conditions.
+#elif SANITIZER_SOLARIS && !defined(PIC)
 # define SANITIZER_CAN_USE_PREINIT_ARRAY 1
 #else
 # define SANITIZER_CAN_USE_PREINIT_ARRAY 0
 #endif
+#endif  // SANITIZER_CAN_USE_PREINIT_ARRAY
 
 // GCC does not understand __has_feature
 #if !defined(__has_feature)
 # define __has_feature(x) 0
+#endif
+
+// Older GCCs do not understand __has_attribute.
+#if !defined(__has_attribute)
+# define __has_attribute(x) 0
 #endif
 
 // For portability reasons we do not include stddef.h, stdint.h or any other
@@ -57,27 +132,27 @@ namespace __sanitizer {
 
 #if defined(_WIN64)
 // 64-bit Windows uses LLP64 data model.
-typedef unsigned long long uptr;  // NOLINT
-typedef signed   long long sptr;  // NOLINT
+typedef unsigned long long uptr;
+typedef signed long long sptr;
 #else
-typedef unsigned long uptr;  // NOLINT
-typedef signed   long sptr;  // NOLINT
+typedef unsigned long uptr;
+typedef signed long sptr;
 #endif  // defined(_WIN64)
 #if defined(__x86_64__)
 // Since x32 uses ILP32 data model in 64-bit hardware mode, we must use
 // 64-bit pointer to unwind stack frame.
-typedef unsigned long long uhwptr;  // NOLINT
+typedef unsigned long long uhwptr;
 #else
-typedef uptr uhwptr;   // NOLINT
+typedef uptr uhwptr;
 #endif
 typedef unsigned char u8;
-typedef unsigned short u16;  // NOLINT
+typedef unsigned short u16;
 typedef unsigned int u32;
-typedef unsigned long long u64;  // NOLINT
-typedef signed   char s8;
-typedef signed   short s16;  // NOLINT
-typedef signed   int s32;
-typedef signed   long long s64;  // NOLINT
+typedef unsigned long long u64;
+typedef signed char s8;
+typedef signed short s16;
+typedef signed int s32;
+typedef signed long long s64;
 #if SANITIZER_WINDOWS
 // On Windows, files are HANDLE, which is a synonim of void*.
 // Use void* to avoid including <windows.h> everywhere.
@@ -87,14 +162,16 @@ typedef unsigned error_t;
 typedef int fd_t;
 typedef int error_t;
 #endif
+#if SANITIZER_SOLARIS && !defined(_LP64)
+typedef long pid_t;
+#else
 typedef int pid_t;
+#endif
 
-// WARNING: OFF_T may be different from OS type off_t, depending on the value of
-// _FILE_OFFSET_BITS. This definition of OFF_T matches the ABI of system calls
-// like pread and mmap, as opposed to pread64 and mmap64.
-// FreeBSD, Mac and Linux/x86-64 are special.
-#if SANITIZER_FREEBSD || SANITIZER_MAC || \
-  (SANITIZER_LINUX && defined(__x86_64__))
+#if SANITIZER_FREEBSD || SANITIZER_NETBSD || \
+    SANITIZER_MAC || \
+    (SANITIZER_SOLARIS && (defined(_LP64) || _FILE_OFFSET_BITS == 64)) || \
+    (SANITIZER_LINUX && defined(__x86_64__))
 typedef u64 OFF_T;
 #else
 typedef uptr OFF_T;
@@ -112,12 +189,12 @@ typedef u32 operator_new_size_type;
 # endif
 #endif
 
+typedef u64 tid_t;
 
 // ----------- ATTENTION -------------
 // This header should NOT include any other headers to avoid portability issues.
 
 // Common defs.
-#define INLINE inline
 #define INTERFACE_ATTRIBUTE SANITIZER_INTERFACE_ATTRIBUTE
 #define SANITIZER_WEAK_DEFAULT_IMPL \
   extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE NOINLINE
@@ -137,6 +214,7 @@ typedef u32 operator_new_size_type;
 # define LIKELY(x) (x)
 # define UNLIKELY(x) (x)
 # define PREFETCH(x) /* _mm_prefetch(x, _MM_HINT_NTA) */ (void)0
+# define WARN_UNUSED_RESULT
 #else  // _MSC_VER
 # define ALWAYS_INLINE inline __attribute__((always_inline))
 # define ALIAS(x) __attribute__((alias(x)))
@@ -155,6 +233,7 @@ typedef u32 operator_new_size_type;
 # else
 #  define PREFETCH(x) __builtin_prefetch(x)
 # endif
+# define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
 #endif  // _MSC_VER
 
 #if !defined(_MSC_VER) || defined(__clang__)
@@ -181,7 +260,7 @@ typedef ALIGNED(1) s64 us64;
 
 #if SANITIZER_WINDOWS
 }  // namespace __sanitizer
-typedef unsigned long DWORD;  // NOLINT
+typedef unsigned long DWORD;
 namespace __sanitizer {
 typedef DWORD thread_return_t;
 # define THREAD_CALLING_CONV __stdcall
@@ -194,8 +273,6 @@ typedef thread_return_t (THREAD_CALLING_CONV *thread_callback_t)(void* arg);
 // NOTE: Functions below must be defined in each run-time.
 void NORETURN Die();
 
-// FIXME: No, this shouldn't be in the sanitizer interface.
-SANITIZER_INTERFACE_ATTRIBUTE
 void NORETURN CheckFailed(const char *file, int line, const char *cond,
                           u64 v1, u64 v2);
 
@@ -211,8 +288,8 @@ void NORETURN CheckFailed(const char *file, int line, const char *cond,
 
 #define CHECK_IMPL(c1, op, c2) \
   do { \
-    __sanitizer::u64 v1 = (u64)(c1); \
-    __sanitizer::u64 v2 = (u64)(c2); \
+    __sanitizer::u64 v1 = (__sanitizer::u64)(c1); \
+    __sanitizer::u64 v2 = (__sanitizer::u64)(c2); \
     if (UNLIKELY(!(v1 op v2))) \
       __sanitizer::CheckFailed(__FILE__, __LINE__, \
         "(" #c1 ") " #op " (" #c2 ")", v1, v2); \
@@ -252,13 +329,9 @@ void NORETURN CheckFailed(const char *file, int line, const char *cond,
 
 #define UNIMPLEMENTED() UNREACHABLE("unimplemented")
 
-#define COMPILER_CHECK(pred) IMPL_COMPILER_ASSERT(pred, __LINE__)
+#define COMPILER_CHECK(pred) static_assert(pred, "")
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-
-#define IMPL_PASTE(a, b) a##b
-#define IMPL_COMPILER_ASSERT(pred, line) \
-    typedef char IMPL_PASTE(assertion_failed_##_, line)[2*(int)(pred)-1]
 
 // Limits for integral types. We have to redefine it in case we don't
 // have stdint.h (like in Visual Studio 9).
@@ -283,17 +356,23 @@ void NORETURN CheckFailed(const char *file, int line, const char *cond,
 #define INT64_MAX              (__INT64_C(9223372036854775807))
 #undef UINT64_MAX
 #define UINT64_MAX             (__UINT64_C(18446744073709551615))
+#undef UINTPTR_MAX
+#if SANITIZER_WORDSIZE == 64
+# define UINTPTR_MAX           (18446744073709551615UL)
+#else
+# define UINTPTR_MAX           (4294967295U)
+#endif  // SANITIZER_WORDSIZE == 64
 
 enum LinkerInitialized { LINKER_INITIALIZED = 0 };
 
 #if !defined(_MSC_VER) || defined(__clang__)
-# if SANITIZER_S390_31
-#  define GET_CALLER_PC() \
-  (uptr)__builtin_extract_return_addr(__builtin_return_address(0))
-# else
-#  define GET_CALLER_PC() (uptr)__builtin_return_address(0)
-# endif
-# define GET_CURRENT_FRAME() (uptr)__builtin_frame_address(0)
+#if SANITIZER_S390_31
+#define GET_CALLER_PC() \
+  (__sanitizer::uptr) __builtin_extract_return_addr(__builtin_return_address(0))
+#else
+#define GET_CALLER_PC() (__sanitizer::uptr) __builtin_return_address(0)
+#endif
+#define GET_CURRENT_FRAME() (__sanitizer::uptr) __builtin_frame_address(0)
 inline void Trap() {
   __builtin_trap();
 }
@@ -302,9 +381,10 @@ extern "C" void* _ReturnAddress(void);
 extern "C" void* _AddressOfReturnAddress(void);
 # pragma intrinsic(_ReturnAddress)
 # pragma intrinsic(_AddressOfReturnAddress)
-# define GET_CALLER_PC() (uptr)_ReturnAddress()
+#define GET_CALLER_PC() (__sanitizer::uptr) _ReturnAddress()
 // CaptureStackBackTrace doesn't need to know BP on Windows.
-# define GET_CURRENT_FRAME() (((uptr)_AddressOfReturnAddress()) + sizeof(uptr))
+#define GET_CURRENT_FRAME() \
+  (((__sanitizer::uptr)_AddressOfReturnAddress()) + sizeof(__sanitizer::uptr))
 
 extern "C" void __ud2(void);
 # pragma intrinsic(__ud2)
@@ -322,26 +402,53 @@ inline void Trap() {
   }
 
 // Forces the compiler to generate a frame pointer in the function.
-#define ENABLE_FRAME_POINTER                                       \
-  do {                                                             \
-    volatile uptr enable_fp;                                       \
-    enable_fp = GET_CURRENT_FRAME();                               \
-    (void)enable_fp;                                               \
+#define ENABLE_FRAME_POINTER              \
+  do {                                    \
+    volatile __sanitizer::uptr enable_fp; \
+    enable_fp = GET_CURRENT_FRAME();      \
+    (void)enable_fp;                      \
   } while (0)
 
 }  // namespace __sanitizer
 
-namespace __asan  { using namespace __sanitizer; }  // NOLINT
-namespace __dsan  { using namespace __sanitizer; }  // NOLINT
-namespace __dfsan { using namespace __sanitizer; }  // NOLINT
-namespace __esan  { using namespace __sanitizer; }  // NOLINT
-namespace __lsan  { using namespace __sanitizer; }  // NOLINT
-namespace __msan  { using namespace __sanitizer; }  // NOLINT
-namespace __tsan  { using namespace __sanitizer; }  // NOLINT
-namespace __scudo { using namespace __sanitizer; }  // NOLINT
-namespace __ubsan { using namespace __sanitizer; }  // NOLINT
-namespace __xray  { using namespace __sanitizer; }  // NOLINT
-namespace __interception  { using namespace __sanitizer; }  // NOLINT
-
+namespace __asan {
+using namespace __sanitizer;
+}
+namespace __dsan {
+using namespace __sanitizer;
+}
+namespace __dfsan {
+using namespace __sanitizer;
+}
+namespace __lsan {
+using namespace __sanitizer;
+}
+namespace __msan {
+using namespace __sanitizer;
+}
+namespace __hwasan {
+using namespace __sanitizer;
+}
+namespace __tsan {
+using namespace __sanitizer;
+}
+namespace __scudo {
+using namespace __sanitizer;
+}
+namespace __ubsan {
+using namespace __sanitizer;
+}
+namespace __xray {
+using namespace __sanitizer;
+}
+namespace __interception {
+using namespace __sanitizer;
+}
+namespace __hwasan {
+using namespace __sanitizer;
+}
+namespace __memprof {
+using namespace __sanitizer;
+}
 
 #endif  // SANITIZER_DEFS_H

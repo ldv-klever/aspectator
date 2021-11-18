@@ -25,8 +25,8 @@ struct A
 
                A    source();
 const          A  c_source();
-      volatile A  v_source();
-const volatile A cv_source();
+      volatile A  v_source(); // { dg-warning "deprecated" "" { target c++2a } }
+const volatile A cv_source(); // { dg-warning "deprecated" "" { target c++2a } }
 
 // 3 at a time
 
@@ -124,6 +124,7 @@ int test3_128()
 
     sink_3_128(va);		// { dg-error "" }
     sink_3_128(cva);		// { dg-error "" }
+    return 0;
 }
 
 one   sink_3_134(               A&);

@@ -1,7 +1,8 @@
 //===-- sanitizer_procmaps.h ------------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -12,29 +13,64 @@
 #ifndef SANITIZER_PROCMAPS_H
 #define SANITIZER_PROCMAPS_H
 
+#include "sanitizer_platform.h"
+
+#if SANITIZER_LINUX || SANITIZER_FREEBSD || SANITIZER_NETBSD || \
+    SANITIZER_MAC || SANITIZER_SOLARIS ||  \
+    SANITIZER_FUCHSIA
+
 #include "sanitizer_common.h"
 #include "sanitizer_internal_defs.h"
+#include "sanitizer_fuchsia.h"
+#include "sanitizer_linux.h"
+#include "sanitizer_mac.h"
 #include "sanitizer_mutex.h"
 
 namespace __sanitizer {
 
-#if SANITIZER_FREEBSD || SANITIZER_LINUX
-struct ProcSelfMapsBuff {
-  char *data;
-  uptr mmaped_size;
-  uptr len;
-};
+// Memory protection masks.
+static const uptr kProtectionRead = 1;
+static const uptr kProtectionWrite = 2;
+static const uptr kProtectionExecute = 4;
+static const uptr kProtectionShared = 8;
 
-// Reads process memory map in an OS-specific way.
-void ReadProcMaps(ProcSelfMapsBuff *proc_maps);
-#endif  // SANITIZER_FREEBSD || SANITIZER_LINUX
+struct MemoryMappedSegmentData;
+
+class MemoryMappedSegment {
+ public:
+  explicit MemoryMappedSegment(char *buff = nullptr, uptr size = 0)
+      : filename(buff), filename_size(size), data_(nullptr) {}
+  ~MemoryMappedSegment() {}
+
+  bool IsReadable() const { return protection & kProtectionRead; }
+  bool IsWritable() const { return protection & kProtectionWrite; }
+  bool IsExecutable() const { return protection & kProtectionExecute; }
+  bool IsShared() const { return protection & kProtectionShared; }
+
+  void AddAddressRanges(LoadedModule *module);
+
+  uptr start;
+  uptr end;
+  uptr offset;
+  char *filename;  // owned by caller
+  uptr filename_size;
+  uptr protection;
+  ModuleArch arch;
+  u8 uuid[kModuleUUIDSize];
+
+ private:
+  friend class MemoryMappingLayout;
+
+  // This field is assigned and owned by MemoryMappingLayout if needed
+  MemoryMappedSegmentData *data_;
+};
 
 class MemoryMappingLayout {
  public:
   explicit MemoryMappingLayout(bool cache_enabled);
   ~MemoryMappingLayout();
-  bool Next(uptr *start, uptr *end, uptr *offset,
-            char filename[], uptr filename_size, uptr *protection);
+  bool Next(MemoryMappedSegment *segment);
+  bool Error() const;
   void Reset();
   // In some cases, e.g. when running under a sandbox on Linux, ASan is unable
   // to obtain the memory mappings. It should fall back to pre-cached data
@@ -42,46 +78,13 @@ class MemoryMappingLayout {
   static void CacheMemoryMappings();
 
   // Adds all mapped objects into a vector.
-  void DumpListOfModules(InternalMmapVector<LoadedModule> *modules);
-
-  // Memory protection masks.
-  static const uptr kProtectionRead = 1;
-  static const uptr kProtectionWrite = 2;
-  static const uptr kProtectionExecute = 4;
-  static const uptr kProtectionShared = 8;
+  void DumpListOfModules(InternalMmapVectorNoCtor<LoadedModule> *modules);
 
  private:
   void LoadFromCache();
 
-  // FIXME: Hide implementation details for different platforms in
-  // platform-specific files.
-# if SANITIZER_FREEBSD || SANITIZER_LINUX
-  ProcSelfMapsBuff proc_self_maps_;
-  const char *current_;
-
-  // Static mappings cache.
-  static ProcSelfMapsBuff cached_proc_self_maps_;
-  static StaticSpinMutex cache_lock_;  // protects cached_proc_self_maps_.
-# elif SANITIZER_MAC
-  template<u32 kLCSegment, typename SegmentCommand>
-  bool NextSegmentLoad(uptr *start, uptr *end, uptr *offset,
-                       char filename[], uptr filename_size,
-                       uptr *protection);
-  int current_image_;
-  u32 current_magic_;
-  u32 current_filetype_;
-  int current_load_cmd_count_;
-  char *current_load_cmd_addr_;
-# endif
+  MemoryMappingLayoutData data_;
 };
-
-typedef void (*fill_profile_f)(uptr start, uptr rss, bool file,
-                               /*out*/uptr *stats, uptr stats_size);
-
-// Parse the contents of /proc/self/smaps and generate a memory profile.
-// |cb| is a tool-specific callback that fills the |stats| array containing
-// |stats_size| elements.
-void GetMemoryProfile(fill_profile_f cb, uptr *stats, uptr stats_size);
 
 // Returns code range for the specified module.
 bool GetCodeRangeForFile(const char *module, uptr *start, uptr *end);
@@ -93,4 +96,5 @@ uptr ParseHex(const char **p);
 
 }  // namespace __sanitizer
 
+#endif
 #endif  // SANITIZER_PROCMAPS_H

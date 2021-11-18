@@ -1,6 +1,7 @@
 /* { dg-lto-do link } */
-/* { dg-lto-options "-O2  -w" } */
 /* { dg-extra-ld-options { -O2 -Wno-odr -r -nostdlib } } */
+/* { dg-lto-options { "-O2 -w -Wno-return-type" } } */
+
 namespace std
 {
 template < class > struct char_traits;
@@ -23,7 +24,9 @@ namespace std
 {
 class locale
 {
+public:
     class facet;
+private:
     class _Impl;
     _Impl *_M_impl;
 };
@@ -69,6 +72,7 @@ class ios_base
     int _M_word_size;
     _Words *_M_word;
     locale _M_ios_locale;
+protected:
     virtual ~ ios_base ();
 };
 template < typename, typename > class istreambuf_iterator

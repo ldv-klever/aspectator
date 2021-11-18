@@ -9,7 +9,7 @@
 
 struct s { unsigned long a, b, c; };
 
-void __attribute__ ((noinline, noclone))
+void __attribute__ ((noipa))
 foo (struct s *restrict s1, struct s *restrict s2, int n)
 {
   for (int i = 0; i < n; ++i)
@@ -23,7 +23,7 @@ foo (struct s *restrict s1, struct s *restrict s2, int n)
 #define N 12
 
 static void
-avx512f_test (void)
+test_256 (void)
 {
   struct s s1[N], s2[N];
   for (unsigned int j = 0; j < N; ++j)
@@ -36,4 +36,9 @@ avx512f_test (void)
   for (unsigned int j = 0; j < N; ++j)
   if (s1[j].b != j * 5 + 2)
     __builtin_abort ();
+}
+
+static void
+test_128 (void)
+{
 }

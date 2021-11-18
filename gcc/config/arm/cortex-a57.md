@@ -1,5 +1,5 @@
 ;; ARM Cortex-A57 pipeline description
-;; Copyright (C) 2014-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2021 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -76,7 +76,7 @@
 			   neon_mul_h_scalar_long, neon_mul_s_scalar_long,\
 			   neon_sat_mul_b_long, neon_sat_mul_h_long,\
 			   neon_sat_mul_s_long, neon_sat_mul_h_scalar_long,\
-			   neon_sat_mul_s_scalar_long")
+			   neon_sat_mul_s_scalar_long, crypto_pmull")
 	    (const_string "neon_multiply")
 	  (eq_attr "type" "neon_mul_b_q, neon_mul_h_q, neon_mul_s_q,\
 			   neon_mul_h_scalar_q, neon_mul_s_scalar_q,\
@@ -236,7 +236,12 @@
 			   neon_store1_4reg, neon_store1_4reg_q,\
 			   neon_store1_one_lane, neon_store1_one_lane_q,\
 			   neon_store2_one_lane, neon_store2_one_lane_q")
-	    (const_string "neon_store_complex")]
+	    (const_string "neon_store_complex")
+;; If it doesn't match any of the above that we want to treat specially but is
+;; still a NEON type, treat it as a basic NEON type.  This is better than
+;; dropping it on the floor and making no assumptions about it whatsoever.
+	  (eq_attr "is_neon_type" "yes")
+	    (const_string "neon_arith_basic")]
 	  (const_string "unknown")))
 
 ;; The Cortex-A57 core is modelled as a triple issue pipeline that has
@@ -301,14 +306,14 @@
 			rotate_imm,shift_imm,shift_reg,\
 			mov_imm,mov_reg,\
 			mvn_imm,mvn_reg,\
-			mrs,multiple,no_insn"))
+			mrs,multiple"))
   "ca57_sx1|ca57_sx2")
 
 ;; ALU ops with immediate shift
 (define_insn_reservation "cortex_a57_alu_shift" 3
   (and (eq_attr "tune" "cortexa57")
        (eq_attr "type" "bfm,\
-			alu_shift_imm,alus_shift_imm,\
+			alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm,\
 			crc,logic_shift_imm,logics_shift_imm,\
 			mov_shift,mvn_shift"))
   "ca57_mx")
@@ -328,7 +333,7 @@
 (define_insn_reservation "cortex_a57_mult32" 3
   (and (eq_attr "tune" "cortexa57")
        (ior (eq_attr "mul32" "yes")
-	    (eq_attr "mul64" "yes")))
+	    (eq_attr "widen_mul64" "yes")))
   "ca57_mx")
 
 ;; Integer divide
@@ -357,25 +362,25 @@
 ;; Loads of up to two words.
 (define_insn_reservation "cortex_a57_load1" 5
   (and (eq_attr "tune" "cortexa57")
-       (eq_attr "type" "load_byte,load1,load2"))
+       (eq_attr "type" "load_byte,load_4,load_8"))
   "ca57_load_model")
 
 ;; Loads of three or four words.
 (define_insn_reservation "cortex_a57_load3" 5
   (and (eq_attr "tune" "cortexa57")
-       (eq_attr "type" "load3,load4"))
+       (eq_attr "type" "load_12,load_16"))
   "ca57_ls_issue*2,ca57_load_model")
 
 ;; Stores of up to two words.
 (define_insn_reservation "cortex_a57_store1" 0
   (and (eq_attr "tune" "cortexa57")
-       (eq_attr "type" "store1,store2"))
+       (eq_attr "type" "store_4,store_8"))
   "ca57_store_model")
 
 ;; Stores of three or four words.
 (define_insn_reservation "cortex_a57_store3" 0
   (and (eq_attr "tune" "cortexa57")
-       (eq_attr "type" "store3,store4"))
+       (eq_attr "type" "store_12,store_16"))
   "ca57_ls_issue*2,ca57_store_model")
 
 ;; Advanced SIMD Unit - Integer Arithmetic Instructions.
@@ -796,9 +801,3 @@
 ;; help.
 (define_bypass 1 "cortex_a57_*"
 		 "cortex_a57_call,cortex_a57_branch")
-
-;; AESE+AESMC and AESD+AESIMC pairs forward with zero latency
-(define_bypass 0 "cortex_a57_crypto_simple"
-		 "cortex_a57_crypto_simple"
-		 "aarch_crypto_can_dual_issue")
-

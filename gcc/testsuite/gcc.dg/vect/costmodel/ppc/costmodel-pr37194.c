@@ -9,6 +9,8 @@ ggSpectrum_Set8(float * data, float d)
 {
    int i;
 
+   /* PR92127, disable unroll to avoid unexpected profit calculation.  */
+   #pragma GCC unroll 0
    for (i = 0; i < 8; i++)
       data[i] = d;
 }
@@ -22,6 +24,6 @@ ggSpectrum_Set20(float * data, float d)
       data[i] = d;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorization not profitable" 1 "vect" } } */
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorization not profitable" 1 "vect" { target { ! vect_hw_misalign } } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { target { ! vect_hw_misalign } } } } */
 

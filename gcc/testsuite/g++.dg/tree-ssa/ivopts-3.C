@@ -25,7 +25,7 @@ protected:
   double stuff;
 
 public:
-  explicit MinimalVector ( int length ) {
+  __attribute__((noinline)) explicit MinimalVector ( int length ) {
     _pData = new double[length];
     for (int i = 0; i < length; ++i) _pData[i] = 0.;
   }
@@ -72,4 +72,4 @@ int main ( int , char** ) {
 
 // Verify that on x86_64 and i?86 we use a single IV for the innermost loop
 
-// { dg-final { scan-tree-dump "Selected IV set for loop \[0-9\]* at \[^ \]*:64, 3 avg niters, 1 expressions, 1 IVs" "ivopts" { target x86_64-*-* i?86-*-* } } }
+// { dg-final { scan-tree-dump "Selected IV set for loop \[0-9\]* at \[^ \]*:64, 3 avg niters, 1 IVs" "ivopts" { target x86_64-*-* i?86-*-* } } }

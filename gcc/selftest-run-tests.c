@@ -1,5 +1,5 @@
 /* Implementation of selftests.
-   Copyright (C) 2015-2017 Free Software Foundation, Inc.
+   Copyright (C) 2015-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -25,6 +25,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "langhooks.h"
 #include "options.h"
+#include "stringpool.h"
+#include "attribs.h"
+#include "analyzer/analyzer-selftests.h"
 
 /* This function needed to be split out from selftest.c as it references
    tests from the whole source tree, and so is within
@@ -46,7 +49,7 @@ selftest::run_tests ()
      option-handling.  */
   path_to_selftest_files = flag_self_test;
 
-  long start_time = get_run_time ();
+  test_runner r ("-fself-test");
 
   /* Run all the tests, in hand-coded order of (approximate) dependencies:
      run the tests for lowest-level code first.  */
@@ -56,6 +59,8 @@ selftest::run_tests ()
 
   /* Low-level data structures.  */
   bitmap_c_tests ();
+  sbitmap_c_tests ();
+  dumpfile_c_tests ();
   et_forest_c_tests ();
   hash_map_tests_c_tests ();
   hash_set_tests_c_tests ();
@@ -66,23 +71,40 @@ selftest::run_tests ()
   sreal_c_tests ();
   fibonacci_heap_c_tests ();
   typed_splay_tree_c_tests ();
+  unique_ptr_tests_cc_tests ();
+  opt_proposer_c_tests ();
+  opts_c_tests ();
+  json_cc_tests ();
+  cgraph_c_tests ();
+  optinfo_emit_json_cc_tests ();
+  opt_problem_cc_tests ();
+  ordered_hash_map_tests_cc_tests ();
+  splay_tree_cc_tests ();
 
   /* Mid-level data structures.  */
   input_c_tests ();
+  vec_perm_indices_c_tests ();
   tree_c_tests ();
+  convert_c_tests ();
   gimple_c_tests ();
   rtl_tests_c_tests ();
   read_rtl_function_c_tests ();
+  digraph_cc_tests ();
+  tristate_cc_tests ();
+  ipa_modref_tree_c_tests ();
 
   /* Higher-level tests, or for components that other selftests don't
      rely on.  */
   diagnostic_show_locus_c_tests ();
   diagnostic_c_tests ();
+  diagnostic_format_json_cc_tests ();
   edit_context_c_tests ();
   fold_const_c_tests ();
   spellcheck_c_tests ();
   spellcheck_tree_c_tests ();
   tree_cfg_c_tests ();
+  tree_diagnostic_path_cc_tests ();
+  attribute_c_tests ();
 
   /* This one relies on most of the above.  */
   function_tests_c_tests ();
@@ -92,9 +114,15 @@ selftest::run_tests ()
     targetm.run_target_selftests ();
 
   store_merging_c_tests ();
+  predict_c_tests ();
+  simplify_rtx_c_tests ();
+  dbgcnt_c_tests ();
 
   /* Run any lang-specific selftests.  */
   lang_hooks.run_lang_selftests ();
+
+  /* Run the analyzer selftests (if enabled).  */
+  ana::selftest::run_analyzer_selftests ();
 
   /* Force a GC at the end of the selftests, to shake out GC-related
      issues.  For example, if any GC-managed items have buggy (or missing)
@@ -102,14 +130,7 @@ selftest::run_tests ()
      failed to be finalized can be detected by valgrind.  */
   forcibly_ggc_collect ();
 
-  /* Finished running tests.  */
-  long finish_time = get_run_time ();
-  long elapsed_time = finish_time - start_time;
-
-  fprintf (stderr,
-	   "-fself-test: %i pass(es) in %ld.%06ld seconds\n",
-	   num_passes,
-	   elapsed_time / 1000000, elapsed_time % 1000000);
+  /* Finished running tests; the test_runner dtor will print a summary.  */
 }
 
 #endif /* #if CHECKING_P */

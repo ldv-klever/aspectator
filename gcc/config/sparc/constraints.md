@@ -1,5 +1,5 @@
 ;; Constraint definitions for SPARC.
-;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2021 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -19,7 +19,7 @@
 
 ;;; Unused letters:
 ;;;     B
-;;;    a        jkl        uv xyz
+;;;    a        jkl        uvwxyz
 
 
 ;; Register constraints
@@ -157,10 +157,10 @@
 ;; register into the register class, which would not restrict things
 ;; at all.
 ;;
-;; Using a combination of GENERAL_REGS and HARD_REGNO_MODE_OK is not a
-;; full solution either.  In fact, even though IRA uses the macro
-;; HARD_REGNO_MODE_OK to calculate which registers are prohibited from
-;; use in certain modes, it still can allocate an odd hard register
+;; Using a combination of GENERAL_REGS and TARGET_HARD_REGNO_MODE_OK is
+;; not a full solution either.  In fact, even though IRA uses the macro
+;; TARGET_HARD_REGNO_MODE_OK to calculate which registers are prohibited
+;; from use in certain modes, it still can allocate an odd hard register
 ;; for DImode values.  This is due to how IRA populates the table
 ;; ira_useful_class_mode_regs[][].  It suffers from the same problem
 ;; as using a register class to describe this restriction.  Namely, it
@@ -190,14 +190,7 @@
       (match_test "TARGET_ARCH32")
       (match_test "register_ok_for_ldd (op)")))
 
-;; Equivalent to 'T' but in 64-bit mode without alignment requirement
 (define_memory_constraint "W"
- "Memory reference for 'e' constraint floating-point register"
- (and (match_code "mem")
-      (match_test "TARGET_ARCH64")
-      (match_test "memory_ok_for_ldd (op)")))
-
-(define_memory_constraint "w"
   "A memory with only a base register"
   (match_operand 0 "mem_noofs_operand"))
 

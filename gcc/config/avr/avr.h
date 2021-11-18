@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler,
    for ATMEL AVR at90s8515, ATmega103/103L, ATmega603/603L microcontrollers.
-   Copyright (C) 1998-2017 Free Software Foundation, Inc.
+   Copyright (C) 1998-2021 Free Software Foundation, Inc.
    Contributed by Denis Chertykov (chertykov@gmail.com)
 
 This file is part of GCC.
@@ -60,7 +60,9 @@ enum
 
 #define TARGET_CPU_CPP_BUILTINS()	avr_cpu_cpp_builtins (pfile)
 
-#define AVR_HAVE_JMP_CALL (avr_arch->have_jmp_call)
+#define AVR_SHORT_CALLS (TARGET_SHORT_CALLS                             \
+                         && avr_arch == &avr_arch_types[ARCH_AVRXMEGA3])
+#define AVR_HAVE_JMP_CALL (avr_arch->have_jmp_call && ! AVR_SHORT_CALLS)
 #define AVR_HAVE_MUL (avr_arch->have_mul)
 #define AVR_HAVE_MOVW (avr_arch->have_movw_lpmx)
 #define AVR_HAVE_LPM (!AVR_TINY)
@@ -73,8 +75,6 @@ enum
 #define AVR_HAVE_RAMPZ (avr_arch->have_elpm             \
                         || avr_arch->have_rampd)
 #define AVR_HAVE_EIJMP_EICALL (avr_arch->have_eijmp_eicall)
-
-#define AVR_TINY_PM_OFFSET (0x4000)
 
 /* Handling of 8-bit SP versus 16-bit SP is as follows:
 
@@ -106,6 +106,9 @@ FIXME: DRIVER_SELF_SPECS has changed.
 #define BITS_BIG_ENDIAN 0
 #define BYTES_BIG_ENDIAN 0
 #define WORDS_BIG_ENDIAN 0
+
+#define FLOAT_LIB_COMPARE_RETURNS_BOOL(mode, comparison) \
+  avr_float_lib_compare_returns_bool (mode, comparison)
 
 #ifdef IN_LIBGCC2
 /* This is to get correct SI and DI modes in libgcc2.c (32 and 64 bits).  */
@@ -140,8 +143,9 @@ FIXME: DRIVER_SELF_SPECS has changed.
 #define LONG_TYPE_SIZE (INT_TYPE_SIZE == 8 ? 16 : 32)
 #define LONG_LONG_TYPE_SIZE (INT_TYPE_SIZE == 8 ? 32 : 64)
 #define FLOAT_TYPE_SIZE 32
-#define DOUBLE_TYPE_SIZE 32
-#define LONG_DOUBLE_TYPE_SIZE 32
+#define DOUBLE_TYPE_SIZE (avr_double)
+#define LONG_DOUBLE_TYPE_SIZE (avr_long_double)
+
 #define LONG_LONG_ACCUM_TYPE_SIZE 64
 
 #define DEFAULT_SIGNED_CHAR 1
@@ -212,13 +216,6 @@ FIXME: DRIVER_SELF_SPECS has changed.
 #define ADJUST_REG_ALLOC_ORDER avr_adjust_reg_alloc_order()
 
 
-#define HARD_REGNO_NREGS(REGNO, MODE)                                   \
-  ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD)
-
-#define HARD_REGNO_MODE_OK(REGNO, MODE) avr_hard_regno_mode_ok(REGNO, MODE)
-
-#define MODES_TIEABLE_P(MODE1, MODE2) 1
-
 enum reg_class {
   NO_REGS,
   R0_REG,			/* r0 */
@@ -288,16 +285,11 @@ enum reg_class {
 
 #define REGNO_OK_FOR_INDEX_P(NUM) 0
 
-#define HARD_REGNO_CALL_PART_CLOBBERED(REGNO, MODE)     \
-  avr_hard_regno_call_part_clobbered (REGNO, MODE)
-
 #define TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P hook_bool_mode_true
 
 #define STACK_PUSH_CODE POST_DEC
 
 #define STACK_GROWS_DOWNWARD 1
-
-#define STARTING_FRAME_OFFSET avr_starting_frame_offset()
 
 #define STACK_POINTER_OFFSET 1
 
@@ -401,6 +393,10 @@ typedef struct avr_args
 
 #define SUPPORTS_INIT_PRIORITY 0
 
+/* We pretend jump tables are in text section because otherwise,
+   final.c will switch to .rodata before jump tables and thereby
+   triggers __do_copy_data.  As we implement ASM_OUTPUT_ADDR_VEC,
+   we still have full control over the jump tables themselves.  */
 #define JUMP_TABLES_IN_TEXT_SECTION 1
 
 #define ASM_COMMENT_START " ; "
@@ -450,8 +446,8 @@ typedef struct avr_args
   fprintf (STREAM, "\tpop\tr%d", REGNO);	\
 }
 
-#define ASM_OUTPUT_ADDR_VEC_ELT(STREAM, VALUE)  \
-  avr_output_addr_vec_elt (STREAM, VALUE)
+#define ASM_OUTPUT_ADDR_VEC(TLABEL, TDATA)      \
+  avr_output_addr_vec (TLABEL, TDATA)
 
 #define ASM_OUTPUT_ALIGN(STREAM, POWER)                 \
   do {                                                  \
@@ -479,8 +475,6 @@ typedef struct avr_args
    Also see avr_use_by_pieces_infrastructure_p. */
 
 #define MOVE_RATIO(speed) ((speed) ? 3 : 2)
-
-#define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
 
 #define Pmode HImode
 
@@ -517,8 +511,10 @@ typedef struct avr_args
     (LENGTH = avr_adjust_insn_length (INSN, LENGTH))
 
 extern const char *avr_devicespecs_file (int, const char**);
+extern const char *avr_double_lib (int, const char**);
 
-#define EXTRA_SPEC_FUNCTIONS                                   \
+#define EXTRA_SPEC_FUNCTIONS                            \
+  { "double-lib", avr_double_lib },                     \
   { "device-specs-file", avr_devicespecs_file },
 
 /* Driver self specs has lmited functionality w.r.t. '%s' for dynamic specs.
@@ -526,7 +522,8 @@ extern const char *avr_devicespecs_file (int, const char**);
    is used to diagnose problems with reading the specs file.  */
 
 #undef  DRIVER_SELF_SPECS
-#define DRIVER_SELF_SPECS                       \
+#define DRIVER_SELF_SPECS                               \
+  " %:double-lib(%{m*:m%*})"                            \
   " %:device-specs-file(device-specs%s %{mmcu=*:%*})"
 
 /* No libstdc++ for now.  Empty string doesn't work.  */
@@ -584,6 +581,26 @@ struct GTY(()) machine_function
   /* 'true' if the above is_foo predicates are sanity-checked to avoid
      multiple diagnose for the same function.  */
   int attributes_checked_p;
+
+  /* 'true' - if current function shall not use '__gcc_isr' pseudo
+     instructions as specified by the "no_gccisr" attribute.  */
+  int is_no_gccisr;
+
+  /* Used for `__gcc_isr' pseudo instruction handling of
+     non-naked ISR prologue / epilogue(s).  */
+  struct
+  {
+    /* 'true' if this function actually uses "*gasisr" insns. */
+    int yes;
+    /* 'true' if this function is allowed to use "*gasisr" insns. */
+    int maybe;
+    /* The register numer as printed by the Done chunk.  */
+    int regno;
+  } gasisr;
+
+  /* 'true' if this function references .L__stack_usage like with
+     __builtin_return_address.  */
+  int use_L__stack_usage;
 };
 
 /* AVR does not round pushes, but the existence of this macro is

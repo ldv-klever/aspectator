@@ -41,5 +41,5 @@
 !$omp end parallel
 !$omp atomic read
   e = err
-  if (e .ne. 0) call abort
+  if (e .ne. 0) stop 1
 end

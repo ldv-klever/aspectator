@@ -17,7 +17,6 @@
 #include "runtime.h"
 #include "array.h"
 #include "arch.h"
-#include "malloc.h"
 
 #undef int
 #undef char
@@ -49,12 +48,13 @@ main (int argc, char **argv)
     setIsCgo ();
 
   __go_end = (uintptr)_end;
+  runtime_ginit ();
   runtime_cpuinit ();
   runtime_check ();
   runtime_args (argc, (byte **) argv);
   runtime_osinit ();
   runtime_schedinit ();
-  __go_go (runtime_main, NULL);
+  __go_go ((uintptr)(runtime_main), NULL);
   runtime_mstart (runtime_m ());
   abort ();
 }

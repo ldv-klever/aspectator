@@ -1,4 +1,6 @@
-/* { dg-require-effective-target vect_float } */
+/* Disabling epilogues until we find a better way to deal with scans.  */
+/* { dg-additional-options "--param vect-epilogues-nomask=0" } */
+/* { dg-require-effective-target vect_float_strict } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
@@ -33,5 +35,5 @@ int main (void)
   return main1 ();
 }
 
-/* Requires fast-math.  */
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { xfail *-*-* } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
+/* { dg-final { scan-tree-dump-times {using an in-order \(fold-left\) reduction} 1 "vect" } } */

@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O -fno-tree-sra -fdump-tree-fre1" } */
+/* { dg-options "-O -fno-tree-sra -fdump-tree-fre1 --param early-inlining-insns=14" } */
 
 int f();
 
@@ -13,7 +13,7 @@ public:
 };
 
 template<typename predicate>
-inline noop_t<predicate> noop(const predicate pred) {
+inline noop_t<predicate> noop(const predicate &pred) {
     return noop_t<predicate>(pred);
 }
 

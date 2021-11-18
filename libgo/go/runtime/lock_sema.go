@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin nacl netbsd openbsd plan9 solaris windows
+// +build aix darwin hurd netbsd openbsd plan9 solaris windows
 
 package runtime
 
@@ -12,16 +12,15 @@ import (
 )
 
 // For gccgo, while we still have C runtime code, use go:linkname to
-// rename some functions to themselves, so that the compiler will
-// export them.
+// export some functions.
 //
-//go:linkname lock runtime.lock
-//go:linkname unlock runtime.unlock
-//go:linkname noteclear runtime.noteclear
-//go:linkname notewakeup runtime.notewakeup
-//go:linkname notesleep runtime.notesleep
-//go:linkname notetsleep runtime.notetsleep
-//go:linkname notetsleepg runtime.notetsleepg
+//go:linkname lock
+//go:linkname unlock
+//go:linkname noteclear
+//go:linkname notewakeup
+//go:linkname notesleep
+//go:linkname notetsleep
+//go:linkname notetsleepg
 
 // This implementation depends on OS-specific implementations of
 //
@@ -45,6 +44,10 @@ const (
 )
 
 func lock(l *mutex) {
+	lockWithRank(l, getLockRank(l))
+}
+
+func lock2(l *mutex) {
 	gp := getg()
 	if gp.m.locks < 0 {
 		throw("runtime·lock: lock count")
@@ -83,7 +86,7 @@ Loop:
 			// for this lock, chained through m->nextwaitm.
 			// Queue this M.
 			for {
-				gp.m.nextwaitm = v &^ mutex_locked
+				gp.m.nextwaitm = muintptr(v &^ mutex_locked)
 				if atomic.Casuintptr(&l.key, v, uintptr(unsafe.Pointer(gp.m))|mutex_locked) {
 					break
 				}
@@ -101,9 +104,13 @@ Loop:
 	}
 }
 
+func unlock(l *mutex) {
+	unlockWithRank(l)
+}
+
 //go:nowritebarrier
 // We might not be holding a p in this code.
-func unlock(l *mutex) {
+func unlock2(l *mutex) {
 	gp := getg()
 	var mp *m
 	for {
@@ -115,8 +122,8 @@ func unlock(l *mutex) {
 		} else {
 			// Other M's are waiting for the lock.
 			// Dequeue an M.
-			mp = (*m)(unsafe.Pointer(v &^ mutex_locked))
-			if atomic.Casuintptr(&l.key, v, mp.nextwaitm) {
+			mp = muintptr(v &^ mutex_locked).ptr()
+			if atomic.Casuintptr(&l.key, v, uintptr(mp.nextwaitm)) {
 				// Dequeued an M.  Wake it.
 				semawakeup(mp)
 				break
@@ -134,7 +141,13 @@ func unlock(l *mutex) {
 
 // One-time notifications.
 func noteclear(n *note) {
-	n.key = 0
+	if GOOS == "aix" {
+		// On AIX, semaphores might not synchronize the memory in some
+		// rare cases. See issue #30189.
+		atomic.Storeuintptr(&n.key, 0)
+	} else {
+		n.key = 0
+	}
 }
 
 func notewakeup(n *note) {
@@ -152,7 +165,7 @@ func notewakeup(n *note) {
 	case v == 0:
 		// Nothing was waiting. Done.
 	case v == mutex_locked:
-		// Two notewakeups!  Not allowed.
+		// Two notewakeups! Not allowed.
 		throw("notewakeup - double wakeup")
 	default:
 		// Must be the waiting m. Wake it up.
@@ -175,7 +188,16 @@ func notesleep(n *note) {
 	}
 	// Queued. Sleep.
 	gp.m.blocked = true
-	semasleep(-1)
+	if *cgo_yield == nil {
+		semasleep(-1)
+	} else {
+		// Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+		const ns = 10e6
+		for atomic.Loaduintptr(&n.key) == 0 {
+			semasleep(ns)
+			asmcgocall(*cgo_yield, nil)
+		}
+	}
 	gp.m.blocked = false
 }
 
@@ -198,7 +220,15 @@ func notetsleep_internal(n *note, ns int64, gp *g, deadline int64) bool {
 	if ns < 0 {
 		// Queued. Sleep.
 		gp.m.blocked = true
-		semasleep(-1)
+		if *cgo_yield == nil {
+			semasleep(-1)
+		} else {
+			// Sleep in arbitrary-but-moderate intervals to poll libc interceptors.
+			const ns = 10e6
+			for semasleep(ns) < 0 {
+				asmcgocall(*cgo_yield, nil)
+			}
+		}
 		gp.m.blocked = false
 		return true
 	}
@@ -207,11 +237,17 @@ func notetsleep_internal(n *note, ns int64, gp *g, deadline int64) bool {
 	for {
 		// Registered. Sleep.
 		gp.m.blocked = true
+		if *cgo_yield != nil && ns > 10e6 {
+			ns = 10e6
+		}
 		if semasleep(ns) >= 0 {
 			gp.m.blocked = false
 			// Acquired semaphore, semawakeup unregistered us.
 			// Done.
 			return true
+		}
+		if *cgo_yield != nil {
+			asmcgocall(*cgo_yield, nil)
 		}
 		gp.m.blocked = false
 		// Interrupted or timed out. Still registered. Semaphore not acquired.
@@ -251,14 +287,9 @@ func notetsleep_internal(n *note, ns int64, gp *g, deadline int64) bool {
 
 func notetsleep(n *note, ns int64) bool {
 	gp := getg()
-
-	// Currently OK to sleep in non-g0 for gccgo.  It happens in
-	// stoptheworld because our version of systemstack does not
-	// change to g0.
-	// if gp != gp.m.g0 && gp.m.preemptoff != "" {
-	//	throw("notetsleep not on g0")
-	// }
-
+	if gp != gp.m.g0 {
+		throw("notetsleep not on g0")
+	}
 	semacreate(gp.m)
 	return notetsleep_internal(n, ns, nil, 0)
 }
@@ -271,8 +302,14 @@ func notetsleepg(n *note, ns int64) bool {
 		throw("notetsleepg on g0")
 	}
 	semacreate(gp.m)
-	entersyscallblock(0)
+	entersyscallblock()
 	ok := notetsleep_internal(n, ns, nil, 0)
-	exitsyscall(0)
+	exitsyscall()
 	return ok
 }
+
+func beforeIdle(int64) (*g, bool) {
+	return nil, false
+}
+
+func checkTimeouts() {}

@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2017 Free Software Foundation, Inc.
+/* Copyright (C) 2009-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -21,8 +21,8 @@
    see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    <http://www.gnu.org/licenses/>.  */
 
-#ifndef _X86INTRIN_H_INCLUDED
-# error "Never use <ia32intrin.h> directly; include <x86intrin.h> instead."
+#ifndef _X86GPRINTRIN_H_INCLUDED
+# error "Never use <ia32intrin.h> directly; include <x86gprintrin.h> instead."
 #endif
 
 /* 32bit bsf */
@@ -107,22 +107,12 @@ __rdpmc (int __S)
 #endif /* __iamcu__ */
 
 /* rdtsc */
-extern __inline unsigned long long
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-__rdtsc (void)
-{
-  return __builtin_ia32_rdtsc ();
-}
+#define __rdtsc()		__builtin_ia32_rdtsc ()
 
 #ifndef __iamcu__
 
 /* rdtscp */
-extern __inline unsigned long long
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-__rdtscp (unsigned int *__A)
-{
-  return __builtin_ia32_rdtscp (__A);
-}
+#define __rdtscp(a)		__builtin_ia32_rdtscp (a)
 
 #endif /* __iamcu__ */
 
@@ -147,7 +137,8 @@ extern __inline unsigned int
 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 __rold (unsigned int __X, int __C)
 {
-  return (__X << __C) | (__X >> (32 - __C));
+  __C &= 31;
+  return (__X << __C) | (__X >> (-__C & 31));
 }
 
 /* 8bit ror */
@@ -171,7 +162,8 @@ extern __inline unsigned int
 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 __rord (unsigned int __X, int __C)
 {
-  return (__X >> __C) | (__X << (32 - __C));
+  __C &= 31;
+  return (__X >> __C) | (__X << (-__C & 31));
 }
 
 /* Pause */
@@ -239,7 +231,8 @@ extern __inline unsigned long long
 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 __rolq (unsigned long long __X, int __C)
 {
-  return (__X << __C) | (__X >> (64 - __C));
+  __C &= 63;
+  return (__X << __C) | (__X >> (-__C & 63));
 }
 
 /* 64bit ror */
@@ -247,7 +240,8 @@ extern __inline unsigned long long
 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 __rorq (unsigned long long __X, int __C)
 {
-  return (__X >> __C) | (__X << (64 - __C));
+  __C &= 63;
+  return (__X >> __C) | (__X << (-__C & 63));
 }
 
 /* Read flags register */

@@ -181,10 +181,11 @@ If the Go runtime sees an existing signal handler for the SIGCANCEL or
 SIGSETXID signals (which are used only on GNU/Linux), it will turn on
 the SA_ONSTACK flag and otherwise keep the signal handler.
 
-For the synchronous signals, the Go runtime will install a signal
-handler. It will save any existing signal handler. If a synchronous
-signal arrives while executing non-Go code, the Go runtime will invoke
-the existing signal handler instead of the Go signal handler.
+For the synchronous signals and SIGPIPE, the Go runtime will install a
+signal handler. It will save any existing signal handler. If a
+synchronous signal arrives while executing non-Go code, the Go runtime
+will invoke the existing signal handler instead of the Go signal
+handler.
 
 Go code built with -buildmode=c-archive or -buildmode=c-shared will
 not install any other signal handlers by default. If there is an
@@ -209,6 +210,14 @@ the program to exit. If Notify is called for os.Interrupt, ^C or ^BREAK
 will cause os.Interrupt to be sent on the channel, and the program will
 not exit. If Reset is called, or Stop is called on all channels passed
 to Notify, then the default behavior will be restored.
+
+Additionally, if Notify is called, and Windows sends CTRL_CLOSE_EVENT,
+CTRL_LOGOFF_EVENT or CTRL_SHUTDOWN_EVENT to the process, Notify will
+return syscall.SIGTERM. Unlike Control-C and Control-Break, Notify does
+not change process behavior when either CTRL_CLOSE_EVENT,
+CTRL_LOGOFF_EVENT or CTRL_SHUTDOWN_EVENT is received - the process will
+still get terminated unless it exits. But receiving syscall.SIGTERM will
+give the process an opportunity to clean up before termination.
 
 Plan 9
 

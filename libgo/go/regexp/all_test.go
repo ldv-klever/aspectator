@@ -9,6 +9,7 @@ import (
 	"regexp/syntax"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 var goodRe = []string{
@@ -354,6 +355,7 @@ type MetaTest struct {
 var metaTests = []MetaTest{
 	{``, ``, ``, true},
 	{`foo`, `foo`, `foo`, true},
+	{`日本語+`, `日本語\+`, `日本語`, false},
 	{`foo\.\$`, `foo\\\.\\\$`, `foo.$`, true}, // has meta but no operator
 	{`foo.\$`, `foo\.\\\$`, `foo`, false},     // has escaped operators and real operators
 	{`!@#$%^&*()_+-=[{]}\|,<.>/?~`, `!@#\$%\^&\*\(\)_\+-=\[\{\]\}\\\|,<\.>/\?~`, `!@#`, false},
@@ -416,24 +418,32 @@ func TestLiteralPrefix(t *testing.T) {
 	}
 }
 
-type subexpCase struct {
-	input string
-	num   int
-	names []string
+type subexpIndex struct {
+	name  string
+	index int
 }
 
+type subexpCase struct {
+	input   string
+	num     int
+	names   []string
+	indices []subexpIndex
+}
+
+var emptySubexpIndices = []subexpIndex{{"", -1}, {"missing", -1}}
+
 var subexpCases = []subexpCase{
-	{``, 0, nil},
-	{`.*`, 0, nil},
-	{`abba`, 0, nil},
-	{`ab(b)a`, 1, []string{"", ""}},
-	{`ab(.*)a`, 1, []string{"", ""}},
-	{`(.*)ab(.*)a`, 2, []string{"", "", ""}},
-	{`(.*)(ab)(.*)a`, 3, []string{"", "", "", ""}},
-	{`(.*)((a)b)(.*)a`, 4, []string{"", "", "", "", ""}},
-	{`(.*)(\(ab)(.*)a`, 3, []string{"", "", "", ""}},
-	{`(.*)(\(a\)b)(.*)a`, 3, []string{"", "", "", ""}},
-	{`(?P<foo>.*)(?P<bar>(a)b)(?P<foo>.*)a`, 4, []string{"", "foo", "bar", "", "foo"}},
+	{``, 0, nil, emptySubexpIndices},
+	{`.*`, 0, nil, emptySubexpIndices},
+	{`abba`, 0, nil, emptySubexpIndices},
+	{`ab(b)a`, 1, []string{"", ""}, emptySubexpIndices},
+	{`ab(.*)a`, 1, []string{"", ""}, emptySubexpIndices},
+	{`(.*)ab(.*)a`, 2, []string{"", "", ""}, emptySubexpIndices},
+	{`(.*)(ab)(.*)a`, 3, []string{"", "", "", ""}, emptySubexpIndices},
+	{`(.*)((a)b)(.*)a`, 4, []string{"", "", "", "", ""}, emptySubexpIndices},
+	{`(.*)(\(ab)(.*)a`, 3, []string{"", "", "", ""}, emptySubexpIndices},
+	{`(.*)(\(a\)b)(.*)a`, 3, []string{"", "", "", ""}, emptySubexpIndices},
+	{`(?P<foo>.*)(?P<bar>(a)b)(?P<foo>.*)a`, 4, []string{"", "foo", "bar", "", "foo"}, []subexpIndex{{"", -1}, {"missing", -1}, {"foo", 1}, {"bar", 2}}},
 }
 
 func TestSubexp(t *testing.T) {
@@ -454,6 +464,12 @@ func TestSubexp(t *testing.T) {
 				if names[i] != c.names[i] {
 					t.Errorf("%q: SubexpNames[%d] = %q, want %q", c.input, i, names[i], c.names[i])
 				}
+			}
+		}
+		for _, subexp := range c.indices {
+			index := re.SubexpIndex(subexp.name)
+			if index != subexp.index {
+				t.Errorf("%q: SubexpIndex(%q) = %d, want %d", c.input, subexp.name, index, subexp.index)
 			}
 		}
 	}
@@ -548,8 +564,8 @@ func TestOnePassCutoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if compileOnePass(p) != notOnePass {
-		t.Fatalf("makeOnePass succeeded; wanted notOnePass")
+	if compileOnePass(p) != nil {
+		t.Fatalf("makeOnePass succeeded; wanted nil")
 	}
 }
 
@@ -575,6 +591,19 @@ func BenchmarkFind(b *testing.B) {
 		subs := re.Find(s)
 		if string(subs) != wantSubs {
 			b.Fatalf("Find(%q) = %q; want %q", s, subs, wantSubs)
+		}
+	}
+}
+
+func BenchmarkFindAllNoMatches(b *testing.B) {
+	re := MustCompile("a+b+")
+	s := []byte("acddee")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		all := re.FindAll(s, -1)
+		if all != nil {
+			b.Fatalf("FindAll(%q) = %q; want nil", s, all)
 		}
 	}
 }
@@ -822,7 +851,13 @@ func BenchmarkMatchParallelCopied(b *testing.B) {
 var sink string
 
 func BenchmarkQuoteMetaAll(b *testing.B) {
-	s := string(specialBytes)
+	specials := make([]byte, 0)
+	for i := byte(0); i < utf8.RuneSelf; i++ {
+		if special(i) {
+			specials = append(specials, i)
+		}
+	}
+	s := string(specials)
 	b.SetBytes(int64(len(s)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -836,5 +871,75 @@ func BenchmarkQuoteMetaNone(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		sink = QuoteMeta(s)
+	}
+}
+
+var compileBenchData = []struct{ name, re string }{
+	{"Onepass", `^a.[l-nA-Cg-j]?e$`},
+	{"Medium", `^((a|b|[d-z0-9])*(日){4,5}.)+$`},
+	{"Hard", strings.Repeat(`((abc)*|`, 50) + strings.Repeat(`)`, 50)},
+}
+
+func BenchmarkCompile(b *testing.B) {
+	for _, data := range compileBenchData {
+		b.Run(data.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := Compile(data.re); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestDeepEqual(t *testing.T) {
+	re1 := MustCompile("a.*b.*c.*d")
+	re2 := MustCompile("a.*b.*c.*d")
+	if !reflect.DeepEqual(re1, re2) { // has always been true, since Go 1.
+		t.Errorf("DeepEqual(re1, re2) = false, want true")
+	}
+
+	re1.MatchString("abcdefghijklmn")
+	if !reflect.DeepEqual(re1, re2) {
+		t.Errorf("DeepEqual(re1, re2) = false, want true")
+	}
+
+	re2.MatchString("abcdefghijklmn")
+	if !reflect.DeepEqual(re1, re2) {
+		t.Errorf("DeepEqual(re1, re2) = false, want true")
+	}
+
+	re2.MatchString(strings.Repeat("abcdefghijklmn", 100))
+	if !reflect.DeepEqual(re1, re2) {
+		t.Errorf("DeepEqual(re1, re2) = false, want true")
+	}
+}
+
+var minInputLenTests = []struct {
+	Regexp string
+	min    int
+}{
+	{``, 0},
+	{`a`, 1},
+	{`aa`, 2},
+	{`(aa)a`, 3},
+	{`(?:aa)a`, 3},
+	{`a?a`, 1},
+	{`(aaa)|(aa)`, 2},
+	{`(aa)+a`, 3},
+	{`(aa)*a`, 1},
+	{`(aa){3,5}`, 6},
+	{`[a-z]`, 1},
+	{`日`, 3},
+}
+
+func TestMinInputLen(t *testing.T) {
+	for _, tt := range minInputLenTests {
+		re, _ := syntax.Parse(tt.Regexp, syntax.Perl)
+		m := minInputLen(re)
+		if m != tt.min {
+			t.Errorf("regexp %#q has minInputLen %d, should be %d", tt.Regexp, m, tt.min)
+		}
 	}
 }

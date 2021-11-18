@@ -1,6 +1,6 @@
 // PR c++/82159
 // { dg-do compile }
-// { dg-options "" }
+// { dg-options " -Wno-return-type" }
 
 template <typename T> struct D { T e; };
 struct F : D<int[0]> {

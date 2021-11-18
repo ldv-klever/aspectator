@@ -28,13 +28,13 @@ long foo(void) {
   receiver += [receiver anotherValue]; /* { dg-warning "invalid receiver type .intptr_t." } */
 
   receiver += [(Obj *)receiver someValue]; /* { dg-warning ".Obj. may not respond to .\\-someValue." } */
-/* { dg-warning "assignment makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
+/* { dg-warning "assignment to 'intptr_t' {aka '(long )?int'} from 'id' makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
 
   receiver += [(Obj *)receiver anotherValue];
   receiver += [(Obj <Proto> *)receiver someValue];
   receiver += [(Obj <Proto> *)receiver anotherValue];
   receiver += [objrcvr someValue]; /* { dg-warning ".Obj. may not respond to .\\-someValue." } */
-/* { dg-warning "assignment makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
+/* { dg-warning "assignment to 'intptr_t' {aka '(long )?int'} from 'id' makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
 
   receiver += [objrcvr anotherValue];
   receiver += [(Obj <Proto> *)objrcvr someValue];
@@ -42,13 +42,11 @@ long foo(void) {
   receiver += [objrcvr2 someValue];
   receiver += [objrcvr2 anotherValue];
   receiver += [(Obj *)objrcvr2 someValue]; /* { dg-warning ".Obj. may not respond to .\\-someValue." } */
-/* { dg-warning "assignment makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
+/* { dg-warning "assignment to 'intptr_t' {aka '(long )?int'} from 'id' makes integer from pointer without a cast" "" { target *-*-* } .-1 } */
 
   receiver += [(Obj *)objrcvr2 anotherValue];
 
   return receiver;
 }
 
-/* { dg-warning "Messages without a matching method signature" "" { target *-*-* } 0 } */
-/* { dg-warning "will be assumed to return .id. and accept" "" { target *-*-* } 0 } */
-/* { dg-warning ".\.\.\.. as arguments" "" { target *-*-* } 0 } */
+/* { dg-warning "messages without a matching method signature will be assumed to return .id. and accept .\.\.\.. as arguments" "" { target *-*-* } 0 } */

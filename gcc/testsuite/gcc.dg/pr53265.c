@@ -38,7 +38,8 @@ fn3 (void)
   for (i = 0; i < (int) (sizeof (a) / sizeof (a[0])); i++)	/* { dg-message "note: within this loop" } */
     {
       c[i + 8] = b[i];	/* { dg-warning "8 invokes undefined behavior" } */
-      a[i + 8] = b[i + 8];
+	/* { dg-warning "out of the bounds" "" { target *-*-* } .-1 } */
+      a[i + 8] = b[i + 8]; /* { dg-warning "out of the bounds" } */
     }
   bar (a);
   bar (c);
@@ -50,9 +51,9 @@ fn4 (void)
   unsigned int *a[32], *o, i;
 
   bar (a);
-  for (i = 0; i <= sizeof (a) / sizeof (a[0]); i++)	/* { dg-message "note: within this loop" "" } */
+  for (i = 0; i <= sizeof (a) / sizeof (a[0]); i++)	/* { dg-message "note: within this loop" } */
     {
-      o = a[i];	/* { dg-warning "32 invokes undefined behavior" "" } */
+      o = a[i];	/* { dg-warning "32 invokes undefined behavior" } */
       bar (o);
     }
 }
@@ -86,11 +87,12 @@ fn7 (void)
 {
   int a[16], b, c;
   bar (a);
-  for (b = a[c = 0]; c < 16; b = a[++c])	/* { dg-warning "15 invokes undefined behavior" "" } */
+  for (b = a[c = 0]; c < 16; b = a[++c])
+    /* { dg-warning "15 invokes undefined behavior" "" { target *-*-* } .-1 } */
+    /* { dg-message "note: within this loop" "" { target *-*-* } .-2 } */
     baz (b);
 }
 
-/* { dg-message "note: within this loop" "" { target *-*-* } 89 } */
 
 const void *va, *vb, *vc, *vd, *ve;
 const void *vf[4];

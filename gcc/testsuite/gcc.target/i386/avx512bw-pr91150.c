@@ -7,7 +7,7 @@
 
 typedef unsigned char V __attribute__((vector_size (64)));
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 foo (V *x, V *y, V *z)
 {
   *x = __builtin_shuffle (*y, *z, (V) { 0, 1, 2, 3, 4, 5, 6, 7, 8,

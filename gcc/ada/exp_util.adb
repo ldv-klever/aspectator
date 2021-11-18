@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -52,6 +52,7 @@ with Sem_Ch8;  use Sem_Ch8;
 with Sem_Ch12; use Sem_Ch12;
 with Sem_Ch13; use Sem_Ch13;
 with Sem_Disp; use Sem_Disp;
+with Sem_Elab; use Sem_Elab;
 with Sem_Eval; use Sem_Eval;
 with Sem_Res;  use Sem_Res;
 with Sem_Type; use Sem_Type;
@@ -59,14 +60,11 @@ with Sem_Util; use Sem_Util;
 with Snames;   use Snames;
 with Stand;    use Stand;
 with Stringt;  use Stringt;
-with Targparm; use Targparm;
 with Tbuild;   use Tbuild;
 with Ttypes;   use Ttypes;
-with Urealp;   use Urealp;
 with Validsw;  use Validsw;
 
-with GNAT.HTable; use GNAT.HTable;
-
+with GNAT.HTable;
 package body Exp_Util is
 
    ---------------------------------------------------------
@@ -92,17 +90,27 @@ package body Exp_Util is
    --  operations are mapped into the overriding operations of that current
    --  type extension.
 
-   Primitives_Mapping_Size : constant := 511;
+   --  The contents of the map are as follows:
 
-   subtype Num_Primitives is Integer range 0 .. Primitives_Mapping_Size - 1;
-   function Entity_Hash (E : Entity_Id) return Num_Primitives;
+   --    Key                                Value
 
-   package Primitives_Mapping is new GNAT.HTable.Simple_HTable
-     (Header_Num => Num_Primitives,
+   --    Discriminant (Entity_Id)           Discriminant (Entity_Id)
+   --    Discriminant (Entity_Id)           Non-discriminant name (Entity_Id)
+   --    Discriminant (Entity_Id)           Expression (Node_Id)
+   --    Primitive subprogram (Entity_Id)   Primitive subprogram (Entity_Id)
+   --    Type (Entity_Id)                   Type (Entity_Id)
+
+   Type_Map_Size : constant := 511;
+
+   subtype Type_Map_Header is Integer range 0 .. Type_Map_Size - 1;
+   function Type_Map_Hash (Id : Entity_Id) return Type_Map_Header;
+
+   package Type_Map is new GNAT.HTable.Simple_HTable
+     (Header_Num => Type_Map_Header,
       Key        => Entity_Id,
-      Element    => Entity_Id,
+      Element    => Node_Or_Entity_Id,
       No_element => Empty,
-      Hash       => Entity_Hash,
+      Hash       => Type_Map_Hash,
       Equal      => "=");
 
    -----------------------
@@ -155,10 +163,19 @@ package body Exp_Util is
    --  Force evaluation of bounds of a slice, which may be given by a range
    --  or by a subtype indication with or without a constraint.
 
-   function Find_DIC_Type (Typ : Entity_Id) return Entity_Id;
-   --  Subsidiary to all Build_DIC_Procedure_xxx routines. Find the type which
-   --  defines the Default_Initial_Condition pragma of type Typ. This is either
-   --  Typ itself or a parent type when the pragma is inherited.
+   function Is_Verifiable_DIC_Pragma (Prag : Node_Id) return Boolean;
+   --  Determine whether pragma Default_Initial_Condition denoted by Prag has
+   --  an assertion expression that should be verified at run time.
+
+   function Is_Uninitialized_Aggregate
+     (Exp : Node_Id;
+      T   : Entity_Id) return Boolean;
+   --  Determine whether an array aggregate used in an object declaration
+   --  is uninitialized, when the aggregate is declared with a box and
+   --  the component type has no default value. Such an aggregate can be
+   --  optimized away to prevent the copying of uninitialized data, and
+   --  the bounds of the aggregate can be propagated directly to the
+   --  object declaration.
 
    function Make_CW_Equivalent_Type
      (T : Entity_Id;
@@ -213,6 +230,10 @@ package body Exp_Util is
    --  Lib_Level is True when the list comes from a construct at the library
    --  level, and False otherwise. Nested_Constructs is True when any nested
    --  packages declared in L must be processed, and False otherwise.
+
+   function Side_Effect_Free_Attribute (Name : Name_Id) return Boolean;
+   --  Return True if the evaluation of the given attribute is considered
+   --  side-effect free, independently of its prefix and expressions.
 
    -------------------------------------
    -- Activate_Atomic_Synchronization --
@@ -311,7 +332,6 @@ package body Exp_Util is
       declare
          Loc : constant Source_Ptr := Sloc (N);
          T   : constant Entity_Id  := Etype (N);
-         Ti  : Entity_Id;
 
       begin
          --  Defend against a call where the argument has no type, or has a
@@ -334,7 +354,7 @@ package body Exp_Util is
             return;
          end if;
 
-         --  Case of zero/non-zero semantics or non-standard enumeration
+         --  Case of zero/nonzero semantics or nonstandard enumeration
          --  representation. In each case, we rewrite the node as:
 
          --      ityp!(N) /= False'Enum_Rep
@@ -343,15 +363,11 @@ package body Exp_Util is
          --  value of type T.
 
          if Nonzero_Is_True (T) or else Has_Non_Standard_Rep (T) then
-            if Esize (T) <= Esize (Standard_Integer) then
-               Ti := Standard_Integer;
-            else
-               Ti := Standard_Long_Long_Integer;
-            end if;
-
             Rewrite (N,
               Make_Op_Ne (Loc,
-                Left_Opnd  => Unchecked_Convert_To (Ti, N),
+                Left_Opnd  =>
+                  Unchecked_Convert_To
+                    (Integer_Type_For (Esize (T), Uns => False), N),
                 Right_Opnd =>
                   Make_Attribute_Reference (Loc,
                     Attribute_Name => Name_Enum_Rep,
@@ -463,6 +479,169 @@ package body Exp_Util is
       end if;
    end Append_Freeze_Actions;
 
+   ----------------------------------------
+   -- Attribute_Constrained_Static_Value --
+   ----------------------------------------
+
+   function Attribute_Constrained_Static_Value (Pref : Node_Id) return Boolean
+   is
+      Ptyp       : constant Entity_Id := Etype (Pref);
+      Formal_Ent : constant Entity_Id := Param_Entity (Pref);
+
+      function Is_Constrained_Aliased_View (Obj : Node_Id) return Boolean;
+      --  Ada 2005 (AI-363): Returns True if the object name Obj denotes a
+      --  view of an aliased object whose subtype is constrained.
+
+      ---------------------------------
+      -- Is_Constrained_Aliased_View --
+      ---------------------------------
+
+      function Is_Constrained_Aliased_View (Obj : Node_Id) return Boolean is
+         E : Entity_Id;
+
+      begin
+         if Is_Entity_Name (Obj) then
+            E := Entity (Obj);
+
+            if Present (Renamed_Object (E)) then
+               return Is_Constrained_Aliased_View (Renamed_Object (E));
+            else
+               return Is_Aliased (E) and then Is_Constrained (Etype (E));
+            end if;
+
+         else
+            return Is_Aliased_View (Obj)
+              and then
+                (Is_Constrained (Etype (Obj))
+                 or else
+                   (Nkind (Obj) = N_Explicit_Dereference
+                    and then
+                      not Object_Type_Has_Constrained_Partial_View
+                        (Typ  => Base_Type (Etype (Obj)),
+                         Scop => Current_Scope)));
+         end if;
+      end Is_Constrained_Aliased_View;
+
+   --  Start of processing for Attribute_Constrained_Static_Value
+
+   begin
+      --  We are in a case where the attribute is known statically, and
+      --  implicit dereferences have been rewritten.
+
+      pragma Assert
+        (not (Present (Formal_Ent)
+              and then Ekind (Formal_Ent) /= E_Constant
+              and then Present (Extra_Constrained (Formal_Ent)))
+         and then
+           not (Is_Access_Type (Etype (Pref))
+                and then (not Is_Entity_Name (Pref)
+                          or else Is_Object (Entity (Pref))))
+         and then
+           not (Nkind (Pref) = N_Identifier
+                and then Ekind (Entity (Pref)) = E_Variable
+                and then Present (Extra_Constrained (Entity (Pref)))));
+
+      if Is_Entity_Name (Pref) then
+         declare
+            Ent : constant Entity_Id := Entity (Pref);
+            Res : Boolean;
+
+         begin
+            --  (RM J.4) obsolescent cases
+
+            if Is_Type (Ent) then
+
+               --  Private type
+
+               if Is_Private_Type (Ent) then
+                  Res := not Has_Discriminants (Ent)
+                    or else Is_Constrained (Ent);
+
+               --  It not a private type, must be a generic actual type
+               --  that corresponded to a private type. We know that this
+               --  correspondence holds, since otherwise the reference
+               --  within the generic template would have been illegal.
+
+               else
+                  if Is_Composite_Type (Underlying_Type (Ent)) then
+                     Res := Is_Constrained (Ent);
+                  else
+                     Res := True;
+                  end if;
+               end if;
+
+            else
+
+               --  If the prefix is not a variable or is aliased, then
+               --  definitely true; if it's a formal parameter without an
+               --  associated extra formal, then treat it as constrained.
+
+               --  Ada 2005 (AI-363): An aliased prefix must be known to be
+               --  constrained in order to set the attribute to True.
+
+               if not Is_Variable (Pref)
+                 or else Present (Formal_Ent)
+                 or else (Ada_Version < Ada_2005
+                          and then Is_Aliased_View (Pref))
+                 or else (Ada_Version >= Ada_2005
+                          and then Is_Constrained_Aliased_View (Pref))
+               then
+                  Res := True;
+
+               --  Variable case, look at type to see if it is constrained.
+               --  Note that the one case where this is not accurate (the
+               --  procedure formal case), has been handled above.
+
+               --  We use the Underlying_Type here (and below) in case the
+               --  type is private without discriminants, but the full type
+               --  has discriminants. This case is illegal, but we generate
+               --  it internally for passing to the Extra_Constrained
+               --  parameter.
+
+               else
+                  --  In Ada 2012, test for case of a limited tagged type,
+                  --  in which case the attribute is always required to
+                  --  return True. The underlying type is tested, to make
+                  --  sure we also return True for cases where there is an
+                  --  unconstrained object with an untagged limited partial
+                  --  view which has defaulted discriminants (such objects
+                  --  always produce a False in earlier versions of
+                  --  Ada). (Ada 2012: AI05-0214)
+
+                  Res :=
+                    Is_Constrained (Underlying_Type (Etype (Ent)))
+                    or else
+                      (Ada_Version >= Ada_2012
+                       and then Is_Tagged_Type (Underlying_Type (Ptyp))
+                       and then Is_Limited_Type (Ptyp));
+               end if;
+            end if;
+
+            return Res;
+         end;
+
+      --  Prefix is not an entity name. These are also cases where we can
+      --  always tell at compile time by looking at the form and type of the
+      --  prefix. If an explicit dereference of an object with constrained
+      --  partial view, this is unconstrained (Ada 2005: AI95-0363). If the
+      --  underlying type is a limited tagged type, then Constrained is
+      --  required to always return True (Ada 2012: AI05-0214).
+
+      else
+         return not Is_Variable (Pref)
+           or else
+             (Nkind (Pref) = N_Explicit_Dereference
+              and then
+                not Object_Type_Has_Constrained_Partial_View
+                  (Typ  => Base_Type (Ptyp),
+                   Scop => Current_Scope))
+           or else Is_Constrained (Underlying_Type (Ptyp))
+           or else (Ada_Version >= Ada_2012
+                    and then Is_Tagged_Type (Underlying_Type (Ptyp))
+                    and then Is_Limited_Type (Ptyp));
+      end if;
+   end Attribute_Constrained_Static_Value;
+
    ------------------------------------
    -- Build_Allocate_Deallocate_Proc --
    ------------------------------------
@@ -471,12 +650,6 @@ package body Exp_Util is
      (N           : Node_Id;
       Is_Allocate : Boolean)
    is
-      Desig_Typ    : Entity_Id;
-      Expr         : Node_Id;
-      Pool_Id      : Entity_Id;
-      Proc_To_Call : Node_Id := Empty;
-      Ptr_Typ      : Entity_Id;
-
       function Find_Object (E : Node_Id) return Node_Id;
       --  Given an arbitrary expression of an allocator, try to find an object
       --  reference in it, otherwise return the original expression.
@@ -566,6 +739,16 @@ package body Exp_Util is
          return False;
       end Is_Allocate_Deallocate_Proc;
 
+      --  Local variables
+
+      Desig_Typ                : Entity_Id;
+      Expr                     : Node_Id;
+      Needs_Fin                : Boolean;
+      Pool_Id                  : Entity_Id;
+      Proc_To_Call             : Node_Id := Empty;
+      Ptr_Typ                  : Entity_Id;
+      Use_Secondary_Stack_Pool : Boolean;
+
    --  Start of processing for Build_Allocate_Deallocate_Proc
 
    begin
@@ -629,15 +812,23 @@ package body Exp_Util is
          Desig_Typ := Corresponding_Record_Type (Desig_Typ);
       end if;
 
+      Use_Secondary_Stack_Pool :=
+        Is_RTE (Pool_Id, RE_SS_Pool)
+          or else (Nkind (Expr) = N_Allocator
+                    and then Is_RTE (Storage_Pool (Expr), RE_SS_Pool));
+
       --  Do not process allocations / deallocations without a pool
 
       if No (Pool_Id) then
          return;
 
       --  Do not process allocations on / deallocations from the secondary
-      --  stack.
+      --  stack, except for access types used to implement indirect temps.
 
-      elsif Is_RTE (Pool_Id, RE_SS_Pool) then
+      elsif Use_Secondary_Stack_Pool
+        and then not Old_Attr_Util.Indirect_Temps
+                       .Is_Access_Type_For_Indirect_Temp (Ptr_Typ)
+      then
          return;
 
       --  Optimize the case where we are using the default Global_Pool_Object,
@@ -657,18 +848,20 @@ package body Exp_Util is
          return;
       end if;
 
-      if Needs_Finalization (Desig_Typ) then
+      --  Finalization actions are required when the object to be allocated or
+      --  deallocated needs these actions and the associated access type is not
+      --  subject to pragma No_Heap_Finalization.
 
-         --  Certain run-time configurations and targets do not provide support
-         --  for controlled types.
+      Needs_Fin :=
+        Needs_Finalization (Desig_Typ)
+          and then not No_Heap_Finalization (Ptr_Typ);
 
-         if Restriction_Active (No_Finalization) then
-            return;
+      if Needs_Fin then
 
          --  Do nothing if the access type may never allocate / deallocate
          --  objects.
 
-         elsif No_Pool_Assigned (Ptr_Typ) then
+         if No_Pool_Assigned (Ptr_Typ) then
             return;
          end if;
 
@@ -727,7 +920,7 @@ package body Exp_Util is
 
             --  c) Finalization master
 
-            if Needs_Finalization (Desig_Typ) then
+            if Needs_Fin then
                Fin_Mas_Id  := Finalization_Master (Ptr_Typ);
                Fin_Mas_Act := New_Occurrence_Of (Fin_Mas_Id, Loc);
 
@@ -751,7 +944,7 @@ package body Exp_Util is
             --  Primitive Finalize_Address is never generated in CodePeer mode
             --  since it contains an Unchecked_Conversion.
 
-            if Needs_Finalization (Desig_Typ) and then not CodePeer_Mode then
+            if Needs_Fin and then not CodePeer_Mode then
                Fin_Addr_Id := Finalize_Address (Desig_Typ);
                pragma Assert (Present (Fin_Addr_Id));
 
@@ -771,7 +964,9 @@ package body Exp_Util is
          Append_To (Actuals, New_Occurrence_Of (Addr_Id, Loc));
          Append_To (Actuals, New_Occurrence_Of (Size_Id, Loc));
 
-         if Is_Allocate or else not Is_Class_Wide_Type (Desig_Typ) then
+         if (Is_Allocate or else not Is_Class_Wide_Type (Desig_Typ))
+           and then not Use_Secondary_Stack_Pool
+         then
             Append_To (Actuals, New_Occurrence_Of (Alig_Id, Loc));
 
          --  For deallocation of class-wide types we obtain the value of
@@ -787,6 +982,9 @@ package body Exp_Util is
             --  into the code that reads the value of alignment from the TSD
             --  (see Expand_N_Attribute_Reference)
 
+            --  In the Use_Secondary_Stack_Pool case, Alig_Id is not
+            --  passed in and therefore must not be referenced.
+
             Append_To (Actuals,
               Unchecked_Convert_To (RTE (RE_Storage_Offset),
                 Make_Attribute_Reference (Loc,
@@ -797,11 +995,12 @@ package body Exp_Util is
 
          --  h) Is_Controlled
 
-         if Needs_Finalization (Desig_Typ) then
-            declare
+         if Needs_Fin then
+            Is_Controlled : declare
                Flag_Id   : constant Entity_Id := Make_Temporary (Loc, 'F');
                Flag_Expr : Node_Id;
                Param     : Node_Id;
+               Pref      : Node_Id;
                Temp      : Node_Id;
 
             begin
@@ -850,10 +1049,22 @@ package body Exp_Util is
 
                   --    Temp'Tag
 
+                  --  If the object is an unchecked conversion (typically to
+                  --  an access to class-wide type), we must preserve the
+                  --  conversion to ensure that the object is seen as tagged
+                  --  in the code that follows.
+
                   else
+                     Pref := Temp;
+
+                     if Nkind (Parent (Pref)) = N_Unchecked_Type_Conversion
+                     then
+                        Pref := Parent (Pref);
+                     end if;
+
                      Param :=
                        Make_Attribute_Reference (Loc,
-                         Prefix         => Relocate_Node (Temp),
+                         Prefix         => Relocate_Node (Pref),
                          Attribute_Name => Name_Tag);
                   end if;
 
@@ -894,7 +1105,7 @@ package body Exp_Util is
                     Expression          => Flag_Expr));
 
                Append_To (Actuals, New_Occurrence_Of (Flag_Id, Loc));
-            end;
+            end Is_Controlled;
 
          --  The object is not controlled
 
@@ -923,53 +1134,67 @@ package body Exp_Util is
          --  Create a custom Allocate / Deallocate routine which has identical
          --  profile to that of System.Storage_Pools.
 
-         Insert_Action (N,
-           Make_Subprogram_Body (Loc,
-             Specification =>
+         declare
+            --  P : Root_Storage_Pool
+            function Pool_Param return Node_Id is (
+              Make_Parameter_Specification (Loc,
+                Defining_Identifier => Make_Temporary (Loc, 'P'),
+                Parameter_Type      =>
+                  New_Occurrence_Of (RTE (RE_Root_Storage_Pool), Loc)));
 
-               --  procedure Pnn
+            --  A : [out] Address
+            function Address_Param return Node_Id is (
+              Make_Parameter_Specification (Loc,
+                Defining_Identifier => Addr_Id,
+                Out_Present         => Is_Allocate,
+                Parameter_Type      =>
+                  New_Occurrence_Of (RTE (RE_Address), Loc)));
 
-               Make_Procedure_Specification (Loc,
-                 Defining_Unit_Name => Proc_Id,
-                 Parameter_Specifications => New_List (
+            --  S : Storage_Count
+            function Size_Param return Node_Id is (
+              Make_Parameter_Specification (Loc,
+                Defining_Identifier => Size_Id,
+                Parameter_Type      =>
+                  New_Occurrence_Of (RTE (RE_Storage_Count), Loc)));
 
-                  --  P : Root_Storage_Pool
+            --  L : Storage_Count
+            function Alignment_Param return Node_Id is (
+              Make_Parameter_Specification (Loc,
+                Defining_Identifier => Alig_Id,
+                Parameter_Type      =>
+                  New_Occurrence_Of (RTE (RE_Storage_Count), Loc)));
 
-                   Make_Parameter_Specification (Loc,
-                     Defining_Identifier => Make_Temporary (Loc, 'P'),
-                     Parameter_Type =>
-                       New_Occurrence_Of (RTE (RE_Root_Storage_Pool), Loc)),
+            Formal_Params : List_Id;
+         begin
+            if Use_Secondary_Stack_Pool then
+               --  Gigi expects a different profile in the Secondary_Stack_Pool
+               --  case. There must be no uses of the two missing formals
+               --  (i.e., Pool_Param and Alignment_Param) in this case.
+               Formal_Params := New_List (Address_Param, Size_Param);
+            else
+               Formal_Params := New_List (
+                 Pool_Param, Address_Param, Size_Param, Alignment_Param);
+            end if;
 
-                  --  A : [out] Address
+            Insert_Action (N,
+              Make_Subprogram_Body (Loc,
+                Specification              =>
+                  --  procedure Pnn
+                  Make_Procedure_Specification (Loc,
+                    Defining_Unit_Name       => Proc_Id,
+                    Parameter_Specifications => Formal_Params),
 
-                   Make_Parameter_Specification (Loc,
-                     Defining_Identifier => Addr_Id,
-                     Out_Present         => Is_Allocate,
-                     Parameter_Type      =>
-                       New_Occurrence_Of (RTE (RE_Address), Loc)),
+                Declarations               => No_List,
 
-                  --  S : Storage_Count
-
-                   Make_Parameter_Specification (Loc,
-                     Defining_Identifier => Size_Id,
-                     Parameter_Type      =>
-                       New_Occurrence_Of (RTE (RE_Storage_Count), Loc)),
-
-                  --  L : Storage_Count
-
-                   Make_Parameter_Specification (Loc,
-                     Defining_Identifier => Alig_Id,
-                     Parameter_Type      =>
-                       New_Occurrence_Of (RTE (RE_Storage_Count), Loc)))),
-
-             Declarations => No_List,
-
-             Handled_Statement_Sequence =>
-               Make_Handled_Sequence_Of_Statements (Loc,
-                 Statements => New_List (
-                   Make_Procedure_Call_Statement (Loc,
-                     Name => New_Occurrence_Of (Proc_To_Call, Loc),
-                     Parameter_Associations => Actuals)))));
+                Handled_Statement_Sequence =>
+                  Make_Handled_Sequence_Of_Statements (Loc,
+                    Statements => New_List (
+                      Make_Procedure_Call_Statement (Loc,
+                        Name                   =>
+                          New_Occurrence_Of (Proc_To_Call, Loc),
+                        Parameter_Associations => Actuals)))),
+              Suppress => All_Checks);
+         end;
 
          --  The newly generated Allocate / Deallocate becomes the default
          --  procedure to call when the back end processes the allocation /
@@ -1041,10 +1266,11 @@ package body Exp_Util is
    ---------------------------------
 
    procedure Build_Class_Wide_Expression
-     (Prag        : Node_Id;
-      Subp        : Entity_Id;
-      Par_Subp    : Entity_Id;
-      Adjust_Sloc : Boolean)
+     (Prag          : Node_Id;
+      Subp          : Entity_Id;
+      Par_Subp      : Entity_Id;
+      Adjust_Sloc   : Boolean;
+      Needs_Wrapper : out Boolean)
    is
       function Replace_Entity (N : Node_Id) return Traverse_Result;
       --  Replace reference to formal of inherited operation or to primitive
@@ -1085,14 +1311,48 @@ package body Exp_Util is
 
             --  Determine whether entity has a renaming
 
-            New_E := Primitives_Mapping.Get (Entity (N));
+            New_E := Type_Map.Get (Entity (N));
 
             if Present (New_E) then
                Rewrite (N, New_Occurrence_Of (New_E, Sloc (N)));
+
+               --  AI12-0166: a precondition for a protected operation
+               --  cannot include an internal call to a protected function
+               --  of the type. In the case of an inherited condition for an
+               --  overriding operation, both the operation and the function
+               --  are given by primitive wrappers.
+               --  Move this check to sem???
+
+               if Ekind (New_E) = E_Function
+                 and then Is_Primitive_Wrapper (New_E)
+                 and then Is_Primitive_Wrapper (Subp)
+                 and then Scope (Subp) = Scope (New_E)
+               then
+                  Error_Msg_Node_2 := Wrapped_Entity (Subp);
+                  Error_Msg_NE
+                    ("internal call to& cannot appear in inherited "
+                     & "precondition of protected operation&",
+                     N, Wrapped_Entity (New_E));
+               end if;
+
+               --  If the entity is an overridden primitive and we are not
+               --  in GNATprove mode, we must build a wrapper for the current
+               --  inherited operation. If the reference is the prefix of an
+               --  attribute such as 'Result (or others ???) there is no need
+               --  for a wrapper: the condition is just rewritten in terms of
+               --  the inherited subprogram.
+
+               if Is_Subprogram (New_E)
+                  and then Nkind (Parent (N)) /= N_Attribute_Reference
+                  and then not GNATprove_Mode
+               then
+                  Needs_Wrapper := True;
+               end if;
             end if;
 
             --  Check that there are no calls left to abstract operations if
             --  the current subprogram is not abstract.
+            --  Move this check to sem???
 
             if Nkind (Parent (N)) = N_Function_Call
               and then N = Name (Parent (N))
@@ -1100,10 +1360,17 @@ package body Exp_Util is
                if not Is_Abstract_Subprogram (Subp)
                  and then Is_Abstract_Subprogram (Entity (N))
                then
-                  Error_Msg_Sloc := Sloc (Current_Scope);
-                  Error_Msg_NE
-                    ("cannot call abstract subprogram in inherited condition "
-                      & "for&#", N, Current_Scope);
+                  Error_Msg_Sloc   := Sloc (Current_Scope);
+                  Error_Msg_Node_2 := Subp;
+                  if Comes_From_Source (Subp) then
+                     Error_Msg_NE
+                       ("cannot call abstract subprogram & in inherited "
+                        & "condition for&#", Subp, Entity (N));
+                  else
+                     Error_Msg_NE
+                       ("cannot call abstract subprogram & in inherited "
+                        & "condition for inherited&#", Subp, Entity (N));
+                  end if;
 
                --  In SPARK mode, reject an inherited condition for an
                --  inherited operation if it contains a call to an overriding
@@ -1156,13 +1423,15 @@ package body Exp_Util is
    --  Start of processing for Build_Class_Wide_Expression
 
    begin
+      Needs_Wrapper := False;
+
       --  Add mapping from old formals to new formals
 
       Par_Formal  := First_Formal (Par_Subp);
       Subp_Formal := First_Formal (Subp);
 
       while Present (Par_Formal) and then Present (Subp_Formal) loop
-         Primitives_Mapping.Set (Par_Formal, Subp_Formal);
+         Type_Map.Set (Par_Formal, Subp_Formal);
          Next_Formal (Par_Formal);
          Next_Formal (Subp_Formal);
       end loop;
@@ -1175,21 +1444,27 @@ package body Exp_Util is
    --------------------
 
    function Build_DIC_Call
-     (Loc    : Source_Ptr;
-      Obj_Id : Entity_Id;
-      Typ    : Entity_Id) return Node_Id
+     (Loc      : Source_Ptr;
+      Obj_Name : Node_Id;
+      Typ      : Entity_Id) return Node_Id
    is
       Proc_Id    : constant Entity_Id := DIC_Procedure (Typ);
       Formal_Typ : constant Entity_Id := Etype (First_Formal (Proc_Id));
 
    begin
+      --  The DIC procedure has a null body if assertions are disabled or
+      --  Assertion_Policy Ignore is in effect. In that case, it would be
+      --  nice to generate a null statement instead of a call to the DIC
+      --  procedure, but doing that seems to interfere with the determination
+      --  of ECRs (early call regions) in SPARK. ???
+
       return
         Make_Procedure_Call_Statement (Loc,
           Name                   => New_Occurrence_Of (Proc_Id, Loc),
           Parameter_Associations => New_List (
             Make_Unchecked_Type_Conversion (Loc,
               Subtype_Mark => New_Occurrence_Of (Formal_Typ, Loc),
-              Expression   => New_Occurrence_Of (Obj_Id, Loc))));
+              Expression   => Obj_Name)));
    end Build_DIC_Call;
 
    ------------------------------
@@ -1200,7 +1475,14 @@ package body Exp_Util is
    --  replaced by gotos which jump to the end of the routine and restore the
    --  Ghost mode.
 
-   procedure Build_DIC_Procedure_Body (Typ : Entity_Id) is
+   procedure Build_DIC_Procedure_Body
+     (Typ         : Entity_Id;
+      Partial_DIC : Boolean := False)
+   is
+      Pragmas_Seen : Elist_Id := No_Elist;
+      --  This list contains all DIC pragmas processed so far. The list is used
+      --  to avoid redundant Default_Initial_Condition checks.
+
       procedure Add_DIC_Check
         (DIC_Prag : Node_Id;
          DIC_Expr : Node_Id;
@@ -1220,52 +1502,46 @@ package body Exp_Util is
       --  pragma. All generated code is added to list Stmts.
 
       procedure Add_Inherited_Tagged_DIC
-        (DIC_Prag  : Node_Id;
-         Par_Typ   : Entity_Id;
-         Deriv_Typ : Entity_Id;
-         Stmts     : in out List_Id);
+        (DIC_Prag : Node_Id;
+         Expr     : Node_Id;
+         Stmts    : in out List_Id);
       --  Add a runtime check to verify assertion expression DIC_Expr of
-      --  inherited pragma DIC_Prag. This routine applies class-wide pre- and
-      --  postcondition-like runtime semantics to the check. Par_Typ is the
-      --  parent type whose DIC pragma is being inherited. Deriv_Typ is the
-      --  derived type inheriting the DIC pragma. All generated code is added
-      --  to list Stmts.
+      --  inherited pragma DIC_Prag. This routine applies class-wide pre-
+      --  and postcondition-like runtime semantics to the check. Expr is
+      --  the assertion expression after substitition has been performed
+      --  (via Replace_References). All generated code is added to list Stmts.
+
+      procedure Add_Inherited_DICs
+        (T         : Entity_Id;
+         Priv_Typ  : Entity_Id;
+         Full_Typ  : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id);
+      --  Generate a DIC check for each inherited Default_Initial_Condition
+      --  coming from all parent types of type T. Priv_Typ and Full_Typ denote
+      --  the partial and full view of the parent type. Obj_Id denotes the
+      --  entity of the _object formal parameter of the DIC procedure. All
+      --  created checks are added to list Checks.
 
       procedure Add_Own_DIC
         (DIC_Prag : Node_Id;
          DIC_Typ  : Entity_Id;
+         Obj_Id   : Entity_Id;
          Stmts    : in out List_Id);
       --  Add a runtime check to verify the assertion expression of pragma
-      --  DIC_Prag. DIC_Typ is the owner of the DIC pragma. All generated code
-      --  is added to list Stmts.
+      --  DIC_Prag. DIC_Typ is the owner of the DIC pragma. Obj_Id is the
+      --  object to substitute in the assertion expression for any references
+      --  to the current instance of the type All generated code is added to
+      --  list Stmts.
 
-      procedure Replace_Object_And_Primitive_References
-        (Expr      : Node_Id;
-         Par_Typ   : Entity_Id;
-         Deriv_Typ : Entity_Id;
-         Par_Obj   : Entity_Id := Empty;
-         Deriv_Obj : Entity_Id := Empty);
-      --  Expr denotes an arbitrary expression. Par_Typ is a parent type in a
-      --  type hierarchy. Deriv_Typ is a type derived from Par_Typ. Par_Obj is
-      --  the formal parameter which emulates the current instance of Par_Typ.
-      --  Deriv_Obj is the formal parameter which emulates the current instance
-      --  of Deriv_Typ. Perform the following substitutions:
-      --
-      --    * Replace a reference to Par_Obj with a reference to Deriv_Obj if
-      --      applicable.
-      --
-      --    * Replace a call to an overridden parent primitive with a call to
-      --      the overriding derived type primitive.
-      --
-      --    * Replace a call to an inherited parent primitive with a call to
-      --      the internally-generated inherited derived type primitive.
-
-      procedure Replace_Type_References
-        (Expr   : Node_Id;
-         Typ    : Entity_Id;
-         Obj_Id : Entity_Id);
-      --  Substitute all references of the current instance of type Typ with
-      --  references to formal parameter Obj_Id within expression Expr.
+      procedure Add_Parent_DICs
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id);
+      --  Generate a Default_Initial_Condition check for each inherited DIC
+      --  aspect coming from all parent types of type T. Obj_Id denotes the
+      --  entity of the _object formal parameter of the DIC procedure. All
+      --  created checks are added to list Checks.
 
       -------------------
       -- Add_DIC_Check --
@@ -1285,7 +1561,8 @@ package body Exp_Util is
          if Is_Ignored (DIC_Prag) then
             null;
 
-         --  Otherwise the DIC expression must be checked at runtime. Generate:
+         --  Otherwise the DIC expression must be checked at run time.
+         --  Generate:
 
          --    pragma Check (<Nam>, <DIC_Expr>);
 
@@ -1302,6 +1579,10 @@ package body Exp_Util is
                   Make_Pragma_Argument_Association (Loc,
                     Expression => DIC_Expr))));
          end if;
+
+         --  Add the pragma to the list of processed pragmas
+
+         Append_New_Elmt (DIC_Prag, Pragmas_Seen);
       end Add_DIC_Check;
 
       -----------------------
@@ -1343,61 +1624,11 @@ package body Exp_Util is
       ------------------------------
 
       procedure Add_Inherited_Tagged_DIC
-        (DIC_Prag  : Node_Id;
-         Par_Typ   : Entity_Id;
-         Deriv_Typ : Entity_Id;
-         Stmts     : in out List_Id)
+        (DIC_Prag : Node_Id;
+         Expr     : Node_Id;
+         Stmts    : in out List_Id)
       is
-         Deriv_Decl : constant Node_Id   := Declaration_Node (Deriv_Typ);
-         Deriv_Proc : constant Entity_Id := DIC_Procedure (Deriv_Typ);
-         DIC_Args   : constant List_Id   :=
-                        Pragma_Argument_Associations (DIC_Prag);
-         DIC_Arg    : constant Node_Id   := First (DIC_Args);
-         DIC_Expr   : constant Node_Id   := Expression_Copy (DIC_Arg);
-         Par_Proc   : constant Entity_Id := DIC_Procedure (Par_Typ);
-
-         Expr : Node_Id;
-
       begin
-         --  The processing of an inherited DIC assertion expression starts off
-         --  with a copy of the original parent expression where all references
-         --  to the parent type have already been replaced with references to
-         --  the _object formal parameter of the parent type's DIC procedure.
-
-         pragma Assert (Present (DIC_Expr));
-         Expr := New_Copy_Tree (DIC_Expr);
-
-         --  Perform the following substitutions:
-
-         --    * Replace a reference to the _object parameter of the parent
-         --      type's DIC procedure with a reference to the _object parameter
-         --      of the derived types' DIC procedure.
-
-         --    * Replace a call to an overridden parent primitive with a call
-         --      to the overriding derived type primitive.
-
-         --    * Replace a call to an inherited parent primitive with a call to
-         --      the internally-generated inherited derived type primitive.
-
-         --  Note that primitives defined in the private part are automatically
-         --  handled by the overriding/inheritance mechanism and do not require
-         --  an extra replacement pass.
-
-         pragma Assert (Present (Deriv_Proc) and then Present (Par_Proc));
-
-         Replace_Object_And_Primitive_References
-           (Expr      => Expr,
-            Par_Typ   => Par_Typ,
-            Deriv_Typ => Deriv_Typ,
-            Par_Obj   => First_Formal (Par_Proc),
-            Deriv_Obj => First_Formal (Deriv_Proc));
-
-         --  Preanalyze the DIC expression to detect errors and at the same
-         --  time capture the visibility of the proper package part.
-
-         Set_Parent (Expr, Deriv_Decl);
-         Preanalyze_Assert_Expression (Expr, Any_Boolean);
-
          --  Once the DIC assertion expression is fully processed, add a check
          --  to the statements of the DIC procedure.
 
@@ -1407,6 +1638,159 @@ package body Exp_Util is
             Stmts    => Stmts);
       end Add_Inherited_Tagged_DIC;
 
+      ------------------------
+      -- Add_Inherited_DICs --
+      ------------------------
+
+      procedure Add_Inherited_DICs
+        (T         : Entity_Id;
+         Priv_Typ  : Entity_Id;
+         Full_Typ  : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id)
+      is
+         Deriv_Typ     : Entity_Id;
+         Expr          : Node_Id;
+         Prag          : Node_Id;
+         Prag_Expr     : Node_Id;
+         Prag_Expr_Arg : Node_Id;
+         Prag_Typ      : Node_Id;
+         Prag_Typ_Arg  : Node_Id;
+
+         Par_Proc : Entity_Id;
+         --  The "partial" invariant procedure of Par_Typ
+
+         Par_Typ : Entity_Id;
+         --  The suitable view of the parent type used in the substitution of
+         --  type attributes.
+
+      begin
+         if not Present (Priv_Typ) and then not Present (Full_Typ) then
+            return;
+         end if;
+
+         --  When the type inheriting the class-wide invariant is a concurrent
+         --  type, use the corresponding record type because it contains all
+         --  primitive operations of the concurrent type and allows for proper
+         --  substitution.
+
+         if Is_Concurrent_Type (T) then
+            Deriv_Typ := Corresponding_Record_Type (T);
+         else
+            Deriv_Typ := T;
+         end if;
+
+         pragma Assert (Present (Deriv_Typ));
+
+         --  Determine which rep item chain to use. Precedence is given to that
+         --  of the parent type's partial view since it usually carries all the
+         --  class-wide invariants.
+
+         if Present (Priv_Typ) then
+            Prag := First_Rep_Item (Priv_Typ);
+         else
+            Prag := First_Rep_Item (Full_Typ);
+         end if;
+
+         while Present (Prag) loop
+            if Nkind (Prag) = N_Pragma
+              and then Pragma_Name (Prag) = Name_Default_Initial_Condition
+            then
+               --  Nothing to do if the pragma was already processed
+
+               if Contains (Pragmas_Seen, Prag) then
+                  return;
+               end if;
+
+               --  Extract arguments of the Default_Initial_Condition pragma
+
+               Prag_Expr_Arg := First (Pragma_Argument_Associations (Prag));
+               Prag_Expr     := Expression_Copy (Prag_Expr_Arg);
+
+               --  Pick up the implicit second argument of the pragma, which
+               --  indicates the type that the pragma applies to.
+
+               Prag_Typ_Arg  := Next (Prag_Expr_Arg);
+               if Present (Prag_Typ_Arg) then
+                  Prag_Typ := Get_Pragma_Arg (Prag_Typ_Arg);
+               else
+                  Prag_Typ := Empty;
+               end if;
+
+               --  The pragma applies to the partial view of the parent type
+
+               if Present (Priv_Typ)
+                 and then Present (Prag_Typ)
+                 and then Entity (Prag_Typ) = Priv_Typ
+               then
+                  Par_Typ := Priv_Typ;
+
+               --  The pragma applies to the full view of the parent type
+
+               elsif Present (Full_Typ)
+                 and then Present (Prag_Typ)
+                 and then Entity (Prag_Typ) = Full_Typ
+               then
+                  Par_Typ := Full_Typ;
+
+               --  Otherwise the pragma does not belong to the parent type and
+               --  should not be considered.
+
+               else
+                  return;
+               end if;
+
+               --  Substitute references in the DIC expression that are related
+               --  to the partial type with corresponding references related to
+               --  the derived type (call to Replace_References below).
+
+               Expr := New_Copy_Tree (Prag_Expr);
+
+               Par_Proc := Partial_DIC_Procedure (Par_Typ);
+
+               --  If there's not a partial DIC procedure (such as when a
+               --  full type doesn't have its own DIC, but is inherited from
+               --  a type with DIC), get the full DIC procedure.
+
+               if not Present (Par_Proc) then
+                  Par_Proc := DIC_Procedure (Par_Typ);
+               end if;
+
+               Replace_References
+                 (Expr      => Expr,
+                  Par_Typ   => Par_Typ,
+                  Deriv_Typ => Deriv_Typ,
+                  Par_Obj   => First_Formal (Par_Proc),
+                  Deriv_Obj => Obj_Id);
+
+               --  Why are there different actions depending on whether T is
+               --  tagged? Can these be unified? ???
+
+               if Is_Tagged_Type (T) then
+                  Add_Inherited_Tagged_DIC
+                    (DIC_Prag  => Prag,
+                     Expr      => Expr,
+                     Stmts     => Checks);
+
+               else
+                  Add_Inherited_DIC
+                    (DIC_Prag  => Prag,
+                     Par_Typ   => Par_Typ,
+                     Deriv_Typ => Deriv_Typ,
+                     Stmts     => Checks);
+               end if;
+
+               --  Leave as soon as we get a DIC pragma, since we'll visit
+               --  the pragmas of the parents, so will get to any "inherited"
+               --  pragmas that way.
+
+               return;
+            end if;
+
+            Next_Rep_Item (Prag);
+         end loop;
+      end Add_Inherited_DICs;
+
       -----------------
       -- Add_Own_DIC --
       -----------------
@@ -1414,6 +1798,7 @@ package body Exp_Util is
       procedure Add_Own_DIC
         (DIC_Prag : Node_Id;
          DIC_Typ  : Entity_Id;
+         Obj_Id   : Entity_Id;
          Stmts    : in out List_Id)
       is
          DIC_Args : constant List_Id   :=
@@ -1421,45 +1806,6 @@ package body Exp_Util is
          DIC_Arg  : constant Node_Id   := First (DIC_Args);
          DIC_Asp  : constant Node_Id   := Corresponding_Aspect (DIC_Prag);
          DIC_Expr : constant Node_Id   := Get_Pragma_Arg (DIC_Arg);
-         DIC_Proc : constant Entity_Id := DIC_Procedure (DIC_Typ);
-         Obj_Id   : constant Entity_Id := First_Formal (DIC_Proc);
-
-         procedure Preanalyze_Own_DIC_For_ASIS;
-         --  Preanalyze the original DIC expression of an aspect or a source
-         --  pragma for ASIS.
-
-         ---------------------------------
-         -- Preanalyze_Own_DIC_For_ASIS --
-         ---------------------------------
-
-         procedure Preanalyze_Own_DIC_For_ASIS is
-            Expr : Node_Id := Empty;
-
-         begin
-            --  The DIC pragma is a source construct, preanalyze the original
-            --  expression of the pragma.
-
-            if Comes_From_Source (DIC_Prag) then
-               Expr := DIC_Expr;
-
-            --  Otherwise preanalyze the expression of the corresponding aspect
-
-            elsif Present (DIC_Asp) then
-               Expr := Expression (DIC_Asp);
-            end if;
-
-            --  The expression must be subjected to the same substitutions as
-            --  the copy used in the generation of the runtime check.
-
-            if Present (Expr) then
-               Replace_Type_References
-                 (Expr   => Expr,
-                  Typ    => DIC_Typ,
-                  Obj_Id => Obj_Id);
-
-               Preanalyze_Assert_Expression (Expr, Any_Boolean);
-            end if;
-         end Preanalyze_Own_DIC_For_ASIS;
 
          --  Local variables
 
@@ -1470,6 +1816,7 @@ package body Exp_Util is
       --  Start of processing for Add_Own_DIC
 
       begin
+         pragma Assert (Present (DIC_Expr));
          Expr := New_Copy_Tree (DIC_Expr);
 
          --  Perform the following substitution:
@@ -1506,12 +1853,6 @@ package body Exp_Util is
             Set_Entity (Identifier (DIC_Asp), New_Copy_Tree (Expr));
          end if;
 
-         --  Preanalyze the original DIC expression for ASIS
-
-         if ASIS_Mode then
-            Preanalyze_Own_DIC_For_ASIS;
-         end if;
-
          --  Once the DIC assertion expression is fully processed, add a check
          --  to the statements of the DIC procedure.
 
@@ -1521,214 +1862,98 @@ package body Exp_Util is
             Stmts    => Stmts);
       end Add_Own_DIC;
 
-      ---------------------------------------------
-      -- Replace_Object_And_Primitive_References --
-      ---------------------------------------------
+      ---------------------
+      -- Add_Parent_DICs --
+      ---------------------
 
-      procedure Replace_Object_And_Primitive_References
-        (Expr      : Node_Id;
-         Par_Typ   : Entity_Id;
-         Deriv_Typ : Entity_Id;
-         Par_Obj   : Entity_Id := Empty;
-         Deriv_Obj : Entity_Id := Empty)
+      procedure Add_Parent_DICs
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id)
       is
-         function Replace_Ref (Ref : Node_Id) return Traverse_Result;
-         --  Substitute a reference to an entity with a reference to the
-         --  corresponding entity stored in in table Primitives_Mapping.
+         Dummy_1 : Entity_Id;
+         Dummy_2 : Entity_Id;
 
-         -----------------
-         -- Replace_Ref --
-         -----------------
+         Curr_Typ : Entity_Id;
+         --  The entity of the current type being examined
 
-         function Replace_Ref (Ref : Node_Id) return Traverse_Result is
-            Context : constant Node_Id    := Parent (Ref);
-            Loc     : constant Source_Ptr := Sloc (Ref);
-            New_Id  : Entity_Id;
-            New_Ref : Node_Id;
-            Ref_Id  : Entity_Id;
-            Result  : Traverse_Result;
+         Full_Typ : Entity_Id;
+         --  The full view of Par_Typ
 
-         begin
-            Result := OK;
+         Par_Typ : Entity_Id;
+         --  The entity of the parent type
 
-            --  The current node denotes a reference
-
-            if Nkind (Ref) in N_Has_Entity and then Present (Entity (Ref)) then
-               Ref_Id := Entity (Ref);
-               New_Id := Primitives_Mapping.Get (Ref_Id);
-
-               --  The reference mentions a parent type primitive which has a
-               --  corresponding derived type primitive.
-
-               if Present (New_Id) then
-                  New_Ref := New_Occurrence_Of (New_Id, Loc);
-
-               --  The reference mentions the _object parameter of the parent
-               --  type's DIC procedure.
-
-               elsif Present (Par_Obj)
-                 and then Present (Deriv_Obj)
-                 and then Ref_Id = Par_Obj
-               then
-                  New_Ref := New_Occurrence_Of (Deriv_Obj, Loc);
-
-                  --  The reference to _object acts as an actual parameter in a
-                  --  subprogram call which may be invoking a primitive of the
-                  --  parent type:
-
-                  --    Primitive (... _object ...);
-
-                  --  The parent type primitive may not be overridden nor
-                  --  inherited when it is declared after the derived type
-                  --  definition:
-
-                  --    type Parent is tagged private;
-                  --    type Child is new Parent with private;
-                  --    procedure Primitive (Obj : Parent);
-
-                  --  In this scenario the _object parameter is converted to
-                  --  the parent type.
-
-                  if Nkind_In (Context, N_Function_Call,
-                                        N_Procedure_Call_Statement)
-                    and then
-                      No (Primitives_Mapping.Get (Entity (Name (Context))))
-                  then
-                     New_Ref := Convert_To (Par_Typ, New_Ref);
-
-                     --  Do not process the generated type conversion because
-                     --  both the parent type and the derived type are in the
-                     --  Primitives_Mapping table. This will clobber the type
-                     --  conversion by resetting its subtype mark.
-
-                     Result := Skip;
-                  end if;
-
-               --  Otherwise there is nothing to replace
-
-               else
-                  New_Ref := Empty;
-               end if;
-
-               if Present (New_Ref) then
-                  Rewrite (Ref, New_Ref);
-
-                  --  Update the return type when the context of the reference
-                  --  acts as the name of a function call. Note that the update
-                  --  should not be performed when the reference appears as an
-                  --  actual in the call.
-
-                  if Nkind (Context) = N_Function_Call
-                    and then Name (Context) = Ref
-                  then
-                     Set_Etype (Context, Etype (New_Id));
-                  end if;
-               end if;
-            end if;
-
-            --  Reanalyze the reference due to potential replacements
-
-            if Nkind (Ref) in N_Has_Etype then
-               Set_Analyzed (Ref, False);
-            end if;
-
-            return Result;
-         end Replace_Ref;
-
-         procedure Replace_Refs is new Traverse_Proc (Replace_Ref);
-
-      --  Start of processing for Replace_Object_And_Primitive_References
+         Priv_Typ : Entity_Id;
+         --  The partial view of Par_Typ
 
       begin
-         --  Map each primitive operation of the parent type to the proper
-         --  primitive of the derived type.
+         --  Climb the parent type chain
 
-         Update_Primitives_Mapping_Of_Types
-           (Par_Typ   => Par_Typ,
-            Deriv_Typ => Deriv_Typ);
+         Curr_Typ := T;
+         loop
+            --  Do not consider subtypes, as they inherit the DICs from their
+            --  base types.
 
-         --  Inspect the input expression and perform substitutions where
-         --  necessary.
+            Par_Typ := Base_Type (Etype (Base_Type (Curr_Typ)));
 
-         Replace_Refs (Expr);
-      end Replace_Object_And_Primitive_References;
+            --  Stop the climb once the root of the parent chain is
+            --  reached.
 
-      -----------------------------
-      -- Replace_Type_References --
-      -----------------------------
+            exit when Curr_Typ = Par_Typ;
 
-      procedure Replace_Type_References
-        (Expr   : Node_Id;
-         Typ    : Entity_Id;
-         Obj_Id : Entity_Id)
-      is
-         procedure Replace_Type_Ref (N : Node_Id);
-         --  Substitute a single reference of the current instance of type Typ
-         --  with a reference to Obj_Id.
+            --  Process the DICs of the parent type
 
-         ----------------------
-         -- Replace_Type_Ref --
-         ----------------------
+            Get_Views (Par_Typ, Priv_Typ, Full_Typ, Dummy_1, Dummy_2);
 
-         procedure Replace_Type_Ref (N : Node_Id) is
-            Ref : Node_Id;
+            --  Only try to inherit a DIC pragma from the parent type Par_Typ
+            --  if it Has_Own_DIC pragma. The loop will proceed up the parent
+            --  chain to find all types that have their own DIC.
 
-         begin
-            --  Decorate the reference to Typ even though it may be rewritten
-            --  further down. This is done for two reasons:
-
-            --    1) ASIS has all necessary semantic information in the
-            --    original tree.
-
-            --    2) Routines which examine properties of the Original_Node
-            --    have some semantic information.
-
-            if Nkind (N) = N_Identifier then
-               Set_Entity (N, Typ);
-               Set_Etype  (N, Typ);
-
-            elsif Nkind (N) = N_Selected_Component then
-               Analyze (Prefix (N));
-               Set_Entity (Selector_Name (N), Typ);
-               Set_Etype  (Selector_Name (N), Typ);
+            if Has_Own_DIC (Par_Typ) then
+               Add_Inherited_DICs
+                 (T         => T,
+                  Priv_Typ  => Priv_Typ,
+                  Full_Typ  => Full_Typ,
+                  Obj_Id    => Obj_Id,
+                  Checks    => Checks);
             end if;
 
-            --  Perform the following substitution:
-
-            --    Typ  -->  _object
-
-            Ref := Make_Identifier (Sloc (N), Chars (Obj_Id));
-            Set_Entity (Ref, Obj_Id);
-            Set_Etype  (Ref, Typ);
-
-            Rewrite (N, Ref);
-
-            Set_Comes_From_Source (N, True);
-         end Replace_Type_Ref;
-
-         procedure Replace_Type_Refs is
-           new Replace_Type_References_Generic (Replace_Type_Ref);
-
-      --  Start of processing for Replace_Type_References
-
-      begin
-         Replace_Type_Refs (Expr, Typ);
-      end Replace_Type_References;
+            Curr_Typ := Par_Typ;
+         end loop;
+      end Add_Parent_DICs;
 
       --  Local variables
 
       Loc : constant Source_Ptr := Sloc (Typ);
 
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
+
       DIC_Prag     : Node_Id;
       DIC_Typ      : Entity_Id;
       Dummy_1      : Entity_Id;
       Dummy_2      : Entity_Id;
-      Mode         : Ghost_Mode_Type;
       Proc_Body    : Node_Id;
       Proc_Body_Id : Entity_Id;
       Proc_Decl    : Node_Id;
       Proc_Id      : Entity_Id;
       Stmts        : List_Id := No_List;
+
+      CRec_Typ : Entity_Id := Empty;
+      --  The corresponding record type of Full_Typ
+
+      Full_Typ : Entity_Id := Empty;
+      --  The full view of the working type
+
+      Obj_Id : Entity_Id := Empty;
+      --  The _object formal parameter of the invariant procedure
+
+      Part_Proc : Entity_Id := Empty;
+      --  The entity of the "partial" invariant procedure
+
+      Priv_Typ : Entity_Id := Empty;
+      --  The partial view of the working type
 
       Work_Typ : Entity_Id;
       --  The working type
@@ -1769,7 +1994,7 @@ package body Exp_Util is
       --  The working type may be subject to pragma Ghost. Set the mode now to
       --  ensure that the DIC procedure is properly marked as Ghost.
 
-      Set_Ghost_Mode (Work_Typ, Mode);
+      Set_Ghost_Mode (Work_Typ);
 
       --  The working type must be either define a DIC pragma of its own or
       --  inherit one from a parent type.
@@ -1792,25 +2017,41 @@ package body Exp_Util is
          goto Leave;
       end if;
 
-      --  The working type may lack a DIC procedure declaration. This may be
-      --  due to several reasons:
+      --  Obtain both views of the type
 
-      --    * The working type's own DIC pragma does not contain a verifiable
-      --      assertion expression. In this case there is no need to build a
-      --      DIC procedure because there is nothing to check.
+      Get_Views (Work_Typ, Priv_Typ, Full_Typ, Dummy_1, CRec_Typ);
 
-      --    * The working type derives from a parent type. In this case a DIC
-      --      procedure should be built only when the inherited DIC pragma has
-      --      a verifiable assertion expression.
+      --  The caller requests a body for the partial DIC procedure
 
-      Proc_Id := DIC_Procedure (Work_Typ);
+      if Partial_DIC then
+         Proc_Id   := Partial_DIC_Procedure (Work_Typ);
 
-      --  Build a DIC procedure declaration when the working type derives from
-      --  a parent type.
+         --  The "full" DIC procedure body was already created
 
-      if No (Proc_Id) then
-         Build_DIC_Procedure_Declaration (Work_Typ);
-         Proc_Id := DIC_Procedure (Work_Typ);
+         --  Create a declaration for the "partial" DIC procedure if it
+         --  is not available.
+
+         if No (Proc_Id) then
+            Build_DIC_Procedure_Declaration
+              (Typ         => Work_Typ,
+               Partial_DIC => True);
+
+            Proc_Id := Partial_DIC_Procedure (Work_Typ);
+         end if;
+
+      --  The caller requests a body for the "full" DIC procedure
+
+      else
+         Proc_Id   := DIC_Procedure (Work_Typ);
+         Part_Proc := Partial_DIC_Procedure (Work_Typ);
+
+         --  Create a declaration for the "full" DIC procedure if it is
+         --  not available.
+
+         if No (Proc_Id) then
+            Build_DIC_Procedure_Declaration (Work_Typ);
+            Proc_Id := DIC_Procedure (Work_Typ);
+         end if;
       end if;
 
       --  At this point there should be a DIC procedure declaration
@@ -1830,48 +2071,85 @@ package body Exp_Util is
       Push_Scope (Proc_Id);
       Install_Formals (Proc_Id);
 
-      --  The working type defines its own DIC pragma. Replace the current
-      --  instance of the working type with the formal of the DIC procedure.
-      --  Note that there is no need to consider inherited DIC pragmas from
-      --  parent types because the working type's DIC pragma "hides" all
-      --  inherited DIC pragmas.
+      Obj_Id := First_Formal (Proc_Id);
+      pragma Assert (Present (Obj_Id));
 
-      if Has_Own_DIC (Work_Typ) then
-         pragma Assert (DIC_Typ = Work_Typ);
+      --  The "partial" DIC procedure verifies the DICs of the partial view
+      --  only.
 
-         Add_Own_DIC
-           (DIC_Prag => DIC_Prag,
-            DIC_Typ  => DIC_Typ,
-            Stmts    => Stmts);
+      if Partial_DIC then
+         pragma Assert (Present (Priv_Typ));
 
-      --  Otherwise the working type inherits a DIC pragma from a parent type
+         if Has_Own_DIC (Work_Typ) then  -- If we're testing this then maybe
+            Add_Own_DIC        -- we shouldn't be calling Find_DIC_Typ above???
+              (DIC_Prag => DIC_Prag,
+               DIC_Typ  => DIC_Typ,  -- Should this just be Work_Typ???
+               Obj_Id   => Obj_Id,
+               Stmts    => Stmts);
+         end if;
+
+      --  Otherwise the "full" DIC procedure verifies the DICs of the full
+      --  view, well as DICs inherited from parent types. In addition, it
+      --  indirectly verifies the DICs of the partial view by calling the
+      --  "partial" DIC procedure.
 
       else
-         pragma Assert (Has_Inherited_DIC (Work_Typ));
-         pragma Assert (DIC_Typ /= Work_Typ);
+         pragma Assert (Present (Full_Typ));
 
-         --  The working type is tagged. The verification of the assertion
-         --  expression is subject to the same semantics as class-wide pre-
-         --  and postconditions.
+         --  Check the DIC of the partial view by calling the "partial" DIC
+         --  procedure, unless the partial DIC body is empty. Generate:
 
-         if Is_Tagged_Type (Work_Typ) then
-            Add_Inherited_Tagged_DIC
-              (DIC_Prag  => DIC_Prag,
-               Par_Typ   => DIC_Typ,
-               Deriv_Typ => Work_Typ,
-               Stmts     => Stmts);
+         --    <Work_Typ>Partial_DIC (_object);
 
-         --  Otherwise the working type is not tagged. Verify the assertion
-         --  expression of the inherited DIC pragma by directly calling the
-         --  DIC procedure of the parent type.
-
-         else
-            Add_Inherited_DIC
-              (DIC_Prag  => DIC_Prag,
-               Par_Typ   => DIC_Typ,
-               Deriv_Typ => Work_Typ,
-               Stmts     => Stmts);
+         if Present (Part_Proc) and then not Has_Null_Body (Part_Proc) then
+            Append_New_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   => New_Occurrence_Of (Part_Proc, Loc),
+                Parameter_Associations => New_List (
+                  New_Occurrence_Of (Obj_Id, Loc))));
          end if;
+
+         --  Derived subtypes do not have a partial view
+
+         if Present (Priv_Typ) then
+
+            --  The processing of the "full" DIC procedure intentionally
+            --  skips the partial view because a) this may result in changes of
+            --  visibility and b) lead to duplicate checks. However, when the
+            --  full view is the underlying full view of an untagged derived
+            --  type whose parent type is private, partial DICs appear on
+            --  the rep item chain of the partial view only.
+
+            --    package Pack_1 is
+            --       type Root ... is private;
+            --    private
+            --       <full view of Root>
+            --    end Pack_1;
+
+            --    with Pack_1;
+            --    package Pack_2 is
+            --       type Child is new Pack_1.Root with Type_DIC => ...;
+            --       <underlying full view of Child>
+            --    end Pack_2;
+
+            --  As a result, the processing of the full view must also consider
+            --  all DICs of the partial view.
+
+            if Is_Untagged_Private_Derivation (Priv_Typ, Full_Typ) then
+               null;
+
+            --  Otherwise the DICs of the partial view are ignored
+
+            else
+               --  Ignore the DICs of the partial view by eliminating the view
+
+               Priv_Typ := Empty;
+            end if;
+         end if;
+
+         --  Process inherited Default_Initial_Conditions for all parent types
+
+         Add_Parent_DICs (Work_Typ, Obj_Id, Stmts);
       end if;
 
       End_Scope;
@@ -1879,8 +2157,6 @@ package body Exp_Util is
       --  Produce an empty completing body in the following cases:
       --    * Assertions are disabled
       --    * The DIC Assertion_Policy is Ignore
-      --    * Pragma DIC appears without an argument
-      --    * Pragma DIC appears with argument "null"
 
       if No (Stmts) then
          Stmts := New_List (Make_Null_Statement (Loc));
@@ -1904,21 +2180,24 @@ package body Exp_Util is
 
       --  Perform minor decoration in case the body is not analyzed
 
-      Set_Ekind (Proc_Body_Id, E_Subprogram_Body);
-      Set_Etype (Proc_Body_Id, Standard_Void_Type);
-      Set_Scope (Proc_Body_Id, Current_Scope);
+      Set_Ekind        (Proc_Body_Id, E_Subprogram_Body);
+      Set_Etype        (Proc_Body_Id, Standard_Void_Type);
+      Set_Scope        (Proc_Body_Id, Current_Scope);
+      Set_SPARK_Pragma (Proc_Body_Id, SPARK_Pragma (Proc_Id));
+      Set_SPARK_Pragma_Inherited
+                       (Proc_Body_Id, SPARK_Pragma_Inherited (Proc_Id));
 
       --  Link both spec and body to avoid generating duplicates
 
       Set_Corresponding_Body (Proc_Decl, Proc_Body_Id);
       Set_Corresponding_Spec (Proc_Body, Proc_Id);
 
-      --  The body should not be inserted into the tree when the context is
-      --  ASIS or a generic unit because it is not part of the template. Note
-      --  that the body must still be generated in order to resolve the DIC
-      --  assertion expression.
+      --  The body should not be inserted into the tree when the context
+      --  is a generic unit because it is not part of the template.
+      --  Note that the body must still be generated in order to resolve the
+      --  DIC assertion expression.
 
-      if ASIS_Mode or Inside_A_Generic then
+      if Inside_A_Generic then
          null;
 
       --  Semi-insert the body into the tree for GNATprove by setting its
@@ -1935,7 +2214,7 @@ package body Exp_Util is
       end if;
 
    <<Leave>>
-      Restore_Ghost_Mode (Mode);
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
    end Build_DIC_Procedure_Body;
 
    -------------------------------------
@@ -1946,21 +2225,25 @@ package body Exp_Util is
    --  replaced by gotos which jump to the end of the routine and restore the
    --  Ghost mode.
 
-   procedure Build_DIC_Procedure_Declaration (Typ : Entity_Id) is
+   procedure Build_DIC_Procedure_Declaration
+     (Typ         : Entity_Id;
+      Partial_DIC : Boolean := False)
+   is
       Loc : constant Source_Ptr := Sloc (Typ);
+
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
 
       DIC_Prag  : Node_Id;
       DIC_Typ   : Entity_Id;
-      Mode      : Ghost_Mode_Type;
       Proc_Decl : Node_Id;
       Proc_Id   : Entity_Id;
+      Proc_Nam  : Name_Id;
       Typ_Decl  : Node_Id;
 
       CRec_Typ : Entity_Id;
       --  The corresponding record type of Full_Typ
-
-      Full_Base : Entity_Id;
-      --  The base type of Full_Typ
 
       Full_Typ : Entity_Id;
       --  The full view of working type
@@ -1970,6 +2253,9 @@ package body Exp_Util is
 
       Priv_Typ : Entity_Id;
       --  The partial view of working type
+
+      UFull_Typ : Entity_Id;
+      --  The underlying full view of Full_Typ
 
       Work_Typ : Entity_Id;
       --  The working type
@@ -2008,7 +2294,7 @@ package body Exp_Util is
       --  The working type may be subject to pragma Ghost. Set the mode now to
       --  ensure that the DIC procedure is properly marked as Ghost.
 
-      Set_Ghost_Mode (Work_Typ, Mode);
+      Set_Ghost_Mode (Work_Typ);
 
       --  The type must be either subject to a DIC pragma or inherit one from a
       --  parent type.
@@ -2029,43 +2315,63 @@ package body Exp_Util is
 
       if not Is_Verifiable_DIC_Pragma (DIC_Prag) then
          goto Leave;
+      end if;
 
-      --  Nothing to do if the type already has a DIC procedure
+      --  Nothing to do if the type already has a "partial" DIC procedure
+
+      if Partial_DIC then
+         if Present (Partial_DIC_Procedure (Work_Typ)) then
+            goto Leave;
+         end if;
+
+      --  Nothing to do if the type already has a "full" DIC procedure
 
       elsif Present (DIC_Procedure (Work_Typ)) then
          goto Leave;
       end if;
 
+      --  The caller requests the declaration of the "partial" DIC procedure
+
+      if Partial_DIC then
+         Proc_Nam := New_External_Name (Chars (Work_Typ), "Partial_DIC");
+
+      --  Otherwise the caller requests the declaration of the "full" DIC
+      --  procedure.
+
+      else
+         Proc_Nam := New_External_Name (Chars (Work_Typ), "DIC");
+      end if;
+
       Proc_Id :=
-        Make_Defining_Identifier (Loc,
-          Chars =>
-            New_External_Name (Chars (Work_Typ), "Default_Initial_Condition"));
+        Make_Defining_Identifier (Loc, Chars => Proc_Nam);
 
       --  Perform minor decoration in case the declaration is not analyzed
 
-      Set_Ekind (Proc_Id, E_Procedure);
-      Set_Etype (Proc_Id, Standard_Void_Type);
-      Set_Scope (Proc_Id, Current_Scope);
+      Set_Ekind                  (Proc_Id, E_Procedure);
+      Set_Etype                  (Proc_Id, Standard_Void_Type);
+      Set_Is_DIC_Procedure       (Proc_Id);
+      Set_Scope                  (Proc_Id, Current_Scope);
+      Set_SPARK_Pragma           (Proc_Id, SPARK_Mode_Pragma);
+      Set_SPARK_Pragma_Inherited (Proc_Id);
 
-      Set_Is_DIC_Procedure (Proc_Id);
       Set_DIC_Procedure (Work_Typ, Proc_Id);
 
       --  The DIC procedure requires debug info when the assertion expression
       --  is subject to Source Coverage Obligations.
 
-      if Opt.Generate_SCO then
-         Set_Needs_Debug_Info (Proc_Id);
+      if Generate_SCO then
+         Set_Debug_Info_Needed (Proc_Id);
       end if;
 
       --  Obtain all views of the input type
 
-      Get_Views (Work_Typ, Priv_Typ, Full_Typ, Full_Base, CRec_Typ);
+      Get_Views (Work_Typ, Priv_Typ, Full_Typ, UFull_Typ, CRec_Typ);
 
-      --  Associate the DIC procedure and various relevant flags with all views
+      --  Associate the DIC procedure and various flags with all views
 
       Propagate_DIC_Attributes (Priv_Typ,  From_Typ => Work_Typ);
       Propagate_DIC_Attributes (Full_Typ,  From_Typ => Work_Typ);
-      Propagate_DIC_Attributes (Full_Base, From_Typ => Work_Typ);
+      Propagate_DIC_Attributes (UFull_Typ, From_Typ => Work_Typ);
       Propagate_DIC_Attributes (CRec_Typ,  From_Typ => Work_Typ);
 
       --  The declaration of the DIC procedure must be inserted after the
@@ -2098,6 +2404,7 @@ package body Exp_Util is
       Set_Scope (Obj_Id, Proc_Id);
 
       Set_First_Entity (Proc_Id, Obj_Id);
+      Set_Last_Entity  (Proc_Id, Obj_Id);
 
       --  Generate:
       --    procedure <Work_Typ>DIC (_object : <Work_Typ>);
@@ -2114,9 +2421,9 @@ package body Exp_Util is
                     New_Occurrence_Of (Work_Typ, Loc)))));
 
       --  The declaration should not be inserted into the tree when the context
-      --  is ASIS or a generic unit because it is not part of the template.
+      --  is a generic unit because it is not part of the template.
 
-      if ASIS_Mode or Inside_A_Generic then
+      if Inside_A_Generic then
          null;
 
       --  Semi-insert the declaration into the tree for GNATprove by setting
@@ -2132,8 +2439,1502 @@ package body Exp_Util is
       end if;
 
    <<Leave>>
-      Restore_Ghost_Mode (Mode);
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
    end Build_DIC_Procedure_Declaration;
+
+   ------------------------------------
+   -- Build_Invariant_Procedure_Body --
+   ------------------------------------
+
+   --  WARNING: This routine manages Ghost regions. Return statements must be
+   --  replaced by gotos which jump to the end of the routine and restore the
+   --  Ghost mode.
+
+   procedure Build_Invariant_Procedure_Body
+     (Typ               : Entity_Id;
+      Partial_Invariant : Boolean := False)
+   is
+      Loc : constant Source_Ptr := Sloc (Typ);
+
+      Pragmas_Seen : Elist_Id := No_Elist;
+      --  This list contains all invariant pragmas processed so far. The list
+      --  is used to avoid generating redundant invariant checks.
+
+      Produced_Check : Boolean := False;
+      --  This flag tracks whether the type has produced at least one invariant
+      --  check. The flag is used as a sanity check at the end of the routine.
+
+      --  NOTE: most of the routines in Build_Invariant_Procedure_Body are
+      --  intentionally unnested to avoid deep indentation of code.
+
+      --  NOTE: all Add_xxx_Invariants routines are reactive. In other words
+      --  they emit checks, loops (for arrays) and case statements (for record
+      --  variant parts) only when there are invariants to verify. This keeps
+      --  the body of the invariant procedure free of useless code.
+
+      procedure Add_Array_Component_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id);
+      --  Generate an invariant check for each component of array type T.
+      --  Obj_Id denotes the entity of the _object formal parameter of the
+      --  invariant procedure. All created checks are added to list Checks.
+
+      procedure Add_Inherited_Invariants
+        (T         : Entity_Id;
+         Priv_Typ  : Entity_Id;
+         Full_Typ  : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id);
+      --  Generate an invariant check for each inherited class-wide invariant
+      --  coming from all parent types of type T. Priv_Typ and Full_Typ denote
+      --  the partial and full view of the parent type. Obj_Id denotes the
+      --  entity of the _object formal parameter of the invariant procedure.
+      --  All created checks are added to list Checks.
+
+      procedure Add_Interface_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id);
+      --  Generate an invariant check for each inherited class-wide invariant
+      --  coming from all interfaces implemented by type T. Obj_Id denotes the
+      --  entity of the _object formal parameter of the invariant procedure.
+      --  All created checks are added to list Checks.
+
+      procedure Add_Invariant_Check
+        (Prag      : Node_Id;
+         Expr      : Node_Id;
+         Checks    : in out List_Id;
+         Inherited : Boolean := False);
+      --  Subsidiary to all Add_xxx_Invariant routines. Add a runtime check to
+      --  verify assertion expression Expr of pragma Prag. All generated code
+      --  is added to list Checks. Flag Inherited should be set when the pragma
+      --  is inherited from a parent or interface type.
+
+      procedure Add_Own_Invariants
+        (T         : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id;
+         Priv_Item : Node_Id := Empty);
+      --  Generate an invariant check for each invariant found for type T.
+      --  Obj_Id denotes the entity of the _object formal parameter of the
+      --  invariant procedure. All created checks are added to list Checks.
+      --  Priv_Item denotes the first rep item of the private type.
+
+      procedure Add_Parent_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id);
+      --  Generate an invariant check for each inherited class-wide invariant
+      --  coming from all parent types of type T. Obj_Id denotes the entity of
+      --  the _object formal parameter of the invariant procedure. All created
+      --  checks are added to list Checks.
+
+      procedure Add_Record_Component_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id);
+      --  Generate an invariant check for each component of record type T.
+      --  Obj_Id denotes the entity of the _object formal parameter of the
+      --  invariant procedure. All created checks are added to list Checks.
+
+      ------------------------------------
+      -- Add_Array_Component_Invariants --
+      ------------------------------------
+
+      procedure Add_Array_Component_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id)
+      is
+         Comp_Typ : constant Entity_Id := Component_Type (T);
+         Dims     : constant Pos       := Number_Dimensions (T);
+
+         procedure Process_Array_Component
+           (Indices     : List_Id;
+            Comp_Checks : in out List_Id);
+         --  Generate an invariant check for an array component identified by
+         --  the indices in list Indices. All created checks are added to list
+         --  Comp_Checks.
+
+         procedure Process_One_Dimension
+           (Dim        : Pos;
+            Indices    : List_Id;
+            Dim_Checks : in out List_Id);
+         --  Generate a loop over the Nth dimension Dim of an array type. List
+         --  Indices contains all array indices for the dimension. All created
+         --  checks are added to list Dim_Checks.
+
+         -----------------------------
+         -- Process_Array_Component --
+         -----------------------------
+
+         procedure Process_Array_Component
+           (Indices     : List_Id;
+            Comp_Checks : in out List_Id)
+         is
+            Proc_Id : Entity_Id;
+
+         begin
+            if Has_Invariants (Comp_Typ) then
+
+               --  In GNATprove mode, the component invariants are checked by
+               --  other means. They should not be added to the array type
+               --  invariant procedure, so that the procedure can be used to
+               --  check the array type invariants if any.
+
+               if GNATprove_Mode then
+                  null;
+
+               else
+                  Proc_Id := Invariant_Procedure (Base_Type (Comp_Typ));
+
+                  --  The component type should have an invariant procedure
+                  --  if it has invariants of its own or inherits class-wide
+                  --  invariants from parent or interface types.
+
+                  pragma Assert (Present (Proc_Id));
+
+                  --  Generate:
+                  --    <Comp_Typ>Invariant (_object (<Indices>));
+
+                  --  The invariant procedure has a null body if assertions are
+                  --  disabled or Assertion_Policy Ignore is in effect.
+
+                  if not Has_Null_Body (Proc_Id) then
+                     Append_New_To (Comp_Checks,
+                       Make_Procedure_Call_Statement (Loc,
+                         Name                   =>
+                           New_Occurrence_Of (Proc_Id, Loc),
+                         Parameter_Associations => New_List (
+                           Make_Indexed_Component (Loc,
+                             Prefix      => New_Occurrence_Of (Obj_Id, Loc),
+                             Expressions => New_Copy_List (Indices)))));
+                  end if;
+               end if;
+
+               Produced_Check := True;
+            end if;
+         end Process_Array_Component;
+
+         ---------------------------
+         -- Process_One_Dimension --
+         ---------------------------
+
+         procedure Process_One_Dimension
+           (Dim        : Pos;
+            Indices    : List_Id;
+            Dim_Checks : in out List_Id)
+         is
+            Comp_Checks : List_Id := No_List;
+            Index       : Entity_Id;
+
+         begin
+            --  Generate the invariant checks for the array component after all
+            --  dimensions have produced their respective loops.
+
+            if Dim > Dims then
+               Process_Array_Component
+                 (Indices     => Indices,
+                  Comp_Checks => Dim_Checks);
+
+            --  Otherwise create a loop for the current dimension
+
+            else
+               --  Create a new loop variable for each dimension
+
+               Index :=
+                 Make_Defining_Identifier (Loc,
+                   Chars => New_External_Name ('I', Dim));
+               Append_To (Indices, New_Occurrence_Of (Index, Loc));
+
+               Process_One_Dimension
+                 (Dim        => Dim + 1,
+                  Indices    => Indices,
+                  Dim_Checks => Comp_Checks);
+
+               --  Generate:
+               --    for I<Dim> in _object'Range (<Dim>) loop
+               --       <Comp_Checks>
+               --    end loop;
+
+               --  Note that the invariant procedure may have a null body if
+               --  assertions are disabled or Assertion_Policy Ignore is in
+               --  effect.
+
+               if Present (Comp_Checks) then
+                  Append_New_To (Dim_Checks,
+                    Make_Implicit_Loop_Statement (T,
+                      Identifier       => Empty,
+                      Iteration_Scheme =>
+                        Make_Iteration_Scheme (Loc,
+                          Loop_Parameter_Specification =>
+                            Make_Loop_Parameter_Specification (Loc,
+                              Defining_Identifier         => Index,
+                              Discrete_Subtype_Definition =>
+                                Make_Attribute_Reference (Loc,
+                                  Prefix         =>
+                                    New_Occurrence_Of (Obj_Id, Loc),
+                                  Attribute_Name => Name_Range,
+                                  Expressions    => New_List (
+                                    Make_Integer_Literal (Loc, Dim))))),
+                      Statements       => Comp_Checks));
+               end if;
+            end if;
+         end Process_One_Dimension;
+
+      --  Start of processing for Add_Array_Component_Invariants
+
+      begin
+         Process_One_Dimension
+           (Dim        => 1,
+            Indices    => New_List,
+            Dim_Checks => Checks);
+      end Add_Array_Component_Invariants;
+
+      ------------------------------
+      -- Add_Inherited_Invariants --
+      ------------------------------
+
+      procedure Add_Inherited_Invariants
+        (T         : Entity_Id;
+         Priv_Typ  : Entity_Id;
+         Full_Typ  : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id)
+      is
+         Deriv_Typ     : Entity_Id;
+         Expr          : Node_Id;
+         Prag          : Node_Id;
+         Prag_Expr     : Node_Id;
+         Prag_Expr_Arg : Node_Id;
+         Prag_Typ      : Node_Id;
+         Prag_Typ_Arg  : Node_Id;
+
+         Par_Proc : Entity_Id;
+         --  The "partial" invariant procedure of Par_Typ
+
+         Par_Typ : Entity_Id;
+         --  The suitable view of the parent type used in the substitution of
+         --  type attributes.
+
+      begin
+         if not Present (Priv_Typ) and then not Present (Full_Typ) then
+            return;
+         end if;
+
+         --  When the type inheriting the class-wide invariant is a concurrent
+         --  type, use the corresponding record type because it contains all
+         --  primitive operations of the concurrent type and allows for proper
+         --  substitution.
+
+         if Is_Concurrent_Type (T) then
+            Deriv_Typ := Corresponding_Record_Type (T);
+         else
+            Deriv_Typ := T;
+         end if;
+
+         pragma Assert (Present (Deriv_Typ));
+
+         --  Determine which rep item chain to use. Precedence is given to that
+         --  of the parent type's partial view since it usually carries all the
+         --  class-wide invariants.
+
+         if Present (Priv_Typ) then
+            Prag := First_Rep_Item (Priv_Typ);
+         else
+            Prag := First_Rep_Item (Full_Typ);
+         end if;
+
+         while Present (Prag) loop
+            if Nkind (Prag) = N_Pragma
+              and then Pragma_Name (Prag) = Name_Invariant
+            then
+               --  Nothing to do if the pragma was already processed
+
+               if Contains (Pragmas_Seen, Prag) then
+                  return;
+
+               --  Nothing to do when the caller requests the processing of all
+               --  inherited class-wide invariants, but the pragma does not
+               --  fall in this category.
+
+               elsif not Class_Present (Prag) then
+                  return;
+               end if;
+
+               --  Extract the arguments of the invariant pragma
+
+               Prag_Typ_Arg  := First (Pragma_Argument_Associations (Prag));
+               Prag_Expr_Arg := Next (Prag_Typ_Arg);
+               Prag_Expr     := Expression_Copy (Prag_Expr_Arg);
+               Prag_Typ      := Get_Pragma_Arg (Prag_Typ_Arg);
+
+               --  The pragma applies to the partial view of the parent type
+
+               if Present (Priv_Typ)
+                 and then Entity (Prag_Typ) = Priv_Typ
+               then
+                  Par_Typ := Priv_Typ;
+
+               --  The pragma applies to the full view of the parent type
+
+               elsif Present (Full_Typ)
+                 and then Entity (Prag_Typ) = Full_Typ
+               then
+                  Par_Typ := Full_Typ;
+
+               --  Otherwise the pragma does not belong to the parent type and
+               --  should not be considered.
+
+               else
+                  return;
+               end if;
+
+               --  Perform the following substitutions:
+
+               --    * Replace a reference to the _object parameter of the
+               --      parent type's partial invariant procedure with a
+               --      reference to the _object parameter of the derived
+               --      type's full invariant procedure.
+
+               --    * Replace a reference to a discriminant of the parent type
+               --      with a suitable value from the point of view of the
+               --      derived type.
+
+               --    * Replace a call to an overridden parent primitive with a
+               --      call to the overriding derived type primitive.
+
+               --    * Replace a call to an inherited parent primitive with a
+               --      call to the internally-generated inherited derived type
+               --      primitive.
+
+               Expr := New_Copy_Tree (Prag_Expr);
+
+               --  The parent type must have a "partial" invariant procedure
+               --  because class-wide invariants are captured exclusively by
+               --  it.
+
+               Par_Proc := Partial_Invariant_Procedure (Par_Typ);
+               pragma Assert (Present (Par_Proc));
+
+               Replace_References
+                 (Expr      => Expr,
+                  Par_Typ   => Par_Typ,
+                  Deriv_Typ => Deriv_Typ,
+                  Par_Obj   => First_Formal (Par_Proc),
+                  Deriv_Obj => Obj_Id);
+
+               Add_Invariant_Check (Prag, Expr, Checks, Inherited => True);
+            end if;
+
+            Next_Rep_Item (Prag);
+         end loop;
+      end Add_Inherited_Invariants;
+
+      ------------------------------
+      -- Add_Interface_Invariants --
+      ------------------------------
+
+      procedure Add_Interface_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id)
+      is
+         Iface_Elmt : Elmt_Id;
+         Ifaces     : Elist_Id;
+
+      begin
+         --  Generate an invariant check for each class-wide invariant coming
+         --  from all interfaces implemented by type T.
+
+         if Is_Tagged_Type (T) then
+            Collect_Interfaces (T, Ifaces);
+
+            --  Process the class-wide invariants of all implemented interfaces
+
+            Iface_Elmt := First_Elmt (Ifaces);
+            while Present (Iface_Elmt) loop
+
+               --  The Full_Typ parameter is intentionally left Empty because
+               --  interfaces are treated as the partial view of a private type
+               --  in order to achieve uniformity with the general case.
+
+               Add_Inherited_Invariants
+                 (T         => T,
+                  Priv_Typ  => Node (Iface_Elmt),
+                  Full_Typ  => Empty,
+                  Obj_Id    => Obj_Id,
+                  Checks    => Checks);
+
+               Next_Elmt (Iface_Elmt);
+            end loop;
+         end if;
+      end Add_Interface_Invariants;
+
+      -------------------------
+      -- Add_Invariant_Check --
+      -------------------------
+
+      procedure Add_Invariant_Check
+        (Prag      : Node_Id;
+         Expr      : Node_Id;
+         Checks    : in out List_Id;
+         Inherited : Boolean := False)
+      is
+         Args    : constant List_Id    := Pragma_Argument_Associations (Prag);
+         Nam     : constant Name_Id    := Original_Aspect_Pragma_Name (Prag);
+         Ploc    : constant Source_Ptr := Sloc (Prag);
+         Str_Arg : constant Node_Id    := Next (Next (First (Args)));
+
+         Assoc : List_Id;
+         Str   : String_Id;
+
+      begin
+         --  The invariant is ignored, nothing left to do
+
+         if Is_Ignored (Prag) then
+            null;
+
+         --  Otherwise the invariant is checked. Build a pragma Check to verify
+         --  the expression at run time.
+
+         else
+            Assoc := New_List (
+              Make_Pragma_Argument_Association (Ploc,
+                Expression => Make_Identifier (Ploc, Nam)),
+              Make_Pragma_Argument_Association (Ploc,
+                Expression => Expr));
+
+            --  Handle the String argument (if any)
+
+            if Present (Str_Arg) then
+               Str := Strval (Get_Pragma_Arg (Str_Arg));
+
+               --  When inheriting an invariant, modify the message from
+               --  "failed invariant" to "failed inherited invariant".
+
+               if Inherited then
+                  String_To_Name_Buffer (Str);
+
+                  if Name_Buffer (1 .. 16) = "failed invariant" then
+                     Insert_Str_In_Name_Buffer ("inherited ", 8);
+                     Str := String_From_Name_Buffer;
+                  end if;
+               end if;
+
+               Append_To (Assoc,
+                 Make_Pragma_Argument_Association (Ploc,
+                   Expression => Make_String_Literal (Ploc, Str)));
+            end if;
+
+            --  Generate:
+            --    pragma Check (<Nam>, <Expr>, <Str>);
+
+            Append_New_To (Checks,
+              Make_Pragma (Ploc,
+                Chars                        => Name_Check,
+                Pragma_Argument_Associations => Assoc));
+         end if;
+
+         --  Output an info message when inheriting an invariant and the
+         --  listing option is enabled.
+
+         if Inherited and Opt.List_Inherited_Aspects then
+            Error_Msg_Sloc := Sloc (Prag);
+            Error_Msg_N
+              ("info: & inherits `Invariant''Class` aspect from #?L?", Typ);
+         end if;
+
+         --  Add the pragma to the list of processed pragmas
+
+         Append_New_Elmt (Prag, Pragmas_Seen);
+         Produced_Check := True;
+      end Add_Invariant_Check;
+
+      ---------------------------
+      -- Add_Parent_Invariants --
+      ---------------------------
+
+      procedure Add_Parent_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id)
+      is
+         Dummy_1 : Entity_Id;
+         Dummy_2 : Entity_Id;
+
+         Curr_Typ : Entity_Id;
+         --  The entity of the current type being examined
+
+         Full_Typ : Entity_Id;
+         --  The full view of Par_Typ
+
+         Par_Typ : Entity_Id;
+         --  The entity of the parent type
+
+         Priv_Typ : Entity_Id;
+         --  The partial view of Par_Typ
+
+      begin
+         --  Do not process array types because they cannot have true parent
+         --  types. This also prevents the generation of a duplicate invariant
+         --  check when the input type is an array base type because its Etype
+         --  denotes the first subtype, both of which share the same component
+         --  type.
+
+         if Is_Array_Type (T) then
+            return;
+         end if;
+
+         --  Climb the parent type chain
+
+         Curr_Typ := T;
+         loop
+            --  Do not consider subtypes as they inherit the invariants
+            --  from their base types.
+
+            Par_Typ := Base_Type (Etype (Curr_Typ));
+
+            --  Stop the climb once the root of the parent chain is
+            --  reached.
+
+            exit when Curr_Typ = Par_Typ;
+
+            --  Process the class-wide invariants of the parent type
+
+            Get_Views (Par_Typ, Priv_Typ, Full_Typ, Dummy_1, Dummy_2);
+
+            --  Process the elements of an array type
+
+            if Is_Array_Type (Full_Typ) then
+               Add_Array_Component_Invariants (Full_Typ, Obj_Id, Checks);
+
+            --  Process the components of a record type
+
+            elsif Ekind (Full_Typ) = E_Record_Type then
+               Add_Record_Component_Invariants (Full_Typ, Obj_Id, Checks);
+            end if;
+
+            Add_Inherited_Invariants
+              (T         => T,
+               Priv_Typ  => Priv_Typ,
+               Full_Typ  => Full_Typ,
+               Obj_Id    => Obj_Id,
+               Checks    => Checks);
+
+            Curr_Typ := Par_Typ;
+         end loop;
+      end Add_Parent_Invariants;
+
+      ------------------------
+      -- Add_Own_Invariants --
+      ------------------------
+
+      procedure Add_Own_Invariants
+        (T         : Entity_Id;
+         Obj_Id    : Entity_Id;
+         Checks    : in out List_Id;
+         Priv_Item : Node_Id := Empty)
+      is
+         Expr          : Node_Id;
+         Prag          : Node_Id;
+         Prag_Asp      : Node_Id;
+         Prag_Expr     : Node_Id;
+         Prag_Expr_Arg : Node_Id;
+         Prag_Typ      : Node_Id;
+         Prag_Typ_Arg  : Node_Id;
+
+      begin
+         if not Present (T) then
+            return;
+         end if;
+
+         Prag := First_Rep_Item (T);
+         while Present (Prag) loop
+            if Nkind (Prag) = N_Pragma
+              and then Pragma_Name (Prag) = Name_Invariant
+            then
+               --  Stop the traversal of the rep item chain once a specific
+               --  item is encountered.
+
+               if Present (Priv_Item) and then Prag = Priv_Item then
+                  exit;
+               end if;
+
+               --  Nothing to do if the pragma was already processed
+
+               if Contains (Pragmas_Seen, Prag) then
+                  return;
+               end if;
+
+               --  Extract the arguments of the invariant pragma
+
+               Prag_Typ_Arg  := First (Pragma_Argument_Associations (Prag));
+               Prag_Expr_Arg := Next (Prag_Typ_Arg);
+               Prag_Expr     := Get_Pragma_Arg (Prag_Expr_Arg);
+               Prag_Typ      := Get_Pragma_Arg (Prag_Typ_Arg);
+               Prag_Asp      := Corresponding_Aspect (Prag);
+
+               --  Verify the pragma belongs to T, otherwise the pragma applies
+               --  to a parent type in which case it will be processed later by
+               --  Add_Parent_Invariants or Add_Interface_Invariants.
+
+               if Entity (Prag_Typ) /= T then
+                  return;
+               end if;
+
+               Expr := New_Copy_Tree (Prag_Expr);
+
+               --  Substitute all references to type T with references to the
+               --  _object formal parameter.
+
+               Replace_Type_References (Expr, T, Obj_Id);
+
+               --  Preanalyze the invariant expression to detect errors and at
+               --  the same time capture the visibility of the proper package
+               --  part.
+
+               Set_Parent (Expr, Parent (Prag_Expr));
+               Preanalyze_Assert_Expression (Expr, Any_Boolean);
+
+               --  Save a copy of the expression when T is tagged to detect
+               --  errors and capture the visibility of the proper package part
+               --  for the generation of inherited type invariants.
+
+               if Is_Tagged_Type (T) then
+                  Set_Expression_Copy (Prag_Expr_Arg, New_Copy_Tree (Expr));
+               end if;
+
+               --  If the pragma comes from an aspect specification, replace
+               --  the saved expression because all type references must be
+               --  substituted for the call to Preanalyze_Spec_Expression in
+               --  Check_Aspect_At_xxx routines.
+
+               if Present (Prag_Asp) then
+                  Set_Entity (Identifier (Prag_Asp), New_Copy_Tree (Expr));
+               end if;
+
+               Add_Invariant_Check (Prag, Expr, Checks);
+            end if;
+
+            Next_Rep_Item (Prag);
+         end loop;
+      end Add_Own_Invariants;
+
+      -------------------------------------
+      -- Add_Record_Component_Invariants --
+      -------------------------------------
+
+      procedure Add_Record_Component_Invariants
+        (T      : Entity_Id;
+         Obj_Id : Entity_Id;
+         Checks : in out List_Id)
+      is
+         procedure Process_Component_List
+           (Comp_List : Node_Id;
+            CL_Checks : in out List_Id);
+         --  Generate invariant checks for all record components found in
+         --  component list Comp_List, including variant parts. All created
+         --  checks are added to list CL_Checks.
+
+         procedure Process_Record_Component
+           (Comp_Id     : Entity_Id;
+            Comp_Checks : in out List_Id);
+         --  Generate an invariant check for a record component identified by
+         --  Comp_Id. All created checks are added to list Comp_Checks.
+
+         ----------------------------
+         -- Process_Component_List --
+         ----------------------------
+
+         procedure Process_Component_List
+           (Comp_List : Node_Id;
+            CL_Checks : in out List_Id)
+         is
+            Comp       : Node_Id;
+            Var        : Node_Id;
+            Var_Alts   : List_Id := No_List;
+            Var_Checks : List_Id := No_List;
+            Var_Stmts  : List_Id;
+
+            Produced_Variant_Check : Boolean := False;
+            --  This flag tracks whether the component has produced at least
+            --  one invariant check.
+
+         begin
+            --  Traverse the component items
+
+            Comp := First (Component_Items (Comp_List));
+            while Present (Comp) loop
+               if Nkind (Comp) = N_Component_Declaration then
+
+                  --  Generate the component invariant check
+
+                  Process_Record_Component
+                    (Comp_Id     => Defining_Entity (Comp),
+                     Comp_Checks => CL_Checks);
+               end if;
+
+               Next (Comp);
+            end loop;
+
+            --  Traverse the variant part
+
+            if Present (Variant_Part (Comp_List)) then
+               Var := First (Variants (Variant_Part (Comp_List)));
+               while Present (Var) loop
+                  Var_Checks := No_List;
+
+                  --  Generate invariant checks for all components and variant
+                  --  parts that qualify.
+
+                  Process_Component_List
+                    (Comp_List => Component_List (Var),
+                     CL_Checks => Var_Checks);
+
+                  --  The components of the current variant produced at least
+                  --  one invariant check.
+
+                  if Present (Var_Checks) then
+                     Var_Stmts := Var_Checks;
+                     Produced_Variant_Check := True;
+
+                  --  Otherwise there are either no components with invariants,
+                  --  assertions are disabled, or Assertion_Policy Ignore is in
+                  --  effect.
+
+                  else
+                     Var_Stmts := New_List (Make_Null_Statement (Loc));
+                  end if;
+
+                  Append_New_To (Var_Alts,
+                    Make_Case_Statement_Alternative (Loc,
+                      Discrete_Choices =>
+                        New_Copy_List (Discrete_Choices (Var)),
+                      Statements       => Var_Stmts));
+
+                  Next (Var);
+               end loop;
+
+               --  Create a case statement which verifies the invariant checks
+               --  of a particular component list depending on the discriminant
+               --  values only when there is at least one real invariant check.
+
+               if Produced_Variant_Check then
+                  Append_New_To (CL_Checks,
+                    Make_Case_Statement (Loc,
+                      Expression   =>
+                        Make_Selected_Component (Loc,
+                          Prefix        => New_Occurrence_Of (Obj_Id, Loc),
+                          Selector_Name =>
+                            New_Occurrence_Of
+                              (Entity (Name (Variant_Part (Comp_List))), Loc)),
+                      Alternatives => Var_Alts));
+               end if;
+            end if;
+         end Process_Component_List;
+
+         ------------------------------
+         -- Process_Record_Component --
+         ------------------------------
+
+         procedure Process_Record_Component
+           (Comp_Id     : Entity_Id;
+            Comp_Checks : in out List_Id)
+         is
+            Comp_Typ : constant Entity_Id := Etype (Comp_Id);
+            Proc_Id  : Entity_Id;
+
+            Produced_Component_Check : Boolean := False;
+            --  This flag tracks whether the component has produced at least
+            --  one invariant check.
+
+         begin
+            --  Nothing to do for internal component _parent. Note that it is
+            --  not desirable to check whether the component comes from source
+            --  because protected type components are relocated to an internal
+            --  corresponding record, but still need processing.
+
+            if Chars (Comp_Id) = Name_uParent then
+               return;
+            end if;
+
+            --  Verify the invariant of the component. Note that an access
+            --  type may have an invariant when it acts as the full view of a
+            --  private type and the invariant appears on the partial view. In
+            --  this case verify the access value itself.
+
+            if Has_Invariants (Comp_Typ) then
+
+               --  In GNATprove mode, the component invariants are checked by
+               --  other means. They should not be added to the record type
+               --  invariant procedure, so that the procedure can be used to
+               --  check the record type invariants if any.
+
+               if GNATprove_Mode then
+                  null;
+
+               else
+                  Proc_Id := Invariant_Procedure (Base_Type (Comp_Typ));
+
+                  --  The component type should have an invariant procedure
+                  --  if it has invariants of its own or inherits class-wide
+                  --  invariants from parent or interface types.
+
+                  pragma Assert (Present (Proc_Id));
+
+                  --  Generate:
+                  --    <Comp_Typ>Invariant (T (_object).<Comp_Id>);
+
+                  --  Note that the invariant procedure may have a null body if
+                  --  assertions are disabled or Assertion_Policy Ignore is in
+                  --  effect.
+
+                  if not Has_Null_Body (Proc_Id) then
+                     Append_New_To (Comp_Checks,
+                       Make_Procedure_Call_Statement (Loc,
+                         Name                   =>
+                           New_Occurrence_Of (Proc_Id, Loc),
+                         Parameter_Associations => New_List (
+                           Make_Selected_Component (Loc,
+                             Prefix        =>
+                               Unchecked_Convert_To
+                                 (T, New_Occurrence_Of (Obj_Id, Loc)),
+                             Selector_Name =>
+                               New_Occurrence_Of (Comp_Id, Loc)))));
+                  end if;
+               end if;
+
+               Produced_Check           := True;
+               Produced_Component_Check := True;
+            end if;
+
+            if Produced_Component_Check and then Has_Unchecked_Union (T) then
+               Error_Msg_NE
+                 ("invariants cannot be checked on components of "
+                  & "unchecked_union type &??", Comp_Id, T);
+            end if;
+         end Process_Record_Component;
+
+         --  Local variables
+
+         Comps : Node_Id;
+         Def   : Node_Id;
+
+      --  Start of processing for Add_Record_Component_Invariants
+
+      begin
+         --  An untagged derived type inherits the components of its parent
+         --  type. In order to avoid creating redundant invariant checks, do
+         --  not process the components now. Instead wait until the ultimate
+         --  parent of the untagged derivation chain is reached.
+
+         if not Is_Untagged_Derivation (T) then
+            Def := Type_Definition (Parent (T));
+
+            if Nkind (Def) = N_Derived_Type_Definition then
+               Def := Record_Extension_Part (Def);
+            end if;
+
+            pragma Assert (Nkind (Def) = N_Record_Definition);
+            Comps := Component_List (Def);
+
+            if Present (Comps) then
+               Process_Component_List
+                 (Comp_List => Comps,
+                  CL_Checks => Checks);
+            end if;
+         end if;
+      end Add_Record_Component_Invariants;
+
+      --  Local variables
+
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
+
+      Dummy        : Entity_Id;
+      Priv_Item    : Node_Id;
+      Proc_Body    : Node_Id;
+      Proc_Body_Id : Entity_Id;
+      Proc_Decl    : Node_Id;
+      Proc_Id      : Entity_Id;
+      Stmts        : List_Id := No_List;
+
+      CRec_Typ : Entity_Id := Empty;
+      --  The corresponding record type of Full_Typ
+
+      Full_Proc : Entity_Id := Empty;
+      --  The entity of the "full" invariant procedure
+
+      Full_Typ : Entity_Id := Empty;
+      --  The full view of the working type
+
+      Obj_Id : Entity_Id := Empty;
+      --  The _object formal parameter of the invariant procedure
+
+      Part_Proc : Entity_Id := Empty;
+      --  The entity of the "partial" invariant procedure
+
+      Priv_Typ : Entity_Id := Empty;
+      --  The partial view of the working type
+
+      Work_Typ : Entity_Id := Empty;
+      --  The working type
+
+   --  Start of processing for Build_Invariant_Procedure_Body
+
+   begin
+      Work_Typ := Typ;
+
+      --  Do not process the underlying full view of a private type. There is
+      --  no way to get back to the partial view, plus the body will be built
+      --  by the full view or the base type.
+
+      if Is_Underlying_Full_View (Work_Typ) then
+         return;
+
+      --  The input type denotes the implementation base type of a constrained
+      --  array type. Work with the first subtype as all invariant pragmas are
+      --  on its rep item chain.
+
+      elsif Ekind (Work_Typ) = E_Array_Type and then Is_Itype (Work_Typ) then
+         Work_Typ := First_Subtype (Work_Typ);
+
+      --  The input type denotes the corresponding record type of a protected
+      --  or task type. Work with the concurrent type because the corresponding
+      --  record type may not be visible to clients of the type.
+
+      elsif Ekind (Work_Typ) = E_Record_Type
+        and then Is_Concurrent_Record_Type (Work_Typ)
+      then
+         Work_Typ := Corresponding_Concurrent_Type (Work_Typ);
+      end if;
+
+      --  The working type may be subject to pragma Ghost. Set the mode now to
+      --  ensure that the invariant procedure is properly marked as Ghost.
+
+      Set_Ghost_Mode (Work_Typ);
+
+      --  The type must either have invariants of its own, inherit class-wide
+      --  invariants from parent types or interfaces, or be an array or record
+      --  type whose components have invariants.
+
+      pragma Assert (Has_Invariants (Work_Typ));
+
+      --  Interfaces are treated as the partial view of a private type in order
+      --  to achieve uniformity with the general case.
+
+      if Is_Interface (Work_Typ) then
+         Priv_Typ := Work_Typ;
+
+      --  Otherwise obtain both views of the type
+
+      else
+         Get_Views (Work_Typ, Priv_Typ, Full_Typ, Dummy, CRec_Typ);
+      end if;
+
+      --  The caller requests a body for the partial invariant procedure
+
+      if Partial_Invariant then
+         Full_Proc := Invariant_Procedure (Work_Typ);
+         Proc_Id   := Partial_Invariant_Procedure (Work_Typ);
+
+         --  The "full" invariant procedure body was already created
+
+         if Present (Full_Proc)
+           and then Present
+                      (Corresponding_Body (Unit_Declaration_Node (Full_Proc)))
+         then
+            --  This scenario happens only when the type is an untagged
+            --  derivation from a private parent and the underlying full
+            --  view was processed before the partial view.
+
+            pragma Assert
+              (Is_Untagged_Private_Derivation (Priv_Typ, Full_Typ));
+
+            --  Nothing to do because the processing of the underlying full
+            --  view already checked the invariants of the partial view.
+
+            goto Leave;
+         end if;
+
+         --  Create a declaration for the "partial" invariant procedure if it
+         --  is not available.
+
+         if No (Proc_Id) then
+            Build_Invariant_Procedure_Declaration
+              (Typ               => Work_Typ,
+               Partial_Invariant => True);
+
+            Proc_Id := Partial_Invariant_Procedure (Work_Typ);
+         end if;
+
+      --  The caller requests a body for the "full" invariant procedure
+
+      else
+         Proc_Id   := Invariant_Procedure (Work_Typ);
+         Part_Proc := Partial_Invariant_Procedure (Work_Typ);
+
+         --  Create a declaration for the "full" invariant procedure if it is
+         --  not available.
+
+         if No (Proc_Id) then
+            Build_Invariant_Procedure_Declaration (Work_Typ);
+            Proc_Id := Invariant_Procedure (Work_Typ);
+         end if;
+      end if;
+
+      --  At this point there should be an invariant procedure declaration
+
+      pragma Assert (Present (Proc_Id));
+      Proc_Decl := Unit_Declaration_Node (Proc_Id);
+
+      --  Nothing to do if the invariant procedure already has a body
+
+      if Present (Corresponding_Body (Proc_Decl)) then
+         goto Leave;
+      end if;
+
+      --  Emulate the environment of the invariant procedure by installing its
+      --  scope and formal parameters. Note that this is not needed, but having
+      --  the scope installed helps with the detection of invariant-related
+      --  errors.
+
+      Push_Scope (Proc_Id);
+      Install_Formals (Proc_Id);
+
+      Obj_Id := First_Formal (Proc_Id);
+      pragma Assert (Present (Obj_Id));
+
+      --  The "partial" invariant procedure verifies the invariants of the
+      --  partial view only.
+
+      if Partial_Invariant then
+         pragma Assert (Present (Priv_Typ));
+
+         Add_Own_Invariants
+           (T      => Priv_Typ,
+            Obj_Id => Obj_Id,
+            Checks => Stmts);
+
+      --  Otherwise the "full" invariant procedure verifies the invariants of
+      --  the full view, all array or record components, as well as class-wide
+      --  invariants inherited from parent types or interfaces. In addition, it
+      --  indirectly verifies the invariants of the partial view by calling the
+      --  "partial" invariant procedure.
+
+      else
+         pragma Assert (Present (Full_Typ));
+
+         --  Check the invariants of the partial view by calling the "partial"
+         --  invariant procedure. Generate:
+
+         --    <Work_Typ>Partial_Invariant (_object);
+
+         if Present (Part_Proc) then
+            Append_New_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   => New_Occurrence_Of (Part_Proc, Loc),
+                Parameter_Associations => New_List (
+                  New_Occurrence_Of (Obj_Id, Loc))));
+
+            Produced_Check := True;
+         end if;
+
+         Priv_Item := Empty;
+
+         --  Derived subtypes do not have a partial view
+
+         if Present (Priv_Typ) then
+
+            --  The processing of the "full" invariant procedure intentionally
+            --  skips the partial view because a) this may result in changes of
+            --  visibility and b) lead to duplicate checks. However, when the
+            --  full view is the underlying full view of an untagged derived
+            --  type whose parent type is private, partial invariants appear on
+            --  the rep item chain of the partial view only.
+
+            --    package Pack_1 is
+            --       type Root ... is private;
+            --    private
+            --       <full view of Root>
+            --    end Pack_1;
+
+            --    with Pack_1;
+            --    package Pack_2 is
+            --       type Child is new Pack_1.Root with Type_Invariant => ...;
+            --       <underlying full view of Child>
+            --    end Pack_2;
+
+            --  As a result, the processing of the full view must also consider
+            --  all invariants of the partial view.
+
+            if Is_Untagged_Private_Derivation (Priv_Typ, Full_Typ) then
+               null;
+
+            --  Otherwise the invariants of the partial view are ignored
+
+            else
+               --  Note that the rep item chain is shared between the partial
+               --  and full views of a type. To avoid processing the invariants
+               --  of the partial view, signal the logic to stop when the first
+               --  rep item of the partial view has been reached.
+
+               Priv_Item := First_Rep_Item (Priv_Typ);
+
+               --  Ignore the invariants of the partial view by eliminating the
+               --  view.
+
+               Priv_Typ := Empty;
+            end if;
+         end if;
+
+         --  Process the invariants of the full view and in certain cases those
+         --  of the partial view. This also handles any invariants on array or
+         --  record components.
+
+         Add_Own_Invariants
+           (T         => Priv_Typ,
+            Obj_Id    => Obj_Id,
+            Checks    => Stmts,
+            Priv_Item => Priv_Item);
+
+         Add_Own_Invariants
+           (T         => Full_Typ,
+            Obj_Id    => Obj_Id,
+            Checks    => Stmts,
+            Priv_Item => Priv_Item);
+
+         --  Process the elements of an array type
+
+         if Is_Array_Type (Full_Typ) then
+            Add_Array_Component_Invariants (Full_Typ, Obj_Id, Stmts);
+
+         --  Process the components of a record type
+
+         elsif Ekind (Full_Typ) = E_Record_Type then
+            Add_Record_Component_Invariants (Full_Typ, Obj_Id, Stmts);
+
+         --  Process the components of a corresponding record
+
+         elsif Present (CRec_Typ) then
+            Add_Record_Component_Invariants (CRec_Typ, Obj_Id, Stmts);
+         end if;
+
+         --  Process the inherited class-wide invariants of all parent types.
+         --  This also handles any invariants on record components.
+
+         Add_Parent_Invariants (Full_Typ, Obj_Id, Stmts);
+
+         --  Process the inherited class-wide invariants of all implemented
+         --  interface types.
+
+         Add_Interface_Invariants (Full_Typ, Obj_Id, Stmts);
+      end if;
+
+      End_Scope;
+
+      --  At this point there should be at least one invariant check. If this
+      --  is not the case, then the invariant-related flags were not properly
+      --  set, or there is a missing invariant procedure on one of the array
+      --  or record components.
+
+      pragma Assert (Produced_Check);
+
+      --  Account for the case where assertions are disabled or all invariant
+      --  checks are subject to Assertion_Policy Ignore. Produce a completing
+      --  empty body.
+
+      if No (Stmts) then
+         Stmts := New_List (Make_Null_Statement (Loc));
+      end if;
+
+      --  Generate:
+      --    procedure <Work_Typ>[Partial_]Invariant (_object : <Obj_Typ>) is
+      --    begin
+      --       <Stmts>
+      --    end <Work_Typ>[Partial_]Invariant;
+
+      Proc_Body :=
+        Make_Subprogram_Body (Loc,
+          Specification                =>
+            Copy_Subprogram_Spec (Parent (Proc_Id)),
+          Declarations                 => Empty_List,
+            Handled_Statement_Sequence =>
+              Make_Handled_Sequence_Of_Statements (Loc,
+                Statements => Stmts));
+      Proc_Body_Id := Defining_Entity (Proc_Body);
+
+      --  Perform minor decoration in case the body is not analyzed
+
+      Set_Ekind (Proc_Body_Id, E_Subprogram_Body);
+      Set_Etype (Proc_Body_Id, Standard_Void_Type);
+      Set_Scope (Proc_Body_Id, Current_Scope);
+
+      --  Link both spec and body to avoid generating duplicates
+
+      Set_Corresponding_Body (Proc_Decl, Proc_Body_Id);
+      Set_Corresponding_Spec (Proc_Body, Proc_Id);
+
+      --  The body should not be inserted into the tree when the context is
+      --  a generic unit because it is not part of the template. Note
+      --  that the body must still be generated in order to resolve the
+      --  invariants.
+
+      if Inside_A_Generic then
+         null;
+
+      --  Semi-insert the body into the tree for GNATprove by setting its
+      --  Parent field. This allows for proper upstream tree traversals.
+
+      elsif GNATprove_Mode then
+         Set_Parent (Proc_Body, Parent (Declaration_Node (Work_Typ)));
+
+      --  Otherwise the body is part of the freezing actions of the type
+
+      else
+         Append_Freeze_Action (Work_Typ, Proc_Body);
+      end if;
+
+   <<Leave>>
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+   end Build_Invariant_Procedure_Body;
+
+   -------------------------------------------
+   -- Build_Invariant_Procedure_Declaration --
+   -------------------------------------------
+
+   --  WARNING: This routine manages Ghost regions. Return statements must be
+   --  replaced by gotos which jump to the end of the routine and restore the
+   --  Ghost mode.
+
+   procedure Build_Invariant_Procedure_Declaration
+     (Typ               : Entity_Id;
+      Partial_Invariant : Boolean := False)
+   is
+      Loc : constant Source_Ptr := Sloc (Typ);
+
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
+
+      Proc_Decl : Node_Id;
+      Proc_Id   : Entity_Id;
+      Proc_Nam  : Name_Id;
+      Typ_Decl  : Node_Id;
+
+      CRec_Typ : Entity_Id;
+      --  The corresponding record type of Full_Typ
+
+      Full_Typ : Entity_Id;
+      --  The full view of working type
+
+      Obj_Id : Entity_Id;
+      --  The _object formal parameter of the invariant procedure
+
+      Obj_Typ : Entity_Id;
+      --  The type of the _object formal parameter
+
+      Priv_Typ : Entity_Id;
+      --  The partial view of working type
+
+      UFull_Typ : Entity_Id;
+      --  The underlying full view of Full_Typ
+
+      Work_Typ : Entity_Id;
+      --  The working type
+
+   begin
+      Work_Typ := Typ;
+
+      --  The input type denotes the implementation base type of a constrained
+      --  array type. Work with the first subtype as all invariant pragmas are
+      --  on its rep item chain.
+
+      if Ekind (Work_Typ) = E_Array_Type and then Is_Itype (Work_Typ) then
+         Work_Typ := First_Subtype (Work_Typ);
+
+      --  The input denotes the corresponding record type of a protected or a
+      --  task type. Work with the concurrent type because the corresponding
+      --  record type may not be visible to clients of the type.
+
+      elsif Ekind (Work_Typ) = E_Record_Type
+        and then Is_Concurrent_Record_Type (Work_Typ)
+      then
+         Work_Typ := Corresponding_Concurrent_Type (Work_Typ);
+      end if;
+
+      --  The working type may be subject to pragma Ghost. Set the mode now to
+      --  ensure that the invariant procedure is properly marked as Ghost.
+
+      Set_Ghost_Mode (Work_Typ);
+
+      --  The type must either have invariants of its own, inherit class-wide
+      --  invariants from parent or interface types, or be an array or record
+      --  type whose components have invariants.
+
+      pragma Assert (Has_Invariants (Work_Typ));
+
+      --  Nothing to do if the type already has a "partial" invariant procedure
+
+      if Partial_Invariant then
+         if Present (Partial_Invariant_Procedure (Work_Typ)) then
+            goto Leave;
+         end if;
+
+      --  Nothing to do if the type already has a "full" invariant procedure
+
+      elsif Present (Invariant_Procedure (Work_Typ)) then
+         goto Leave;
+      end if;
+
+      --  The caller requests the declaration of the "partial" invariant
+      --  procedure.
+
+      if Partial_Invariant then
+         Proc_Nam := New_External_Name (Chars (Work_Typ), "Partial_Invariant");
+
+      --  Otherwise the caller requests the declaration of the "full" invariant
+      --  procedure.
+
+      else
+         Proc_Nam := New_External_Name (Chars (Work_Typ), "Invariant");
+      end if;
+
+      Proc_Id := Make_Defining_Identifier (Loc, Chars => Proc_Nam);
+
+      --  Perform minor decoration in case the declaration is not analyzed
+
+      Set_Ekind (Proc_Id, E_Procedure);
+      Set_Etype (Proc_Id, Standard_Void_Type);
+      Set_Scope (Proc_Id, Current_Scope);
+
+      if Partial_Invariant then
+         Set_Is_Partial_Invariant_Procedure (Proc_Id);
+         Set_Partial_Invariant_Procedure (Work_Typ, Proc_Id);
+      else
+         Set_Is_Invariant_Procedure (Proc_Id);
+         Set_Invariant_Procedure (Work_Typ, Proc_Id);
+      end if;
+
+      --  The invariant procedure requires debug info when the invariants are
+      --  subject to Source Coverage Obligations.
+
+      if Generate_SCO then
+         Set_Debug_Info_Needed (Proc_Id);
+      end if;
+
+      --  Obtain all views of the input type
+
+      Get_Views (Work_Typ, Priv_Typ, Full_Typ, UFull_Typ, CRec_Typ);
+
+      --  Associate the invariant procedure and various flags with all views
+
+      Propagate_Invariant_Attributes (Priv_Typ,  From_Typ => Work_Typ);
+      Propagate_Invariant_Attributes (Full_Typ,  From_Typ => Work_Typ);
+      Propagate_Invariant_Attributes (UFull_Typ, From_Typ => Work_Typ);
+      Propagate_Invariant_Attributes (CRec_Typ,  From_Typ => Work_Typ);
+
+      --  The declaration of the invariant procedure is inserted after the
+      --  declaration of the partial view as this allows for proper external
+      --  visibility.
+
+      if Present (Priv_Typ) then
+         Typ_Decl := Declaration_Node (Priv_Typ);
+
+      --  Anonymous arrays in object declarations have no explicit declaration
+      --  so use the related object declaration as the insertion point.
+
+      elsif Is_Itype (Work_Typ) and then Is_Array_Type (Work_Typ)  then
+         Typ_Decl := Associated_Node_For_Itype (Work_Typ);
+
+      --  Derived types with the full view as parent do not have a partial
+      --  view. Insert the invariant procedure after the derived type.
+
+      else
+         Typ_Decl := Declaration_Node (Full_Typ);
+      end if;
+
+      --  The type should have a declarative node
+
+      pragma Assert (Present (Typ_Decl));
+
+      --  Create the formal parameter which emulates the variable-like behavior
+      --  of the current type instance.
+
+      Obj_Id := Make_Defining_Identifier (Loc, Chars => Name_uObject);
+
+      --  When generating an invariant procedure declaration for an abstract
+      --  type (including interfaces), use the class-wide type as the _object
+      --  type. This has several desirable effects:
+
+      --    * The invariant procedure does not become a primitive of the type.
+      --      This eliminates the need to either special case the treatment of
+      --      invariant procedures, or to make it a predefined primitive and
+      --      force every derived type to potentially provide an empty body.
+
+      --    * The invariant procedure does not need to be declared as abstract.
+      --      This allows for a proper body, which in turn avoids redundant
+      --      processing of the same invariants for types with multiple views.
+
+      --    * The class-wide type allows for calls to abstract primitives
+      --      within a nonabstract subprogram. The calls are treated as
+      --      dispatching and require additional processing when they are
+      --      remapped to call primitives of derived types. See routine
+      --      Replace_References for details.
+
+      if Is_Abstract_Type (Work_Typ) then
+         Obj_Typ := Class_Wide_Type (Work_Typ);
+      else
+         Obj_Typ := Work_Typ;
+      end if;
+
+      --  Perform minor decoration in case the declaration is not analyzed
+
+      Set_Ekind (Obj_Id, E_In_Parameter);
+      Set_Etype (Obj_Id, Obj_Typ);
+      Set_Scope (Obj_Id, Proc_Id);
+
+      Set_First_Entity (Proc_Id, Obj_Id);
+      Set_Last_Entity  (Proc_Id, Obj_Id);
+
+      --  Generate:
+      --    procedure <Work_Typ>[Partial_]Invariant (_object : <Obj_Typ>);
+
+      Proc_Decl :=
+        Make_Subprogram_Declaration (Loc,
+          Specification =>
+            Make_Procedure_Specification (Loc,
+              Defining_Unit_Name       => Proc_Id,
+              Parameter_Specifications => New_List (
+                Make_Parameter_Specification (Loc,
+                  Defining_Identifier => Obj_Id,
+                  Parameter_Type      => New_Occurrence_Of (Obj_Typ, Loc)))));
+
+      --  The declaration should not be inserted into the tree when the context
+      --  is a generic unit because it is not part of the template.
+
+      if Inside_A_Generic then
+         null;
+
+      --  Semi-insert the declaration into the tree for GNATprove by setting
+      --  its Parent field. This allows for proper upstream tree traversals.
+
+      elsif GNATprove_Mode then
+         Set_Parent (Proc_Decl, Parent (Typ_Decl));
+
+      --  Otherwise insert the declaration
+
+      else
+         pragma Assert (Present (Typ_Decl));
+         Insert_After_And_Analyze (Typ_Decl, Proc_Decl);
+      end if;
+
+   <<Leave>>
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+   end Build_Invariant_Procedure_Declaration;
 
    --------------------------
    -- Build_Procedure_Form --
@@ -2184,18 +3985,18 @@ package body Exp_Util is
 
       --  Add an extra out parameter to carry the function result
 
-      Name_Len := 6;
-      Name_Buffer (1 .. Name_Len) := "RESULT";
       Append_To (Proc_Formals,
         Make_Parameter_Specification (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Chars => Name_Find),
+            Make_Defining_Identifier (Loc, Name_UP_RESULT),
           Out_Present         => True,
           Parameter_Type      => New_Occurrence_Of (Etype (Subp), Loc)));
 
-      --  The new procedure declaration is inserted immediately after the
-      --  function declaration. The processing in Build_Procedure_Body_Form
-      --  relies on this order.
+      --  The new procedure declaration is inserted before the function
+      --  declaration. The processing in Build_Procedure_Body_Form relies on
+      --  this order. Note that we insert before because in the case of a
+      --  function body with no separate spec, we do not want to insert the
+      --  new spec after the body which will later get rewritten.
 
       Proc_Decl :=
         Make_Subprogram_Declaration (Loc,
@@ -2205,7 +4006,7 @@ package body Exp_Util is
                 Make_Defining_Identifier (Loc, Chars (Subp)),
               Parameter_Specifications => Proc_Formals));
 
-      Insert_After_And_Analyze (Unit_Declaration_Node (Subp), Proc_Decl);
+      Insert_Before_And_Analyze (Unit_Declaration_Node (Subp), Proc_Decl);
 
       --  Entity of procedure must remain invisible so that it does not
       --  overload subsequent references to the original function.
@@ -3059,8 +4860,8 @@ package body Exp_Util is
 
    begin
       --  If no component clause, then everything is fine, since the back end
-      --  never bit-misaligns by default, even if there is a pragma Packed for
-      --  the record.
+      --  never misaligns from byte boundaries by default, even if there is a
+      --  pragma Pack for the record.
 
       if No (Comp) or else No (Component_Clause (Comp)) then
          return False;
@@ -3073,11 +4874,11 @@ package body Exp_Util is
       if not Is_Record_Type (UT) and then not Is_Array_Type (UT) then
          return False;
 
-      --  If we know that we have a small (64 bits or less) record or small
-      --  bit-packed array, then everything is fine, since the back end can
-      --  handle these cases correctly.
+      --  If we know that we have a small (at most the maximum integer size)
+      --  record or bit-packed array, then everything is fine, since the back
+      --  end can handle these cases correctly.
 
-      elsif Esize (Comp) <= 64
+      elsif Esize (Comp) <= System_Max_Integer_Size
         and then (Is_Record_Type (UT) or else Is_Bit_Packed_Array (UT))
       then
          return False;
@@ -3096,60 +4897,6 @@ package body Exp_Util is
          return False;
       end if;
    end Component_May_Be_Bit_Aligned;
-
-   ----------------------------------------
-   -- Containing_Package_With_Ext_Axioms --
-   ----------------------------------------
-
-   function Containing_Package_With_Ext_Axioms
-     (E : Entity_Id) return Entity_Id
-   is
-   begin
-      --  E is the package or generic package which is externally axiomatized
-
-      if Ekind_In (E, E_Generic_Package, E_Package)
-        and then Has_Annotate_Pragma_For_External_Axiomatization (E)
-      then
-         return E;
-      end if;
-
-      --  If E's scope is axiomatized, E is axiomatized
-
-      if Present (Scope (E)) then
-         declare
-            First_Ax_Parent_Scope : constant Entity_Id :=
-              Containing_Package_With_Ext_Axioms (Scope (E));
-         begin
-            if Present (First_Ax_Parent_Scope) then
-               return First_Ax_Parent_Scope;
-            end if;
-         end;
-      end if;
-
-      --  Otherwise, if E is a package instance, it is axiomatized if the
-      --  corresponding generic package is axiomatized.
-
-      if Ekind (E) = E_Package then
-         declare
-            Par  : constant Node_Id := Parent (E);
-            Decl : Node_Id;
-
-         begin
-            if Nkind (Par) = N_Defining_Program_Unit_Name then
-               Decl := Parent (Par);
-            else
-               Decl := Par;
-            end if;
-
-            if Present (Generic_Parent (Decl)) then
-               return
-                 Containing_Package_With_Ext_Axioms (Generic_Parent (Decl));
-            end if;
-         end;
-      end if;
-
-      return Empty;
-   end Containing_Package_With_Ext_Axioms;
 
    -------------------------------
    -- Convert_To_Actual_Subtype --
@@ -3223,7 +4970,7 @@ package body Exp_Util is
    begin
       pragma Assert (Is_Concurrent_Type (Typ));
 
-      if Ekind (Typ) in Protected_Kind then
+      if Is_Protected_Type (Typ) then
          if Has_Entries (Typ)
 
             --  A protected type without entries that covers an interface and
@@ -3360,6 +5107,26 @@ package body Exp_Util is
       return New_Exp;
    end Duplicate_Subexpr_Move_Checks;
 
+   -------------------------
+   -- Enclosing_Init_Proc --
+   -------------------------
+
+   function Enclosing_Init_Proc return Entity_Id is
+      S : Entity_Id;
+
+   begin
+      S := Current_Scope;
+      while Present (S) and then S /= Standard_Standard loop
+         if Is_Init_Proc (S) then
+            return S;
+         else
+            S := Scope (S);
+         end if;
+      end loop;
+
+      return Empty;
+   end Enclosing_Init_Proc;
+
    --------------------
    -- Ensure_Defined --
    --------------------
@@ -3377,15 +5144,6 @@ package body Exp_Util is
          Insert_Action (N, IR);
       end if;
    end Ensure_Defined;
-
-   -----------------
-   -- Entity_Hash --
-   -----------------
-
-   function Entity_Hash (E : Entity_Id) return Num_Primitives is
-   begin
-      return Num_Primitives (E mod Primitives_Mapping_Size);
-   end Entity_Hash;
 
    --------------------
    -- Entry_Names_OK --
@@ -3405,72 +5163,88 @@ package body Exp_Util is
    -------------------
 
    procedure Evaluate_Name (Nam : Node_Id) is
-      K : constant Node_Kind := Nkind (Nam);
-
    begin
-      --  For an explicit dereference, we simply force the evaluation of the
-      --  name expression. The dereference provides a value that is the address
-      --  for the renamed object, and it is precisely this value that we want
-      --  to preserve.
+      case Nkind (Nam) is
+         --  For an aggregate, force its evaluation
 
-      if K = N_Explicit_Dereference then
-         Force_Evaluation (Prefix (Nam));
+         when N_Aggregate =>
+            Force_Evaluation (Nam);
 
-      --  For a selected component, we simply evaluate the prefix
+         --  For an attribute reference or an indexed component, evaluate the
+         --  prefix, which is itself a name, recursively, and then force the
+         --  evaluation of all the subscripts (or attribute expressions).
 
-      elsif K = N_Selected_Component then
-         Evaluate_Name (Prefix (Nam));
+         when N_Attribute_Reference
+            | N_Indexed_Component
+         =>
+            Evaluate_Name (Prefix (Nam));
 
-      --  For an indexed component, or an attribute reference, we evaluate the
-      --  prefix, which is itself a name, recursively, and then force the
-      --  evaluation of all the subscripts (or attribute expressions).
+            declare
+               E : Node_Id;
 
-      elsif Nkind_In (K, N_Indexed_Component, N_Attribute_Reference) then
-         Evaluate_Name (Prefix (Nam));
+            begin
+               E := First (Expressions (Nam));
+               while Present (E) loop
+                  Force_Evaluation (E);
 
-         declare
-            E : Node_Id;
+                  if Is_Rewrite_Substitution (E) then
+                     Set_Do_Range_Check
+                       (E, Do_Range_Check (Original_Node (E)));
+                  end if;
 
-         begin
-            E := First (Expressions (Nam));
-            while Present (E) loop
-               Force_Evaluation (E);
+                  Next (E);
+               end loop;
+            end;
 
-               if Original_Node (E) /= E then
-                  Set_Do_Range_Check (E, Do_Range_Check (Original_Node (E)));
-               end if;
+         --  For an explicit dereference, we simply force the evaluation of
+         --  the name expression. The dereference provides a value that is the
+         --  address for the renamed object, and it is precisely this value
+         --  that we want to preserve.
 
-               Next (E);
-            end loop;
-         end;
+         when N_Explicit_Dereference =>
+            Force_Evaluation (Prefix (Nam));
 
-      --  For a slice, we evaluate the prefix, as for the indexed component
-      --  case and then, if there is a range present, either directly or as the
-      --  constraint of a discrete subtype indication, we evaluate the two
-      --  bounds of this range.
+         --  For a function call, we evaluate the call; same for an operator
 
-      elsif K = N_Slice then
-         Evaluate_Name (Prefix (Nam));
-         Evaluate_Slice_Bounds (Nam);
+         when N_Function_Call
+            | N_Op
+         =>
+            Force_Evaluation (Nam);
 
-      --  For a type conversion, the expression of the conversion must be the
-      --  name of an object, and we simply need to evaluate this name.
+         --  For a qualified expression, we evaluate the expression
 
-      elsif K = N_Type_Conversion then
-         Evaluate_Name (Expression (Nam));
+         when N_Qualified_Expression =>
+            Evaluate_Name (Expression (Nam));
 
-      --  For a function call, we evaluate the call
+         --  For a selected component, we simply evaluate the prefix
 
-      elsif K = N_Function_Call then
-         Force_Evaluation (Nam);
+         when N_Selected_Component =>
+            Evaluate_Name (Prefix (Nam));
 
-      --  The remaining cases are direct name, operator symbol and character
-      --  literal. In all these cases, we do nothing, since we want to
-      --  reevaluate each time the renamed object is used.
+         --  For a slice, we evaluate the prefix, as for the indexed component
+         --  case and then, if there is a range present, either directly or as
+         --  the constraint of a discrete subtype indication, we evaluate the
+         --  two bounds of this range.
 
-      else
-         return;
-      end if;
+         when N_Slice =>
+            Evaluate_Name (Prefix (Nam));
+            Evaluate_Slice_Bounds (Nam);
+
+         --  For a type conversion, the expression of the conversion must be
+         --  the name of an object, and we simply need to evaluate this name.
+
+         when N_Type_Conversion =>
+            Evaluate_Name (Expression (Nam));
+
+         --  The remaining cases are direct name and character literal. In all
+         --  these cases, we do nothing, since we want to reevaluate each time
+         --  the renamed object is used. ??? There are more remaining cases, at
+         --  least in the GNATprove_Mode, where this routine is called in more
+         --  contexts than in GNAT.
+
+         when others =>
+            null;
+      end case;
    end Evaluate_Name;
 
    ---------------------------
@@ -3536,7 +5310,7 @@ package body Exp_Util is
    -----------------------------------------
 
    procedure Expand_Static_Predicates_In_Choices (N : Node_Id) is
-      pragma Assert (Nkind_In (N, N_Case_Statement_Alternative, N_Variant));
+      pragma Assert (Nkind (N) in N_Case_Statement_Alternative | N_Variant);
 
       Choices : constant List_Id := Discrete_Choices (N);
 
@@ -3592,6 +5366,8 @@ package body Exp_Util is
 
          Choice := Next_C;
       end loop;
+
+      Set_Has_SP_Choice (N, False);
    end Expand_Static_Predicates_In_Choices;
 
    ------------------------------
@@ -3610,7 +5386,7 @@ package body Exp_Util is
 
    --        is transformed into
 
-   --     Val : Constrained_Subtype_of_T := Maybe_Modified_Expr;
+   --     Val : Constrained_Subtype_Of_T := Maybe_Modified_Expr;
    --
    --  Here are the main cases :
    --
@@ -3656,9 +5432,13 @@ package body Exp_Util is
       --  may be constants that depend on the bounds of a string literal, both
       --  standard string types and more generally arrays of characters.
 
-      --  In GNATprove mode, these extra subtypes are not needed
+      --  In GNATprove mode, these extra subtypes are not needed, unless Exp is
+      --  a static expression. In that case, the subtype will be constrained
+      --  while the original type might be unconstrained, so expanding the type
+      --  is necessary both for passing legality checks in GNAT and for precise
+      --  analysis in GNATprove.
 
-      if GNATprove_Mode then
+      if GNATprove_Mode and then not Is_Static_Expression (Exp) then
          return;
       end if;
 
@@ -3683,7 +5463,7 @@ package body Exp_Util is
 
             --  This subtype indication may be used later for constraint checks
             --  we better make sure that if a variable was used as a bound of
-            --  of the original slice, its value is frozen.
+            --  the original slice, its value is frozen.
 
             Evaluate_Slice_Bounds (Exp);
          end;
@@ -3840,7 +5620,7 @@ package body Exp_Util is
       then
          null;
 
-      --  For limited objects initialized with build in place function calls,
+      --  For limited objects initialized with build-in-place function calls,
       --  nothing to be done; otherwise we prematurely introduce an N_Reference
       --  node in the expression initializing the object, which breaks the
       --  circuitry that detects and adds the additional arguments to the
@@ -3849,6 +5629,17 @@ package body Exp_Util is
       elsif Is_Build_In_Place_Function_Call (Exp) then
          null;
 
+     --  If the expression is an uninitialized aggregate, no need to build
+     --  a subtype from the expression, because this may require the use of
+     --  dynamic memory to create the object.
+
+      elsif Is_Uninitialized_Aggregate (Exp, Exp_Typ) then
+         Rewrite (Subtype_Indic, New_Occurrence_Of (Etype (Exp), Sloc (N)));
+         if Nkind (N) = N_Object_Declaration then
+            Set_Expression (N, Empty);
+            Set_No_Initialization (N);
+         end if;
+
       else
          Remove_Side_Effects (Exp);
          Rewrite (Subtype_Indic,
@@ -3856,11 +5647,82 @@ package body Exp_Util is
       end if;
    end Expand_Subtype_From_Expr;
 
+   ---------------------------------------------
+   -- Expression_Contains_Primitives_Calls_Of --
+   ---------------------------------------------
+
+   function Expression_Contains_Primitives_Calls_Of
+     (Expr : Node_Id;
+      Typ  : Entity_Id) return Boolean
+   is
+      U_Typ : constant Entity_Id := Unique_Entity (Typ);
+
+      Calls_OK : Boolean := False;
+      --  This flag is set to True when expression Expr contains at least one
+      --  call to a nondispatching primitive function of Typ.
+
+      function Search_Primitive_Calls (N : Node_Id) return Traverse_Result;
+      --  Search for nondispatching calls to primitive functions of type Typ
+
+      ----------------------------
+      -- Search_Primitive_Calls --
+      ----------------------------
+
+      function Search_Primitive_Calls (N : Node_Id) return Traverse_Result is
+         Disp_Typ : Entity_Id;
+         Subp     : Entity_Id;
+
+      begin
+         --  Detect a function call that could denote a nondispatching
+         --  primitive of the input type.
+
+         if Nkind (N) = N_Function_Call
+           and then Is_Entity_Name (Name (N))
+         then
+            Subp := Entity (Name (N));
+
+            --  Do not consider function calls with a controlling argument, as
+            --  those are always dispatching calls.
+
+            if Is_Dispatching_Operation (Subp)
+              and then No (Controlling_Argument (N))
+            then
+               Disp_Typ := Find_Dispatching_Type (Subp);
+
+               --  To qualify as a suitable primitive, the dispatching type of
+               --  the function must be the input type.
+
+               if Present (Disp_Typ)
+                 and then Unique_Entity (Disp_Typ) = U_Typ
+               then
+                  Calls_OK := True;
+
+                  --  There is no need to continue the traversal, as one such
+                  --  call suffices.
+
+                  return Abandon;
+               end if;
+            end if;
+         end if;
+
+         return OK;
+      end Search_Primitive_Calls;
+
+      procedure Search_Calls is new Traverse_Proc (Search_Primitive_Calls);
+
+   --  Start of processing for Expression_Contains_Primitives_Calls_Of_Type
+
+   begin
+      Search_Calls (Expr);
+      return Calls_OK;
+   end Expression_Contains_Primitives_Calls_Of;
+
    ----------------------
    -- Finalize_Address --
    ----------------------
 
    function Finalize_Address (Typ : Entity_Id) return Entity_Id is
+      Btyp : constant Entity_Id := Base_Type (Typ);
       Utyp : Entity_Id := Typ;
 
    begin
@@ -3900,12 +5762,12 @@ package body Exp_Util is
       --  records do not automatically inherit operations, but maybe they
       --  should???)
 
-      if Is_Untagged_Derivation (Typ) then
-         if Is_Protected_Type (Typ) then
-            Utyp := Corresponding_Record_Type (Root_Type (Base_Type (Typ)));
+      if Is_Untagged_Derivation (Btyp) then
+         if Is_Protected_Type (Btyp) then
+            Utyp := Corresponding_Record_Type (Root_Type (Btyp));
 
          else
-            Utyp := Underlying_Type (Root_Type (Base_Type (Typ)));
+            Utyp := Underlying_Type (Root_Type (Btyp));
 
             if Is_Protected_Type (Utyp) then
                Utyp := Corresponding_Record_Type (Utyp);
@@ -3932,66 +5794,6 @@ package body Exp_Util is
 
       return TSS (Utyp, TSS_Finalize_Address);
    end Finalize_Address;
-
-   -------------------
-   -- Find_DIC_Type --
-   -------------------
-
-   function Find_DIC_Type (Typ : Entity_Id) return Entity_Id is
-      Curr_Typ : Entity_Id;
-      --  The current type being examined in the parent hierarchy traversal
-
-      DIC_Typ : Entity_Id;
-      --  The type which carries the DIC pragma. This variable denotes the
-      --  partial view when private types are involved.
-
-      Par_Typ : Entity_Id;
-      --  The parent type of the current type. This variable denotes the full
-      --  view when private types are involved.
-
-   begin
-      --  The input type defines its own DIC pragma, therefore it is the owner
-
-      if Has_Own_DIC (Typ) then
-         DIC_Typ := Typ;
-
-      --  Otherwise the DIC pragma is inherited from a parent type
-
-      else
-         pragma Assert (Has_Inherited_DIC (Typ));
-
-         --  Climb the parent chain
-
-         Curr_Typ := Typ;
-         loop
-            --  Inspect the parent type. Do not consider subtypes as they
-            --  inherit the DIC attributes from their base types.
-
-            DIC_Typ := Base_Type (Etype (Curr_Typ));
-
-            --  Look at the full view of a private type because the type may
-            --  have a hidden parent introduced in the full view.
-
-            Par_Typ := DIC_Typ;
-
-            if Is_Private_Type (Par_Typ)
-              and then Present (Full_View (Par_Typ))
-            then
-               Par_Typ := Full_View (Par_Typ);
-            end if;
-
-            --  Stop the climb once the nearest parent type which defines a DIC
-            --  pragma of its own is encountered or when the root of the parent
-            --  chain is reached.
-
-            exit when Has_Own_DIC (DIC_Typ) or else Curr_Typ = Par_Typ;
-
-            Curr_Typ := Par_Typ;
-         end loop;
-      end if;
-
-      return DIC_Typ;
-   end Find_DIC_Type;
 
    ------------------------
    -- Find_Interface_ADT --
@@ -4056,7 +5858,7 @@ package body Exp_Util is
      (T     : Entity_Id;
       Iface : Entity_Id) return Entity_Id
    is
-      AI_Tag : Entity_Id;
+      AI_Tag : Entity_Id := Empty;
       Found  : Boolean   := False;
       Typ    : Entity_Id := T;
 
@@ -4096,7 +5898,6 @@ package body Exp_Util is
          then
             --  Skip the tag associated with the primary table
 
-            pragma Assert (Etype (First_Tag_Component (Typ)) = RTE (RE_Tag));
             AI_Tag := Next_Tag_Component (First_Tag_Component (Typ));
             pragma Assert (Present (AI_Tag));
 
@@ -4157,14 +5958,12 @@ package body Exp_Util is
       --  primary dispatch table.
 
       if Is_Ancestor (Iface, Typ, Use_Full_View => True) then
-         pragma Assert (Etype (First_Tag_Component (Typ)) = RTE (RE_Tag));
          return First_Tag_Component (Typ);
 
       --  Otherwise we need to search for its associated tag component
 
       else
          Find_Tag (Typ);
-         pragma Assert (Found);
          return AI_Tag;
       end if;
    end Find_Interface_Tag;
@@ -4196,7 +5995,7 @@ package body Exp_Util is
          --  We can retrieve primitive operations by name if it is an internal
          --  name. For equality we must check that both of its operands have
          --  the same type, to avoid confusion with user-defined equalities
-         --  than may have a non-symmetric signature.
+         --  than may have a asymmetric signature.
 
          exit when Chars (Op) = Name
            and then
@@ -4300,7 +6099,7 @@ package body Exp_Util is
    begin
       S := Scop;
       while Present (S) loop
-         if Ekind_In (S, E_Entry, E_Entry_Family, E_Function, E_Procedure)
+         if Ekind (S) in E_Entry | E_Entry_Family | E_Function | E_Procedure
            and then Present (Protection_Object (S))
          then
             return Protection_Object (S);
@@ -4378,8 +6177,8 @@ package body Exp_Util is
          Par := N;
          Top := N;
          while Present (Par) loop
-            if Nkind_In (Original_Node (Par), N_Case_Expression,
-                                              N_If_Expression)
+            if Nkind (Original_Node (Par)) in
+                 N_Case_Expression | N_If_Expression
             then
                Top := Par;
 
@@ -4400,13 +6199,13 @@ package body Exp_Util is
          Par := Top;
          while Present (Par) loop
             if Is_List_Member (Par)
-              and then not Nkind_In (Par, N_Component_Association,
-                                          N_Discriminant_Association,
-                                          N_Parameter_Association,
-                                          N_Pragma_Argument_Association)
-              and then not Nkind_In (Parent (Par), N_Function_Call,
-                                                   N_Procedure_Call_Statement,
-                                                   N_Entry_Call_Statement)
+              and then Nkind (Par) not in N_Component_Association
+                                        | N_Discriminant_Association
+                                        | N_Parameter_Association
+                                        | N_Pragma_Argument_Association
+              and then Nkind (Parent (Par)) not in N_Function_Call
+                                                 | N_Procedure_Call_Statement
+                                                 | N_Entry_Call_Statement
 
             then
                return Par;
@@ -4429,7 +6228,7 @@ package body Exp_Util is
             --  Keep climbing past various operators
 
             if Nkind (Parent (Par)) in N_Op
-              or else Nkind_In (Parent (Par), N_And_Then, N_Or_Else)
+              or else Nkind (Parent (Par)) in N_And_Then | N_Or_Else
             then
                Par := Parent (Par);
             else
@@ -4467,11 +6266,11 @@ package body Exp_Util is
 
          while Present (Par) loop
             if Par = Wrapped_Node
-              or else Nkind_In (Par, N_Assignment_Statement,
-                                     N_Object_Declaration,
-                                     N_Pragma,
-                                     N_Procedure_Call_Statement,
-                                     N_Simple_Return_Statement)
+              or else Nkind (Par) in N_Assignment_Statement
+                                   | N_Object_Declaration
+                                   | N_Pragma
+                                   | N_Procedure_Call_Statement
+                                   | N_Simple_Return_Statement
             then
                return Par;
 
@@ -4661,26 +6460,6 @@ package body Exp_Util is
       return End_String;
    end Fully_Qualified_Name_String;
 
-   ------------------------
-   -- Generate_Poll_Call --
-   ------------------------
-
-   procedure Generate_Poll_Call (N : Node_Id) is
-   begin
-      --  No poll call if polling not active
-
-      if not Polling_Required then
-         return;
-
-      --  Otherwise generate require poll call
-
-      else
-         Insert_Before_And_Analyze (N,
-           Make_Procedure_Call_Statement (Sloc (N),
-             Name => New_Occurrence_Of (RTE (RE_Poll), Sloc (N))));
-      end if;
-   end Generate_Poll_Call;
-
    ---------------------------------
    -- Get_Current_Value_Condition --
    ---------------------------------
@@ -4698,9 +6477,7 @@ package body Exp_Util is
       Loc : constant Source_Ptr := Sloc (Var);
       Ent : constant Entity_Id  := Entity (Var);
 
-      procedure Process_Current_Value_Condition
-        (N : Node_Id;
-         S : Boolean);
+      procedure Process_Current_Value_Condition (N : Node_Id; S : Boolean);
       --  N is an expression which holds either True (S = True) or False (S =
       --  False) in the condition. This procedure digs out the expression and
       --  if it refers to Ent, sets Op and Val appropriately.
@@ -4734,10 +6511,9 @@ package body Exp_Util is
             --  Deal with conversions, qualifications, and expressions with
             --  actions.
 
-            while Nkind_In (Cond,
-                    N_Type_Conversion,
-                    N_Qualified_Expression,
-                    N_Expression_With_Actions)
+            while Nkind (Cond) in N_Type_Conversion
+                                | N_Qualified_Expression
+                                | N_Expression_With_Actions
             loop
                Cond := Expression (Cond);
             end loop;
@@ -4747,7 +6523,7 @@ package body Exp_Util is
 
          --  Deal with AND THEN and AND cases
 
-         if Nkind_In (Cond, N_And_Then, N_Op_And) then
+         if Nkind (Cond) in N_And_Then | N_Op_And then
 
             --  Don't ever try to invert a condition that is of the form of an
             --  AND or AND THEN (since we are not doing sufficiently general
@@ -4762,6 +6538,7 @@ package body Exp_Util is
             --  Recursively process AND and AND THEN branches
 
             Process_Current_Value_Condition (Left_Opnd (Cond), True);
+            pragma Assert (Op'Valid);
 
             if Op /= N_Empty then
                return;
@@ -4823,10 +6600,9 @@ package body Exp_Util is
 
             return;
 
-         elsif Nkind_In (Cond,
-                 N_Type_Conversion,
-                 N_Qualified_Expression,
-                 N_Expression_With_Actions)
+         elsif Nkind (Cond) in N_Type_Conversion
+                             | N_Qualified_Expression
+                             | N_Expression_With_Actions
          then
             Cond := Expression (Cond);
 
@@ -4854,7 +6630,18 @@ package body Exp_Util is
 
       --  Immediate return, nothing doing, if this is not an object
 
-      if Ekind (Ent) not in Object_Kind then
+      if not Is_Object (Ent) then
+         return;
+      end if;
+
+      --  In GNATprove mode we don't want to use current value optimizer, in
+      --  particular for loop invariant expressions and other assertions that
+      --  act as cut points for proof. The optimizer often folds expressions
+      --  into True/False where they trivially follow from the previous
+      --  assignments, but this deprives proof from the information needed to
+      --  discharge checks that are beyond the scope of the value optimizer.
+
+      if GNATprove_Mode then
          return;
       end if;
 
@@ -4876,7 +6663,7 @@ package body Exp_Util is
             if Loc < Sloc (CV) then
                return;
 
-               --  After end of IF statement
+            --  After end of IF statement
 
             elsif Loc >= Sloc (CV) + Text_Ptr (UI_To_Int (End_Span (CV))) then
                return;
@@ -5044,6 +6831,35 @@ package body Exp_Util is
       end;
    end Get_Current_Value_Condition;
 
+   -----------------------
+   -- Get_Index_Subtype --
+   -----------------------
+
+   function Get_Index_Subtype (N : Node_Id) return Node_Id is
+      P_Type : Entity_Id := Etype (Prefix (N));
+      Indx   : Node_Id;
+      J      : Int;
+
+   begin
+      if Is_Access_Type (P_Type) then
+         P_Type := Designated_Type (P_Type);
+      end if;
+
+      if No (Expressions (N)) then
+         J := 1;
+      else
+         J := UI_To_Int (Expr_Value (First (Expressions (N))));
+      end if;
+
+      Indx := First_Index (P_Type);
+      while J > 1 loop
+         Next_Index (Indx);
+         J := J - 1;
+      end loop;
+
+      return Etype (Indx);
+   end Get_Index_Subtype;
+
    ---------------------
    -- Get_Stream_Size --
    ---------------------
@@ -5055,7 +6871,7 @@ package body Exp_Util is
       if Has_Stream_Size_Clause (E) then
          return Static_Integer (Expression (Stream_Size_Clause (E)));
 
-      --  Otherwise the Stream_Size if the size of the type
+      --  Otherwise the Stream_Size is the size of the type
 
       else
          return Esize (E);
@@ -5087,133 +6903,15 @@ package body Exp_Util is
       end if;
    end Has_Access_Constraint;
 
-   -----------------------------------------------------
-   -- Has_Annotate_Pragma_For_External_Axiomatization --
-   -----------------------------------------------------
-
-   function Has_Annotate_Pragma_For_External_Axiomatization
-     (E : Entity_Id) return Boolean
-   is
-      function Is_Annotate_Pragma_For_External_Axiomatization
-        (N : Node_Id) return Boolean;
-      --  Returns whether N is
-      --    pragma Annotate (GNATprove, External_Axiomatization);
-
-      ----------------------------------------------------
-      -- Is_Annotate_Pragma_For_External_Axiomatization --
-      ----------------------------------------------------
-
-      --  The general form of pragma Annotate is
-
-      --    pragma Annotate (IDENTIFIER [, IDENTIFIER {, ARG}]);
-      --    ARG ::= NAME | EXPRESSION
-
-      --  The first two arguments are by convention intended to refer to an
-      --  external tool and a tool-specific function. These arguments are
-      --  not analyzed.
-
-      --  The following is used to annotate a package specification which
-      --  GNATprove should treat specially, because the axiomatization of
-      --  this unit is given by the user instead of being automatically
-      --  generated.
-
-      --    pragma Annotate (GNATprove, External_Axiomatization);
-
-      function Is_Annotate_Pragma_For_External_Axiomatization
-        (N : Node_Id) return Boolean
-      is
-         Name_GNATprove               : constant String :=
-                                          "gnatprove";
-         Name_External_Axiomatization : constant String :=
-                                          "external_axiomatization";
-         --  Special names
-
-      begin
-         if Nkind (N) = N_Pragma
-           and then Get_Pragma_Id (N) = Pragma_Annotate
-           and then List_Length (Pragma_Argument_Associations (N)) = 2
-         then
-            declare
-               Arg1 : constant Node_Id :=
-                        First (Pragma_Argument_Associations (N));
-               Arg2 : constant Node_Id := Next (Arg1);
-               Nam1 : Name_Id;
-               Nam2 : Name_Id;
-
-            begin
-               --  Fill in Name_Buffer with Name_GNATprove first, and then with
-               --  Name_External_Axiomatization so that Name_Find returns the
-               --  corresponding name. This takes care of all possible casings.
-
-               Name_Len := 0;
-               Add_Str_To_Name_Buffer (Name_GNATprove);
-               Nam1 := Name_Find;
-
-               Name_Len := 0;
-               Add_Str_To_Name_Buffer (Name_External_Axiomatization);
-               Nam2 := Name_Find;
-
-               return Chars (Get_Pragma_Arg (Arg1)) = Nam1
-                         and then
-                      Chars (Get_Pragma_Arg (Arg2)) = Nam2;
-            end;
-
-         else
-            return False;
-         end if;
-      end Is_Annotate_Pragma_For_External_Axiomatization;
-
-      --  Local variables
-
-      Decl      : Node_Id;
-      Vis_Decls : List_Id;
-      N         : Node_Id;
-
-   --  Start of processing for Has_Annotate_Pragma_For_External_Axiomatization
-
-   begin
-      if Nkind (Parent (E)) = N_Defining_Program_Unit_Name then
-         Decl := Parent (Parent (E));
-      else
-         Decl := Parent (E);
-      end if;
-
-      Vis_Decls := Visible_Declarations (Decl);
-
-      N := First (Vis_Decls);
-      while Present (N) loop
-
-         --  Skip declarations generated by the frontend. Skip all pragmas
-         --  that are not the desired Annotate pragma. Stop the search on
-         --  the first non-pragma source declaration.
-
-         if Comes_From_Source (N) then
-            if Nkind (N) = N_Pragma then
-               if Is_Annotate_Pragma_For_External_Axiomatization (N) then
-                  return True;
-               end if;
-            else
-               return False;
-            end if;
-         end if;
-
-         Next (N);
-      end loop;
-
-      return False;
-   end Has_Annotate_Pragma_For_External_Axiomatization;
-
    --------------------
    -- Homonym_Number --
    --------------------
 
-   function Homonym_Number (Subp : Entity_Id) return Nat is
-      Count : Nat;
-      Hom   : Entity_Id;
+   function Homonym_Number (Subp : Entity_Id) return Pos is
+      Hom   : Entity_Id := Homonym (Subp);
+      Count : Pos := 1;
 
    begin
-      Count := 1;
-      Hom := Homonym (Subp);
       while Present (Hom) loop
          if Scope (Hom) = Scope (Subp) then
             Count := Count + 1;
@@ -5272,20 +6970,34 @@ package body Exp_Util is
    -- Insert_Action --
    -------------------
 
-   procedure Insert_Action (Assoc_Node : Node_Id; Ins_Action : Node_Id) is
+   procedure Insert_Action
+     (Assoc_Node   : Node_Id;
+      Ins_Action   : Node_Id;
+      Spec_Expr_OK : Boolean := False)
+   is
    begin
       if Present (Ins_Action) then
-         Insert_Actions (Assoc_Node, New_List (Ins_Action));
+         Insert_Actions
+           (Assoc_Node   => Assoc_Node,
+            Ins_Actions  => New_List (Ins_Action),
+            Spec_Expr_OK => Spec_Expr_OK);
       end if;
    end Insert_Action;
 
    --  Version with check(s) suppressed
 
    procedure Insert_Action
-     (Assoc_Node : Node_Id; Ins_Action : Node_Id; Suppress : Check_Id)
+     (Assoc_Node   : Node_Id;
+      Ins_Action   : Node_Id;
+      Suppress     : Check_Id;
+      Spec_Expr_OK : Boolean := False)
    is
    begin
-      Insert_Actions (Assoc_Node, New_List (Ins_Action), Suppress);
+      Insert_Actions
+        (Assoc_Node   => Assoc_Node,
+         Ins_Actions  => New_List (Ins_Action),
+         Suppress     => Suppress,
+         Spec_Expr_OK => Spec_Expr_OK);
    end Insert_Action;
 
    -------------------------
@@ -5304,7 +7016,11 @@ package body Exp_Util is
    -- Insert_Actions --
    --------------------
 
-   procedure Insert_Actions (Assoc_Node : Node_Id; Ins_Actions : List_Id) is
+   procedure Insert_Actions
+     (Assoc_Node   : Node_Id;
+      Ins_Actions  : List_Id;
+      Spec_Expr_OK : Boolean := False)
+   is
       N : Node_Id;
       P : Node_Id;
 
@@ -5315,14 +7031,20 @@ package body Exp_Util is
          return;
       end if;
 
+      --  Insert the action when the context is "Handling of Default and Per-
+      --  Object Expressions" only when requested by the caller.
+
+      if Spec_Expr_OK then
+         null;
+
       --  Ignore insert of actions from inside default expression (or other
       --  similar "spec expression") in the special spec-expression analyze
       --  mode. Any insertions at this point have no relevance, since we are
       --  only doing the analyze to freeze the types of any static expressions.
-      --  See section "Handling of Default Expressions" in the spec of package
-      --  Sem for further details.
+      --  See section "Handling of Default and Per-Object Expressions" in the
+      --  spec of package Sem for further details.
 
-      if In_Spec_Expression then
+      elsif In_Spec_Expression then
          return;
       end if;
 
@@ -5376,8 +7098,8 @@ package body Exp_Util is
          N := Assoc_Node;
          P := Parent (Assoc_Node);
 
-      --  Non-subexpression case. Note that N is initially Empty in this case
-      --  (N is only guaranteed Non-Empty in the subexpr case).
+      --  Nonsubexpression case. Note that N is initially Empty in this case
+      --  (N is only guaranteed non-Empty in the subexpr case).
 
       else
          N := Empty;
@@ -5532,7 +7254,7 @@ package body Exp_Util is
             --  existing actions of the expression with actions, and should
             --  never reach here: if actions are inserted on a statement
             --  within the Actions of an expression with actions, or on some
-            --  sub-expression of such a statement, then the outermost proper
+            --  subexpression of such a statement, then the outermost proper
             --  insertion point is right before the statement, and we should
             --  never climb up as far as the N_Expression_With_Actions itself.
 
@@ -5632,7 +7354,6 @@ package body Exp_Util is
                | N_Procedure_Instantiation
                | N_Protected_Body
                | N_Protected_Body_Stub
-               | N_Protected_Type_Declaration
                | N_Single_Task_Declaration
                | N_Subprogram_Body
                | N_Subprogram_Body_Stub
@@ -5641,7 +7362,6 @@ package body Exp_Util is
                | N_Subtype_Declaration
                | N_Task_Body
                | N_Task_Body_Stub
-               | N_Task_Type_Declaration
 
                --  Use clauses can appear in lists of declarations
 
@@ -5674,7 +7394,7 @@ package body Exp_Util is
                --  actions should be inserted outside the complete record
                --  declaration.
 
-               elsif Nkind_In (Parent (P), N_Variant, N_Record_Definition) then
+               elsif Nkind (Parent (P)) in N_Variant | N_Record_Definition then
                   null;
 
                --  Do not insert freeze nodes within the loop generated for
@@ -5704,6 +7424,21 @@ package body Exp_Util is
                   Insert_List_Before_And_Analyze (P, Ins_Actions);
                   return;
                end if;
+
+            --  the expansion of Task and protected type declarations can
+            --  create declarations for temporaries which, like other actions
+            --  are inserted and analyzed before the current declaraation.
+            --  However, the current scope is the synchronized type, and
+            --  for unnesting it is critical that the proper scope for these
+            --  generated entities be the enclosing one.
+
+            when N_Task_Type_Declaration
+               | N_Protected_Type_Declaration =>
+
+               Push_Scope (Scope (Current_Scope));
+               Insert_List_Before_And_Analyze (P, Ins_Actions);
+               Pop_Scope;
+               return;
 
             --  A special case, N_Raise_xxx_Error can act either as a statement
             --  or a subexpression. We tell the difference by looking at the
@@ -5740,6 +7475,7 @@ package body Exp_Util is
 
             when N_Component_Association
                | N_Iterated_Component_Association
+               | N_Iterated_Element_Association
             =>
                if Nkind (Parent (P)) = N_Aggregate
                  and then Present (Loop_Actions (P))
@@ -5781,7 +7517,7 @@ package body Exp_Util is
                   null;
                end if;
 
-            --  Another special case, an attribute denoting a procedure call
+            --  Special case: an attribute denoting a procedure call
 
             when N_Attribute_Reference =>
                if Is_Procedure_Attribute_Name (Attribute_Name (P)) then
@@ -5797,6 +7533,16 @@ package body Exp_Util is
 
                else
                   null;
+               end if;
+
+            --  Special case: a marker
+
+            when N_Call_Marker
+               | N_Variable_Reference_Marker
+            =>
+               if Is_List_Member (P) then
+                  Insert_List_Before_And_Analyze (P, Ins_Actions);
+                  return;
                end if;
 
             --  A contract node should not belong to the tree
@@ -5976,9 +7722,10 @@ package body Exp_Util is
    --  Version with check(s) suppressed
 
    procedure Insert_Actions
-     (Assoc_Node  : Node_Id;
-      Ins_Actions : List_Id;
-      Suppress    : Check_Id)
+     (Assoc_Node   : Node_Id;
+      Ins_Actions  : List_Id;
+      Suppress     : Check_Id;
+      Spec_Expr_OK : Boolean := False)
    is
    begin
       if Suppress = All_Checks then
@@ -5986,7 +7733,7 @@ package body Exp_Util is
             Sva : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
             Scope_Suppress.Suppress := (others => True);
-            Insert_Actions (Assoc_Node, Ins_Actions);
+            Insert_Actions (Assoc_Node, Ins_Actions, Spec_Expr_OK);
             Scope_Suppress.Suppress := Sva;
          end;
 
@@ -5995,7 +7742,7 @@ package body Exp_Util is
             Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
             Scope_Suppress.Suppress (Suppress) := True;
-            Insert_Actions (Assoc_Node, Ins_Actions);
+            Insert_Actions (Assoc_Node, Ins_Actions, Spec_Expr_OK);
             Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
@@ -6035,8 +7782,8 @@ package body Exp_Util is
          P := Parent (P);
 
          if Is_List_Member (P) then
-            exit when Nkind_In (Parent (P), N_Package_Specification,
-                                            N_Subprogram_Body);
+            exit when Nkind (Parent (P)) in
+                        N_Package_Specification | N_Subprogram_Body;
 
             --  Special handling for handled sequence of statements, we must
             --  insert in the statements not the exception handlers!
@@ -6062,8 +7809,10 @@ package body Exp_Util is
       Aux : constant Node_Id := Aux_Decls_Node (Cunit (Main_Unit));
 
    begin
-      Push_Scope (Cunit_Entity (Main_Unit));
-      --  ??? should this be Current_Sem_Unit instead of Main_Unit?
+      Push_Scope (Cunit_Entity (Current_Sem_Unit));
+      --  And not Main_Unit as previously. If the main unit is a body,
+      --  the scope needed to analyze the actions is the entity of the
+      --  corresponding declaration.
 
       if No (Actions (Aux)) then
          Set_Actions (Aux, New_List (N));
@@ -6103,40 +7852,51 @@ package body Exp_Util is
    ----------------------
 
    function Inside_Init_Proc return Boolean is
-      S : Entity_Id;
+      Proc : constant Entity_Id := Enclosing_Init_Proc;
 
    begin
-      S := Current_Scope;
-      while Present (S) and then S /= Standard_Standard loop
-         if Is_Init_Proc (S) then
-            return True;
-         else
-            S := Scope (S);
-         end if;
-      end loop;
-
-      return False;
+      return Proc /= Empty;
    end Inside_Init_Proc;
 
-   ----------------------------
-   -- Is_All_Null_Statements --
-   ----------------------------
+   ----------------------
+   -- Integer_Type_For --
+   ----------------------
 
-   function Is_All_Null_Statements (L : List_Id) return Boolean is
-      Stm : Node_Id;
-
+   function Integer_Type_For (S : Uint; Uns : Boolean) return Entity_Id is
    begin
-      Stm := First (L);
-      while Present (Stm) loop
-         if Nkind (Stm) /= N_Null_Statement then
-            return False;
+      pragma Assert (S <= System_Max_Integer_Size);
+
+      --  This is the canonical 32-bit type
+
+      if S <= Standard_Integer_Size then
+         if Uns then
+            return Standard_Unsigned;
+         else
+            return Standard_Integer;
          end if;
 
-         Next (Stm);
-      end loop;
+      --  This is the canonical 64-bit type
 
-      return True;
-   end Is_All_Null_Statements;
+      elsif S <= Standard_Long_Long_Integer_Size then
+         if Uns then
+            return Standard_Long_Long_Unsigned;
+         else
+            return Standard_Long_Long_Integer;
+         end if;
+
+      --  This is the canonical 128-bit type
+
+      elsif S <= Standard_Long_Long_Long_Integer_Size then
+         if Uns then
+            return Standard_Long_Long_Long_Unsigned;
+         else
+            return Standard_Long_Long_Long_Integer;
+         end if;
+
+      else
+         raise Program_Error;
+      end if;
+   end Integer_Type_For;
 
    --------------------------------------------------
    -- Is_Displacement_Of_Object_Or_Function_Result --
@@ -6146,22 +7906,28 @@ package body Exp_Util is
      (Obj_Id : Entity_Id) return Boolean
    is
       function Is_Controlled_Function_Call (N : Node_Id) return Boolean;
-      --  Determine if particular node denotes a controlled function call. The
-      --  call may have been heavily expanded.
+      --  Determine whether node N denotes a controlled function call
+
+      function Is_Controlled_Indexing (N : Node_Id) return Boolean;
+      --  Determine whether node N denotes a generalized indexing form which
+      --  involves a controlled result.
 
       function Is_Displace_Call (N : Node_Id) return Boolean;
-      --  Determine whether a particular node is a call to Ada.Tags.Displace.
-      --  The call might be nested within other actions such as conversions.
+      --  Determine whether node N denotes a call to Ada.Tags.Displace
 
       function Is_Source_Object (N : Node_Id) return Boolean;
       --  Determine whether a particular node denotes a source object
+
+      function Strip (N : Node_Id) return Node_Id;
+      --  Examine arbitrary node N by stripping various indirections and return
+      --  the "real" node.
 
       ---------------------------------
       -- Is_Controlled_Function_Call --
       ---------------------------------
 
       function Is_Controlled_Function_Call (N : Node_Id) return Boolean is
-         Expr : Node_Id := Original_Node (N);
+         Expr : Node_Id;
 
       begin
          --  When a function call appears in Object.Operation format, the
@@ -6173,6 +7939,7 @@ package body Exp_Util is
          --    Obj.Func (Formal => Actual) N_Function_Call, whose Name is an
          --                                N_Selected_Component
 
+         Expr := Original_Node (N);
          loop
             if Nkind (Expr) = N_Function_Call then
                Expr := Name (Expr);
@@ -6199,33 +7966,32 @@ package body Exp_Util is
              and then Needs_Finalization (Etype (Entity (Expr)));
       end Is_Controlled_Function_Call;
 
+      ----------------------------
+      -- Is_Controlled_Indexing --
+      ----------------------------
+
+      function Is_Controlled_Indexing (N : Node_Id) return Boolean is
+         Expr : constant Node_Id := Original_Node (N);
+
+      begin
+         return
+           Nkind (Expr) = N_Indexed_Component
+             and then Present (Generalized_Indexing (Expr))
+             and then Needs_Finalization (Etype (Expr));
+      end Is_Controlled_Indexing;
+
       ----------------------
       -- Is_Displace_Call --
       ----------------------
 
       function Is_Displace_Call (N : Node_Id) return Boolean is
-         Call : Node_Id := N;
+         Call : constant Node_Id := Strip (N);
 
       begin
-         --  Strip various actions which may precede a call to Displace
-
-         loop
-            if Nkind (Call) = N_Explicit_Dereference then
-               Call := Prefix (Call);
-
-            elsif Nkind_In (Call, N_Type_Conversion,
-                                  N_Unchecked_Type_Conversion)
-            then
-               Call := Expression (Call);
-
-            else
-               exit;
-            end if;
-         end loop;
-
          return
            Present (Call)
              and then Nkind (Call) = N_Function_Call
+             and then Nkind (Name (Call)) in N_Has_Entity
              and then Is_RTE (Entity (Name (Call)), RE_Displace);
       end Is_Displace_Call;
 
@@ -6234,19 +8000,48 @@ package body Exp_Util is
       ----------------------
 
       function Is_Source_Object (N : Node_Id) return Boolean is
+         Obj : constant Node_Id := Strip (N);
+
       begin
          return
-           Present (N)
-             and then Nkind (N) in N_Has_Entity
-             and then Is_Object (Entity (N))
-             and then Comes_From_Source (N);
+           Present (Obj)
+             and then Comes_From_Source (Obj)
+             and then Nkind (Obj) in N_Has_Entity
+             and then Is_Object (Entity (Obj));
       end Is_Source_Object;
+
+      -----------
+      -- Strip --
+      -----------
+
+      function Strip (N : Node_Id) return Node_Id is
+         Result : Node_Id;
+
+      begin
+         Result := N;
+         loop
+            if Nkind (Result) = N_Explicit_Dereference then
+               Result := Prefix (Result);
+
+            elsif Nkind (Result) in
+                    N_Type_Conversion | N_Unchecked_Type_Conversion
+            then
+               Result := Expression (Result);
+
+            else
+               exit;
+            end if;
+         end loop;
+
+         return Result;
+      end Strip;
 
       --  Local variables
 
-      Decl      : constant Node_Id   := Parent (Obj_Id);
+      Obj_Decl  : constant Node_Id   := Declaration_Node (Obj_Id);
       Obj_Typ   : constant Entity_Id := Base_Type (Etype (Obj_Id));
-      Orig_Decl : constant Node_Id   := Original_Node (Decl);
+      Orig_Decl : constant Node_Id   := Original_Node (Obj_Decl);
+      Orig_Expr : Node_Id;
 
    --  Start of processing for Is_Displacement_Of_Object_Or_Function_Result
 
@@ -6255,34 +8050,52 @@ package body Exp_Util is
 
       --     Obj : CW_Type := Function_Call (...);
 
-      --  rewritten into:
+      --  is rewritten into:
 
-      --     Tmp : ... := Function_Call (...)'reference;
-      --     Obj : CW_Type renames (... Ada.Tags.Displace (Tmp));
+      --     Temp : ... := Function_Call (...)'reference;
+      --     Obj  : CW_Type renames (... Ada.Tags.Displace (Temp));
 
       --  where the return type of the function and the class-wide type require
       --  dispatch table pointer displacement.
 
       --  Case 2:
 
+      --     Obj : CW_Type := Container (...);
+
+      --  is rewritten into:
+
+      --     Temp : ... := Function_Call (Container, ...)'reference;
+      --     Obj  : CW_Type renames (... Ada.Tags.Displace (Temp));
+
+      --  where the container element type and the class-wide type require
+      --  dispatch table pointer dispacement.
+
+      --  Case 3:
+
       --     Obj : CW_Type := Src_Obj;
 
-      --  rewritten into:
+      --  is rewritten into:
 
       --     Obj : CW_Type renames (... Ada.Tags.Displace (Src_Obj));
 
       --  where the type of the source object and the class-wide type require
       --  dispatch table pointer displacement.
 
-      return
-        Nkind (Decl) = N_Object_Renaming_Declaration
-          and then Nkind (Orig_Decl) = N_Object_Declaration
-          and then Comes_From_Source (Orig_Decl)
-          and then Is_Class_Wide_Type (Obj_Typ)
-          and then Is_Displace_Call (Renamed_Object (Obj_Id))
-          and then
-            (Is_Controlled_Function_Call (Expression (Orig_Decl))
-              or else Is_Source_Object (Expression (Orig_Decl)));
+      if Nkind (Obj_Decl) = N_Object_Renaming_Declaration
+        and then Is_Class_Wide_Type (Obj_Typ)
+        and then Is_Displace_Call (Renamed_Object (Obj_Id))
+        and then Nkind (Orig_Decl) = N_Object_Declaration
+        and then Comes_From_Source (Orig_Decl)
+      then
+         Orig_Expr := Expression (Orig_Decl);
+
+         return
+           Is_Controlled_Function_Call (Orig_Expr)
+             or else Is_Controlled_Indexing (Orig_Expr)
+             or else Is_Source_Object (Orig_Expr);
+      end if;
+
+      return False;
    end Is_Displacement_Of_Object_Or_Function_Result;
 
    ------------------------------
@@ -6325,6 +8138,10 @@ package body Exp_Util is
       --  is in the process of being iterated in the statement list starting
       --  from First_Stmt.
 
+      function Is_Part_Of_BIP_Return_Statement (N : Node_Id) return Boolean;
+      --  Return True if N is directly part of a build-in-place return
+      --  statement.
+
       ---------------------------
       -- Initialized_By_Access --
       ---------------------------
@@ -6354,6 +8171,8 @@ package body Exp_Util is
          if Nkind (Call) = N_Reference then
             Call := Prefix (Call);
          end if;
+
+         Call := Unqual_Conv (Call);
 
          if Is_Build_In_Place_Function_Call (Call) then
             declare
@@ -6459,7 +8278,7 @@ package body Exp_Util is
 
                if Nkind (N) = N_Identifier
                  and then Present (Entity (N))
-                 and then Ekind_In (Entity (N), E_Constant, E_Variable)
+                 and then Ekind (Entity (N)) in E_Constant | E_Variable
                then
                   Ren_Obj := Entity (N);
                   return Abandon;
@@ -6652,6 +8471,35 @@ package body Exp_Util is
          return False;
       end Is_Iterated_Container;
 
+      -------------------------------------
+      -- Is_Part_Of_BIP_Return_Statement --
+      -------------------------------------
+
+      function Is_Part_Of_BIP_Return_Statement (N : Node_Id) return Boolean is
+         Subp    : constant Entity_Id := Current_Subprogram;
+         Context : Node_Id;
+      begin
+         --  First check if N is part of a BIP function
+
+         if No (Subp)
+           or else not Is_Build_In_Place_Function (Subp)
+         then
+            return False;
+         end if;
+
+         --  Then check whether N is a complete part of a return statement
+         --  Should we consider other node kinds to go up the tree???
+
+         Context := N;
+         loop
+            case Nkind (Context) is
+               when N_Expression_With_Actions => Context := Parent (Context);
+               when N_Simple_Return_Statement => return True;
+               when others                    => return False;
+            end case;
+         end loop;
+      end Is_Part_Of_BIP_Return_Statement;
+
       --  Local variables
 
       Desig : Entity_Id := Obj_Typ;
@@ -6666,10 +8514,11 @@ package body Exp_Util is
       end if;
 
       return
-        Ekind_In (Obj_Id, E_Constant, E_Variable)
+        Ekind (Obj_Id) in E_Constant | E_Variable
           and then Needs_Finalization (Desig)
           and then Requires_Transient_Scope (Desig)
           and then Nkind (Rel_Node) /= N_Simple_Return_Statement
+          and then not Is_Part_Of_BIP_Return_Statement (Rel_Node)
 
           --  Do not consider a transient object that was already processed
 
@@ -6689,9 +8538,8 @@ package body Exp_Util is
           --  initialized by a function that returns a pointer or acts as a
           --  renaming of another pointer.
 
-          and then
-            (not Is_Access_Type (Obj_Typ)
-               or else not Initialized_By_Access (Obj_Id))
+          and then not
+            (Is_Access_Type (Obj_Typ) and then Initialized_By_Access (Obj_Id))
 
           --  Do not consider transient objects which act as indirect aliases
           --  of build-in-place function results.
@@ -6732,8 +8580,8 @@ package body Exp_Util is
          return False;
       end if;
 
-      --  Here we have a tagged type, see if it has any unlayed out fields
-      --  other than a possible tag and parent fields. If so, we return False.
+      --  Here we have a tagged type, see if it has any component (other than
+      --  tag and parent) with no component_clause. If so, we return False.
 
       Comp := First_Component (U);
       while Present (Comp) loop
@@ -6747,7 +8595,7 @@ package body Exp_Util is
          end if;
       end loop;
 
-      --  All components are layed out
+      --  All components have clauses
 
       return True;
    end Is_Fully_Repped_Tagged_Type;
@@ -6776,79 +8624,6 @@ package body Exp_Util is
           and then Nkind (Prefix (Expr)) = N_Function_Call
           and then not Is_Build_In_Place_Function_Call (Prefix (Expr));
    end Is_Non_BIP_Func_Call;
-
-   ------------------------------------
-   -- Is_Object_Access_BIP_Func_Call --
-   ------------------------------------
-
-   function Is_Object_Access_BIP_Func_Call
-      (Expr   : Node_Id;
-       Obj_Id : Entity_Id) return Boolean
-   is
-      Access_Nam : Name_Id := No_Name;
-      Actual     : Node_Id;
-      Call       : Node_Id;
-      Formal     : Node_Id;
-      Param      : Node_Id;
-
-   begin
-      --  Build-in-place calls usually appear in 'reference format. Note that
-      --  the accessibility check machinery may add an extra 'reference due to
-      --  side effect removal.
-
-      Call := Expr;
-      while Nkind (Call) = N_Reference loop
-         Call := Prefix (Call);
-      end loop;
-
-      if Nkind_In (Call, N_Qualified_Expression,
-                         N_Unchecked_Type_Conversion)
-      then
-         Call := Expression (Call);
-      end if;
-
-      if Is_Build_In_Place_Function_Call (Call) then
-
-         --  Examine all parameter associations of the function call
-
-         Param := First (Parameter_Associations (Call));
-         while Present (Param) loop
-            if Nkind (Param) = N_Parameter_Association
-              and then Nkind (Selector_Name (Param)) = N_Identifier
-            then
-               Formal := Selector_Name (Param);
-               Actual := Explicit_Actual_Parameter (Param);
-
-               --  Construct the name of formal BIPaccess. It is much easier to
-               --  extract the name of the function using an arbitrary formal's
-               --  scope rather than the Name field of Call.
-
-               if Access_Nam = No_Name and then Present (Entity (Formal)) then
-                  Access_Nam :=
-                    New_External_Name
-                      (Chars (Scope (Entity (Formal))),
-                       BIP_Formal_Suffix (BIP_Object_Access));
-               end if;
-
-               --  A match for BIPaccess => Obj_Id'Unrestricted_Access has been
-               --  found.
-
-               if Chars (Formal) = Access_Nam
-                 and then Nkind (Actual) = N_Attribute_Reference
-                 and then Attribute_Name (Actual) = Name_Unrestricted_Access
-                 and then Nkind (Prefix (Actual)) = N_Identifier
-                 and then Entity (Prefix (Actual)) = Obj_Id
-               then
-                  return True;
-               end if;
-            end if;
-
-            Next (Param);
-         end loop;
-      end if;
-
-      return False;
-   end Is_Object_Access_BIP_Func_Call;
 
    ----------------------------------
    -- Is_Possibly_Unaligned_Object --
@@ -6900,7 +8675,7 @@ package body Exp_Util is
             S : Nat;
 
          begin
-            --  If component reference is for an array with non-static bounds,
+            --  If component reference is for an array with nonstatic bounds,
             --  then it is always aligned: we can only process unaligned arrays
             --  with static bounds (more precisely compile time known bounds).
 
@@ -6984,9 +8759,23 @@ package body Exp_Util is
 
                declare
                   Align_In_Bits : constant Nat := M * System_Storage_Unit;
+                  Comp : Entity_Id;
+
                begin
-                  if Component_Bit_Offset (C) mod Align_In_Bits /= 0
-                    or else Esize (C) mod Align_In_Bits /= 0
+                  Comp := C;
+
+                  --  For a component inherited in a record extension, the
+                  --  clause is inherited but position and size are not set.
+
+                  if Is_Base_Type (Etype (P))
+                    and then Is_Tagged_Type (Etype (P))
+                    and then Present (Original_Record_Component (Comp))
+                  then
+                     Comp := Original_Record_Component (Comp);
+                  end if;
+
+                  if Component_Bit_Offset (Comp) mod Align_In_Bits /= 0
+                    or else Esize (Comp) mod Align_In_Bits /= 0
                   then
                      return True;
                   end if;
@@ -7023,12 +8812,6 @@ package body Exp_Util is
       --  The reference must be a slice
 
       if Nkind (N) /= N_Slice then
-         return False;
-      end if;
-
-      --  We only need to worry if the target has strict alignment
-
-      if not Target_Strict_Alignment then
          return False;
       end if;
 
@@ -7075,9 +8858,11 @@ package body Exp_Util is
                --  We are definitely in trouble if the record in question
                --  has an alignment, and either we know this alignment is
                --  inconsistent with the alignment of the slice, or we don't
-               --  know what the alignment of the slice should be.
+               --  know what the alignment of the slice should be. But this
+               --  really matters only if the target has strict alignment.
 
-               if Known_Alignment (Ptyp)
+               if Target_Strict_Alignment
+                 and then Known_Alignment (Ptyp)
                  and then (Unknown_Alignment (Styp)
                             or else Alignment (Styp) > Alignment (Ptyp))
                then
@@ -7133,9 +8918,14 @@ package body Exp_Util is
    function Is_Related_To_Func_Return (Id : Entity_Id) return Boolean is
       Expr : constant Node_Id := Related_Expression (Id);
    begin
+      --  In the case of a function with a class-wide result that returns
+      --  a call to a function with a specific result, we introduce a
+      --  type conversion for the return expression. We do not want that
+      --  type conversion to influence the result of this function.
+
       return
         Present (Expr)
-          and then Nkind (Expr) = N_Explicit_Dereference
+          and then Nkind (Unqual_Conv (Expr)) = N_Explicit_Dereference
           and then Nkind (Parent (Expr)) = N_Simple_Return_Statement;
    end Is_Related_To_Func_Return;
 
@@ -7155,7 +8945,7 @@ package body Exp_Util is
          return Is_Ref_To_Bit_Packed_Array (Renamed_Object (Entity (N)));
       end if;
 
-      if Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
+      if Nkind (N) in N_Indexed_Component | N_Selected_Component then
          if Is_Bit_Packed_Array (Etype (Prefix (N))) then
             Result := True;
          else
@@ -7197,7 +8987,7 @@ package body Exp_Util is
       then
          return True;
 
-      elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
+      elsif Nkind (N) in N_Indexed_Component | N_Selected_Component then
          return Is_Ref_To_Bit_Packed_Slice (Prefix (N));
 
       else
@@ -7215,7 +9005,7 @@ package body Exp_Util is
    begin
       if Kind = N_Object_Renaming_Declaration then
          return True;
-      elsif Nkind_In (Kind, N_Indexed_Component, N_Selected_Component) then
+      elsif Kind in N_Indexed_Component | N_Selected_Component then
          return Is_Renamed_Object (Pnod);
       else
          return False;
@@ -7227,7 +9017,6 @@ package body Exp_Util is
    --------------------------------------
 
    function Is_Secondary_Stack_BIP_Func_Call (Expr : Node_Id) return Boolean is
-      Alloc_Nam : Name_Id := No_Name;
       Actual    : Node_Id;
       Call      : Node_Id := Expr;
       Formal    : Node_Id;
@@ -7242,11 +9031,7 @@ package body Exp_Util is
          Call := Prefix (Call);
       end loop;
 
-      if Nkind_In (Call, N_Qualified_Expression,
-                         N_Unchecked_Type_Conversion)
-      then
-         Call := Expression (Call);
-      end if;
+      Call := Unqual_Conv (Call);
 
       if Is_Build_In_Place_Function_Call (Call) then
 
@@ -7254,26 +9039,14 @@ package body Exp_Util is
 
          Param := First (Parameter_Associations (Call));
          while Present (Param) loop
-            if Nkind (Param) = N_Parameter_Association
-              and then Nkind (Selector_Name (Param)) = N_Identifier
-            then
+            if Nkind (Param) = N_Parameter_Association then
                Formal := Selector_Name (Param);
                Actual := Explicit_Actual_Parameter (Param);
 
-               --  Construct the name of formal BIPalloc. It is much easier to
-               --  extract the name of the function using an arbitrary formal's
-               --  scope rather than the Name field of Call.
-
-               if Alloc_Nam = No_Name and then Present (Entity (Formal)) then
-                  Alloc_Nam :=
-                    New_External_Name
-                      (Chars (Scope (Entity (Formal))),
-                       BIP_Formal_Suffix (BIP_Alloc_Form));
-               end if;
-
                --  A match for BIPalloc => 2 has been found
 
-               if Chars (Formal) = Alloc_Nam
+               if Is_Build_In_Place_Entity (Formal)
+                 and then BIP_Suffix_Kind (Formal) = BIP_Alloc_Form
                  and then Nkind (Actual) = N_Integer_Literal
                  and then Intval (Actual) = Uint_2
                then
@@ -7305,6 +9078,47 @@ package body Exp_Util is
           and then Etype (Expression (Expr)) = RTE (RE_Tag);
    end Is_Tag_To_Class_Wide_Conversion;
 
+   --------------------------------
+   -- Is_Uninitialized_Aggregate --
+   --------------------------------
+
+   function Is_Uninitialized_Aggregate
+     (Exp : Node_Id;
+      T   : Entity_Id) return Boolean
+   is
+      Comp      : Node_Id;
+      Comp_Type : Entity_Id;
+      Typ       : Entity_Id;
+
+   begin
+      if Nkind (Exp) /= N_Aggregate then
+         return False;
+      end if;
+
+      Preanalyze_And_Resolve (Exp, T);
+      Typ  := Etype (Exp);
+
+      if No (Typ)
+        or else Ekind (Typ) /= E_Array_Subtype
+        or else Present (Expressions (Exp))
+        or else No (Component_Associations (Exp))
+      then
+         return False;
+      else
+         Comp_Type := Component_Type (Typ);
+         Comp := First (Component_Associations (Exp));
+
+         if not Box_Present (Comp)
+           or else Present (Next (Comp))
+         then
+            return False;
+         end if;
+
+         return Is_Scalar_Type (Comp_Type)
+           and then No (Default_Aspect_Component_Value (Typ));
+      end if;
+   end Is_Uninitialized_Aggregate;
+
    ----------------------------
    -- Is_Untagged_Derivation --
    ----------------------------
@@ -7318,6 +9132,45 @@ package body Exp_Util is
                    and then Is_Derived_Type (Full_View (T))
                    and then Etype (Full_View (T)) /= T);
    end Is_Untagged_Derivation;
+
+   ------------------------------------
+   -- Is_Untagged_Private_Derivation --
+   ------------------------------------
+
+   function Is_Untagged_Private_Derivation
+     (Priv_Typ : Entity_Id;
+      Full_Typ : Entity_Id) return Boolean
+   is
+   begin
+      return
+        Present (Priv_Typ)
+          and then Is_Untagged_Derivation (Priv_Typ)
+          and then Is_Private_Type (Etype (Priv_Typ))
+          and then Present (Full_Typ)
+          and then Is_Itype (Full_Typ);
+   end Is_Untagged_Private_Derivation;
+
+   ------------------------------
+   -- Is_Verifiable_DIC_Pragma --
+   ------------------------------
+
+   function Is_Verifiable_DIC_Pragma (Prag : Node_Id) return Boolean is
+      Args : constant List_Id := Pragma_Argument_Associations (Prag);
+
+   begin
+      --  To qualify as verifiable, a DIC pragma must have a non-null argument
+
+      return
+        Present (Args)
+
+          --  If there are args, but the first arg is Empty, then treat the
+          --  pragma the same as having no args (there may be a second arg that
+          --  is an implicitly added type arg, and Empty is a placeholder).
+
+          and then Present (Get_Pragma_Arg (First (Args)))
+
+          and then Nkind (Get_Pragma_Arg (First (Args))) /= N_Null;
+   end Is_Verifiable_DIC_Pragma;
 
    ---------------------------
    -- Is_Volatile_Reference --
@@ -7358,7 +9211,7 @@ package body Exp_Util is
 
       --  True if volatile component
 
-      elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
+      elsif Nkind (N) in N_Indexed_Component | N_Selected_Component then
          if (Is_Entity_Name (Prefix (N))
               and then Has_Volatile_Components (Entity (Prefix (N))))
            or else (Present (Etype (Prefix (N)))
@@ -7387,6 +9240,11 @@ package body Exp_Util is
    begin
       if Present (N) then
          Remove_Warning_Messages (N);
+
+         --  Update the internal structures of the ABE mechanism in case the
+         --  dead node is an elaboration scenario.
+
+         Kill_Elaboration_Scenario (N);
 
          --  Generate warning if appropriate
 
@@ -7512,156 +9370,6 @@ package body Exp_Util is
       end if;
    end Kill_Dead_Code;
 
-   ------------------------
-   -- Known_Non_Negative --
-   ------------------------
-
-   function Known_Non_Negative (Opnd : Node_Id) return Boolean is
-   begin
-      if Is_OK_Static_Expression (Opnd) and then Expr_Value (Opnd) >= 0 then
-         return True;
-
-      else
-         declare
-            Lo : constant Node_Id := Type_Low_Bound (Etype (Opnd));
-         begin
-            return
-              Is_OK_Static_Expression (Lo) and then Expr_Value (Lo) >= 0;
-         end;
-      end if;
-   end Known_Non_Negative;
-
-   --------------------
-   -- Known_Non_Null --
-   --------------------
-
-   function Known_Non_Null (N : Node_Id) return Boolean is
-   begin
-      --  Checks for case where N is an entity reference
-
-      if Is_Entity_Name (N) and then Present (Entity (N)) then
-         declare
-            E   : constant Entity_Id := Entity (N);
-            Op  : Node_Kind;
-            Val : Node_Id;
-
-         begin
-            --  First check if we are in decisive conditional
-
-            Get_Current_Value_Condition (N, Op, Val);
-
-            if Known_Null (Val) then
-               if Op = N_Op_Eq then
-                  return False;
-               elsif Op = N_Op_Ne then
-                  return True;
-               end if;
-            end if;
-
-            --  If OK to do replacement, test Is_Known_Non_Null flag
-
-            if OK_To_Do_Constant_Replacement (E) then
-               return Is_Known_Non_Null (E);
-
-            --  Otherwise if not safe to do replacement, then say so
-
-            else
-               return False;
-            end if;
-         end;
-
-      --  True if access attribute
-
-      elsif Nkind (N) = N_Attribute_Reference
-        and then Nam_In (Attribute_Name (N), Name_Access,
-                                             Name_Unchecked_Access,
-                                             Name_Unrestricted_Access)
-      then
-         return True;
-
-      --  True if allocator
-
-      elsif Nkind (N) = N_Allocator then
-         return True;
-
-      --  For a conversion, true if expression is known non-null
-
-      elsif Nkind (N) = N_Type_Conversion then
-         return Known_Non_Null (Expression (N));
-
-      --  Above are all cases where the value could be determined to be
-      --  non-null. In all other cases, we don't know, so return False.
-
-      else
-         return False;
-      end if;
-   end Known_Non_Null;
-
-   ----------------
-   -- Known_Null --
-   ----------------
-
-   function Known_Null (N : Node_Id) return Boolean is
-   begin
-      --  Checks for case where N is an entity reference
-
-      if Is_Entity_Name (N) and then Present (Entity (N)) then
-         declare
-            E   : constant Entity_Id := Entity (N);
-            Op  : Node_Kind;
-            Val : Node_Id;
-
-         begin
-            --  Constant null value is for sure null
-
-            if Ekind (E) = E_Constant
-              and then Known_Null (Constant_Value (E))
-            then
-               return True;
-            end if;
-
-            --  First check if we are in decisive conditional
-
-            Get_Current_Value_Condition (N, Op, Val);
-
-            if Known_Null (Val) then
-               if Op = N_Op_Eq then
-                  return True;
-               elsif Op = N_Op_Ne then
-                  return False;
-               end if;
-            end if;
-
-            --  If OK to do replacement, test Is_Known_Null flag
-
-            if OK_To_Do_Constant_Replacement (E) then
-               return Is_Known_Null (E);
-
-            --  Otherwise if not safe to do replacement, then say so
-
-            else
-               return False;
-            end if;
-         end;
-
-      --  True if explicit reference to null
-
-      elsif Nkind (N) = N_Null then
-         return True;
-
-      --  For a conversion, true if expression is known null
-
-      elsif Nkind (N) = N_Type_Conversion then
-         return Known_Null (Expression (N));
-
-      --  Above are all cases where the value could be determined to be null.
-      --  In all other cases, we don't know, so return False.
-
-      else
-         return False;
-      end if;
-   end Known_Null;
-
    -----------------------------
    -- Make_CW_Equivalent_Type --
    -----------------------------
@@ -7672,12 +9380,17 @@ package body Exp_Util is
    --  Generate the following code:
 
    --   type Equiv_T is record
-   --     _parent :  T (List of discriminant constraints taken from Exp);
+   --     _parent : T (List of discriminant constraints taken from Exp);
    --     Ext__50 : Storage_Array (1 .. (Exp'size - Typ'object_size)/8);
    --   end Equiv_T;
    --
-   --   ??? Note that this type does not guarantee same alignment as all
-   --   derived types
+   --  ??? Note that this type does not guarantee same alignment as all
+   --  derived types
+   --
+   --  Note: for the freezing circuitry, this looks like a record extension,
+   --  and so we need to make sure that the scalar storage order is the same
+   --  as that of the parent type. (This does not change anything for the
+   --  representation of the extension part.)
 
    function Make_CW_Equivalent_Type
      (T : Entity_Id;
@@ -7685,6 +9398,7 @@ package body Exp_Util is
    is
       Loc         : constant Source_Ptr := Sloc (E);
       Root_Typ    : constant Entity_Id  := Root_Type (T);
+      Root_Utyp   : constant Entity_Id  := Underlying_Type (Root_Typ);
       List_Def    : constant List_Id    := Empty_List;
       Comp_List   : constant List_Id    := New_List;
       Equiv_Type  : Entity_Id;
@@ -7702,7 +9416,7 @@ package body Exp_Util is
       then
          Constr_Root := Root_Typ;
 
-         --  At this point in the expansion, non-limited view of the type
+         --  At this point in the expansion, nonlimited view of the type
          --  must be available, otherwise the error will be reported later.
 
          if From_Limited_With (Constr_Root)
@@ -7815,6 +9529,11 @@ package body Exp_Util is
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
                  Subtype_Indication => New_Occurrence_Of (Constr_Root, Loc))));
+
+         Set_Reverse_Storage_Order
+           (Equiv_Type, Reverse_Storage_Order (Base_Type (Root_Utyp)));
+         Set_Reverse_Bit_Order
+           (Equiv_Type, Reverse_Bit_Order (Base_Type (Root_Utyp)));
       end if;
 
       Append_To (Comp_List,
@@ -7849,19 +9568,22 @@ package body Exp_Util is
    function Make_Invariant_Call (Expr : Node_Id) return Node_Id is
       Loc : constant Source_Ptr := Sloc (Expr);
       Typ : constant Entity_Id  := Base_Type (Etype (Expr));
-
-      Proc_Id : Entity_Id;
-
-   begin
       pragma Assert (Has_Invariants (Typ));
-
-      Proc_Id := Invariant_Procedure (Typ);
+      Proc_Id : constant Entity_Id := Invariant_Procedure (Typ);
       pragma Assert (Present (Proc_Id));
+   begin
+      --  The invariant procedure has a null body if assertions are disabled or
+      --  Assertion_Policy Ignore is in effect. In that case, generate a null
+      --  statement instead of a call to the invariant procedure.
 
-      return
-        Make_Procedure_Call_Statement (Loc,
-          Name                   => New_Occurrence_Of (Proc_Id, Loc),
-          Parameter_Associations => New_List (Relocate_Node (Expr)));
+      if Has_Null_Body (Proc_Id) then
+         return Make_Null_Statement (Loc);
+      else
+         return
+           Make_Procedure_Call_Statement (Loc,
+             Name                   => New_Occurrence_Of (Proc_Id, Loc),
+             Parameter_Associations => New_List (Relocate_Node (Expr)));
+      end if;
    end Make_Invariant_Call;
 
    ------------------------
@@ -7875,43 +9597,42 @@ package body Exp_Util is
       Lo          : constant Node_Id :=
                       New_Copy_Tree (String_Literal_Low_Bound (Literal_Typ));
       Index       : constant Entity_Id := Etype (Lo);
-
-      Hi          : Node_Id;
       Length_Expr : constant Node_Id :=
                       Make_Op_Subtract (Loc,
-                        Left_Opnd =>
+                        Left_Opnd  =>
                           Make_Integer_Literal (Loc,
                             Intval => String_Literal_Length (Literal_Typ)),
-                        Right_Opnd =>
-                          Make_Integer_Literal (Loc, 1));
+                        Right_Opnd => Make_Integer_Literal (Loc, 1));
+
+      Hi : Node_Id;
 
    begin
       Set_Analyzed (Lo, False);
 
-         if Is_Integer_Type (Index) then
-            Hi :=
-              Make_Op_Add (Loc,
-                Left_Opnd  => New_Copy_Tree (Lo),
-                Right_Opnd => Length_Expr);
-         else
-            Hi :=
-              Make_Attribute_Reference (Loc,
-                Attribute_Name => Name_Val,
-                Prefix => New_Occurrence_Of (Index, Loc),
-                Expressions => New_List (
-                 Make_Op_Add (Loc,
-                   Left_Opnd =>
-                     Make_Attribute_Reference (Loc,
-                       Attribute_Name => Name_Pos,
-                       Prefix => New_Occurrence_Of (Index, Loc),
-                       Expressions => New_List (New_Copy_Tree (Lo))),
-                  Right_Opnd => Length_Expr)));
-         end if;
+      if Is_Integer_Type (Index) then
+         Hi :=
+           Make_Op_Add (Loc,
+             Left_Opnd  => New_Copy_Tree (Lo),
+             Right_Opnd => Length_Expr);
+      else
+         Hi :=
+           Make_Attribute_Reference (Loc,
+             Attribute_Name => Name_Val,
+             Prefix         => New_Occurrence_Of (Index, Loc),
+             Expressions    => New_List (
+               Make_Op_Add (Loc,
+                 Left_Opnd  =>
+                   Make_Attribute_Reference (Loc,
+                     Attribute_Name => Name_Pos,
+                     Prefix         => New_Occurrence_Of (Index, Loc),
+                     Expressions    => New_List (New_Copy_Tree (Lo))),
+                 Right_Opnd => Length_Expr)));
+      end if;
 
-         return
-           Make_Range (Loc,
-             Low_Bound  => Lo,
-             High_Bound => Hi);
+      return
+        Make_Range (Loc,
+          Low_Bound  => Lo,
+          High_Bound => Hi);
    end Make_Literal_Range;
 
    --------------------------
@@ -7948,34 +9669,51 @@ package body Exp_Util is
    is
       Loc : constant Source_Ptr := Sloc (Expr);
 
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
+
       Call    : Node_Id;
       Func_Id : Entity_Id;
-      Mode    : Ghost_Mode_Type;
 
    begin
-      pragma Assert (Present (Predicate_Function (Typ)));
+      Func_Id := Predicate_Function (Typ);
+      pragma Assert (Present (Func_Id));
 
       --  The related type may be subject to pragma Ghost. Set the mode now to
       --  ensure that the call is properly marked as Ghost.
 
-      Set_Ghost_Mode (Typ, Mode);
+      Set_Ghost_Mode (Typ);
 
       --  Call special membership version if requested and available
 
       if Mem and then Present (Predicate_Function_M (Typ)) then
          Func_Id := Predicate_Function_M (Typ);
-      else
-         Func_Id := Predicate_Function (Typ);
       end if;
 
       --  Case of calling normal predicate function
 
-      Call :=
-        Make_Function_Call (Loc,
-          Name                   => New_Occurrence_Of (Func_Id, Loc),
-          Parameter_Associations => New_List (Relocate_Node (Expr)));
+      --  If the type is tagged, the expression may be class-wide, in which
+      --  case it has to be converted to its root type, given that the
+      --  generated predicate function is not dispatching. The conversion is
+      --  type-safe and does not need validation, which matters when private
+      --  extensions are involved.
 
-      Restore_Ghost_Mode (Mode);
+      if Is_Tagged_Type (Typ) then
+         Call :=
+           Make_Function_Call (Loc,
+             Name                   => New_Occurrence_Of (Func_Id, Loc),
+             Parameter_Associations =>
+               New_List (OK_Convert_To (Typ, Relocate_Node (Expr))));
+      else
+         Call :=
+           Make_Function_Call (Loc,
+             Name                   => New_Occurrence_Of (Func_Id, Loc),
+             Parameter_Associations => New_List (Relocate_Node (Expr)));
+      end if;
+
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+
       return Call;
    end Make_Predicate_Call;
 
@@ -7987,36 +9725,167 @@ package body Exp_Util is
      (Typ  : Entity_Id;
       Expr : Node_Id) return Node_Id
    is
-      procedure Replace_Subtype_Reference (N : Node_Id);
-      --  Replace current occurrences of the subtype to which a dynamic
-      --  predicate applies, by the expression that triggers a predicate
-      --  check. This is needed for aspect Predicate_Failure, for which
-      --  we do not generate a wrapper procedure, but simply modify the
-      --  expression for the pragma of the predicate check.
+      Loc : constant Source_Ptr := Sloc (Expr);
 
-      --------------------------------
-      --  Replace_Subtype_Reference --
-      --------------------------------
+      procedure Add_Failure_Expression (Args : List_Id);
+      --  Add the failure expression of pragma Predicate_Failure (if any) to
+      --  list Args.
 
-      procedure Replace_Subtype_Reference (N : Node_Id) is
+      ----------------------------
+      -- Add_Failure_Expression --
+      ----------------------------
+
+      procedure Add_Failure_Expression (Args : List_Id) is
+         function Failure_Expression return Node_Id;
+         pragma Inline (Failure_Expression);
+         --  Find aspect or pragma Predicate_Failure that applies to type Typ
+         --  and return its expression. Return Empty if no such annotation is
+         --  available.
+
+         function Is_OK_PF_Aspect (Asp : Node_Id) return Boolean;
+         pragma Inline (Is_OK_PF_Aspect);
+         --  Determine whether aspect Asp is a suitable Predicate_Failure
+         --  aspect that applies to type Typ.
+
+         function Is_OK_PF_Pragma (Prag : Node_Id) return Boolean;
+         pragma Inline (Is_OK_PF_Pragma);
+         --  Determine whether pragma Prag is a suitable Predicate_Failure
+         --  pragma that applies to type Typ.
+
+         procedure Replace_Subtype_Reference (N : Node_Id);
+         --  Replace the current instance of type Typ denoted by N with
+         --  expression Expr.
+
+         ------------------------
+         -- Failure_Expression --
+         ------------------------
+
+         function Failure_Expression return Node_Id is
+            Item : Node_Id;
+
+         begin
+            --  The management of the rep item chain involves "inheritance" of
+            --  parent type chains. If a parent [sub]type is already subject to
+            --  pragma Predicate_Failure, then the pragma will also appear in
+            --  the chain of the child [sub]type, which in turn may possess a
+            --  pragma of its own. Avoid order-dependent issues by inspecting
+            --  the rep item chain directly. Note that routine Get_Pragma may
+            --  return a parent pragma.
+
+            Item := First_Rep_Item (Typ);
+            while Present (Item) loop
+
+               --  Predicate_Failure appears as an aspect
+
+               if Nkind (Item) = N_Aspect_Specification
+                 and then Is_OK_PF_Aspect (Item)
+               then
+                  return Expression (Item);
+
+               --  Predicate_Failure appears as a pragma
+
+               elsif Nkind (Item) = N_Pragma
+                 and then Is_OK_PF_Pragma (Item)
+               then
+                  return
+                    Get_Pragma_Arg
+                      (Next (First (Pragma_Argument_Associations (Item))));
+               end if;
+
+               Next_Rep_Item (Item);
+            end loop;
+
+            return Empty;
+         end Failure_Expression;
+
+         ---------------------
+         -- Is_OK_PF_Aspect --
+         ---------------------
+
+         function Is_OK_PF_Aspect (Asp : Node_Id) return Boolean is
+         begin
+            --  To qualify, the aspect must apply to the type subjected to the
+            --  predicate check.
+
+            return
+              Chars (Identifier (Asp)) = Name_Predicate_Failure
+                and then Present (Entity (Asp))
+                and then Entity (Asp) = Typ;
+         end Is_OK_PF_Aspect;
+
+         ---------------------
+         -- Is_OK_PF_Pragma --
+         ---------------------
+
+         function Is_OK_PF_Pragma (Prag : Node_Id) return Boolean is
+            Args    : constant List_Id := Pragma_Argument_Associations (Prag);
+            Typ_Arg : Node_Id;
+
+         begin
+            --  Nothing to do when the pragma does not denote Predicate_Failure
+
+            if Pragma_Name (Prag) /= Name_Predicate_Failure then
+               return False;
+
+            --  Nothing to do when the pragma lacks arguments, in which case it
+            --  is illegal.
+
+            elsif No (Args) or else Is_Empty_List (Args) then
+               return False;
+            end if;
+
+            Typ_Arg := Get_Pragma_Arg (First (Args));
+
+            --  To qualify, the local name argument of the pragma must denote
+            --  the type subjected to the predicate check.
+
+            return
+              Is_Entity_Name (Typ_Arg)
+                and then Present (Entity (Typ_Arg))
+                and then Entity (Typ_Arg) = Typ;
+         end Is_OK_PF_Pragma;
+
+         --------------------------------
+         --  Replace_Subtype_Reference --
+         --------------------------------
+
+         procedure Replace_Subtype_Reference (N : Node_Id) is
+         begin
+            Rewrite (N, New_Copy_Tree (Expr));
+         end Replace_Subtype_Reference;
+
+         procedure Replace_Subtype_References is
+           new Replace_Type_References_Generic (Replace_Subtype_Reference);
+
+         --  Local variables
+
+         PF_Expr : constant Node_Id := Failure_Expression;
+         Expr    : Node_Id;
+
+      --  Start of processing for Add_Failure_Expression
+
       begin
-         Rewrite (N, New_Copy_Tree (Expr));
+         if Present (PF_Expr) then
 
-         --  We want to treat the node as if it comes from source, so
-         --  that ASIS will not ignore it.
+            --  Replace any occurrences of the current instance of the type
+            --  with the object subjected to the predicate check.
 
-         Set_Comes_From_Source (N, True);
-      end Replace_Subtype_Reference;
+            Expr := New_Copy_Tree (PF_Expr);
+            Replace_Subtype_References (Expr, Typ);
 
-      procedure Replace_Subtype_References is
-        new Replace_Type_References_Generic (Replace_Subtype_Reference);
+            --  The failure expression appears as the third argument of the
+            --  Check pragma.
+
+            Append_To (Args,
+              Make_Pragma_Argument_Association (Loc,
+                Expression => Expr));
+         end if;
+      end Add_Failure_Expression;
 
       --  Local variables
 
-      Loc       : constant Source_Ptr := Sloc (Expr);
-      Arg_List  : List_Id;
-      Fail_Expr : Node_Id;
-      Nam       : Name_Id;
+      Args : List_Id;
+      Nam  : Name_Id;
 
    --  Start of processing for Make_Predicate_Check
 
@@ -8029,10 +9898,9 @@ package body Exp_Util is
          return Make_Null_Statement (Loc);
       end if;
 
-      --  Do not generate a check within an internal subprogram (stream
-      --  functions and the like, including including predicate functions).
+      --  Do not generate a check within stream functions and the like.
 
-      if Within_Internal_Subprogram then
+      if not Predicate_Check_In_Scope (Expr) then
          return Make_Null_Statement (Loc);
       end if;
 
@@ -8047,31 +9915,21 @@ package body Exp_Util is
          Nam := Name_Predicate;
       end if;
 
-      Arg_List := New_List (
+      Args := New_List (
         Make_Pragma_Argument_Association (Loc,
           Expression => Make_Identifier (Loc, Nam)),
         Make_Pragma_Argument_Association (Loc,
           Expression => Make_Predicate_Call (Typ, Expr)));
 
-      --  If subtype has Predicate_Failure defined, add the correponding
-      --  expression as an additional pragma parameter, after replacing
-      --  current instances with the expression being checked.
+      --  If the subtype is subject to pragma Predicate_Failure, add the
+      --  failure expression as an additional parameter.
 
-      if Has_Aspect (Typ, Aspect_Predicate_Failure) then
-         Fail_Expr :=
-           New_Copy_Tree
-             (Expression (Find_Aspect (Typ, Aspect_Predicate_Failure)));
-         Replace_Subtype_References (Fail_Expr, Typ);
-
-         Append_To (Arg_List,
-           Make_Pragma_Argument_Association (Loc,
-             Expression => Fail_Expr));
-      end if;
+      Add_Failure_Expression (Args);
 
       return
         Make_Pragma (Loc,
           Chars                        => Name_Check,
-          Pragma_Argument_Associations => Arg_List);
+          Pragma_Argument_Associations => Args);
    end Make_Predicate_Check;
 
    ----------------------------
@@ -8218,7 +10076,7 @@ package body Exp_Util is
                 Low_Bound  => New_Occurrence_Of (Low_Bound,  Loc),
                 High_Bound => New_Occurrence_Of (High_Bound, Loc)));
 
-            Index_Typ := Next_Index (Index_Typ);
+            Next_Index (Index_Typ);
          end loop;
 
       elsif Is_Class_Wide_Type (Unc_Typ) then
@@ -8279,6 +10137,631 @@ package body Exp_Util is
               Constraints => List_Constr));
    end Make_Subtype_From_Expr;
 
+   -----------------------------
+   -- Make_Variant_Comparison --
+   -----------------------------
+
+   function Make_Variant_Comparison
+     (Loc      : Source_Ptr;
+      Mode     : Name_Id;
+      Curr_Val : Node_Id;
+      Old_Val  : Node_Id) return Node_Id
+   is
+   begin
+      if Mode = Name_Increases then
+         return Make_Op_Gt (Loc, Curr_Val, Old_Val);
+      else pragma Assert (Mode = Name_Decreases);
+         return Make_Op_Lt (Loc, Curr_Val, Old_Val);
+      end if;
+   end Make_Variant_Comparison;
+
+   ---------------
+   -- Map_Types --
+   ---------------
+
+   procedure Map_Types (Parent_Type : Entity_Id; Derived_Type : Entity_Id) is
+
+      --  NOTE: Most of the routines in Map_Types are intentionally unnested to
+      --  avoid deep indentation of code.
+
+      --  NOTE: Routines which deal with discriminant mapping operate on the
+      --  [underlying/record] full view of various types because those views
+      --  contain all discriminants and stored constraints.
+
+      procedure Add_Primitive (Prim : Entity_Id; Par_Typ : Entity_Id);
+      --  Subsidiary to Map_Primitives. Find a primitive in the inheritance or
+      --  overriding chain starting from Prim whose dispatching type is parent
+      --  type Par_Typ and add a mapping between the result and primitive Prim.
+
+      function Ancestor_Primitive (Subp : Entity_Id) return Entity_Id;
+      --  Subsidiary to Map_Primitives. Return the next ancestor primitive in
+      --  the inheritance or overriding chain of subprogram Subp. Return Empty
+      --  if no such primitive is available.
+
+      function Build_Chain
+        (Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id) return Elist_Id;
+      --  Subsidiary to Map_Discriminants. Recreate the derivation chain from
+      --  parent type Par_Typ leading down towards derived type Deriv_Typ. The
+      --  list has the form:
+      --
+      --    head                                              tail
+      --    v                                                 v
+      --    <Ancestor_N> -> <Ancestor_N-1> -> <Ancestor_1> -> Deriv_Typ
+      --
+      --  Note that Par_Typ is not part of the resulting derivation chain
+
+      function Discriminated_View (Typ : Entity_Id) return Entity_Id;
+      --  Return the view of type Typ which could potentially contains either
+      --  the discriminants or stored constraints of the type.
+
+      function Find_Discriminant_Value
+        (Discr     : Entity_Id;
+         Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id;
+         Typ_Elmt  : Elmt_Id) return Node_Or_Entity_Id;
+      --  Subsidiary to Map_Discriminants. Find the value of discriminant Discr
+      --  in the derivation chain starting from parent type Par_Typ leading to
+      --  derived type Deriv_Typ. The returned value is one of the following:
+      --
+      --    * An entity which is either a discriminant or a nondiscriminant
+      --      name, and renames/constraints Discr.
+      --
+      --    * An expression which constraints Discr
+      --
+      --  Typ_Elmt is an element of the derivation chain created by routine
+      --  Build_Chain and denotes the current ancestor being examined.
+
+      procedure Map_Discriminants
+        (Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id);
+      --  Map each discriminant of type Par_Typ to a meaningful constraint
+      --  from the point of view of type Deriv_Typ.
+
+      procedure Map_Primitives (Par_Typ : Entity_Id; Deriv_Typ : Entity_Id);
+      --  Map each primitive of type Par_Typ to a corresponding primitive of
+      --  type Deriv_Typ.
+
+      -------------------
+      -- Add_Primitive --
+      -------------------
+
+      procedure Add_Primitive (Prim : Entity_Id; Par_Typ : Entity_Id) is
+         Par_Prim : Entity_Id;
+
+      begin
+         --  Inspect the inheritance chain through the Alias attribute and the
+         --  overriding chain through the Overridden_Operation looking for an
+         --  ancestor primitive with the appropriate dispatching type.
+
+         Par_Prim := Prim;
+         while Present (Par_Prim) loop
+            exit when Find_Dispatching_Type (Par_Prim) = Par_Typ;
+            Par_Prim := Ancestor_Primitive (Par_Prim);
+         end loop;
+
+         --  Create a mapping of the form:
+
+         --    parent type primitive -> derived type primitive
+
+         if Present (Par_Prim) then
+            Type_Map.Set (Par_Prim, Prim);
+         end if;
+      end Add_Primitive;
+
+      ------------------------
+      -- Ancestor_Primitive --
+      ------------------------
+
+      function Ancestor_Primitive (Subp : Entity_Id) return Entity_Id is
+         Inher_Prim : constant Entity_Id := Alias (Subp);
+         Over_Prim  : constant Entity_Id := Overridden_Operation (Subp);
+
+      begin
+         --  The current subprogram overrides an ancestor primitive
+
+         if Present (Over_Prim) then
+            return Over_Prim;
+
+         --  The current subprogram is an internally generated alias of an
+         --  inherited ancestor primitive.
+
+         elsif Present (Inher_Prim) then
+            return Inher_Prim;
+
+         --  Otherwise the current subprogram is the root of the inheritance or
+         --  overriding chain.
+
+         else
+            return Empty;
+         end if;
+      end Ancestor_Primitive;
+
+      -----------------
+      -- Build_Chain --
+      -----------------
+
+      function Build_Chain
+        (Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id) return Elist_Id
+      is
+         Anc_Typ  : Entity_Id;
+         Chain    : Elist_Id;
+         Curr_Typ : Entity_Id;
+
+      begin
+         Chain := New_Elmt_List;
+
+         --  Add the derived type to the derivation chain
+
+         Prepend_Elmt (Deriv_Typ, Chain);
+
+         --  Examine all ancestors starting from the derived type climbing
+         --  towards parent type Par_Typ.
+
+         Curr_Typ := Deriv_Typ;
+         loop
+            --  Handle the case where the current type is a record which
+            --  derives from a subtype.
+
+            --    subtype Sub_Typ is Par_Typ ...
+            --    type Deriv_Typ is Sub_Typ ...
+
+            if Ekind (Curr_Typ) = E_Record_Type
+              and then Present (Parent_Subtype (Curr_Typ))
+            then
+               Anc_Typ := Parent_Subtype (Curr_Typ);
+
+            --  Handle the case where the current type is a record subtype of
+            --  another subtype.
+
+            --    subtype Sub_Typ1 is Par_Typ ...
+            --    subtype Sub_Typ2 is Sub_Typ1 ...
+
+            elsif Ekind (Curr_Typ) = E_Record_Subtype
+              and then Present (Cloned_Subtype (Curr_Typ))
+            then
+               Anc_Typ := Cloned_Subtype (Curr_Typ);
+
+            --  Otherwise use the direct parent type
+
+            else
+               Anc_Typ := Etype (Curr_Typ);
+            end if;
+
+            --  Use the first subtype when dealing with itypes
+
+            if Is_Itype (Anc_Typ) then
+               Anc_Typ := First_Subtype (Anc_Typ);
+            end if;
+
+            --  Work with the view which contains the discriminants and stored
+            --  constraints.
+
+            Anc_Typ := Discriminated_View (Anc_Typ);
+
+            --  Stop the climb when either the parent type has been reached or
+            --  there are no more ancestors left to examine.
+
+            exit when Anc_Typ = Curr_Typ or else Anc_Typ = Par_Typ;
+
+            Prepend_Unique_Elmt (Anc_Typ, Chain);
+            Curr_Typ := Anc_Typ;
+         end loop;
+
+         return Chain;
+      end Build_Chain;
+
+      ------------------------
+      -- Discriminated_View --
+      ------------------------
+
+      function Discriminated_View (Typ : Entity_Id) return Entity_Id is
+         T : Entity_Id;
+
+      begin
+         T := Typ;
+
+         --  Use the [underlying] full view when dealing with private types
+         --  because the view contains all inherited discriminants or stored
+         --  constraints.
+
+         if Is_Private_Type (T) then
+            if Present (Underlying_Full_View (T)) then
+               T := Underlying_Full_View (T);
+
+            elsif Present (Full_View (T)) then
+               T := Full_View (T);
+            end if;
+         end if;
+
+         --  Use the underlying record view when the type is an extenstion of
+         --  a parent type with unknown discriminants because the view contains
+         --  all inherited discriminants or stored constraints.
+
+         if Ekind (T) = E_Record_Type
+           and then Present (Underlying_Record_View (T))
+         then
+            T := Underlying_Record_View (T);
+         end if;
+
+         return T;
+      end Discriminated_View;
+
+      -----------------------------
+      -- Find_Discriminant_Value --
+      -----------------------------
+
+      function Find_Discriminant_Value
+        (Discr     : Entity_Id;
+         Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id;
+         Typ_Elmt  : Elmt_Id) return Node_Or_Entity_Id
+      is
+         Discr_Pos : constant Uint      := Discriminant_Number (Discr);
+         Typ       : constant Entity_Id := Node (Typ_Elmt);
+
+         function Find_Constraint_Value
+           (Constr : Node_Or_Entity_Id) return Node_Or_Entity_Id;
+         --  Given constraint Constr, find what it denotes. This is either:
+         --
+         --    * An entity which is either a discriminant or a name
+         --
+         --    * An expression
+
+         ---------------------------
+         -- Find_Constraint_Value --
+         ---------------------------
+
+         function Find_Constraint_Value
+           (Constr : Node_Or_Entity_Id) return Node_Or_Entity_Id
+         is
+         begin
+            if Nkind (Constr) in N_Entity then
+
+               --  The constraint denotes a discriminant of the curren type
+               --  which renames the ancestor discriminant:
+
+               --              vv
+               --    type Typ (D1 : ...; DN : ...) is
+               --      new Anc (Discr => D1) with ...
+               --                        ^^
+
+               if Ekind (Constr) = E_Discriminant then
+
+                  --  The discriminant belongs to derived type Deriv_Typ. This
+                  --  is the final value for the ancestor discriminant as the
+                  --  derivations chain has been fully exhausted.
+
+                  if Typ = Deriv_Typ then
+                     return Constr;
+
+                  --  Otherwise the discriminant may be renamed or constrained
+                  --  at a lower level. Continue looking down the derivation
+                  --  chain.
+
+                  else
+                     return
+                       Find_Discriminant_Value
+                         (Discr     => Constr,
+                          Par_Typ   => Par_Typ,
+                          Deriv_Typ => Deriv_Typ,
+                          Typ_Elmt  => Next_Elmt (Typ_Elmt));
+                  end if;
+
+               --  Otherwise the constraint denotes a reference to some name
+               --  which results in a Girder discriminant:
+
+               --    vvvv
+               --    Name : ...;
+               --    type Typ (D1 : ...; DN : ...) is
+               --      new Anc (Discr => Name) with ...
+               --                        ^^^^
+
+               --  Return the name as this is the proper constraint of the
+               --  discriminant.
+
+               else
+                  return Constr;
+               end if;
+
+            --  The constraint denotes a reference to a name
+
+            elsif Is_Entity_Name (Constr) then
+               return Find_Constraint_Value (Entity (Constr));
+
+            --  Otherwise the current constraint is an expression which yields
+            --  a Girder discriminant:
+
+            --    type Typ (D1 : ...; DN : ...) is
+            --      new Anc (Discr => <expression>) with ...
+            --                         ^^^^^^^^^^
+
+            --  Return the expression as this is the proper constraint of the
+            --  discriminant.
+
+            else
+               return Constr;
+            end if;
+         end Find_Constraint_Value;
+
+         --  Local variables
+
+         Constrs : constant Elist_Id := Stored_Constraint (Typ);
+
+         Constr_Elmt : Elmt_Id;
+         Pos         : Uint;
+         Typ_Discr   : Entity_Id;
+
+      --  Start of processing for Find_Discriminant_Value
+
+      begin
+         --  The algorithm for finding the value of a discriminant works as
+         --  follows. First, it recreates the derivation chain from Par_Typ
+         --  to Deriv_Typ as a list:
+
+         --     Par_Typ      (shown for completeness)
+         --        v
+         --    Ancestor_N  <-- head of chain
+         --        v
+         --    Ancestor_1
+         --        v
+         --    Deriv_Typ   <--  tail of chain
+
+         --  The algorithm then traces the fate of a parent discriminant down
+         --  the derivation chain. At each derivation level, the discriminant
+         --  may be either inherited or constrained.
+
+         --    1) Discriminant is inherited: there are two cases, depending on
+         --    which type is inheriting.
+
+         --    1.1) Deriv_Typ is inheriting:
+
+         --      type Ancestor (D_1 : ...) is tagged ...
+         --      type Deriv_Typ is new Ancestor ...
+
+         --    In this case the inherited discriminant is the final value of
+         --    the parent discriminant because the end of the derivation chain
+         --    has been reached.
+
+         --    1.2) Some other type is inheriting:
+
+         --      type Ancestor_1 (D_1 : ...) is tagged ...
+         --      type Ancestor_2 is new Ancestor_1 ...
+
+         --    In this case the algorithm continues to trace the fate of the
+         --    inherited discriminant down the derivation chain because it may
+         --    be further inherited or constrained.
+
+         --    2) Discriminant is constrained: there are three cases, depending
+         --    on what the constraint is.
+
+         --    2.1) The constraint is another discriminant (aka renaming):
+
+         --      type Ancestor_1 (D_1 : ...) is tagged ...
+         --      type Ancestor_2 (D_2 : ...) is new Ancestor_1 (D_1 => D_2) ...
+
+         --    In this case the constraining discriminant becomes the one to
+         --    track down the derivation chain. The algorithm already knows
+         --    that D_2 constrains D_1, therefore if the algorithm finds the
+         --    value of D_2, then this would also be the value for D_1.
+
+         --    2.2) The constraint is a name (aka Girder):
+
+         --      Name : ...
+         --      type Ancestor_1 (D_1 : ...) is tagged ...
+         --      type Ancestor_2 is new Ancestor_1 (D_1 => Name) ...
+
+         --    In this case the name is the final value of D_1 because the
+         --    discriminant cannot be further constrained.
+
+         --    2.3) The constraint is an expression (aka Girder):
+
+         --      type Ancestor_1 (D_1 : ...) is tagged ...
+         --      type Ancestor_2 is new Ancestor_1 (D_1 => 1 + 2) ...
+
+         --    Similar to 2.2, the expression is the final value of D_1
+
+         Pos := Uint_1;
+
+         --  When a derived type constrains its parent type, all constaints
+         --  appear in the Stored_Constraint list. Examine the list looking
+         --  for a positional match.
+
+         if Present (Constrs) then
+            Constr_Elmt := First_Elmt (Constrs);
+            while Present (Constr_Elmt) loop
+
+               --  The position of the current constraint matches that of the
+               --  ancestor discriminant.
+
+               if Pos = Discr_Pos then
+                  return Find_Constraint_Value (Node (Constr_Elmt));
+               end if;
+
+               Next_Elmt (Constr_Elmt);
+               Pos := Pos + 1;
+            end loop;
+
+         --  Otherwise the derived type does not constraint its parent type in
+         --  which case it inherits the parent discriminants.
+
+         else
+            Typ_Discr := First_Discriminant (Typ);
+            while Present (Typ_Discr) loop
+
+               --  The position of the current discriminant matches that of the
+               --  ancestor discriminant.
+
+               if Pos = Discr_Pos then
+                  return Find_Constraint_Value (Typ_Discr);
+               end if;
+
+               Next_Discriminant (Typ_Discr);
+               Pos := Pos + 1;
+            end loop;
+         end if;
+
+         --  A discriminant must always have a corresponding value. This is
+         --  either another discriminant, a name, or an expression. If this
+         --  point is reached, them most likely the derivation chain employs
+         --  the wrong views of types.
+
+         pragma Assert (False);
+
+         return Empty;
+      end Find_Discriminant_Value;
+
+      -----------------------
+      -- Map_Discriminants --
+      -----------------------
+
+      procedure Map_Discriminants
+        (Par_Typ   : Entity_Id;
+         Deriv_Typ : Entity_Id)
+      is
+         Deriv_Chain : constant Elist_Id := Build_Chain (Par_Typ, Deriv_Typ);
+
+         Discr     : Entity_Id;
+         Discr_Val : Node_Or_Entity_Id;
+
+      begin
+         --  Examine each discriminant of parent type Par_Typ and find a
+         --  suitable value for it from the point of view of derived type
+         --  Deriv_Typ.
+
+         if Has_Discriminants (Par_Typ) then
+            Discr := First_Discriminant (Par_Typ);
+            while Present (Discr) loop
+               Discr_Val :=
+                 Find_Discriminant_Value
+                   (Discr     => Discr,
+                    Par_Typ   => Par_Typ,
+                    Deriv_Typ => Deriv_Typ,
+                    Typ_Elmt  => First_Elmt (Deriv_Chain));
+
+               --  Create a mapping of the form:
+
+               --    parent type discriminant -> value
+
+               Type_Map.Set (Discr, Discr_Val);
+
+               Next_Discriminant (Discr);
+            end loop;
+         end if;
+      end Map_Discriminants;
+
+      --------------------
+      -- Map_Primitives --
+      --------------------
+
+      procedure Map_Primitives (Par_Typ : Entity_Id; Deriv_Typ : Entity_Id) is
+         Deriv_Prim : Entity_Id;
+         Par_Prim   : Entity_Id;
+         Par_Prims  : Elist_Id;
+         Prim_Elmt  : Elmt_Id;
+
+      begin
+         --  Inspect the primitives of the derived type and determine whether
+         --  they relate to the primitives of the parent type. If there is a
+         --  meaningful relation, create a mapping of the form:
+
+         --    parent type primitive -> perived type primitive
+
+         if Present (Direct_Primitive_Operations (Deriv_Typ)) then
+            Prim_Elmt := First_Elmt (Direct_Primitive_Operations (Deriv_Typ));
+            while Present (Prim_Elmt) loop
+               Deriv_Prim := Node (Prim_Elmt);
+
+               if Is_Subprogram (Deriv_Prim)
+                 and then Find_Dispatching_Type (Deriv_Prim) = Deriv_Typ
+               then
+                  Add_Primitive (Deriv_Prim, Par_Typ);
+               end if;
+
+               Next_Elmt (Prim_Elmt);
+            end loop;
+         end if;
+
+         --  If the parent operation is an interface operation, the overriding
+         --  indicator is not present. Instead, we get from the interface
+         --  operation the primitive of the current type that implements it.
+
+         if Is_Interface (Par_Typ) then
+            Par_Prims := Collect_Primitive_Operations (Par_Typ);
+
+            if Present (Par_Prims) then
+               Prim_Elmt := First_Elmt (Par_Prims);
+
+               while Present (Prim_Elmt) loop
+                  Par_Prim   := Node (Prim_Elmt);
+                  Deriv_Prim :=
+                    Find_Primitive_Covering_Interface (Deriv_Typ, Par_Prim);
+
+                  if Present (Deriv_Prim) then
+                     Type_Map.Set (Par_Prim, Deriv_Prim);
+                  end if;
+
+                  Next_Elmt (Prim_Elmt);
+               end loop;
+            end if;
+         end if;
+      end Map_Primitives;
+
+   --  Start of processing for Map_Types
+
+   begin
+      --  Nothing to do if there are no types to work with
+
+      if No (Parent_Type) or else No (Derived_Type) then
+         return;
+
+      --  Nothing to do if the mapping already exists
+
+      elsif Type_Map.Get (Parent_Type) = Derived_Type then
+         return;
+
+      --  Nothing to do if both types are not tagged. Note that untagged types
+      --  do not have primitive operations and their discriminants are already
+      --  handled by gigi.
+
+      elsif not Is_Tagged_Type (Parent_Type)
+        or else not Is_Tagged_Type (Derived_Type)
+      then
+         return;
+      end if;
+
+      --  Create a mapping of the form
+
+      --    parent type -> derived type
+
+      --  to prevent any subsequent attempts to produce the same relations
+
+      Type_Map.Set (Parent_Type, Derived_Type);
+
+      --  Create mappings of the form
+
+      --    parent type discriminant -> derived type discriminant
+      --      <or>
+      --    parent type discriminant -> constraint
+
+      --  Note that mapping of discriminants breaks privacy because it needs to
+      --  work with those views which contains the discriminants and any stored
+      --  constraints.
+
+      Map_Discriminants
+        (Par_Typ   => Discriminated_View (Parent_Type),
+         Deriv_Typ => Discriminated_View (Derived_Type));
+
+      --  Create mappings of the form
+
+      --    parent type primitive -> derived type primitive
+
+      Map_Primitives
+        (Par_Typ   => Parent_Type,
+         Deriv_Typ => Derived_Type);
+   end Map_Types;
+
    ----------------------------
    -- Matching_Standard_Type --
    ----------------------------
@@ -8307,37 +10790,8 @@ package body Exp_Util is
 
       --  Unsigned integer cases (includes normal enumeration types)
 
-      elsif Is_Unsigned_Type (Typ) then
-         if Siz <= Esize (Standard_Short_Short_Unsigned) then
-            return Standard_Short_Short_Unsigned;
-         elsif Siz <= Esize (Standard_Short_Unsigned) then
-            return Standard_Short_Unsigned;
-         elsif Siz <= Esize (Standard_Unsigned) then
-            return Standard_Unsigned;
-         elsif Siz <= Esize (Standard_Long_Unsigned) then
-            return Standard_Long_Unsigned;
-         elsif Siz <= Esize (Standard_Long_Long_Unsigned) then
-            return Standard_Long_Long_Unsigned;
-         else
-            raise Program_Error;
-         end if;
-
-      --  Signed integer cases
-
       else
-         if Siz <= Esize (Standard_Short_Short_Integer) then
-            return Standard_Short_Short_Integer;
-         elsif Siz <= Esize (Standard_Short_Integer) then
-            return Standard_Short_Integer;
-         elsif Siz <= Esize (Standard_Integer) then
-            return Standard_Integer;
-         elsif Siz <= Esize (Standard_Long_Integer) then
-            return Standard_Long_Integer;
-         elsif Siz <= Esize (Standard_Long_Long_Integer) then
-            return Standard_Long_Long_Integer;
-         else
-            raise Program_Error;
-         end if;
+         return Small_Integer_Type_For (Siz, Is_Unsigned_Type (Typ));
       end if;
    end Matching_Standard_Type;
 
@@ -8370,90 +10824,17 @@ package body Exp_Util is
       end if;
    end May_Generate_Large_Temp;
 
-   ------------------------
-   -- Needs_Finalization --
-   ------------------------
+   --------------------------------------------
+   -- Needs_Conditional_Null_Excluding_Check --
+   --------------------------------------------
 
-   function Needs_Finalization (T : Entity_Id) return Boolean is
-      function Has_Some_Controlled_Component (Rec : Entity_Id) return Boolean;
-      --  If type is not frozen yet, check explicitly among its components,
-      --  because the Has_Controlled_Component flag is not necessarily set.
-
-      -----------------------------------
-      -- Has_Some_Controlled_Component --
-      -----------------------------------
-
-      function Has_Some_Controlled_Component
-        (Rec : Entity_Id) return Boolean
-      is
-         Comp : Entity_Id;
-
-      begin
-         if Has_Controlled_Component (Rec) then
-            return True;
-
-         elsif not Is_Frozen (Rec) then
-            if Is_Record_Type (Rec) then
-               Comp := First_Entity (Rec);
-
-               while Present (Comp) loop
-                  if not Is_Type (Comp)
-                    and then Needs_Finalization (Etype (Comp))
-                  then
-                     return True;
-                  end if;
-
-                  Next_Entity (Comp);
-               end loop;
-
-               return False;
-
-            else
-               return
-                 Is_Array_Type (Rec)
-                   and then Needs_Finalization (Component_Type (Rec));
-            end if;
-         else
-            return False;
-         end if;
-      end Has_Some_Controlled_Component;
-
-   --  Start of processing for Needs_Finalization
-
+   function Needs_Conditional_Null_Excluding_Check
+     (Typ : Entity_Id) return Boolean
+   is
    begin
-      --  Certain run-time configurations and targets do not provide support
-      --  for controlled types.
-
-      if Restriction_Active (No_Finalization) then
-         return False;
-
-      --  C++ types are not considered controlled. It is assumed that the
-      --  non-Ada side will handle their clean up.
-
-      elsif Convention (T) = Convention_CPP then
-         return False;
-
-      --  Never needs finalization if Disable_Controlled set
-
-      elsif Disable_Controlled (T) then
-         return False;
-
-      elsif Is_Class_Wide_Type (T) and then Disable_Controlled (Etype (T)) then
-         return False;
-
-      else
-         --  Class-wide types are treated as controlled because derivations
-         --  from the root type can introduce controlled components.
-
-         return Is_Class_Wide_Type (T)
-             or else Is_Controlled (T)
-             or else Has_Some_Controlled_Component (T)
-             or else
-               (Is_Concurrent_Type (T)
-                 and then Present (Corresponding_Record_Type (T))
-                 and then Needs_Finalization (Corresponding_Record_Type (T)));
-      end if;
-   end Needs_Finalization;
+      return
+        Is_Array_Type (Typ) and then Can_Never_Be_Null (Component_Type (Typ));
+   end Needs_Conditional_Null_Excluding_Check;
 
    ----------------------------
    -- Needs_Constant_Address --
@@ -8464,7 +10845,6 @@ package body Exp_Util is
       Typ  : Entity_Id) return Boolean
    is
    begin
-
       --  If we have no initialization of any kind, then we don't need to place
       --  any restrictions on the address clause, because the object will be
       --  elaborated after the address clause is evaluated. This happens if the
@@ -8472,9 +10852,9 @@ package body Exp_Util is
       --  initialization, or the object is imported.
 
       --  The same holds for all initialized scalar types and all access types.
-      --  Packed bit arrays of size up to 64 are represented using a modular
-      --  type with an initialization (to zero) and can be processed like other
-      --  initialized scalar types.
+      --  Packed bit array types of size up to the maximum integer size are
+      --  represented using a modular type with an initialization (to zero) and
+      --  can be processed like other initialized scalar types.
 
       --  If the type is controlled, code to attach the object to a
       --  finalization chain is generated at the point of declaration, and
@@ -8498,7 +10878,6 @@ package body Exp_Util is
          return False;
 
       else
-
          --  Otherwise, we require the address clause to be constant because
          --  the call to the initialization procedure (or the attach code) has
          --  to happen at the point of the declaration.
@@ -8518,41 +10897,46 @@ package body Exp_Util is
      (CW_Typ : Entity_Id;
       N      : Node_Id) return Entity_Id
    is
-      Res       : constant Entity_Id := Create_Itype (E_Void, N);
-      Res_Name  : constant Name_Id   := Chars (Res);
-      Res_Scope : constant Entity_Id := Scope (Res);
+      Res : constant Entity_Id := Create_Itype (E_Void, N);
+
+      --  Capture relevant attributes of the class-wide subtype which must be
+      --  restored after the copy.
+
+      Res_Chars  : constant Name_Id   := Chars (Res);
+      Res_Is_CGE : constant Boolean   := Is_Checked_Ghost_Entity (Res);
+      Res_Is_IGE : constant Boolean   := Is_Ignored_Ghost_Entity (Res);
+      Res_Is_IGN : constant Boolean   := Is_Ignored_Ghost_Node   (Res);
+      Res_Scope  : constant Entity_Id := Scope (Res);
 
    begin
       Copy_Node (CW_Typ, Res);
-      Set_Comes_From_Source (Res, False);
-      Set_Sloc (Res, Sloc (N));
-      Set_Is_Itype (Res);
+
+      --  Restore the relevant attributes of the class-wide subtype
+
+      Set_Chars                   (Res, Res_Chars);
+      Set_Is_Checked_Ghost_Entity (Res, Res_Is_CGE);
+      Set_Is_Ignored_Ghost_Entity (Res, Res_Is_IGE);
+      Set_Is_Ignored_Ghost_Node   (Res, Res_Is_IGN);
+      Set_Scope                   (Res, Res_Scope);
+
+      --  Decorate the class-wide subtype
+
       Set_Associated_Node_For_Itype (Res, N);
-      Set_Is_Public (Res, False);   --  By default, may be changed below.
+      Set_Comes_From_Source         (Res, False);
+      Set_Ekind                     (Res, E_Class_Wide_Subtype);
+      Set_Etype                     (Res, Base_Type (CW_Typ));
+      Set_Freeze_Node               (Res, Empty);
+      Set_Is_Frozen                 (Res, False);
+      Set_Is_Itype                  (Res);
+      Set_Is_Public                 (Res, False);
+      Set_Next_Entity               (Res, Empty);
+      Set_Prev_Entity               (Res, Empty);
+      Set_Sloc                      (Res, Sloc (N));
+
       Set_Public_Status (Res);
-      Set_Chars (Res, Res_Name);
-      Set_Scope (Res, Res_Scope);
-      Set_Ekind (Res, E_Class_Wide_Subtype);
-      Set_Next_Entity (Res, Empty);
-      Set_Etype (Res, Base_Type (CW_Typ));
-      Set_Is_Frozen (Res, False);
-      Set_Freeze_Node (Res, Empty);
-      return (Res);
+
+      return Res;
    end New_Class_Wide_Subtype;
-
-   --------------------------------
-   -- Non_Limited_Designated_Type --
-   ---------------------------------
-
-   function Non_Limited_Designated_Type (T : Entity_Id) return Entity_Id is
-      Desig : constant Entity_Id := Designated_Type (T);
-   begin
-      if Has_Non_Limited_View (Desig) then
-         return Non_Limited_View (Desig);
-      else
-         return Desig;
-      end if;
-   end Non_Limited_Designated_Type;
 
    -----------------------------------
    -- OK_To_Do_Constant_Replacement --
@@ -8634,6 +11018,12 @@ package body Exp_Util is
          return False;
       end if;
 
+      --  There are never alignment issues in CodePeer mode
+
+      if CodePeer_Mode then
+         return False;
+      end if;
+
       case Nkind (N) is
 
          --  Case of indexed component
@@ -8644,12 +11034,12 @@ package body Exp_Util is
                Ptyp : constant Entity_Id := Etype (P);
 
             begin
-               --  If we know the component size and it is less than 64, then
-               --  we are definitely OK. The back end always does assignment of
-               --  misaligned small objects correctly.
+               --  If we know the component size and it is not larger than the
+               --  maximum integer size, then we are OK. The back end does the
+               --  assignment of small misaligned objects correctly.
 
                if Known_Static_Component_Size (Ptyp)
-                 and then Component_Size (Ptyp) <= 64
+                 and then Component_Size (Ptyp) <= System_Max_Integer_Size
                then
                   return False;
 
@@ -8669,13 +11059,15 @@ package body Exp_Util is
                Comp : constant Entity_Id := Entity (Selector_Name (N));
 
             begin
-               --  If there is no component clause, then we are in the clear
-               --  since the back end will never misalign a large component
-               --  unless it is forced to do so. In the clear means we need
-               --  only the recursive test on the prefix.
+               --  This is the crucial test: if the component itself causes
+               --  trouble, then we can stop and return True.
 
                if Component_May_Be_Bit_Aligned (Comp) then
                   return True;
+
+               --  Otherwise, we need to test the prefix, to see if we are
+               --  selecting from a possibly unaligned component.
+
                else
                   return Possible_Bit_Aligned_Component (P);
                end if;
@@ -8688,7 +11080,7 @@ package body Exp_Util is
             return Possible_Bit_Aligned_Component (Prefix (N));
 
          --  For an unchecked conversion, check whether the expression may
-         --  be bit-aligned.
+         --  be bit aligned.
 
          when N_Unchecked_Type_Conversion =>
             return Possible_Bit_Aligned_Component (Expression (N));
@@ -8804,11 +11196,13 @@ package body Exp_Util is
          =>
             --  Check the "then statements" for elsif parts and if statements
 
-            if Nkind_In (N, N_Elsif_Part, N_If_Statement)
+            if Nkind (N) in N_Elsif_Part | N_If_Statement
               and then not Is_Empty_List (Then_Statements (N))
               and then not Are_Wrapped (Then_Statements (N))
               and then Requires_Cleanup_Actions
-                         (Then_Statements (N), False, False)
+                         (L                 => Then_Statements (N),
+                          Lib_Level         => False,
+                          Nested_Constructs => False)
             then
                Block := Wrap_Statements_In_Block (Then_Statements (N));
                Set_Then_Statements (N, New_List (Block));
@@ -8819,13 +11213,14 @@ package body Exp_Util is
             --  Check the "else statements" for conditional entry calls, if
             --  statements and selective accepts.
 
-            if Nkind_In (N, N_Conditional_Entry_Call,
-                            N_If_Statement,
-                            N_Selective_Accept)
+            if Nkind (N) in
+                 N_Conditional_Entry_Call | N_If_Statement | N_Selective_Accept
               and then not Is_Empty_List (Else_Statements (N))
               and then not Are_Wrapped (Else_Statements (N))
               and then Requires_Cleanup_Actions
-                         (Else_Statements (N), False, False)
+                         (L                 => Else_Statements (N),
+                          Lib_Level         => False,
+                          Nested_Constructs => False)
             then
                Block := Wrap_Statements_In_Block (Else_Statements (N));
                Set_Else_Statements (N, New_List (Block));
@@ -8844,7 +11239,10 @@ package body Exp_Util is
          =>
             if not Is_Empty_List (Statements (N))
               and then not Are_Wrapped (Statements (N))
-              and then Requires_Cleanup_Actions (Statements (N), False, False)
+              and then Requires_Cleanup_Actions
+                         (L                 => Statements (N),
+                          Lib_Level         => False,
+                          Nested_Constructs => False)
             then
                if Nkind (N) = N_Loop_Statement
                  and then Present (Identifier (N))
@@ -8861,8 +11259,17 @@ package body Exp_Util is
                Analyze (Block);
             end if;
 
-         when others =>
+         --  Could be e.g. a loop that was transformed into a block or null
+         --  statement. Do nothing for terminate alternatives.
+
+         when N_Block_Statement
+            | N_Null_Statement
+            | N_Terminate_Alternative
+         =>
             null;
+
+         when others =>
+            raise Program_Error;
       end case;
    end Process_Statements_For_Controlled_Objects;
 
@@ -9013,7 +11420,14 @@ package body Exp_Util is
          Related_Nod : Node_Id := Empty) return Entity_Id;
       --  Create an external symbol of the form xxx_FIRST/_LAST if Related_Nod
       --  is present (xxx is taken from the Chars field of Related_Nod),
-      --  otherwise it generates an internal temporary.
+      --  otherwise it generates an internal temporary. The created temporary
+      --  entity is marked as internal.
+
+      function Possible_Side_Effect_In_SPARK (Exp : Node_Id) return Boolean;
+      --  Computes whether a side effect is possible in SPARK, which should
+      --  be handled by removing it from the expression for GNATprove. Note
+      --  that other side effects related to volatile variables are handled
+      --  separately.
 
       ---------------------
       -- Build_Temporary --
@@ -9024,6 +11438,7 @@ package body Exp_Util is
          Id          : Character;
          Related_Nod : Node_Id := Empty) return Entity_Id
       is
+         Temp_Id  : Entity_Id;
          Temp_Nam : Name_Id;
 
       begin
@@ -9036,14 +11451,38 @@ package body Exp_Util is
                Temp_Nam := New_External_Name (Chars (Related_Id), "_LAST");
             end if;
 
-            return Make_Defining_Identifier (Loc, Temp_Nam);
+            Temp_Id := Make_Defining_Identifier (Loc, Temp_Nam);
 
          --  Otherwise generate an internal temporary
 
          else
-            return Make_Temporary (Loc, Id, Related_Nod);
+            Temp_Id := Make_Temporary (Loc, Id, Related_Nod);
          end if;
+
+         Set_Is_Internal (Temp_Id);
+
+         return Temp_Id;
       end Build_Temporary;
+
+      -----------------------------------
+      -- Possible_Side_Effect_In_SPARK --
+      -----------------------------------
+
+      function Possible_Side_Effect_In_SPARK (Exp : Node_Id) return Boolean is
+      begin
+        --  Side-effect removal in SPARK should only occur when not inside a
+        --  generic and not doing a preanalysis, inside an object renaming or
+        --  a type declaration or a for-loop iteration scheme.
+
+         return not Inside_A_Generic
+           and then Full_Analysis
+           and then Nkind (Enclosing_Declaration (Exp)) in
+                      N_Full_Type_Declaration
+                    | N_Iterator_Specification
+                    | N_Loop_Parameter_Specification
+                    | N_Object_Renaming_Declaration
+                    | N_Subtype_Declaration;
+      end Possible_Side_Effect_In_SPARK;
 
       --  Local variables
 
@@ -9062,11 +11501,11 @@ package body Exp_Util is
    begin
       --  Handle cases in which there is nothing to do. In GNATprove mode,
       --  removal of side effects is useful for the light expansion of
-      --  renamings. This removal should only occur when not inside a
-      --  generic and not doing a pre-analysis.
+      --  renamings.
 
       if not Expander_Active
-        and (Inside_A_Generic or not Full_Analysis or not GNATprove_Mode)
+        and then not
+          (GNATprove_Mode and then Possible_Side_Effect_In_SPARK (Exp))
       then
          return;
 
@@ -9094,6 +11533,16 @@ package body Exp_Util is
         and then Side_Effect_Free (Exp, Name_Req, Variable_Ref)
       then
          return;
+
+      --  Generating C code we cannot remove side effect of function returning
+      --  class-wide types since there is no secondary stack (required to use
+      --  'reference).
+
+      elsif Modify_Tree_For_C
+        and then Nkind (Exp) = N_Function_Call
+        and then Is_Class_Wide_Type (Etype (Exp))
+      then
+         return;
       end if;
 
       --  The remaining processing is done with all checks suppressed
@@ -9103,22 +11552,37 @@ package body Exp_Util is
 
       Scope_Suppress.Suppress := (others => True);
 
-      --  If this is an elementary or a small not by-reference record type, and
+      --  If this is a side-effect free attribute reference whose expressions
+      --  are also side-effect free and whose prefix is not a name, remove the
+      --  side effects of the prefix. A copy of the prefix is required in this
+      --  case and it is better not to make an additional one for the attribute
+      --  itself, because the return type of many of them is universal integer,
+      --  which is a very large type for a temporary.
+
+      if Nkind (Exp) = N_Attribute_Reference
+        and then Side_Effect_Free_Attribute (Attribute_Name (Exp))
+        and then Side_Effect_Free (Expressions (Exp), Name_Req, Variable_Ref)
+        and then not Is_Name_Reference (Prefix (Exp))
+      then
+         Remove_Side_Effects (Prefix (Exp), Name_Req, Variable_Ref);
+         goto Leave;
+
+      --  If this is an elementary or a small not-by-reference record type, and
       --  we need to capture the value, just make a constant; this is cheap and
       --  objects of both kinds of types can be bit aligned, so it might not be
       --  possible to generate a reference to them. Likewise if this is not a
-      --  name reference, except for a type conversion because we would enter
+      --  name reference, except for a type conversion, because we would enter
       --  an infinite recursion with Checks.Apply_Predicate_Check if the target
       --  type has predicates (and type conversions need a specific treatment
       --  anyway, see below). Also do it if we have a volatile reference and
       --  Name_Req is not set (see comments for Side_Effect_Free).
 
-      if (Is_Elementary_Type (Exp_Type)
-           or else (Is_Record_Type (Exp_Type)
-                     and then Known_Static_RM_Size (Exp_Type)
-                     and then RM_Size (Exp_Type) <= 64
-                     and then not Has_Discriminants (Exp_Type)
-                     and then not Is_By_Reference_Type (Exp_Type)))
+      elsif (Is_Elementary_Type (Exp_Type)
+              or else (Is_Record_Type (Exp_Type)
+                        and then Known_Static_RM_Size (Exp_Type)
+                        and then RM_Size (Exp_Type) <= System_Max_Integer_Size
+                        and then not Has_Discriminants (Exp_Type)
+                        and then not Is_By_Reference_Type (Exp_Type)))
         and then (Variable_Ref
                    or else (not Is_Name_Reference (Exp)
                              and then Nkind (Exp) /= N_Type_Conversion)
@@ -9144,7 +11608,17 @@ package body Exp_Util is
          --  Generate:
          --    Rnn : Exp_Type renames Expr;
 
-         if Renaming_Req then
+         --  In GNATprove mode, we prefer to use renamings for intermediate
+         --  variables to definition of constants, due to the implicit move
+         --  operation that such a constant definition causes as part of the
+         --  support in GNATprove for ownership pointers. Hence, we generate
+         --  a renaming for a reference to an object of a nonscalar type.
+
+         if Renaming_Req
+           or else (GNATprove_Mode
+                     and then Is_Object_Reference (Exp)
+                     and then not Is_Scalar_Type (Exp_Type))
+         then
             E :=
               Make_Object_Renaming_Declaration (Loc,
                 Defining_Identifier => Def_Id,
@@ -9196,12 +11670,15 @@ package body Exp_Util is
          goto Leave;
 
       --  If this is a type conversion, leave the type conversion and remove
-      --  the side effects in the expression. This is important in several
-      --  circumstances: for change of representations, and also when this is a
-      --  view conversion to a smaller object, where gigi can end up creating
-      --  its own temporary of the wrong size.
+      --  side effects in the expression, unless it is of universal integer,
+      --  which is a very large type for a temporary. This is important in
+      --  several circumstances: for change of representations and also when
+      --  this is a view conversion to a smaller object, where gigi can end
+      --  up creating its own temporary of the wrong size.
 
-      elsif Nkind (Exp) = N_Type_Conversion then
+      elsif Nkind (Exp) = N_Type_Conversion
+        and then Etype (Expression (Exp)) /= Universal_Integer
+      then
          Remove_Side_Effects (Expression (Exp), Name_Req, Variable_Ref);
 
          --  Generating C code the type conversion of an access to constrained
@@ -9264,9 +11741,27 @@ package body Exp_Util is
             Insert_Action (Exp, E);
          end if;
 
-      --  For expressions that denote names, we can use a renaming scheme.
+      --  If this is a packed array component or a selected component with a
+      --  nonstandard representation, we cannot generate a reference because
+      --  the component may be unaligned, so we must use a renaming and this
+      --  renaming is handled by the front end, as the back end may balk at
+      --  the nonstandard representation (see Evaluation_Required in Exp_Ch8).
+
+      elsif Nkind (Exp) in N_Indexed_Component | N_Selected_Component
+        and then Has_Non_Standard_Rep (Etype (Prefix (Exp)))
+      then
+         Def_Id := Build_Temporary (Loc, 'R', Exp);
+         Res := New_Occurrence_Of (Def_Id, Loc);
+
+         Insert_Action (Exp,
+           Make_Object_Renaming_Declaration (Loc,
+             Defining_Identifier => Def_Id,
+             Subtype_Mark        => New_Occurrence_Of (Exp_Type, Loc),
+             Name                => Relocate_Node (Exp)));
+
+      --  For an expression that denotes a name, we can use a renaming scheme.
       --  This is needed for correctness in the case of a volatile object of
-      --  a non-volatile type because the Make_Reference call of the "default"
+      --  a nonvolatile type because the Make_Reference call of the "default"
       --  approach would generate an illegal access value (an access value
       --  cannot designate such an object - see Analyze_Reference).
 
@@ -9287,22 +11782,6 @@ package body Exp_Util is
              Subtype_Mark        => New_Occurrence_Of (Exp_Type, Loc),
              Name                => Relocate_Node (Exp)));
 
-         --  If this is a packed reference, or a selected component with
-         --  a non-standard representation, a reference to the temporary
-         --  will be replaced by a copy of the original expression (see
-         --  Exp_Ch2.Expand_Renaming). Otherwise the temporary must be
-         --  elaborated by gigi, and is of course not to be replaced in-line
-         --  by the expression it renames, which would defeat the purpose of
-         --  removing the side-effect.
-
-         if Nkind_In (Exp, N_Selected_Component, N_Indexed_Component)
-           and then Has_Non_Standard_Rep (Etype (Prefix (Exp)))
-         then
-            null;
-         else
-            Set_Is_Renaming_Of_Object (Def_Id, False);
-         end if;
-
       --  Avoid generating a variable-sized temporary, by generating the
       --  reference just for the function call. The transformation could be
       --  refined to apply only when the array component is constrained by a
@@ -9318,15 +11797,6 @@ package body Exp_Util is
       --  Otherwise we generate a reference to the expression
 
       else
-         --  An expression which is in SPARK mode is considered side effect
-         --  free if the resulting value is captured by a variable or a
-         --  constant.
-
-         if GNATprove_Mode
-           and then Nkind (Parent (Exp)) = N_Object_Declaration
-         then
-            goto Leave;
-
          --  When generating C code we cannot consider side effect free object
          --  declarations that have discriminants and are initialized by means
          --  of a function call since on this target there is no secondary
@@ -9340,7 +11810,7 @@ package body Exp_Util is
          --  be identified here to avoid entering into a never-ending loop
          --  generating internal object declarations.
 
-         elsif Modify_Tree_For_C
+         if Modify_Tree_For_C
            and then Nkind (Parent (Exp)) = N_Object_Declaration
            and then
              (Nkind (Exp) /= N_Function_Call
@@ -9502,6 +11972,10 @@ package body Exp_Util is
 
       Set_Assignment_OK (Res, Assignment_OK (Exp));
 
+      --  Preserve the Do_Range_Check flag in all copies
+
+      Set_Do_Range_Check (Res, Do_Range_Check (Exp));
+
       --  Finally rewrite the original expression and we are done
 
       Rewrite (Exp, Res);
@@ -9510,6 +11984,358 @@ package body Exp_Util is
    <<Leave>>
       Scope_Suppress := Svg_Suppress;
    end Remove_Side_Effects;
+
+   ------------------------
+   -- Replace_References --
+   ------------------------
+
+   procedure Replace_References
+     (Expr      : Node_Id;
+      Par_Typ   : Entity_Id;
+      Deriv_Typ : Entity_Id;
+      Par_Obj   : Entity_Id := Empty;
+      Deriv_Obj : Entity_Id := Empty)
+   is
+      function Is_Deriv_Obj_Ref (Ref : Node_Id) return Boolean;
+      --  Determine whether node Ref denotes some component of Deriv_Obj
+
+      function Replace_Ref (Ref : Node_Id) return Traverse_Result;
+      --  Substitute a reference to an entity with the corresponding value
+      --  stored in table Type_Map.
+
+      function Type_Of_Formal
+        (Call   : Node_Id;
+         Actual : Node_Id) return Entity_Id;
+      --  Find the type of the formal parameter which corresponds to actual
+      --  parameter Actual in subprogram call Call.
+
+      ----------------------
+      -- Is_Deriv_Obj_Ref --
+      ----------------------
+
+      function Is_Deriv_Obj_Ref (Ref : Node_Id) return Boolean is
+         Par : constant Node_Id := Parent (Ref);
+
+      begin
+         --  Detect the folowing selected component form:
+
+         --    Deriv_Obj.(something)
+
+         return
+           Nkind (Par) = N_Selected_Component
+             and then Is_Entity_Name (Prefix (Par))
+             and then Entity (Prefix (Par)) = Deriv_Obj;
+      end Is_Deriv_Obj_Ref;
+
+      -----------------
+      -- Replace_Ref --
+      -----------------
+
+      function Replace_Ref (Ref : Node_Id) return Traverse_Result is
+         procedure Remove_Controlling_Arguments (From_Arg : Node_Id);
+         --  Reset the Controlling_Argument of all function calls that
+         --  encapsulate node From_Arg.
+
+         ----------------------------------
+         -- Remove_Controlling_Arguments --
+         ----------------------------------
+
+         procedure Remove_Controlling_Arguments (From_Arg : Node_Id) is
+            Par : Node_Id;
+
+         begin
+            Par := From_Arg;
+            while Present (Par) loop
+               if Nkind (Par) = N_Function_Call
+                 and then Present (Controlling_Argument (Par))
+               then
+                  Set_Controlling_Argument (Par, Empty);
+
+               --  Prevent the search from going too far
+
+               elsif Is_Body_Or_Package_Declaration (Par) then
+                  exit;
+               end if;
+
+               Par := Parent (Par);
+            end loop;
+         end Remove_Controlling_Arguments;
+
+         --  Local variables
+
+         Context : constant Node_Id    := Parent (Ref);
+         Loc     : constant Source_Ptr := Sloc (Ref);
+         Ref_Id  : Entity_Id;
+         Result  : Traverse_Result;
+
+         New_Ref : Node_Id;
+         --  The new reference which is intended to substitute the old one
+
+         Old_Ref : Node_Id;
+         --  The reference designated for replacement. In certain cases this
+         --  may be a node other than Ref.
+
+         Val : Node_Or_Entity_Id;
+         --  The corresponding value of Ref from the type map
+
+      --  Start of processing for Replace_Ref
+
+      begin
+         --  Assume that the input reference is to be replaced and that the
+         --  traversal should examine the children of the reference.
+
+         Old_Ref := Ref;
+         Result  := OK;
+
+         --  The input denotes a meaningful reference
+
+         if Nkind (Ref) in N_Has_Entity and then Present (Entity (Ref)) then
+            Ref_Id := Entity (Ref);
+            Val    := Type_Map.Get (Ref_Id);
+
+            --  The reference has a corresponding value in the type map, a
+            --  substitution is possible.
+
+            if Present (Val) then
+
+               --  The reference denotes a discriminant
+
+               if Ekind (Ref_Id) = E_Discriminant then
+                  if Nkind (Val) in N_Entity then
+
+                     --  The value denotes another discriminant. Replace as
+                     --  follows:
+
+                     --    _object.Discr -> _object.Val
+
+                     if Ekind (Val) = E_Discriminant then
+                        New_Ref := New_Occurrence_Of (Val, Loc);
+
+                     --  Otherwise the value denotes the entity of a name which
+                     --  constraints the discriminant. Replace as follows:
+
+                     --    _object.Discr -> Val
+
+                     else
+                        pragma Assert (Is_Deriv_Obj_Ref (Old_Ref));
+
+                        New_Ref := New_Occurrence_Of (Val, Loc);
+                        Old_Ref := Parent (Old_Ref);
+                     end if;
+
+                  --  Otherwise the value denotes an arbitrary expression which
+                  --  constraints the discriminant. Replace as follows:
+
+                  --    _object.Discr -> Val
+
+                  else
+                     pragma Assert (Is_Deriv_Obj_Ref (Old_Ref));
+
+                     New_Ref := New_Copy_Tree (Val);
+                     Old_Ref := Parent (Old_Ref);
+                  end if;
+
+               --  Otherwise the reference denotes a primitive. Replace as
+               --  follows:
+
+               --    Primitive -> Val
+
+               else
+                  pragma Assert (Nkind (Val) in N_Entity);
+                  New_Ref := New_Occurrence_Of (Val, Loc);
+               end if;
+
+            --  The reference mentions the _object parameter of the parent
+            --  type's DIC or type invariant procedure. Replace as follows:
+
+            --    _object -> _object
+
+            elsif Present (Par_Obj)
+              and then Present (Deriv_Obj)
+              and then Ref_Id = Par_Obj
+            then
+               New_Ref := New_Occurrence_Of (Deriv_Obj, Loc);
+
+               --  The type of the _object parameter is class-wide when the
+               --  expression comes from an assertion pragma that applies to
+               --  an abstract parent type or an interface. The class-wide type
+               --  facilitates the preanalysis of the expression by treating
+               --  calls to abstract primitives that mention the current
+               --  instance of the type as dispatching. Once the calls are
+               --  remapped to invoke overriding or inherited primitives, the
+               --  calls no longer need to be dispatching. Examine all function
+               --  calls that encapsulate the _object parameter and reset their
+               --  Controlling_Argument attribute.
+
+               if Is_Class_Wide_Type (Etype (Par_Obj))
+                 and then Is_Abstract_Type (Root_Type (Etype (Par_Obj)))
+               then
+                  Remove_Controlling_Arguments (Old_Ref);
+               end if;
+
+               --  The reference to _object acts as an actual parameter in a
+               --  subprogram call which may be invoking a primitive of the
+               --  parent type:
+
+               --    Primitive (... _object ...);
+
+               --  The parent type primitive may not be overridden nor
+               --  inherited when it is declared after the derived type
+               --  definition:
+
+               --    type Parent is tagged private;
+               --    type Child is new Parent with private;
+               --    procedure Primitive (Obj : Parent);
+
+               --  In this scenario the _object parameter is converted to the
+               --  parent type. Due to complications with partial/full views
+               --  and view swaps, the parent type is taken from the formal
+               --  parameter of the subprogram being called.
+
+               if Nkind (Context) in N_Subprogram_Call
+                 and then No (Type_Map.Get (Entity (Name (Context))))
+               then
+                  New_Ref :=
+                    Convert_To (Type_Of_Formal (Context, Old_Ref), New_Ref);
+
+                  --  Do not process the generated type conversion because
+                  --  both the parent type and the derived type are in the
+                  --  Type_Map table. This will clobber the type conversion
+                  --  by resetting its subtype mark.
+
+                  Result := Skip;
+               end if;
+
+            --  Otherwise there is nothing to replace
+
+            else
+               New_Ref := Empty;
+            end if;
+
+            if Present (New_Ref) then
+               Rewrite (Old_Ref, New_Ref);
+
+               --  Update the return type when the context of the reference
+               --  acts as the name of a function call. Note that the update
+               --  should not be performed when the reference appears as an
+               --  actual in the call.
+
+               if Nkind (Context) = N_Function_Call
+                 and then Name (Context) = Old_Ref
+               then
+                  Set_Etype (Context, Etype (Val));
+               end if;
+            end if;
+         end if;
+
+         --  Reanalyze the reference due to potential replacements
+
+         if Nkind (Old_Ref) in N_Has_Etype then
+            Set_Analyzed (Old_Ref, False);
+         end if;
+
+         return Result;
+      end Replace_Ref;
+
+      procedure Replace_Refs is new Traverse_Proc (Replace_Ref);
+
+      --------------------
+      -- Type_Of_Formal --
+      --------------------
+
+      function Type_Of_Formal
+        (Call   : Node_Id;
+         Actual : Node_Id) return Entity_Id
+      is
+         A : Node_Id;
+         F : Entity_Id;
+
+      begin
+         --  Examine the list of actual and formal parameters in parallel
+
+         A := First (Parameter_Associations (Call));
+         F := First_Formal (Entity (Name (Call)));
+         while Present (A) and then Present (F) loop
+            if A = Actual then
+               return Etype (F);
+            end if;
+
+            Next (A);
+            Next_Formal (F);
+         end loop;
+
+         --  The actual parameter must always have a corresponding formal
+
+         pragma Assert (False);
+
+         return Empty;
+      end Type_Of_Formal;
+
+   --  Start of processing for Replace_References
+
+   begin
+      --  Map the attributes of the parent type to the proper corresponding
+      --  attributes of the derived type.
+
+      Map_Types
+        (Parent_Type  => Par_Typ,
+         Derived_Type => Deriv_Typ);
+
+      --  Inspect the input expression and perform substitutions where
+      --  necessary.
+
+      Replace_Refs (Expr);
+   end Replace_References;
+
+   -----------------------------
+   -- Replace_Type_References --
+   -----------------------------
+
+   procedure Replace_Type_References
+     (Expr   : Node_Id;
+      Typ    : Entity_Id;
+      Obj_Id : Entity_Id)
+   is
+      procedure Replace_Type_Ref (N : Node_Id);
+      --  Substitute a single reference of the current instance of type Typ
+      --  with a reference to Obj_Id.
+
+      ----------------------
+      -- Replace_Type_Ref --
+      ----------------------
+
+      procedure Replace_Type_Ref (N : Node_Id) is
+      begin
+         --  Decorate the reference to Typ even though it may be rewritten
+         --  further down. This is done so that routines which examine
+         --  properties of the Original_Node have some semantic information.
+
+         if Nkind (N) = N_Identifier then
+            Set_Entity (N, Typ);
+            Set_Etype  (N, Typ);
+
+         elsif Nkind (N) = N_Selected_Component then
+            Analyze (Prefix (N));
+            Set_Entity (Selector_Name (N), Typ);
+            Set_Etype  (Selector_Name (N), Typ);
+         end if;
+
+         --  Perform the following substitution:
+
+         --    Typ --> _object
+
+         Rewrite (N, New_Occurrence_Of (Obj_Id, Sloc (N)));
+         Set_Comes_From_Source (N, True);
+      end Replace_Type_Ref;
+
+      procedure Replace_Type_Refs is
+        new Replace_Type_References_Generic (Replace_Type_Ref);
+
+   --  Start of processing for Replace_Type_References
+
+   begin
+      Replace_Type_Refs (Expr, Typ);
+   end Replace_Type_References;
 
    ---------------------------
    -- Represented_As_Scalar --
@@ -9532,11 +12358,10 @@ package body Exp_Util is
       Lib_Level : Boolean) return Boolean
    is
       At_Lib_Level : constant Boolean :=
-                       Lib_Level
-                         and then Nkind_In (N, N_Package_Body,
-                                               N_Package_Specification);
+        Lib_Level
+          and then Nkind (N) in N_Package_Body | N_Package_Specification;
       --  N is at the library level if the top-most context is a package and
-      --  the path taken to reach N does not inlcude non-package constructs.
+      --  the path taken to reach N does not include nonpackage constructs.
 
    begin
       case Nkind (N) is
@@ -9549,24 +12374,46 @@ package body Exp_Util is
             | N_Task_Body
          =>
             return
-              Requires_Cleanup_Actions (Declarations (N), At_Lib_Level, True)
-                or else
-                  (Present (Handled_Statement_Sequence (N))
-                    and then
-                      Requires_Cleanup_Actions
-                        (Statements (Handled_Statement_Sequence (N)),
-                         At_Lib_Level, True));
+                Requires_Cleanup_Actions
+                  (L                 => Declarations (N),
+                   Lib_Level         => At_Lib_Level,
+                   Nested_Constructs => True)
+              or else
+                (Present (Handled_Statement_Sequence (N))
+                  and then
+                    Requires_Cleanup_Actions
+                      (L                 =>
+                         Statements (Handled_Statement_Sequence (N)),
+                       Lib_Level         => At_Lib_Level,
+                       Nested_Constructs => True));
+
+         --  Extended return statements are the same as the above, except that
+         --  there is no Declarations field. We do not want to clean up the
+         --  Return_Object_Declarations.
+
+         when N_Extended_Return_Statement =>
+            return
+              Present (Handled_Statement_Sequence (N))
+                and then Requires_Cleanup_Actions
+                           (L                 =>
+                              Statements (Handled_Statement_Sequence (N)),
+                            Lib_Level         => At_Lib_Level,
+                            Nested_Constructs => True);
 
          when N_Package_Specification =>
             return
-              Requires_Cleanup_Actions
-                (Visible_Declarations (N), At_Lib_Level, True)
-                  or else
-              Requires_Cleanup_Actions
-                (Private_Declarations (N), At_Lib_Level, True);
+                Requires_Cleanup_Actions
+                  (L                 => Visible_Declarations (N),
+                   Lib_Level         => At_Lib_Level,
+                   Nested_Constructs => True)
+              or else
+                Requires_Cleanup_Actions
+                  (L                 => Private_Declarations (N),
+                   Lib_Level         => At_Lib_Level,
+                   Nested_Constructs => True);
 
          when others =>
-            return False;
+            raise Program_Error;
       end case;
    end Requires_Cleanup_Actions;
 
@@ -9587,9 +12434,7 @@ package body Exp_Util is
       Typ     : Entity_Id;
 
    begin
-      if No (L)
-        or else Is_Empty_List (L)
-      then
+      if No (L) or else Is_Empty_List (L) then
          return False;
       end if;
 
@@ -9652,16 +12497,6 @@ package body Exp_Util is
 
             elsif Is_Ignored_Ghost_Entity (Obj_Id) then
                null;
-
-            --  The expansion of iterator loops generates an object declaration
-            --  where the Ekind is explicitly set to loop parameter. This is to
-            --  ensure that the loop parameter behaves as a constant from user
-            --  code point of view. Such object are never controlled and do not
-            --  require cleanup actions. An iterator loop over a container of
-            --  controlled objects does not produce such object declarations.
-
-            elsif Ekind (Obj_Id) = E_Loop_Parameter then
-               return False;
 
             --  The object is of the form:
             --    Obj : [constant] Typ [:= Expr];
@@ -9799,8 +12634,7 @@ package body Exp_Util is
             if Is_Ignored_Ghost_Entity (Typ) then
                null;
 
-            elsif ((Is_Access_Type (Typ)
-                      and then not Is_Access_Subprogram_Type (Typ)
+            elsif ((Is_Access_Object_Type (Typ)
                       and then Needs_Finalization
                                  (Available_View (Designated_Type (Typ))))
                     or else (Is_Type (Typ) and then Needs_Finalization (Typ)))
@@ -9901,8 +12735,8 @@ package body Exp_Util is
 
       if (Nkind (Pexp) = N_Assignment_Statement
            and then Expression (Pexp) = Exp)
-        or else Nkind_In (Pexp, N_Object_Declaration,
-                                N_Object_Renaming_Declaration)
+        or else Nkind (Pexp)
+                  in N_Object_Declaration | N_Object_Renaming_Declaration
       then
          return True;
 
@@ -9915,13 +12749,10 @@ package body Exp_Util is
       elsif Nkind (Pexp) = N_Selected_Component
         and then Prefix (Pexp) = Exp
       then
-         if No (Etype (Pexp)) then
-            return True;
-         else
-            return
-              not Has_Discriminants (Etype (Pexp))
-                or else Is_Constrained (Etype (Pexp));
-         end if;
+         return No (Etype (Pexp))
+           or else not Is_Type (Etype (Pexp))
+           or else not Has_Discriminants (Etype (Pexp))
+           or else Is_Constrained (Etype (Pexp));
       end if;
 
       --  Set the output type, this comes from Etype if it is set, otherwise we
@@ -10116,7 +12947,7 @@ package body Exp_Util is
                --  they occur at the same level. If the second one is nested,
                --  then the decision is neither right nor wrong (it would be
                --  equally OK to leave the outer one in place, or take the new
-               --  inner one. Really we should record both, but our data
+               --  inner one). Really we should record both, but our data
                --  structures are not that elaborate.
 
                if Nkind (Current_Value (Ent)) not in N_Subexpr then
@@ -10161,10 +12992,9 @@ package body Exp_Util is
                Set_Entity_Current_Value (Right_Opnd (Cond));
             end if;
 
-         elsif Nkind_In (Cond,
-                 N_Type_Conversion,
-                 N_Qualified_Expression,
-                 N_Expression_With_Actions)
+         elsif Nkind (Cond) in N_Type_Conversion
+                             | N_Qualified_Expression
+                             | N_Expression_With_Actions
          then
             Set_Expression_Current_Value (Expression (Cond));
 
@@ -10203,10 +13033,18 @@ package body Exp_Util is
 
          else
             Check_Restriction (No_Elaboration_Code, N);
+
             Asn :=
               Make_Assignment_Statement (Loc,
                 Name       => New_Occurrence_Of (Ent, Loc),
                 Expression => Make_Integer_Literal (Loc, Uint_1));
+
+            --  Mark the assignment statement as elaboration code. This allows
+            --  the early call region mechanism (see Sem_Elab) to properly
+            --  ignore such assignments even though they are nonpreelaborable
+            --  code.
+
+            Set_Is_Elaboration_Code (Asn);
 
             if Nkind (Parent (N)) = N_Subunit then
                Insert_After (Corresponding_Stub (Parent (N)), Asn);
@@ -10229,7 +13067,7 @@ package body Exp_Util is
             if Nkind (N) = N_Subprogram_Body
               and then Address_Taken (Spec_Id)
               and then
-                Ekind_In (Scope (Spec_Id), E_Block, E_Procedure, E_Function)
+                Ekind (Scope (Spec_Id)) in E_Block | E_Procedure | E_Function
             then
                declare
                   Loc   : constant Source_Ptr := Sloc (N);
@@ -10346,7 +13184,7 @@ package body Exp_Util is
            and then Variable_Ref
          then
             --  Exception is a prefix that is the result of a previous removal
-            --  of side-effects.
+            --  of side effects.
 
             return Is_Entity_Name (Prefix (N))
               and then not Comes_From_Source (Prefix (N))
@@ -10453,7 +13291,7 @@ package body Exp_Util is
          elsif Is_Entity_Name (N) then
             return Ekind (Entity (N)) = E_In_Parameter;
 
-         elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
+         elsif Nkind (N) in N_Indexed_Component | N_Selected_Component then
             return Within_In_Parameter (Prefix (N));
 
          else
@@ -10534,9 +13372,7 @@ package body Exp_Util is
             --  explicit dereference, then the designated object could
             --  be modified by an assignment.
 
-            if Nkind_In (RO, N_Indexed_Component,
-                             N_Explicit_Dereference)
-            then
+            if Nkind (RO) in N_Indexed_Component | N_Explicit_Dereference then
                return False;
 
             --  A selected component must have a safe prefix
@@ -10585,19 +13421,18 @@ package body Exp_Util is
 
       case Nkind (N) is
 
-         --  An attribute reference is side effect free if its expressions
-         --  are side effect free and its prefix is side effect free or
-         --  is an entity reference.
-
-         --  Is this right? what about x'first where x is a variable???
+         --  An attribute reference is side-effect free if its expressions
+         --  are side-effect free and its prefix is side-effect free or is
+         --  an entity reference.
 
          when N_Attribute_Reference =>
-            return
-              Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref)
-                and then Attribute_Name (N) /= Name_Input
-                and then (Is_Entity_Name (Prefix (N))
-                           or else Side_Effect_Free
-                                     (Prefix (N), Name_Req, Variable_Ref));
+            return Side_Effect_Free_Attribute (Attribute_Name (N))
+                     and then
+                   Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref)
+                     and then
+                   (Is_Entity_Name (Prefix (N))
+                      or else
+                    Side_Effect_Free (Prefix (N), Name_Req, Variable_Ref));
 
          --  A binary operator is side effect free if and both operands are
          --  side effect free. For this purpose binary operators include
@@ -10664,10 +13499,13 @@ package body Exp_Util is
               Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref)
                 and then Safe_Prefixed_Reference (N);
 
-         --  A type qualification is side effect free if the expression
-         --  is side effect free.
+         --  A type qualification, type conversion, or unchecked expression is
+         --  side effect free if the expression is side effect free.
 
-         when N_Qualified_Expression =>
+         when N_Qualified_Expression
+            | N_Type_Conversion
+            | N_Unchecked_Expression
+         =>
             return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
 
          --  A selected component is side effect free only if it is a side
@@ -10691,12 +13529,6 @@ package body Exp_Util is
                Side_Effect_Free (Discrete_Range (N), Name_Req, Variable_Ref)
                  and then Safe_Prefixed_Reference (N);
 
-         --  A type conversion is side effect free if the expression to be
-         --  converted is side effect free.
-
-         when N_Type_Conversion =>
-            return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
-
          --  A unary operator is side effect free if the operand
          --  is side effect free.
 
@@ -10712,12 +13544,6 @@ package body Exp_Util is
                 and then Side_Effect_Free
                            (Expression (N), Name_Req, Variable_Ref);
 
-         --  An unchecked expression is side effect free if its expression
-         --  is side effect free.
-
-         when N_Unchecked_Expression =>
-            return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
-
          --  A literal is side effect free
 
          when N_Character_Literal
@@ -10726,6 +13552,12 @@ package body Exp_Util is
             | N_String_Literal
          =>
             return True;
+
+         --  An aggregate is side effect free if all its values are compile
+         --  time known.
+
+         when N_Aggregate =>
+            return Compile_Time_Known_Aggregate (N);
 
          --  We consider that anything else has side effects. This is a bit
          --  crude, but we are pretty close for most common cases, and we
@@ -10764,6 +13596,30 @@ package body Exp_Util is
          return True;
       end if;
    end Side_Effect_Free;
+
+   --------------------------------
+   -- Side_Effect_Free_Attribute --
+   --------------------------------
+
+   function Side_Effect_Free_Attribute (Name : Name_Id) return Boolean is
+   begin
+      case Name is
+         when Name_Input =>
+            return False;
+
+         when Name_Image
+            | Name_Img
+            | Name_Wide_Image
+            | Name_Wide_Wide_Image
+         =>
+            --  CodePeer doesn't want to see replicated copies of 'Image calls
+
+            return not CodePeer_Mode;
+
+         when others =>
+            return True;
+      end case;
+   end Side_Effect_Free_Attribute;
 
    ----------------------------------
    -- Silly_Boolean_Array_Not_Test --
@@ -10833,7 +13689,11 @@ package body Exp_Util is
    --  required for the case of False .. False, since False xor False = False.
    --  See also Silly_Boolean_Array_Not_Test
 
-   procedure Silly_Boolean_Array_Xor_Test (N : Node_Id; T : Entity_Id) is
+   procedure Silly_Boolean_Array_Xor_Test
+     (N : Node_Id;
+      R : Node_Id;
+      T : Entity_Id)
+   is
       Loc : constant Source_Ptr := Sloc (N);
       CT  : constant Entity_Id  := Component_Type (T);
 
@@ -10854,9 +13714,9 @@ package body Exp_Util is
         Make_Raise_Constraint_Error (Loc,
           Condition =>
             Make_And_Then (Loc,
-              Left_Opnd =>
+              Left_Opnd  =>
                 Make_And_Then (Loc,
-                  Left_Opnd =>
+                  Left_Opnd  =>
                     Convert_To (Standard_Boolean,
                       Make_Attribute_Reference (Loc,
                         Prefix         => New_Occurrence_Of (CT, Loc),
@@ -10868,91 +13728,74 @@ package body Exp_Util is
                         Prefix         => New_Occurrence_Of (CT, Loc),
                         Attribute_Name => Name_Last))),
 
-              Right_Opnd => Make_Non_Empty_Check (Loc, Right_Opnd (N))),
-          Reason => CE_Range_Check_Failed));
+              Right_Opnd => Make_Non_Empty_Check (Loc, R)),
+          Reason    => CE_Range_Check_Failed));
    end Silly_Boolean_Array_Xor_Test;
 
-   --------------------------
-   -- Target_Has_Fixed_Ops --
-   --------------------------
+   ----------------------------
+   -- Small_Integer_Type_For --
+   ----------------------------
 
-   Integer_Sized_Small : Ureal;
-   --  Set to 2.0 ** -(Integer'Size - 1) the first time that this function is
-   --  called (we don't want to compute it more than once).
-
-   Long_Integer_Sized_Small : Ureal;
-   --  Set to 2.0 ** -(Long_Integer'Size - 1) the first time that this function
-   --  is called (we don't want to compute it more than once)
-
-   First_Time_For_THFO : Boolean := True;
-   --  Set to False after first call (if Fractional_Fixed_Ops_On_Target)
-
-   function Target_Has_Fixed_Ops
-     (Left_Typ   : Entity_Id;
-      Right_Typ  : Entity_Id;
-      Result_Typ : Entity_Id) return Boolean
+   function Small_Integer_Type_For (S : Uint; Uns : Boolean) return Entity_Id
    is
-      function Is_Fractional_Type (Typ : Entity_Id) return Boolean;
-      --  Return True if the given type is a fixed-point type with a small
-      --  value equal to 2 ** (-(T'Object_Size - 1)) and whose values have
-      --  an absolute value less than 1.0. This is currently limited to
-      --  fixed-point types that map to Integer or Long_Integer.
-
-      ------------------------
-      -- Is_Fractional_Type --
-      ------------------------
-
-      function Is_Fractional_Type (Typ : Entity_Id) return Boolean is
-      begin
-         if Esize (Typ) = Standard_Integer_Size then
-            return Small_Value (Typ) = Integer_Sized_Small;
-
-         elsif Esize (Typ) = Standard_Long_Integer_Size then
-            return Small_Value (Typ) = Long_Integer_Sized_Small;
-
-         else
-            return False;
-         end if;
-      end Is_Fractional_Type;
-
-   --  Start of processing for Target_Has_Fixed_Ops
-
    begin
-      --  Return False if Fractional_Fixed_Ops_On_Target is false
+      pragma Assert (S <= System_Max_Integer_Size);
 
-      if not Fractional_Fixed_Ops_On_Target then
-         return False;
+      if S <= Standard_Short_Short_Integer_Size then
+         if Uns then
+            return Standard_Short_Short_Unsigned;
+         else
+            return Standard_Short_Short_Integer;
+         end if;
+
+      elsif S <= Standard_Short_Integer_Size then
+         if Uns then
+            return Standard_Short_Unsigned;
+         else
+            return Standard_Short_Integer;
+         end if;
+
+      elsif S <= Standard_Integer_Size then
+         if Uns then
+            return Standard_Unsigned;
+         else
+            return Standard_Integer;
+         end if;
+
+      elsif S <= Standard_Long_Integer_Size then
+         if Uns then
+            return Standard_Long_Unsigned;
+         else
+            return Standard_Long_Integer;
+         end if;
+
+      elsif S <= Standard_Long_Long_Integer_Size then
+         if Uns then
+            return Standard_Long_Long_Unsigned;
+         else
+            return Standard_Long_Long_Integer;
+         end if;
+
+      elsif S <= Standard_Long_Long_Long_Integer_Size then
+         if Uns then
+            return Standard_Long_Long_Long_Unsigned;
+         else
+            return Standard_Long_Long_Long_Integer;
+         end if;
+
+      else
+         raise Program_Error;
       end if;
+   end Small_Integer_Type_For;
 
-      --  Here the target has Fractional_Fixed_Ops, if first time, compute
-      --  standard constants used by Is_Fractional_Type.
+   -------------------
+   -- Type_Map_Hash --
+   -------------------
 
-      if First_Time_For_THFO then
-         First_Time_For_THFO := False;
-
-         Integer_Sized_Small :=
-           UR_From_Components
-             (Num   => Uint_1,
-              Den   => UI_From_Int (Standard_Integer_Size - 1),
-              Rbase => 2);
-
-         Long_Integer_Sized_Small :=
-           UR_From_Components
-             (Num   => Uint_1,
-              Den   => UI_From_Int (Standard_Long_Integer_Size - 1),
-              Rbase => 2);
-      end if;
-
-      --  Return True if target supports fixed-by-fixed multiply/divide for
-      --  fractional fixed-point types (see Is_Fractional_Type) and the operand
-      --  and result types are equivalent fractional types.
-
-      return Is_Fractional_Type (Base_Type (Left_Typ))
-        and then Is_Fractional_Type (Base_Type (Right_Typ))
-        and then Is_Fractional_Type (Base_Type (Result_Typ))
-        and then Esize (Left_Typ) = Esize (Right_Typ)
-        and then Esize (Left_Typ) = Esize (Result_Typ);
-   end Target_Has_Fixed_Ops;
+   function Type_Map_Hash (Id : Entity_Id) return Type_Map_Header is
+   begin
+      return Type_Map_Header (Id mod Type_Map_Size);
+   end Type_Map_Hash;
 
    ------------------------------------------
    -- Type_May_Have_Bit_Aligned_Components --
@@ -10977,9 +13820,17 @@ package body Exp_Util is
          begin
             E := First_Component_Or_Discriminant (Typ);
             while Present (E) loop
-               if Component_May_Be_Bit_Aligned (E)
-                 or else Type_May_Have_Bit_Aligned_Components (Etype (E))
-               then
+               --  This is the crucial test: if the component itself causes
+               --  trouble, then we can stop and return True.
+
+               if Component_May_Be_Bit_Aligned (E) then
+                  return True;
+               end if;
+
+               --  Otherwise, we need to test its type, to see if it may
+               --  itself contain a troublesome component.
+
+               if Type_May_Have_Bit_Aligned_Components (Etype (E)) then
                   return True;
                end if;
 
@@ -11005,162 +13856,10 @@ package body Exp_Util is
       Subp_Id  : Entity_Id)
    is
    begin
-      Update_Primitives_Mapping_Of_Types
-        (Par_Typ   => Find_Dispatching_Type (Inher_Id),
-         Deriv_Typ => Find_Dispatching_Type (Subp_Id));
+      Map_Types
+        (Parent_Type  => Find_Dispatching_Type (Inher_Id),
+         Derived_Type => Find_Dispatching_Type (Subp_Id));
    end Update_Primitives_Mapping;
-
-   ----------------------------------------
-   -- Update_Primitives_Mapping_Of_Types --
-   ----------------------------------------
-
-   procedure Update_Primitives_Mapping_Of_Types
-     (Par_Typ   : Entity_Id;
-      Deriv_Typ : Entity_Id)
-   is
-      procedure Add_Primitive (Prim : Entity_Id);
-      --  Find a primitive in the inheritance/overriding chain starting from
-      --  Prim whose dispatching type is parent type Par_Typ and add a mapping
-      --  between the result and primitive Prim.
-
-      -------------------
-      -- Add_Primitive --
-      -------------------
-
-      procedure Add_Primitive (Prim : Entity_Id) is
-         function Ancestor_Primitive (Subp : Entity_Id) return Entity_Id;
-         --  Return the next ancestor primitive in the inheritance/overriding
-         --  chain of subprogram Subp. Return Empty if no such primitive is
-         --  available.
-
-         ------------------------
-         -- Ancestor_Primitive --
-         ------------------------
-
-         function Ancestor_Primitive (Subp : Entity_Id) return Entity_Id is
-            Inher_Prim : constant Entity_Id := Alias (Subp);
-            Over_Prim  : constant Entity_Id := Overridden_Operation (Subp);
-
-         begin
-            --  The current subprogram overrides an ancestor primitive
-
-            if Present (Over_Prim) then
-               return Over_Prim;
-
-            --  The current subprogram is an internally generated alias of an
-            --  inherited ancestor primitive.
-
-            elsif Present (Inher_Prim) then
-               return Inher_Prim;
-
-            --  Otherwise the current subprogram is the root of the inheritance
-            --  or overriding chain.
-
-            else
-               return Empty;
-            end if;
-         end Ancestor_Primitive;
-
-         --  Local variables
-
-         Par_Prim : Entity_Id;
-
-      --  Start of processing for Add_Primitive
-
-      begin
-         --  Inspect both the inheritance chain through the Alias attribute and
-         --  the overriding chain through the Overridden_Operation looking for
-         --  an ancestor primitive with the appropriate dispatching type.
-
-         Par_Prim := Prim;
-         while Present (Par_Prim) loop
-            exit when Find_Dispatching_Type (Par_Prim) = Par_Typ;
-            Par_Prim := Ancestor_Primitive (Par_Prim);
-         end loop;
-
-         --  Create a mapping of the form:
-
-         --    Parent type primitive -> derived type primitive
-
-         if Present (Par_Prim) then
-            Primitives_Mapping.Set (Par_Prim, Prim);
-         end if;
-      end Add_Primitive;
-
-      --  Local variables
-
-      Deriv_Prim : Entity_Id;
-      Par_Prim   : Entity_Id;
-      Par_Prims  : Elist_Id;
-      Prim_Elmt  : Elmt_Id;
-
-   --  Start of processing for Update_Primitives_Mapping_Of_Types
-
-   begin
-      --  Nothing to do if there are no types to work with
-
-      if No (Par_Typ) or else No (Deriv_Typ) then
-         return;
-
-      --  Nothing to do if the mapping already exists
-
-      elsif Primitives_Mapping.Get (Par_Typ) = Deriv_Typ then
-         return;
-      end if;
-
-      --  Create a mapping of the form:
-
-      --    Parent type -> Derived type
-
-      --  to prevent any subsequent attempts to produce the same relations.
-
-      Primitives_Mapping.Set (Par_Typ, Deriv_Typ);
-
-      --  Inspect the primitives of the derived type and determine whether they
-      --  relate to the primitives of the parent type. If there is a meaningful
-      --  relation, create a mapping of the form:
-
-      --    Parent type primitive -> Derived type primitive
-
-      if Present (Direct_Primitive_Operations (Deriv_Typ)) then
-         Prim_Elmt := First_Elmt (Direct_Primitive_Operations (Deriv_Typ));
-         while Present (Prim_Elmt) loop
-            Deriv_Prim := Node (Prim_Elmt);
-
-            if Is_Subprogram (Deriv_Prim)
-              and then Find_Dispatching_Type (Deriv_Prim) = Deriv_Typ
-            then
-               Add_Primitive (Deriv_Prim);
-            end if;
-
-            Next_Elmt (Prim_Elmt);
-         end loop;
-      end if;
-
-      --  If the parent operation is an interface operation, the overriding
-      --  indicator is not present. Instead, we get from the interface
-      --  operation the primitive of the current type that implements it.
-
-      if Is_Interface (Par_Typ) then
-         Par_Prims := Collect_Primitive_Operations (Par_Typ);
-
-         if Present (Par_Prims) then
-            Prim_Elmt := First_Elmt (Par_Prims);
-
-            while Present (Prim_Elmt) loop
-               Par_Prim   := Node (Prim_Elmt);
-               Deriv_Prim :=
-                 Find_Primitive_Covering_Interface (Deriv_Typ, Par_Prim);
-
-               if Present (Deriv_Prim) then
-                  Primitives_Mapping.Set (Par_Prim, Deriv_Prim);
-               end if;
-
-               Next_Elmt (Prim_Elmt);
-            end loop;
-         end if;
-      end if;
-   end Update_Primitives_Mapping_Of_Types;
 
    ----------------------------------
    -- Within_Case_Or_If_Expression --
@@ -11176,8 +13875,7 @@ package body Exp_Util is
 
       Par := Parent (N);
       while Present (Par) loop
-         if Nkind_In (Original_Node (Par), N_Case_Expression,
-                                           N_If_Expression)
+         if Nkind (Original_Node (Par)) in N_Case_Expression | N_If_Expression
          then
             return True;
 
@@ -11193,11 +13891,11 @@ package body Exp_Util is
       return False;
    end Within_Case_Or_If_Expression;
 
-   --------------------------------
-   -- Within_Internal_Subprogram --
-   --------------------------------
+   ------------------------------
+   -- Predicate_Check_In_Scope --
+   ------------------------------
 
-   function Within_Internal_Subprogram return Boolean is
+   function Predicate_Check_In_Scope (N : Node_Id) return Boolean is
       S : Entity_Id;
 
    begin
@@ -11206,10 +13904,23 @@ package body Exp_Util is
          S := Scope (S);
       end loop;
 
-      return Present (S)
-        and then Get_TSS_Name (S) /= TSS_Null
-        and then not Is_Predicate_Function (S)
-        and then not Is_Predicate_Function_M (S);
-   end Within_Internal_Subprogram;
+      if Present (S) then
+
+         --  Predicate checks should only be enabled in init procs for
+         --  expressions coming from source.
+
+         if Is_Init_Proc (S) then
+            return Comes_From_Source (N);
+
+         elsif Get_TSS_Name (S) /= TSS_Null
+           and then not Is_Predicate_Function (S)
+           and then not Is_Predicate_Function_M (S)
+         then
+            return False;
+         end if;
+      end if;
+
+      return True;
+   end Predicate_Check_In_Scope;
 
 end Exp_Util;

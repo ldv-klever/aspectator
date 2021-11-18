@@ -1,5 +1,5 @@
 /* Perform doloop optimizations
-   Copyright (C) 2004-2017 Free Software Foundation, Inc.
+   Copyright (C) 2004-2021 Free Software Foundation, Inc.
    Based on code by Michael P. Hayes (m.hayes@elec.canterbury.ac.nz)
 
 This file is part of GCC.
@@ -32,7 +32,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "expr.h"
 #include "cfgloop.h"
 #include "cfgrtl.h"
-#include "params.h"
 #include "dumpfile.h"
 #include "loop-unroll.h"
 #include "regs.h"
@@ -263,7 +262,7 @@ doloop_condition_get (rtx_insn *doloop_pat)
    describes the number of iterations of the loop.  */
 
 static bool
-doloop_valid_p (struct loop *loop, struct niter_desc *desc)
+doloop_valid_p (class loop *loop, class niter_desc *desc)
 {
   basic_block *body = get_loop_body (loop), bb;
   rtx_insn *insn;
@@ -347,6 +346,8 @@ add_test (rtx cond, edge *e, basic_block dest)
   rtx op0 = XEXP (cond, 0), op1 = XEXP (cond, 1);
   enum rtx_code code = GET_CODE (cond);
   basic_block bb;
+  /* The jump is supposed to handle an unlikely special case.  */
+  profile_probability prob = profile_probability::guessed_never ();
 
   mode = GET_MODE (XEXP (cond, 0));
   if (mode == VOIDmode)
@@ -356,7 +357,8 @@ add_test (rtx cond, edge *e, basic_block dest)
   op0 = force_operand (op0, NULL_RTX);
   op1 = force_operand (op1, NULL_RTX);
   label = block_label (dest);
-  do_compare_rtx_and_jump (op0, op1, code, 0, mode, NULL_RTX, NULL, label, -1);
+  do_compare_rtx_and_jump (op0, op1, code, 0, mode, NULL_RTX, NULL, label,
+			   prob);
 
   jump = get_last_insn ();
   if (!jump || !JUMP_P (jump))
@@ -376,7 +378,7 @@ add_test (rtx cond, edge *e, basic_block dest)
   bb = split_edge_and_insert (*e, seq);
   *e = single_succ_edge (bb);
 
-  if (any_uncondjump_p (jump))
+  if (any_uncondjump_p (jump) && onlyjump_p (jump))
     {
       /* The condition is always true.  */
       delete_insn (jump);
@@ -386,13 +388,49 @@ add_test (rtx cond, edge *e, basic_block dest)
 
   JUMP_LABEL (jump) = label;
 
-  /* The jump is supposed to handle an unlikely special case.  */
-  add_int_reg_note (jump, REG_BR_PROB, 0);
-
   LABEL_NUSES (label)++;
 
-  make_edge (bb, dest, (*e)->flags & ~EDGE_FALLTHRU);
+  edge e2 = make_edge (bb, dest, (*e)->flags & ~EDGE_FALLTHRU);
+  e2->probability = prob;
+  (*e)->probability = prob.invert ();
+  update_br_prob_note (e2->src);
   return true;
+}
+
+/* Fold (add -1; zero_ext; add +1) operations to zero_ext if not wrapping. i.e:
+
+   73: r145:SI=r123:DI#0-0x1
+   74: r144:DI=zero_extend (r145:SI)
+   75: r143:DI=r144:DI+0x1
+   ...
+   31: r135:CC=cmp (r123:DI,0)
+   72: {pc={(r143:DI!=0x1)?L70:pc};r143:DI=r143:DI-0x1;...}
+
+   r123:DI#0-0x1 is param count derived from loop->niter_expr equal to number of
+   loop iterations, if loop iterations expression doesn't overflow, then
+   (zero_extend (r123:DI#0-1))+1 can be simplified to zero_extend.  */
+
+static rtx
+doloop_simplify_count (class loop *loop, scalar_int_mode mode, rtx count)
+{
+  widest_int iterations;
+  if (GET_CODE (count) == ZERO_EXTEND)
+    {
+      rtx extop0 = XEXP (count, 0);
+      if (GET_CODE (extop0) == PLUS)
+	{
+	  rtx addop0 = XEXP (extop0, 0);
+	  rtx addop1 = XEXP (extop0, 1);
+
+	  if (get_max_loop_iterations (loop, &iterations)
+	      && wi::ltu_p (iterations, GET_MODE_MASK (GET_MODE (addop0)))
+	      && addop1 == constm1_rtx)
+	    return simplify_gen_unary (ZERO_EXTEND, mode, addop0,
+				       GET_MODE (addop0));
+	}
+    }
+
+  return simplify_gen_binary (PLUS, mode, count, const1_rtx);
 }
 
 /* Modify the loop to use the low-overhead looping insn where LOOP
@@ -402,7 +440,7 @@ add_test (rtx cond, edge *e, basic_block dest)
    DOLOOP_SEQ.  COUNT is the number of iterations of the LOOP.  */
 
 static void
-doloop_modify (struct loop *loop, struct niter_desc *desc,
+doloop_modify (class loop *loop, class niter_desc *desc,
 	       rtx_insn *doloop_seq, rtx condition, rtx count)
 {
   rtx counter_reg;
@@ -413,8 +451,7 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
   int nonneg = 0;
   bool increment_count;
   basic_block loop_end = desc->out_edge->src;
-  machine_mode mode;
-  rtx true_prob_val;
+  scalar_int_mode mode;
   widest_int iterations;
 
   jump_insn = BB_END (loop_end);
@@ -429,10 +466,6 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
       fputs (" iterations).\n", dump_file);
     }
 
-  /* Get the probability of the original branch. If it exists we would
-     need to update REG_BR_PROB of the new jump_insn.  */
-  true_prob_val = find_reg_note (jump_insn, REG_BR_PROB, NULL_RTX);
-
   /* Discard original jump to continue loop.  The original compare
      result may still be live, so it cannot be discarded explicitly.  */
   delete_insn (jump_insn);
@@ -440,7 +473,8 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
   counter_reg = XEXP (condition, 0);
   if (GET_CODE (counter_reg) == PLUS)
     counter_reg = XEXP (counter_reg, 0);
-  mode = GET_MODE (counter_reg);
+  /* These patterns must operate on integer counters.  */
+  mode = as_a <scalar_int_mode> (GET_MODE (counter_reg));
 
   increment_count = false;
   switch (GET_CODE (condition))
@@ -479,7 +513,7 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
     }
 
   if (increment_count)
-    count = simplify_gen_binary (PLUS, mode, count, const1_rtx);
+    count = doloop_simplify_count (loop, mode, count);
 
   /* Insert initialization of the count register into the loop header.  */
   start_sequence ();
@@ -506,8 +540,7 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
       redirect_edge_and_branch_force (single_succ_edge (preheader), new_preheader);
       set_immediate_dominator (CDI_DOMINATORS, new_preheader, preheader);
 
-      set_zero->count = 0;
-      set_zero->frequency = 0;
+      set_zero->count = profile_count::uninitialized ();
 
       te = single_succ_edge (preheader);
       for (; ass; ass = XEXP (ass, 1))
@@ -523,7 +556,6 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
 	     also be very hard to show that it is impossible, so we must
 	     handle this case.  */
 	  set_zero->count = preheader->count;
-	  set_zero->frequency = preheader->frequency;
 	}
 
       if (EDGE_COUNT (set_zero->preds) == 0)
@@ -575,11 +607,8 @@ doloop_modify (struct loop *loop, struct niter_desc *desc,
     add_reg_note (jump_insn, REG_NONNEG, NULL_RTX);
 
   /* Update the REG_BR_PROB note.  */
-  if (true_prob_val)
-    {
-      /* Seems safer to use the branch probability.  */
-      add_int_reg_note (jump_insn, REG_BR_PROB, desc->in_edge->probability);
-    }
+  if (desc->in_edge->probability.initialized_p ())
+    add_reg_br_prob_note (jump_insn, desc->in_edge->probability);
 }
 
 /* Called through note_stores.  */
@@ -609,9 +638,9 @@ record_reg_sets (rtx x, const_rtx pat ATTRIBUTE_UNUSED, void *data)
    modified.  */
 
 static bool
-doloop_optimize (struct loop *loop)
+doloop_optimize (class loop *loop)
 {
-  machine_mode mode;
+  scalar_int_mode mode;
   rtx doloop_reg;
   rtx count;
   widest_int iterations, iterations_max;
@@ -620,7 +649,7 @@ doloop_optimize (struct loop *loop)
   unsigned level;
   HOST_WIDE_INT est_niter;
   int max_cost;
-  struct niter_desc *desc;
+  class niter_desc *desc;
   unsigned word_mode_size;
   unsigned HOST_WIDE_INT word_mode_max;
   int entered_at_top;
@@ -657,7 +686,7 @@ doloop_optimize (struct loop *loop)
     }
 
   max_cost
-    = COSTS_N_INSNS (PARAM_VALUE (PARAM_MAX_ITERATIONS_COMPUTATION_COST));
+    = COSTS_N_INSNS (param_max_iterations_computation_cost);
   if (set_src_cost (desc->niter_expr, mode, optimize_loop_for_speed_p (loop))
       > max_cost)
     {
@@ -737,7 +766,7 @@ doloop_optimize (struct loop *loop)
     bitmap modified = BITMAP_ALLOC (NULL);
 
     for (rtx_insn *i = doloop_seq; i != NULL; i = NEXT_INSN (i))
-      note_stores (PATTERN (i), record_reg_sets, modified);
+      note_stores (i, record_reg_sets, modified);
 
     basic_block loop_end = desc->out_edge->src;
     bool fail = bitmap_intersect_p (df_get_live_out (loop_end), modified);
@@ -760,7 +789,7 @@ doloop_optimize (struct loop *loop)
 void
 doloop_optimize_loops (void)
 {
-  struct loop *loop;
+  class loop *loop;
 
   if (optimize == 1)
     {

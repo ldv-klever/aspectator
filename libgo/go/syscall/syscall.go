@@ -18,17 +18,17 @@
 // err is an operating system error describing the failure.
 // On most systems, that error has type syscall.Errno.
 //
-// NOTE: This package is locked down. Code outside the standard
-// Go repository should be migrated to use the corresponding
-// package in the golang.org/x/sys repository. That is also where updates
-// required by new systems or versions should be applied.
-// See https://golang.org/s/go1.4-syscall for more information.
+// Deprecated: this package is locked down. Callers should use the
+// corresponding package in the golang.org/x/sys repository instead.
+// That is also where updates required by new systems or versions
+// should be applied. See https://golang.org/s/go1.4-syscall for more
+// information.
 //
 package syscall
 
 import "unsafe"
 
-//go:generate go run mksyscall_windows.go -systemdll -output zsyscall_windows.go syscall_windows.go security_windows.go
+//go:generate go run ./mksyscall_windows.go -systemdll -output zsyscall_windows.go syscall_windows.go security_windows.go
 
 // StringByteSlice converts a string to a NUL-terminated []byte,
 // If s contains a NUL byte this function panics instead of
@@ -83,30 +83,27 @@ var dummy *byte
 
 const sizeofPtr uintptr = uintptr(unsafe.Sizeof(dummy))
 
+// Unix returns the time stored in ts as seconds plus nanoseconds.
 func (ts *Timespec) Unix() (sec int64, nsec int64) {
 	return int64(ts.Sec), int64(ts.Nsec)
 }
 
+// Unix returns the time stored in tv as seconds plus nanoseconds.
 func (tv *Timeval) Unix() (sec int64, nsec int64) {
 	return int64(tv.Sec), int64(tv.Usec) * 1000
 }
 
+// Nano returns the time stored in ts as nanoseconds.
 func (ts *Timespec) Nano() int64 {
 	return int64(ts.Sec)*1e9 + int64(ts.Nsec)
 }
 
+// Nano returns the time stored in tv as nanoseconds.
 func (tv *Timeval) Nano() int64 {
 	return int64(tv.Sec)*1e9 + int64(tv.Usec)*1000
 }
 
-// Getpagesize is provided by the runtime.
+// Getpagesize and Exit are provided by the runtime.
 
 func Getpagesize() int
-
-// use is a no-op, but the compiler cannot see that it is.
-// Calling use(p) ensures that p is kept live until that point.
-// This was needed until Go 1.6 to call syscall.Syscall correctly.
-// As of Go 1.6 the compiler handles that case automatically.
-// The uses and definition of use can be removed early in the Go 1.7 cycle.
-//go:noescape
-func use(p unsafe.Pointer)
+func Exit(code int)

@@ -3,3 +3,4 @@
 /* { dg-options "" } */
 
 void foo() x; /* { dg-error "expected" } */
+/* { dg-error "-:expected" "" { target *-*-* } .+1 } */

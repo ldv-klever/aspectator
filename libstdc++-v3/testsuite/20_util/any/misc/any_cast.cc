@@ -1,7 +1,6 @@
-// { dg-options "-std=gnu++17" }
-// { dg-do run }
+// { dg-do run { target c++17 } }
 
-// Copyright (C) 2014-2017 Free Software Foundation, Inc.
+// Copyright (C) 2014-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -37,7 +36,7 @@ void test01()
   any x(5);                                   // x holds int
   VERIFY(any_cast<int>(x) == 5);              // cast to value
   any_cast<int&>(x) = 10;                     // cast to reference
-  VERIFY(any_cast<int>(x) == 10); 
+  VERIFY(any_cast<int>(x) == 10);
 
   x = "Meow";                                 // x holds const char*
   VERIFY(strcmp(any_cast<const char*>(x), "Meow") == 0);
@@ -46,7 +45,7 @@ void test01()
 
   x = string("Meow");                         // x holds string
   string s, s2("Jane");
-  s = move(any_cast<string&>(x));             // move from any 
+  s = move(any_cast<string&>(x));             // move from any
   VERIFY(s == "Meow");
   any_cast<string&>(x) = move(s2);            // move to any
   VERIFY(any_cast<const string&>(x) == "Jane");
@@ -96,15 +95,6 @@ void test03()
   VERIFY(move_count == 1);
   MoveEnabled&& m3 = any_cast<MoveEnabled&&>(any(m));
   VERIFY(move_count == 1);
-  struct MoveDeleted
-  {
-    MoveDeleted(MoveDeleted&&) = delete;
-    MoveDeleted() = default;
-    MoveDeleted(const MoveDeleted&) = default;
-  };
-  MoveDeleted md;
-  MoveDeleted&& md2 = any_cast<MoveDeleted>(any(std::move(md)));
-  MoveDeleted&& md3 = any_cast<MoveDeleted&&>(any(std::move(md)));
 }
 
 void test04()

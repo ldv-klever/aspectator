@@ -1,10 +1,9 @@
-// { dg-do run { target *-*-freebsd* *-*-dragonfly* *-*-netbsd* *-*-linux* *-*-gnu* *-*-solaris* *-*-cygwin *-*-rtems* *-*-darwin* powerpc-ibm-aix* } }
-// { dg-options "-pthread" { target *-*-freebsd* *-*-dragonfly* *-*-netbsd* *-*-linux* *-*-gnu* *-*-solaris* powerpc-ibm-aix* } }
+// { dg-do run }
+// { dg-additional-options "-pthread" { target pthread } }
 // { dg-require-effective-target c++11 }
-// { dg-require-cstdint "" }
 // { dg-require-gthreads "" }
 
-// Copyright (C) 2014-2017 Free Software Foundation, Inc.
+// Copyright (C) 2014-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -119,7 +118,6 @@ void test02()
 void test03()
 {
   std::promise<void> p1;
-  int i = 0;
   p1.set_value();
   try {
     p1.set_value_at_thread_exit();

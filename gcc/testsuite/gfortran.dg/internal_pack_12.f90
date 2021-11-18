@@ -1,5 +1,5 @@
 ! { dg-do compile }
-! { dg-options "-fdump-tree-original" }
+! { dg-options "-O0 -fdump-tree-original" }
 !
 ! Test the fix for PR43243, where unnecessary calls to internal_pack/unpack
 ! were being produced below. These references are contiguous and so do not
@@ -53,6 +53,6 @@ end
 subroutine bar(x)
   integer :: x(1:*)
   print *, x(1:3)
-  if (any (x(1:3) /= [1,3,5])) call abort ()
+  if (any (x(1:3) /= [1,3,5])) STOP 1
 end subroutine bar
 ! { dg-final { scan-tree-dump-times "unpack" 4 "original" } }

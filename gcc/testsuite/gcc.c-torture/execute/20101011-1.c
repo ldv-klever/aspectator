@@ -1,5 +1,6 @@
 /* { dg-options "-fnon-call-exceptions" } */
 /* With -fnon-call-exceptions 0 / 0 should not be eliminated.  */
+/* { dg-additional-options "-DSIGNAL_SUPPRESS" { target { ! signal } } } */
 
 #ifdef SIGNAL_SUPPRESS
 # define DO_TEST 0
@@ -8,9 +9,6 @@
 # define DO_TEST 0
 #elif defined (__riscv)
   /* On RISC-V division by zero does not trap.  */
-# define DO_TEST 0
-#elif defined (__SPU__)
-  /* On SPU division by zero does not trap.  */
 # define DO_TEST 0
 #elif defined (__sh__)
   /* On SH division by zero does not trap.  */
@@ -90,6 +88,19 @@ __aeabi_idiv0 (int return_value)
      raise an exception on divide by zero.  */
 # define DO_TEST 0
 #elif defined (__nvptx__)
+/* There isn't even a signal function.  */
+# define DO_TEST 0
+#elif defined (__csky__)
+  /* This presently doesn't raise SIGFPE even on csky-linux-gnu, much
+     less bare metal.  See the implementation of __divsi3 in libgcc.  */
+# define DO_TEST 0
+#elif defined (__moxie__)
+  /* Not all moxie configurations may raise exceptions.  */
+# define DO_TEST 0
+#elif defined (__or1k__)
+  /* On OpenRISC division by zero does not trap.  */
+# define DO_TEST 0
+#elif defined (__pru__)
 /* There isn't even a signal function.  */
 # define DO_TEST 0
 #else

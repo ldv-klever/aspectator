@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for MMIX.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
    Contributed by Hans-Peter Nilsson (hp@bitrange.com)
 
 This file is part of GCC.
@@ -18,6 +18,8 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -25,10 +27,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 #include "df.h"
 #include "memmodel.h"
 #include "tm_p.h"
 #include "insn-config.h"
+#include "optabs.h"
 #include "regs.h"
 #include "emit-rtl.h"
 #include "recog.h"
@@ -56,19 +61,16 @@ along with GCC; see the file COPYING3.  If not see
 
 /* We have no means to tell DWARF 2 about the register stack, so we need
    to store the return address on the stack if an exception can get into
-   this function.  FIXME: Narrow condition.  Before any whole-function
-   analysis, df_regs_ever_live_p () isn't initialized.  We know it's up-to-date
-   after reload_completed; it may contain incorrect information some time
-   before that.  Within a RTL sequence (after a call to start_sequence,
-   such as in RTL expanders), leaf_function_p doesn't see all insns
-   (perhaps any insn).  But regs_ever_live is up-to-date when
-   leaf_function_p () isn't, so we "or" them together to get accurate
-   information.  FIXME: Some tweak to leaf_function_p might be
-   preferable.  */
+   this function.  We'll have an "initial value" recorded for the
+   return-register if we've seen a call instruction emitted.  This note
+   will be inaccurate before instructions are emitted, but the only caller
+   at that time is looking for modulo from stack-boundary, to which the
+   return-address does not contribute, and which is always 0 for MMIX
+   anyway.  Beware of calling leaf_function_p here, as it'll abort if
+   called within a sequence.  */
 #define MMIX_CFUN_NEEDS_SAVED_EH_RETURN_ADDRESS			\
  (flag_exceptions						\
-  && ((reload_completed && df_regs_ever_live_p (MMIX_rJ_REGNUM))	\
-      || !leaf_function_p ()))
+  && has_hard_reg_initial_val (Pmode, MMIX_INCOMING_RETURN_ADDRESS_REGNUM))
 
 #define IS_MMIX_EH_RETURN_DATA_REG(REGNO)	\
  (crtl->calls_eh_return		\
@@ -125,9 +127,9 @@ static struct machine_function *mmix_init_machine_status (void);
 static void mmix_encode_section_info (tree, rtx, int);
 static const char *mmix_strip_name_encoding (const char *);
 static void mmix_emit_sp_add (HOST_WIDE_INT offset);
-static void mmix_target_asm_function_prologue (FILE *, HOST_WIDE_INT);
+static void mmix_target_asm_function_prologue (FILE *);
 static void mmix_target_asm_function_end_prologue (FILE *);
-static void mmix_target_asm_function_epilogue (FILE *, HOST_WIDE_INT);
+static void mmix_target_asm_function_epilogue (FILE *);
 static reg_class_t mmix_preferred_reload_class (rtx, reg_class_t);
 static reg_class_t mmix_preferred_output_reload_class (rtx, reg_class_t);
 static bool mmix_legitimate_address_p (machine_mode, rtx, bool);
@@ -136,9 +138,10 @@ static void mmix_reorg (void);
 static void mmix_asm_output_mi_thunk
   (FILE *, tree, HOST_WIDE_INT, HOST_WIDE_INT, tree);
 static void mmix_setup_incoming_varargs
-  (cumulative_args_t, machine_mode, tree, int *, int);
+  (cumulative_args_t, const function_arg_info &, int *, int);
 static void mmix_file_start (void);
 static void mmix_file_end (void);
+static void mmix_init_libfuncs (void);
 static bool mmix_rtx_costs (rtx, machine_mode, int, int, int *, bool);
 static int mmix_register_move_cost (machine_mode,
 				    reg_class_t, reg_class_t);
@@ -146,19 +149,16 @@ static rtx mmix_struct_value_rtx (tree, int);
 static machine_mode mmix_promote_function_mode (const_tree,
 						     machine_mode,
 	                                             int *, const_tree, int);
-static void mmix_function_arg_advance (cumulative_args_t, machine_mode,
-				       const_tree, bool);
-static rtx mmix_function_arg_1 (const cumulative_args_t, machine_mode,
-				const_tree, bool, bool);
-static rtx mmix_function_incoming_arg (cumulative_args_t, machine_mode,
-				       const_tree, bool);
-static rtx mmix_function_arg (cumulative_args_t, machine_mode,
-			      const_tree, bool);
+static void mmix_function_arg_advance (cumulative_args_t,
+				       const function_arg_info &);
+static rtx mmix_function_incoming_arg (cumulative_args_t,
+				       const function_arg_info &);
+static rtx mmix_function_arg (cumulative_args_t, const function_arg_info &);
 static rtx mmix_function_value (const_tree, const_tree, bool);
 static rtx mmix_libcall_value (machine_mode, const_rtx);
 static bool mmix_function_value_regno_p (const unsigned int);
 static bool mmix_pass_by_reference (cumulative_args_t,
-				    machine_mode, const_tree, bool);
+				    const function_arg_info &);
 static bool mmix_frame_pointer_required (void);
 static void mmix_asm_trampoline_template (FILE *);
 static void mmix_trampoline_init (rtx, tree, rtx);
@@ -166,6 +166,9 @@ static void mmix_print_operand (FILE *, rtx, int);
 static void mmix_print_operand_address (FILE *, machine_mode, rtx);
 static bool mmix_print_operand_punct_valid_p (unsigned char);
 static void mmix_conditional_register_usage (void);
+static HOST_WIDE_INT mmix_static_rtx_alignment (machine_mode);
+static HOST_WIDE_INT mmix_constant_alignment (const_tree, HOST_WIDE_INT);
+static HOST_WIDE_INT mmix_starting_frame_offset (void);
 
 /* Target structure macros.  Listed by node.  See `Using and Porting GCC'
    for a general description.  */
@@ -217,8 +220,17 @@ static void mmix_conditional_register_usage (void);
 #undef TARGET_ASM_OUTPUT_SOURCE_FILENAME
 #define TARGET_ASM_OUTPUT_SOURCE_FILENAME mmix_asm_output_source_filename
 
+#undef TARGET_ASM_OUTPUT_IDENT
+#define TARGET_ASM_OUTPUT_IDENT default_asm_output_ident_directive
+
+#undef TARGET_INIT_LIBFUNCS
+#define TARGET_INIT_LIBFUNCS mmix_init_libfuncs
+
 #undef TARGET_CONDITIONAL_REGISTER_USAGE
 #define TARGET_CONDITIONAL_REGISTER_USAGE mmix_conditional_register_usage
+
+#undef TARGET_HAVE_SPECULATION_SAFE_VALUE
+#define TARGET_HAVE_SPECULATION_SAFE_VALUE speculation_safe_value_not_needed
 
 #undef TARGET_RTX_COSTS
 #define TARGET_RTX_COSTS mmix_rtx_costs
@@ -254,7 +266,7 @@ static void mmix_conditional_register_usage (void);
 #undef TARGET_PASS_BY_REFERENCE
 #define TARGET_PASS_BY_REFERENCE mmix_pass_by_reference
 #undef TARGET_CALLEE_COPIES
-#define TARGET_CALLEE_COPIES hook_bool_CUMULATIVE_ARGS_mode_tree_bool_true
+#define TARGET_CALLEE_COPIES hook_bool_CUMULATIVE_ARGS_arg_info_true
 
 #undef TARGET_PREFERRED_RELOAD_CLASS
 #define TARGET_PREFERRED_RELOAD_CLASS mmix_preferred_reload_class
@@ -280,6 +292,14 @@ static void mmix_conditional_register_usage (void);
 #undef TARGET_OPTION_OVERRIDE
 #define TARGET_OPTION_OVERRIDE mmix_option_override
 
+#undef TARGET_STATIC_RTX_ALIGNMENT
+#define TARGET_STATIC_RTX_ALIGNMENT mmix_static_rtx_alignment
+#undef TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT mmix_constant_alignment
+
+#undef TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET mmix_starting_frame_offset
+
 struct gcc_target targetm = TARGET_INITIALIZER;
 
 /* Functions that are expansions for target macros.
@@ -297,8 +317,35 @@ mmix_option_override (void)
      labels.  */
   if (flag_pic)
     {
-      warning (0, "-f%s not supported: ignored", (flag_pic > 1) ? "PIC" : "pic");
+      warning (0, "%<-f%s%> not supported: ignored",
+	       (flag_pic > 1) ? "PIC" : "pic");
       flag_pic = 0;
+    }
+
+  /* Don't bother with mmixal-compatible syntax if it's likely that a
+     certain format of the assembly is expected, like no new-line
+     after the .byte (or BYTE) parameter, when scanning debug-info
+     output, as happens in many places in the gcc testsuite.  The
+     dwarf2 output code (maybe others) takes a shortcut based on the
+     presence of certain assembler directives, instead of calling
+     assemble_integer.  Not worthwhile editing the test-cases:
+     mixed-syntax assembly output already looks too ugly for the
+     intent of being readable, and the resulting mix certainly fails
+     the intent of being compatible with mmixal.  See
+     varasm.c:default_file_start for this triple.  See also
+     mmix_assemble_integer.  */
+  if (flag_verbose_asm || flag_debug_asm || flag_dump_rtl_in_asm)
+    {
+      /* "Reinstate" the defaults from target-def.h that we
+	 overrode.  */
+      targetm.asm_out.byte_op = "\t.byte\t";
+      targetm.asm_out.aligned_op.hi = "\t.short\t";
+      targetm.asm_out.aligned_op.si = "\t.long\t";
+
+      /* Note that TARGET_ASM_ALIGNED_DI_OP is default NULL, so
+	 there's nothing to "reinstate".  Still, we add the universal
+	 default (with "recent" gas) for an address.  */
+      targetm.asm_out.aligned_op.di = "\t.dc.a\t";
     }
 }
 
@@ -332,10 +379,18 @@ mmix_data_alignment (tree type ATTRIBUTE_UNUSED, int basic_align)
   return basic_align;
 }
 
-/* CONSTANT_ALIGNMENT.  */
+/* Implement TARGET_STATIC_RTX_ALIGNMENT.  */
 
-int
-mmix_constant_alignment (tree constant ATTRIBUTE_UNUSED, int basic_align)
+static HOST_WIDE_INT
+mmix_static_rtx_alignment (machine_mode mode)
+{
+  return MAX (GET_MODE_ALIGNMENT (mode), 32);
+}
+
+/* Implement tARGET_CONSTANT_ALIGNMENT.  */
+
+static HOST_WIDE_INT
+mmix_constant_alignment (const_tree, HOST_WIDE_INT basic_align)
 {
   if (basic_align < 32)
     return 32;
@@ -438,7 +493,8 @@ mmix_opposite_regno (int regno, int incoming)
 int
 mmix_local_regno (int regno)
 {
-  return regno <= MMIX_LAST_STACK_REGISTER_REGNUM && !call_used_regs[regno];
+  return (regno <= MMIX_LAST_STACK_REGISTER_REGNUM
+	  && !call_used_or_fixed_reg_p (regno));
 }
 
 /* TARGET_PREFERRED_RELOAD_CLASS.
@@ -492,9 +548,9 @@ mmix_dynamic_chain_address (rtx frame)
   return plus_constant (Pmode, frame, -8);
 }
 
-/* STARTING_FRAME_OFFSET.  */
+/* Implement TARGET_STARTING_FRAME_OFFSET.  */
 
-int
+static HOST_WIDE_INT
 mmix_starting_frame_offset (void)
 {
   /* The old frame pointer is in the slot below the new one, so
@@ -560,7 +616,7 @@ mmix_initial_elimination_offset (int fromreg, int toreg)
      counted; the others go on the register stack.
 
      The frame-pointer is counted too if it is what is eliminated, as we
-     need to balance the offset for it from STARTING_FRAME_OFFSET.
+     need to balance the offset for it from TARGET_STARTING_FRAME_OFFSET.
 
      Also add in the slot for the register stack pointer we save if we
      have a landing pad.
@@ -578,7 +634,7 @@ mmix_initial_elimination_offset (int fromreg, int toreg)
   for (regno = MMIX_FIRST_GLOBAL_REGNUM;
        regno <= 255;
        regno++)
-    if ((df_regs_ever_live_p (regno) && ! call_used_regs[regno])
+    if ((df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       fp_sp_offset += 8;
 
@@ -589,13 +645,13 @@ mmix_initial_elimination_offset (int fromreg, int toreg)
 }
 
 static void
-mmix_function_arg_advance (cumulative_args_t argsp_v, machine_mode mode,
-			   const_tree type, bool named ATTRIBUTE_UNUSED)
+mmix_function_arg_advance (cumulative_args_t argsp_v,
+			   const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *argsp = get_cumulative_args (argsp_v);
-  int arg_size = MMIX_FUNCTION_ARG_SIZE (mode, type);
+  int arg_size = MMIX_FUNCTION_ARG_SIZE (arg.mode, arg.type);
 
-  argsp->regs = ((targetm.calls.must_pass_in_stack (mode, type)
+  argsp->regs = ((targetm.calls.must_pass_in_stack (arg)
 		  || (arg_size > 8
 		      && !TARGET_LIBFUNC
 		      && !argsp->lib))
@@ -607,28 +663,25 @@ mmix_function_arg_advance (cumulative_args_t argsp_v, machine_mode mode,
 
 static rtx
 mmix_function_arg_1 (const cumulative_args_t argsp_v,
-		     machine_mode mode,
-		     const_tree type,
-		     bool named ATTRIBUTE_UNUSED,
-		     bool incoming)
+		     const function_arg_info &arg, bool incoming)
 {
   CUMULATIVE_ARGS *argsp = get_cumulative_args (argsp_v);
 
   /* Last-argument marker.  */
-  if (type == void_type_node)
+  if (arg.end_marker_p ())
     return (argsp->regs < MMIX_MAX_ARGS_IN_REGS)
-      ? gen_rtx_REG (mode,
+      ? gen_rtx_REG (arg.mode,
 		     (incoming
 		      ? MMIX_FIRST_INCOMING_ARG_REGNUM
 		      : MMIX_FIRST_ARG_REGNUM) + argsp->regs)
       : NULL_RTX;
 
   return (argsp->regs < MMIX_MAX_ARGS_IN_REGS
-	  && !targetm.calls.must_pass_in_stack (mode, type)
-	  && (GET_MODE_BITSIZE (mode) <= 64
+	  && !targetm.calls.must_pass_in_stack (arg)
+	  && (GET_MODE_BITSIZE (arg.mode) <= 64
 	      || argsp->lib
 	      || TARGET_LIBFUNC))
-    ? gen_rtx_REG (mode,
+    ? gen_rtx_REG (arg.mode,
 		   (incoming
 		    ? MMIX_FIRST_INCOMING_ARG_REGNUM
 		    : MMIX_FIRST_ARG_REGNUM)
@@ -640,38 +693,33 @@ mmix_function_arg_1 (const cumulative_args_t argsp_v,
    one that must go on stack.  */
 
 static rtx
-mmix_function_arg (cumulative_args_t argsp,
-		   machine_mode mode,
-		   const_tree type,
-		   bool named)
+mmix_function_arg (cumulative_args_t argsp, const function_arg_info &arg)
 {
-  return mmix_function_arg_1 (argsp, mode, type, named, false);
+  return mmix_function_arg_1 (argsp, arg, false);
 }
 
 static rtx
 mmix_function_incoming_arg (cumulative_args_t argsp,
-			    machine_mode mode,
-			    const_tree type,
-			    bool named)
+			    const function_arg_info &arg)
 {
-  return mmix_function_arg_1 (argsp, mode, type, named, true);
+  return mmix_function_arg_1 (argsp, arg, true);
 }
 
 /* Returns nonzero for everything that goes by reference, 0 for
    everything that goes by value.  */
 
 static bool
-mmix_pass_by_reference (cumulative_args_t argsp_v, machine_mode mode,
-			const_tree type, bool named ATTRIBUTE_UNUSED)
+mmix_pass_by_reference (cumulative_args_t argsp_v,
+			const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *argsp = get_cumulative_args (argsp_v);
 
   /* FIXME: Check: I'm not sure the must_pass_in_stack check is
      necessary.  */
-  if (targetm.calls.must_pass_in_stack (mode, type))
+  if (targetm.calls.must_pass_in_stack (arg))
     return true;
 
-  if (MMIX_FUNCTION_ARG_SIZE (mode, type) > 8
+  if (MMIX_FUNCTION_ARG_SIZE (arg.mode, arg.type) > 8
       && !TARGET_LIBFUNC
       && (!argsp || !argsp->lib))
     return true;
@@ -819,8 +867,7 @@ mmix_asm_preferred_eh_data_format (int code ATTRIBUTE_UNUSED,
    mmix_reorg.  */
 
 static void
-mmix_target_asm_function_prologue (FILE *stream ATTRIBUTE_UNUSED,
-				   HOST_WIDE_INT framesize ATTRIBUTE_UNUSED)
+mmix_target_asm_function_prologue (FILE *)
 {
   cfun->machine->in_prologue = 1;
 }
@@ -849,7 +896,7 @@ mmix_reorg (void)
   for (regno = MMIX_LAST_STACK_REGISTER_REGNUM;
        regno >= 0;
        regno--)
-    if ((df_regs_ever_live_p (regno) && !call_used_regs[regno])
+    if ((df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	|| (regno == MMIX_FRAME_POINTER_REGNUM && frame_pointer_needed))
       break;
 
@@ -878,8 +925,7 @@ mmix_reorg (void)
 /* TARGET_ASM_FUNCTION_EPILOGUE.  */
 
 static void
-mmix_target_asm_function_epilogue (FILE *stream,
-				   HOST_WIDE_INT locals_size ATTRIBUTE_UNUSED)
+mmix_target_asm_function_epilogue (FILE *stream)
 {
   /* Emit an \n for readability of the generated assembly.  */
   fputc ('\n', stream);
@@ -889,7 +935,7 @@ mmix_target_asm_function_epilogue (FILE *stream,
 
 static void
 mmix_asm_output_mi_thunk (FILE *stream,
-			  tree fndecl ATTRIBUTE_UNUSED,
+			  tree thunk_fndecl ATTRIBUTE_UNUSED,
 			  HOST_WIDE_INT delta,
 			  HOST_WIDE_INT vcall_offset ATTRIBUTE_UNUSED,
 			  tree func)
@@ -898,6 +944,9 @@ mmix_asm_output_mi_thunk (FILE *stream,
      location of structure to return as invisible first argument), you
      need to tweak this code too.  */
   const char *regname = reg_names[MMIX_FIRST_INCOMING_ARG_REGNUM];
+  const char *fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk_fndecl));
+
+  assemble_start_function (thunk_fndecl, fnname);
 
   if (delta >= 0 && delta < 65536)
     fprintf (stream, "\tINCL %s,%d\n", regname, (int)delta);
@@ -912,6 +961,7 @@ mmix_asm_output_mi_thunk (FILE *stream,
   fprintf (stream, "\tJMP ");
   assemble_name (stream, XSTR (XEXP (DECL_RTL (func), 0), 0));
   fprintf (stream, "\n");
+  assemble_end_function (thunk_fndecl, fnname);
 }
 
 /* FUNCTION_PROFILER.  */
@@ -929,8 +979,7 @@ mmix_function_profiler (FILE *stream ATTRIBUTE_UNUSED,
 
 static void
 mmix_setup_incoming_varargs (cumulative_args_t args_so_farp_v,
-			     machine_mode mode,
-			     tree vartype,
+			     const function_arg_info &arg,
 			     int *pretend_sizep,
 			     int second_time ATTRIBUTE_UNUSED)
 {
@@ -943,7 +992,7 @@ mmix_setup_incoming_varargs (cumulative_args_t args_so_farp_v,
 
   /* We assume that one argument takes up one register here.  That should
      be true until we start messing with multi-reg parameters.  */
-  if ((7 + (MMIX_FUNCTION_ARG_SIZE (mode, vartype))) / 8 != 1)
+  if ((7 + (MMIX_FUNCTION_ARG_SIZE (arg.mode, arg.type))) / 8 != 1)
     internal_error ("MMIX Internal: Last named vararg would not fit in a register");
 }
 
@@ -1287,6 +1336,20 @@ mmix_asm_output_source_filename (FILE *stream, const char *name)
   fprintf (stream, "\n");
 }
 
+/* Unfortunately, by default __builtin_ffs is expanded to ffs for
+   targets where INT_TYPE_SIZE < BITS_PER_WORD.  That together with
+   newlib since 2017-07-04 implementing ffs as __builtin_ffs leads to
+   (newlib) ffs recursively calling itself.  But, because of argument
+   promotion, and with ffs we're counting from the least bit, the
+   libgcc equivalent for ffsl works equally well for int arguments, so
+   just use that.  */
+
+static void
+mmix_init_libfuncs (void)
+{
+  set_optab_libfunc (ffs_optab, SImode, "__ffsdi2");
+}
+
 /* OUTPUT_QUOTED_STRING.  */
 
 void
@@ -1345,15 +1408,22 @@ mmix_assemble_integer (rtx x, unsigned int size, int aligned_p)
 	   that's ok, because we can punt to generic functions.  We then
 	   pretend that aligned data isn't needed, so the usual .<pseudo>
 	   syntax is used (which works for aligned data too).  We actually
-	   *must* do that, since we say we don't have simple aligned
-	   pseudos, causing this function to be called.  We just try and
-	   keep as much compatibility as possible with mmixal syntax for
-	   normal cases (i.e. without GNU extensions and C only).  */
+	   *must* do that, since we (usually) say we don't have simple aligned
+	   pseudos, causing this function to be called.  See
+	   mmix_option_override for an exception.  We just try and keep as
+	   much compatibility as possible with mmixal syntax for normal
+	   cases (i.e. without GNU extensions and C only).  */
       case 1:
 	if (GET_CODE (x) != CONST_INT)
 	  {
-	    aligned_p = 0;
-	    break;
+	    /* There is no "unaligned byte" op or generic function to
+	       which we can punt, so we have to handle this here.  As
+	       the expression isn't a plain literal, the generated
+	       assembly-code can't be mmixal-equivalent (i.e. "BYTE"
+	       won't work) and thus it's ok to emit the default op
+	       ".byte". */
+	    assemble_integer_with_op ("\t.byte\t", x);
+	    return true;
 	  }
 	fputs ("\tBYTE\t", asm_out_file);
 	mmix_print_operand (asm_out_file, x, 'B');
@@ -1536,7 +1606,8 @@ mmix_print_operand (FILE *stream, rtx x, int code)
       if (TARGET_BRANCH_PREDICT)
 	{
 	  x = find_reg_note (current_output_insn, REG_BR_PROB, 0);
-	  if (x && XINT (x, 0) > REG_BR_PROB_BASE / 2)
+	  if (x && profile_probability::from_reg_br_prob_note (XINT (x, 0))
+	      > profile_probability::even ())
 	    putc ('P', stream);
 	}
       return;
@@ -1918,7 +1989,7 @@ mmix_use_simple_return (void)
     /* Note that we assume that the frame-pointer-register is one of these
        registers, in which case we don't count it here.  */
     if ((((regno != MMIX_FRAME_POINTER_REGNUM || !frame_pointer_needed)
-	  && df_regs_ever_live_p (regno) && !call_used_regs[regno]))
+	  && df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno)))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       return 0;
 
@@ -1946,6 +2017,7 @@ mmix_expand_prologue (void)
        + crtl->args.pretend_args_size
        + locals_size + 7) & ~7;
   HOST_WIDE_INT offset = -8;
+  HOST_WIDE_INT total_allocated_stack_space = 0;
 
   /* Add room needed to save global non-register-stack registers.  */
   for (regno = 255;
@@ -1954,7 +2026,7 @@ mmix_expand_prologue (void)
     /* Note that we assume that the frame-pointer-register is one of these
        registers, in which case we don't count it here.  */
     if ((((regno != MMIX_FRAME_POINTER_REGNUM || !frame_pointer_needed)
-	  && df_regs_ever_live_p (regno) && !call_used_regs[regno]))
+	  && df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno)))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       stack_space_to_allocate += 8;
 
@@ -1995,6 +2067,8 @@ mmix_expand_prologue (void)
 		? (256 - 8) : stack_space_to_allocate;
 
 	      mmix_emit_sp_add (-stack_chunk);
+	      total_allocated_stack_space += stack_chunk;
+
 	      offset += stack_chunk;
 	      stack_space_to_allocate -= stack_chunk;
 	    }
@@ -2023,6 +2097,7 @@ mmix_expand_prologue (void)
 	    ? (256 - 8 - 8) : stack_space_to_allocate;
 
 	  mmix_emit_sp_add (-stack_chunk);
+	  total_allocated_stack_space += stack_chunk;
 
 	  offset += stack_chunk;
 	  stack_space_to_allocate -= stack_chunk;
@@ -2058,6 +2133,7 @@ mmix_expand_prologue (void)
 	    ? (256 - 8 - 8) : stack_space_to_allocate;
 
 	  mmix_emit_sp_add (-stack_chunk);
+	  total_allocated_stack_space += stack_chunk;
 
 	  offset += stack_chunk;
 	  stack_space_to_allocate -= stack_chunk;
@@ -2102,6 +2178,7 @@ mmix_expand_prologue (void)
 	    ? (256 - 8 - 8) : stack_space_to_allocate;
 
 	  mmix_emit_sp_add (-stack_chunk);
+	  total_allocated_stack_space += stack_chunk;
 
 	  offset += stack_chunk;
 	  stack_space_to_allocate -= stack_chunk;
@@ -2140,7 +2217,7 @@ mmix_expand_prologue (void)
        regno >= MMIX_FIRST_GLOBAL_REGNUM;
        regno--)
     if (((regno != MMIX_FRAME_POINTER_REGNUM || !frame_pointer_needed)
-	 && df_regs_ever_live_p (regno) && ! call_used_regs[regno])
+	 && df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       {
 	rtx insn;
@@ -2152,6 +2229,8 @@ mmix_expand_prologue (void)
 		 ? (256 - offset - 8) : stack_space_to_allocate);
 
 	    mmix_emit_sp_add (-stack_chunk);
+	    total_allocated_stack_space += stack_chunk;
+
 	    offset += stack_chunk;
 	    stack_space_to_allocate -= stack_chunk;
 	  }
@@ -2169,6 +2248,14 @@ mmix_expand_prologue (void)
      wasn't allocated above.  */
   if (stack_space_to_allocate)
     mmix_emit_sp_add (-stack_space_to_allocate);
+  total_allocated_stack_space += stack_space_to_allocate;
+
+  /* Let's assume that reporting the usage of the regular stack on its
+     own, is more useful than either not supporting -fstack-usage or
+     reporting the sum of the usages of the regular stack and the
+     register stack.  */
+  if (flag_stack_usage_info)
+    current_function_static_stack_size = total_allocated_stack_space;
 }
 
 /* Expands the function epilogue into RTX.  */
@@ -2193,7 +2280,7 @@ mmix_expand_epilogue (void)
        regno >= MMIX_FIRST_GLOBAL_REGNUM;
        regno--)
     if (((regno != MMIX_FRAME_POINTER_REGNUM || !frame_pointer_needed)
-	 && df_regs_ever_live_p (regno) && !call_used_regs[regno])
+	 && df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       stack_space_to_deallocate += 8;
 
@@ -2222,7 +2309,7 @@ mmix_expand_epilogue (void)
        regno <= 255;
        regno++)
     if (((regno != MMIX_FRAME_POINTER_REGNUM || !frame_pointer_needed)
-	 && df_regs_ever_live_p (regno) && !call_used_regs[regno])
+	 && df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	|| IS_MMIX_EH_RETURN_DATA_REG (regno))
       {
 	if (offset > 255)
@@ -2647,12 +2734,12 @@ mmix_output_condition (FILE *stream, const_rtx x, int reversed)
 #undef CCEND
 
   static const struct cc_type_conv cc_convs[]
-    = {{CC_FUNmode, cc_fun_convs},
-       {CC_FPmode, cc_fp_convs},
-       {CC_FPEQmode, cc_fpeq_convs},
-       {CC_UNSmode, cc_uns_convs},
-       {CCmode, cc_signed_convs},
-       {DImode, cc_di_convs}};
+    = {{E_CC_FUNmode, cc_fun_convs},
+       {E_CC_FPmode, cc_fp_convs},
+       {E_CC_FPEQmode, cc_fpeq_convs},
+       {E_CC_UNSmode, cc_uns_convs},
+       {E_CCmode, cc_signed_convs},
+       {E_DImode, cc_di_convs}};
 
   size_t i;
   int j;

@@ -1,6 +1,6 @@
 /* Definitions of target machine for GCC,
    for ARM with targeting the VXWorks run time environment. 
-   Copyright (C) 1999-2017 Free Software Foundation, Inc.
+   Copyright (C) 1999-2021 Free Software Foundation, Inc.
 
    Contributed by: Mike Stump <mrs@wrs.com>
    Brought up to date by CodeSourcery, LLC.
@@ -26,26 +26,53 @@ a copy of the GCC Runtime Library Exception along with this program;
 see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 <http://www.gnu.org/licenses/>.  */
 
+/* TARGET_OS_CPP_BUILTINS, down to BPABI if defined.  */
 
-#define TARGET_OS_CPP_BUILTINS()		\
-  do {						\
-    if (TARGET_BIG_END)				\
-      builtin_define ("ARMEB");			\
-    else					\
-      builtin_define ("ARMEL");			\
-						\
-    if (arm_arch_xscale)			\
-      builtin_define ("CPU=XSCALE");		\
-    else if (arm_arch5)				\
-      builtin_define ("CPU=ARMARCH5");		\
-    else if (arm_arch4)				\
-      {						\
-	if (TARGET_THUMB)			\
-	  builtin_define ("CPU=ARMARCH4_T");	\
-	else					\
-	  builtin_define ("CPU=ARMARCH4");	\
-      }						\
-    VXWORKS_OS_CPP_BUILTINS ();			\
+#if defined (TARGET_BPABI_CPP_BUILTINS)
+#define MAYBE_TARGET_BPABI_CPP_BUILTINS TARGET_BPABI_CPP_BUILTINS
+#else
+#define MAYBE_TARGET_BPABI_CPP_BUILTINS()
+#endif
+
+#undef TARGET_OS_CPP_BUILTINS
+#define TARGET_OS_CPP_BUILTINS()			\
+  do {							\
+    if (TARGET_BIG_END)					\
+      builtin_define ("ARMEB");				\
+    else						\
+      builtin_define ("ARMEL");				\
+							\
+    if (arm_arch_xscale)				\
+      builtin_define ("_VX_CPU=XSCALE");		\
+    else if (arm_arch8)					\
+      builtin_define ("_VX_CPU=ARMARCH8A");		\
+    else if (arm_arch7)					\
+      {							\
+	if (!arm_arch_notm)				\
+	  builtin_define ("_VX_CPU=ARMARCH7M");		\
+	else if (TARGET_THUMB)				\
+	  builtin_define ("_VX_CPU=ARMARCH7_T2");	\
+	else						\
+	  builtin_define ("_VX_CPU=ARMARCH7");		\
+      }							\
+    else if (arm_arch6)					\
+      {							\
+	if (TARGET_THUMB)				\
+	  builtin_define ("_VX_CPU=ARMARCH6_T");	\
+	else						\
+	  builtin_define ("_VX_CPU=ARMARCH6");		\
+      }							\
+    else if (arm_arch5t)				\
+	builtin_define ("_VX_CPU=ARMARCH5_T");		\
+    else if (arm_arch4)					\
+      {							\
+	if (TARGET_THUMB)				\
+	  builtin_define ("_VX_CPU=ARMARCH4_T");	\
+	else						\
+	  builtin_define ("_VX_CPU=ARMARCH4");		\
+      }							\
+    VXWORKS_OS_CPP_BUILTINS ();				\
+    MAYBE_TARGET_BPABI_CPP_BUILTINS ();			\
   } while (0)
 
 #undef SUBTARGET_OVERRIDE_OPTIONS
@@ -55,27 +82,25 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef SUBTARGET_CPP_SPEC
 #define SUBTARGET_CPP_SPEC "-D__ELF__" VXWORKS_ADDITIONAL_CPP_SPEC
 
+/* .text.hot and .text.unlikely sections are badly handled by the
+   VxWorks kernel mode loader for ARM style exceptions.  */
 #undef  CC1_SPEC
-#define CC1_SPEC							\
-"%{tstrongarm:-mlittle-endian -mcpu=strongarm ;				\
-   t4:        -mlittle-endian -march=armv4 ;				\
-   t4be:      -mbig-endian -march=armv4 ;				\
-   t4t:       -mthumb -mthumb-interwork -mlittle-endian -march=armv4t ;	\
-   t4tbe:     -mthumb -mthumb-interwork -mbig-endian -march=armv4t ;	\
-   t5:        -mlittle-endian -march=armv5 ;				\
-   t5be:      -mbig-endian -march=armv5 ;				\
-   t5t:       -mthumb -mthumb-interwork -mlittle-endian -march=armv5 ;	\
-   t5tbe:     -mthumb -mthumb-interwork -mbig-endian -march=armv5 ;	\
-   txscale:   -mlittle-endian -mcpu=xscale ;				\
-   txscalebe: -mbig-endian -mcpu=xscale ;				\
-            : -march=armv4}"
+#define CC1_SPEC VXWORKS_CC1_SPEC " %{!mrtp:-fno-reorder-functions}"
 
-/* Pass -EB for big-endian targets.  */
-#define VXWORKS_ENDIAN_SPEC \
-  "%{mbig-endian|t4be|t4tbe|t5be|t5tbe|txscalebe:-EB}"
+/* Translate an explicit -mbig-endian as an explicit -EB to assembler
+   and linker, and pass abi options matching the target expectations
+   or command-line requests.  */
+#define VXWORKS_ENDIAN_SPEC "%{mbig-endian:-EB}"
+
+#if defined (TARGET_BPABI_CPP_BUILTINS)
+#define MAYBE_ASM_ABI_SPEC \
+  "%{mabi=apcs-gnu|mabi=atpcs:-meabi=gnu;:-meabi=5}" TARGET_FIX_V4BX_SPEC
+#else
+#define MAYBE_ASM_ABI_SPEC
+#endif
 
 #undef SUBTARGET_EXTRA_ASM_SPEC
-#define SUBTARGET_EXTRA_ASM_SPEC VXWORKS_ENDIAN_SPEC
+#define SUBTARGET_EXTRA_ASM_SPEC MAYBE_ASM_ABI_SPEC " " VXWORKS_ENDIAN_SPEC
 
 #undef LINK_SPEC
 #define LINK_SPEC VXWORKS_LINK_SPEC " " VXWORKS_ENDIAN_SPEC
@@ -91,8 +116,6 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 /* There is no default multilib.  */
 #undef MULTILIB_DEFAULTS
-
-#define FPUTYPE_DEFAULT "vfp"
 
 #undef FUNCTION_PROFILER
 #define FUNCTION_PROFILER VXWORKS_FUNCTION_PROFILER
@@ -119,3 +142,15 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 /* This platform supports the probing method of stack checking (RTP mode).
    8K is reserved in the stack to propagate exceptions in case of overflow.  */
 #define STACK_CHECK_PROTECT 8192
+
+/* Unless overridded by the target options, the default is little-endian.  */
+#define TARGET_ENDIAN_DEFAULT 0
+
+/* The VxWorks environment on ARM is llvm based and we need to link
+   against libllvm.a to resolve __aeabi_memcpy4.  */
+
+#undef VXWORKS_PERSONALITY
+#define VXWORKS_PERSONALITY "llvm"
+
+#undef VXWORKS_EXTRA_LIBS_RTP
+#define VXWORKS_EXTRA_LIBS_RTP "-lllvm"

@@ -1,4 +1,4 @@
-.. Copyright (C) 2014-2017 Free Software Foundation, Inc.
+.. Copyright (C) 2014-2021 Free Software Foundation, Inc.
    Originally contributed by David Malcolm <dmalcolm@redhat.com>
 
    This is free software: you can redistribute it and/or modify it
@@ -126,6 +126,30 @@ Simple expressions
    underlying string, so it is valid to pass in a pointer to an on-stack
    buffer.
 
+Vector expressions
+******************
+
+.. function:: gcc_jit_rvalue * \
+              gcc_jit_context_new_rvalue_from_vector (gcc_jit_context *ctxt, \
+                                                      gcc_jit_location *loc, \
+                                                      gcc_jit_type *vec_type, \
+                                                      size_t num_elements, \
+                                                      gcc_jit_rvalue **elements)
+
+   Build a vector rvalue from an array of elements.
+
+   "vec_type" should be a vector type, created using
+   :func:`gcc_jit_type_get_vector`.
+
+   "num_elements" should match that of the vector type.
+
+   This entrypoint was added in :ref:`LIBGCCJIT_ABI_10`; you can test for
+   its presence using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_gcc_jit_context_new_rvalue_from_vector
+
 Unary Operations
 ****************
 
@@ -137,6 +161,8 @@ Unary Operations
                                             gcc_jit_rvalue *rvalue)
 
    Build a unary operation out of an input rvalue.
+
+   The parameter ``result_type`` must be a numeric type.
 
 .. type:: enum gcc_jit_unary_op
 
@@ -202,6 +228,8 @@ Binary Operations
                                                              gcc_jit_rvalue *a, gcc_jit_rvalue *b)
 
    Build a binary operation out of two constituent rvalues.
+
+   The parameter ``result_type`` must be a numeric type.
 
 .. type:: enum gcc_jit_binary_op
 
@@ -416,7 +444,8 @@ Function calls
                                                     int numargs, \
                                                     gcc_jit_rvalue **args)
 
-   Given an rvalue of function pointer type, and the given table of
+   Given an rvalue of function pointer type (e.g. from
+   :c:func:`gcc_jit_context_new_function_ptr_type`), and the given table of
    argument rvalues, construct a call to the function pointer, with the
    result as an rvalue.
 
@@ -448,6 +477,19 @@ Function calls
    .. code-block:: c
 
       #ifdef LIBGCCJIT_HAVE_gcc_jit_rvalue_set_bool_require_tail_call
+
+Function pointers
+*****************
+
+Function pointers can be obtained:
+
+  * from a :c:type:`gcc_jit_function` using
+    :c:func:`gcc_jit_function_get_address`, or
+
+  * from an existing function using
+    :c:func:`gcc_jit_context_new_rvalue_from_ptr`,
+    using a function pointer type obtained using
+    :c:func:`gcc_jit_context_new_function_ptr_type`.
 
 Type-coercion
 *************
@@ -509,6 +551,8 @@ Global variables
 
    Add a new global variable of the given type and name to the context.
 
+   The parameter ``type`` must be non-`void`.
+
    The parameter ``name`` must be non-NULL.  The call takes a copy of the
    underlying string, so it is valid to pass in a pointer to an on-stack
    buffer.
@@ -537,6 +581,27 @@ Global variables
       Global is not defined by the client code; we're merely
       referring to it.  Analogous to using an "extern" global from a
       header file.
+
+.. function:: gcc_jit_lvalue *\
+              gcc_jit_global_set_initializer (gcc_jit_lvalue *global,\
+                                              const void *blob,\
+                                              size_t num_bytes)
+
+   Set an initializer for ``global`` using the memory content pointed
+   by ``blob`` for ``num_bytes``.  ``global`` must be an array of an
+   integral type.  Return the global itself.
+
+   The parameter ``blob`` must be non-NULL. The call copies the memory
+   pointed by ``blob`` for ``num_bytes`` bytes, so it is valid to pass
+   in a pointer to an on-stack buffer.  The content will be stored in
+   the compilation unit and used as initialization value of the array.
+
+   This entrypoint was added in :ref:`LIBGCCJIT_ABI_14`; you can test for
+   its presence using
+
+   .. code-block:: c
+
+      #ifdef LIBGCCJIT_HAVE_gcc_jit_global_set_initializer
 
 Working with pointers, structs and unions
 -----------------------------------------

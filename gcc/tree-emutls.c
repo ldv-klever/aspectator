@@ -1,5 +1,5 @@
 /* Lower TLS operations to emulation functions.
-   Copyright (C) 2006-2017 Free Software Foundation, Inc.
+   Copyright (C) 2006-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -242,15 +242,17 @@ get_emutls_init_templ_addr (tree decl)
   DECL_PRESERVE_P (to) = DECL_PRESERVE_P (decl);
 
   DECL_WEAK (to) = DECL_WEAK (decl);
-  if (DECL_ONE_ONLY (decl))
+  if (DECL_ONE_ONLY (decl) || DECL_WEAK (decl))
     {
       TREE_STATIC (to) = TREE_STATIC (decl);
       TREE_PUBLIC (to) = TREE_PUBLIC (decl);
       DECL_VISIBILITY (to) = DECL_VISIBILITY (decl);
-      make_decl_one_only (to, DECL_ASSEMBLER_NAME (to));
     }
   else
     TREE_STATIC (to) = 1;
+
+  if (DECL_ONE_ONLY (decl))
+    make_decl_one_only (to, DECL_ASSEMBLER_NAME (to));
 
   DECL_VISIBILITY_SPECIFIED (to) = DECL_VISIBILITY_SPECIFIED (decl);
   DECL_INITIAL (to) = DECL_INITIAL (decl);
@@ -259,7 +261,7 @@ get_emutls_init_templ_addr (tree decl)
   if (targetm.emutls.tmpl_section)
     set_decl_section_name (to, targetm.emutls.tmpl_section);
   else
-    set_decl_section_name (to, DECL_SECTION_NAME (decl));
+    set_decl_section_name (to, decl);
 
   /* Create varpool node for the new variable and finalize it if it is
      not external one.  */
@@ -322,7 +324,7 @@ new_emutls_decl (tree decl, tree alias_of)
      control structure with size and alignment information.  Initialization
      of COMMON block variables happens elsewhere via a constructor.  */
   if (!DECL_EXTERNAL (to)
-      && (!DECL_COMMON (to)
+      && (!DECL_COMMON (to) || !targetm.emutls.register_common
           || (DECL_INITIAL (decl)
               && DECL_INITIAL (decl) != error_mark_node)))
     {
@@ -360,7 +362,7 @@ emutls_common_1 (tree tls_decl, tree control_decl, tree *pstmts)
   tree x;
   tree word_type_node;
 
-  if (! DECL_COMMON (tls_decl)
+  if (!DECL_COMMON (tls_decl) || !targetm.emutls.register_common
       || (DECL_INITIAL (tls_decl)
 	  && DECL_INITIAL (tls_decl) != error_mark_node))
     return;
@@ -384,7 +386,6 @@ struct lower_emutls_data
   struct cgraph_node *builtin_node;
   tree builtin_decl;
   basic_block bb;
-  int bb_freq;
   location_t loc;
   gimple_seq seq;
 };
@@ -418,7 +419,7 @@ gen_emutls_addr (tree decl, struct lower_emutls_data *d)
 
       gimple_seq_add_stmt (&d->seq, x);
 
-      d->cfun_node->create_edge (d->builtin_node, x, d->bb->count, d->bb_freq);
+      d->cfun_node->create_edge (d->builtin_node, x, d->bb->count);
 
       /* We may be adding a new reference to a new variable to the function.
          This means we have to play with the ipa-reference web.  */
@@ -644,10 +645,6 @@ lower_emutls_function_body (struct cgraph_node *node)
 	 PHI argument for that edge.  */
       if (!gimple_seq_empty_p (phi_nodes (d.bb)))
 	{
-	  /* The calls will be inserted on the edges, and the frequencies
-	     will be computed during the commit process.  */
-	  d.bb_freq = 0;
-
 	  nedge = EDGE_COUNT (d.bb->preds);
 	  for (i = 0; i < nedge; ++i)
 	    {
@@ -671,8 +668,6 @@ lower_emutls_function_body (struct cgraph_node *node)
 		}
 	    }
 	}
-
-      d.bb_freq = compute_call_stmt_bb_frequency (current_function_decl, d.bb);
 
       /* We can re-use any SSA_NAME created during this basic block.  */
       clear_access_vars ();

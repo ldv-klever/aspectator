@@ -31,8 +31,11 @@ Signame (intgo sig)
       s = buf;
     }
   len = __builtin_strlen (s);
-  data = runtime_mallocgc (len, 0, FlagNoScan);
+  data = runtime_mallocgc (len, nil, false);
   __builtin_memcpy (data, s, len);
+  // lowercase first letter: Bad -> bad, but STREAM -> STREAM.
+  if ('A' <= data[0] && data[0] <= 'Z' && 'a' <= data[1] && data[1] <= 'z')
+    data[0] += 'a' - 'A';
   ret.str = data;
   ret.len = len;
   return ret;

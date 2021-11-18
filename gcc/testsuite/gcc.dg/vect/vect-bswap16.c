@@ -1,10 +1,8 @@
-/* { dg-require-effective-target vect_bswap } */
+/* { dg-additional-options "-msse4" { target sse4_runtime } } */
 
 #include "tree-vect.h"
 
 #define N 128
-
-volatile int y = 0;
 
 static inline void
 vfoo16 (unsigned short int* a)
@@ -27,8 +25,7 @@ main (void)
     {
       arr[i] = i;
       expect[i] = __builtin_bswap16 (i);
-      if (y) /* Avoid vectorisation.  */
-        abort ();
+      asm volatile ("" ::: "memory");
     }
 
   vfoo16 (arr);
@@ -42,4 +39,4 @@ main (void)
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { target { vect_bswap || sse4_runtime } } } } */

@@ -1,4 +1,4 @@
-<chapter xmlns="http://docbook.org/ns/docbook" version="5.0" 
+<chapter xmlns="http://docbook.org/ns/docbook" version="5.0"
 	 xml:id="manual.ext.allocator.mt" xreflabel="mt allocator">
 <?dbhtml filename="mt_allocator.html"?>
 
@@ -281,7 +281,8 @@ The _S_initialize() function:
 
 
 <para> Notes about deallocation. This allocator does not explicitly
-release memory. Because of this, memory debugging programs like
+release memory back to the OS, but keeps its own freelists instead.
+Because of this, memory debugging programs like
 valgrind or purify may notice leaks: sorry about this
 inconvenience. Operating systems will reclaim allocated memory at
 program termination anyway. If sidestepping this kind of noise is

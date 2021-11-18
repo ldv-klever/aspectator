@@ -1,5 +1,5 @@
 /* Print RTL for GCC.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -35,11 +35,12 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GENERATOR_FILE
 #include "alias.h"
 #include "tree.h"
-#include "cfg.h"
+#include "basic-block.h"
 #include "print-tree.h"
 #include "flags.h"
 #include "predict.h"
 #include "function.h"
+#include "cfg.h"
 #include "basic-block.h"
 #include "diagnostic.h"
 #include "tree-pretty-print.h"
@@ -52,6 +53,13 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "print-rtl.h"
 #include "rtl-iter.h"
+
+/* Disable warnings about quoting issues in the pp_xxx calls below
+   that (intentionally) don't follow GCC diagnostic conventions.  */
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wformat-diag"
+#endif
 
 /* String printed at beginning of each RTL when it is dumped.
    This string is set to ASM_COMMENT_START when the RTL is dumped in
@@ -90,7 +98,6 @@ rtx_writer::rtx_writer (FILE *outf, int ind, bool simple, bool compact,
 rtx_reuse_manager::rtx_reuse_manager ()
 : m_next_id (0)
 {
-  bitmap_initialize (&m_defs_seen, NULL);
 }
 
 /* Determine if X is of a kind suitable for dumping via reuse_rtx.  */
@@ -158,7 +165,7 @@ rtx_reuse_manager::has_reuse_id (const_rtx x, int *out)
 bool
 rtx_reuse_manager::seen_def_p (int reuse_id)
 {
-  return bitmap_bit_p (&m_defs_seen, reuse_id);
+  return bitmap_bit_p (m_defs_seen, reuse_id);
 }
 
 /* Record that the definition of the given reuse ID has been seen.  */
@@ -166,7 +173,7 @@ rtx_reuse_manager::seen_def_p (int reuse_id)
 void
 rtx_reuse_manager::set_seen_def (int reuse_id)
 {
-  bitmap_set_bit (&m_defs_seen, reuse_id);
+  bitmap_set_bit (m_defs_seen, reuse_id);
 }
 
 #endif /* #ifndef GENERATOR_FILE */
@@ -176,9 +183,27 @@ void
 print_mem_expr (FILE *outfile, const_tree expr)
 {
   fputc (' ', outfile);
-  print_generic_expr (outfile, CONST_CAST_TREE (expr), dump_flags);
+  print_generic_expr (outfile, CONST_CAST_TREE (expr),
+		      dump_flags | TDF_SLIM);
 }
 #endif
+
+/* Print X to FILE.  */
+
+static void
+print_poly_int (FILE *file, poly_int64 x)
+{
+  HOST_WIDE_INT const_x;
+  if (x.is_constant (&const_x))
+    fprintf (file, HOST_WIDE_INT_PRINT_DEC, const_x);
+  else
+    {
+      fprintf (file, "[" HOST_WIDE_INT_PRINT_DEC, x.coeffs[0]);
+      for (int i = 1; i < NUM_POLY_INT_COEFFS; ++i)
+	fprintf (file, ", " HOST_WIDE_INT_PRINT_DEC, x.coeffs[i]);
+      fprintf (file, "]");
+    }
+}
 
 /* Subroutine of print_rtx_operand for handling code '0'.
    0 indicates a field for internal use that should not be printed.
@@ -247,7 +272,6 @@ rtx_writer::print_rtx_operand_code_0 (const_rtx in_rtx ATTRIBUTE_UNUSED,
 	  }
 
 	case NOTE_INSN_VAR_LOCATION:
-	case NOTE_INSN_CALL_ARG_LOCATION:
 	  fputc (' ', m_outfile);
 	  print_rtx (NOTE_VAR_LOCATION (in_rtx));
 	  break;
@@ -256,6 +280,17 @@ rtx_writer::print_rtx_operand_code_0 (const_rtx in_rtx ATTRIBUTE_UNUSED,
 	  fputc ('\n', m_outfile);
 	  output_cfi_directive (m_outfile, NOTE_CFI (in_rtx));
 	  fputc ('\t', m_outfile);
+	  break;
+
+	case NOTE_INSN_BEGIN_STMT:
+	case NOTE_INSN_INLINE_ENTRY:
+#ifndef GENERATOR_FILE
+	  {
+	    expanded_location xloc
+	      = expand_location (NOTE_MARKER_LOCATION (in_rtx));
+	    fprintf (m_outfile, " %s:%i", xloc.file, xloc.line);
+	  }
+#endif
 	  break;
 
 	default:
@@ -335,15 +370,58 @@ rtx_writer::print_rtx_operand_codes_E_and_V (const_rtx in_rtx, int idx)
       print_rtx_head, m_indent * 2, "");
       m_sawclose = 0;
     }
+  if (GET_CODE (in_rtx) == CONST_VECTOR
+      && !GET_MODE_NUNITS (GET_MODE (in_rtx)).is_constant ()
+      && CONST_VECTOR_DUPLICATE_P (in_rtx))
+    fprintf (m_outfile, " repeat");
   fputs (" [", m_outfile);
-  if (NULL != XVEC (in_rtx, idx))
+  if (XVEC (in_rtx, idx) != NULL)
     {
       m_indent += 2;
       if (XVECLEN (in_rtx, idx))
 	m_sawclose = 1;
 
+      int barrier = XVECLEN (in_rtx, idx);
+      if (GET_CODE (in_rtx) == CONST_VECTOR
+	  && !GET_MODE_NUNITS (GET_MODE (in_rtx)).is_constant ())
+	barrier = CONST_VECTOR_NPATTERNS (in_rtx);
+
       for (int j = 0; j < XVECLEN (in_rtx, idx); j++)
-	print_rtx (XVECEXP (in_rtx, idx, j));
+	{
+	  int j1;
+
+	  if (j == barrier)
+	    {
+	      fprintf (m_outfile, "\n%s%*s",
+		       print_rtx_head, m_indent * 2, "");
+	      if (!CONST_VECTOR_STEPPED_P (in_rtx))
+		fprintf (m_outfile, "repeat [");
+	      else if (CONST_VECTOR_NPATTERNS (in_rtx) == 1)
+		fprintf (m_outfile, "stepped [");
+	      else
+		fprintf (m_outfile, "stepped (interleave %d) [",
+			 CONST_VECTOR_NPATTERNS (in_rtx));
+	      m_indent += 2;
+	    }
+
+	  print_rtx (XVECEXP (in_rtx, idx, j));
+	  int limit = MIN (barrier, XVECLEN (in_rtx, idx));
+	  for (j1 = j + 1; j1 < limit; j1++)
+	    if (XVECEXP (in_rtx, idx, j) != XVECEXP (in_rtx, idx, j1))
+	      break;
+
+	  if (j1 != j + 1)
+	    {
+	      fprintf (m_outfile, " repeated x%i", j1 - j);
+	      j = j1 - 1;
+	    }
+	}
+
+      if (barrier < XVECLEN (in_rtx, idx))
+	{
+	  m_indent -= 2;
+	  fprintf (m_outfile, "\n%s%*s]", print_rtx_head, m_indent * 2, "");
+	}
 
       m_indent -= 2;
     }
@@ -371,7 +449,8 @@ rtx_writer::print_rtx_operand_code_i (const_rtx in_rtx, int idx)
       if (INSN_HAS_LOCATION (in_insn))
 	{
 	  expanded_location xloc = insn_location (in_insn);
-	  fprintf (m_outfile, " \"%s\":%i", xloc.file, xloc.line);
+	  fprintf (m_outfile, " \"%s\":%i:%i", xloc.file, xloc.line,
+		   xloc.column);
 	}
 #endif
     }
@@ -499,9 +578,11 @@ rtx_writer::print_rtx_operand_code_r (const_rtx in_rtx)
       if (REG_EXPR (in_rtx))
 	print_mem_expr (m_outfile, REG_EXPR (in_rtx));
 
-      if (REG_OFFSET (in_rtx))
-	fprintf (m_outfile, "+" HOST_WIDE_INT_PRINT_DEC,
-		 REG_OFFSET (in_rtx));
+      if (maybe_ne (REG_OFFSET (in_rtx), 0))
+	{
+	  fprintf (m_outfile, "+");
+	  print_poly_int (m_outfile, REG_OFFSET (in_rtx));
+	}
       fputs (" ]", m_outfile);
     }
   if (regno != ORIGINAL_REGNO (in_rtx))
@@ -607,6 +688,11 @@ rtx_writer::print_rtx_operand (const_rtx in_rtx, int idx)
 
     case 'i':
       print_rtx_operand_code_i (in_rtx, idx);
+      break;
+
+    case 'p':
+      fprintf (m_outfile, " ");
+      print_poly_int (m_outfile, SUBREG_BYTE (in_rtx));
       break;
 
     case 'r':
@@ -865,10 +951,16 @@ rtx_writer::print_rtx (const_rtx in_rtx)
 	fputc (' ', m_outfile);
 
       if (MEM_OFFSET_KNOWN_P (in_rtx))
-	fprintf (m_outfile, "+" HOST_WIDE_INT_PRINT_DEC, MEM_OFFSET (in_rtx));
+	{
+	  fprintf (m_outfile, "+");
+	  print_poly_int (m_outfile, MEM_OFFSET (in_rtx));
+	}
 
       if (MEM_SIZE_KNOWN_P (in_rtx))
-	fprintf (m_outfile, " S" HOST_WIDE_INT_PRINT_DEC, MEM_SIZE (in_rtx));
+	{
+	  fprintf (m_outfile, " S");
+	  print_poly_int (m_outfile, MEM_SIZE (in_rtx));
+	}
 
       if (MEM_ALIGN (in_rtx) != 1)
 	fprintf (m_outfile, " A%u", MEM_ALIGN (in_rtx));
@@ -897,6 +989,17 @@ rtx_writer::print_rtx (const_rtx in_rtx)
     case CONST_WIDE_INT:
       fprintf (m_outfile, " ");
       cwi_output_hex (m_outfile, in_rtx);
+      break;
+
+    case CONST_POLY_INT:
+      fprintf (m_outfile, " [");
+      print_dec (CONST_POLY_INT_COEFFS (in_rtx)[0], m_outfile, SIGNED);
+      for (unsigned int i = 1; i < NUM_POLY_INT_COEFFS; ++i)
+	{
+	  fprintf (m_outfile, ", ");
+	  print_dec (CONST_POLY_INT_COEFFS (in_rtx)[i], m_outfile, SIGNED);
+	}
+      fprintf (m_outfile, "]");
       break;
 #endif
 
@@ -966,6 +1069,23 @@ debug (const rtx_def *ptr)
   else
     fprintf (stderr, "<nil>\n");
 }
+
+/* Like debug_rtx but with no newline, as debug_helper will add one.
+
+   Note: No debug_slim(rtx_insn *) variant implemented, as this
+   function can serve for both rtx and rtx_insn.  */
+
+static void
+debug_slim (const_rtx x)
+{
+  rtx_writer w (stderr, 0, false, false, NULL);
+  w.print_rtx (x);
+}
+
+DEFINE_DEBUG_VEC (rtx_def *)
+DEFINE_DEBUG_VEC (rtx_insn *)
+DEFINE_DEBUG_HASH_SET (rtx_def *)
+DEFINE_DEBUG_HASH_SET (rtx_insn *)
 
 /* Count of rtx's to print with debug_rtx_list.
    This global exists because gdb user defined commands have no arguments.  */
@@ -1147,7 +1267,7 @@ print_rtx_insn_vec (FILE *file, const vec<rtx_insn *> &vec)
   unsigned int len = vec.length ();
   for (unsigned int i = 0; i < len; i++)
     {
-      print_rtl (file, vec[i]);
+      print_rtl_single (file, vec[i]);
       if (i < len - 1)
 	fputs (", ", file);
     }
@@ -1169,9 +1289,6 @@ print_rtx_insn_vec (FILE *file, const vec<rtx_insn *> &vec)
 
    It is also possible to obtain a string for a single pattern as a string
    pointer, via str_pattern_slim, but this usage is discouraged.  */
-
-/* For insns we print patterns, and for some patterns we print insns...  */
-static void print_insn_with_notes (pretty_printer *, const rtx_insn *);
 
 /* This recognizes rtx'en classified as expressions.  These are always
    represent some action on values or results of other expression, that
@@ -1283,7 +1400,7 @@ print_exp (pretty_printer *pp, const_rtx x, int verbose)
       op[1] = XEXP (x, 1);
       break;
     case NOT:
-      st[0] = "!";
+      st[0] = "~";
       op[0] = XEXP (x, 0);
       break;
     case AND:
@@ -1568,6 +1685,17 @@ print_value (pretty_printer *pp, const_rtx x, int verbose)
       }
       break;
 
+    case CONST_POLY_INT:
+      pp_left_bracket (pp);
+      pp_wide_int (pp, CONST_POLY_INT_COEFFS (x)[0], SIGNED);
+      for (unsigned int i = 1; i < NUM_POLY_INT_COEFFS; ++i)
+	{
+	  pp_string (pp, ", ");
+	  pp_wide_int (pp, CONST_POLY_INT_COEFFS (x)[i], SIGNED);
+	}
+      pp_right_bracket (pp);
+      break;
+
     case CONST_DOUBLE:
       if (FLOAT_MODE_P (GET_MODE (x)))
 	{
@@ -1585,7 +1713,9 @@ print_value (pretty_printer *pp, const_rtx x, int verbose)
       pp_string (pp, tmp);
       break;
     case CONST_STRING:
-      pp_printf (pp, "\"%s\"", XSTR (x, 0));
+      pp_string (pp, "\"");
+      pretty_print_string (pp, XSTR (x, 0), strlen (XSTR (x, 0)));
+      pp_string (pp, "\"");
       break;
     case SYMBOL_REF:
       pp_printf (pp, "`%s'", XSTR (x, 0));
@@ -1614,7 +1744,8 @@ print_value (pretty_printer *pp, const_rtx x, int verbose)
       break;
     case SUBREG:
       print_value (pp, SUBREG_REG (x), verbose);
-      pp_printf (pp, "#%d", SUBREG_BYTE (x));
+      pp_printf (pp, "#");
+      pp_wide_integer (pp, SUBREG_BYTE (x));
       break;
     case SCRATCH:
     case CC0:
@@ -1713,7 +1844,7 @@ print_pattern (pretty_printer *pp, const_rtx x, int verbose)
 	    gcc_assert (strlen (print_rtx_head) < sizeof (indented_print_rtx_head) - 4);
 	    snprintf (indented_print_rtx_head,
 		      sizeof (indented_print_rtx_head),
-		      "%s     ", print_rtx_head);
+		      "%s    ", print_rtx_head);
 	    print_rtx_head = indented_print_rtx_head;
 	    for (int i = 0; i < seq->len (); i++)
 	      print_insn_with_notes (pp, seq->insn (i));
@@ -1791,6 +1922,24 @@ print_insn (pretty_printer *pp, const rtx_insn *x, int verbose)
 
     case DEBUG_INSN:
       {
+	if (DEBUG_MARKER_INSN_P (x))
+	  {
+	    switch (INSN_DEBUG_MARKER_KIND (x))
+	      {
+	      case NOTE_INSN_BEGIN_STMT:
+		pp_string (pp, "debug begin stmt marker");
+		break;
+
+	      case NOTE_INSN_INLINE_ENTRY:
+		pp_string (pp, "debug inline entry marker");
+		break;
+
+	      default:
+		gcc_unreachable ();
+	      }
+	    break;
+	  }
+
 	const char *name = "?";
 	char idbuf[32];
 
@@ -1871,7 +2020,6 @@ print_insn (pretty_printer *pp, const rtx_insn *x, int verbose)
 	    break;
 
 	  case NOTE_INSN_VAR_LOCATION:
-	  case NOTE_INSN_CALL_ARG_LOCATION:
 	    pp_left_brace (pp);
 	    print_pattern (pp, NOTE_VAR_LOCATION (x), verbose);
 	    pp_right_brace (pp);
@@ -1890,7 +2038,7 @@ print_insn (pretty_printer *pp, const rtx_insn *x, int verbose)
 /* Pretty-print a slim dump of X (an insn) to PP, including any register
    note attached to the instruction.  */
 
-static void
+void
 print_insn_with_notes (pretty_printer *pp, const rtx_insn *x)
 {
   pp_string (pp, print_rtx_head);
@@ -2018,7 +2166,7 @@ extern void debug_bb_slim (basic_block);
 DEBUG_FUNCTION void
 debug_bb_slim (basic_block bb)
 {
-  dump_bb (stderr, bb, 0, TDF_SLIM | TDF_BLOCKS);
+  debug_bb (bb, TDF_SLIM | TDF_BLOCKS);
 }
 
 extern void debug_bb_n_slim (int);
@@ -2029,4 +2177,8 @@ debug_bb_n_slim (int n)
   debug_bb_slim (bb);
 }
 
+#endif
+
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic pop
 #endif

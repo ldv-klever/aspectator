@@ -14,6 +14,111 @@ import (
 	"unicode/utf8"
 )
 
+type toks struct {
+	earlyEOF bool
+	t        []Token
+}
+
+func (t *toks) Token() (Token, error) {
+	if len(t.t) == 0 {
+		return nil, io.EOF
+	}
+	var tok Token
+	tok, t.t = t.t[0], t.t[1:]
+	if t.earlyEOF && len(t.t) == 0 {
+		return tok, io.EOF
+	}
+	return tok, nil
+}
+
+func TestDecodeEOF(t *testing.T) {
+	start := StartElement{Name: Name{Local: "test"}}
+	tests := []struct {
+		name   string
+		tokens []Token
+		ok     bool
+	}{
+		{
+			name: "OK",
+			tokens: []Token{
+				start,
+				start.End(),
+			},
+			ok: true,
+		},
+		{
+			name: "Malformed",
+			tokens: []Token{
+				start,
+				StartElement{Name: Name{Local: "bad"}},
+				start.End(),
+			},
+			ok: false,
+		},
+	}
+	for _, tc := range tests {
+		for _, eof := range []bool{true, false} {
+			name := fmt.Sprintf("%s/earlyEOF=%v", tc.name, eof)
+			t.Run(name, func(t *testing.T) {
+				d := NewTokenDecoder(&toks{
+					earlyEOF: eof,
+					t:        tc.tokens,
+				})
+				err := d.Decode(&struct {
+					XMLName Name `xml:"test"`
+				}{})
+				if tc.ok && err != nil {
+					t.Fatalf("d.Decode: expected nil error, got %v", err)
+				}
+				if _, ok := err.(*SyntaxError); !tc.ok && !ok {
+					t.Errorf("d.Decode: expected syntax error, got %v", err)
+				}
+			})
+		}
+	}
+}
+
+type toksNil struct {
+	returnEOF bool
+	t         []Token
+}
+
+func (t *toksNil) Token() (Token, error) {
+	if len(t.t) == 0 {
+		if !t.returnEOF {
+			// Return nil, nil before returning an EOF. It's legal, but
+			// discouraged.
+			t.returnEOF = true
+			return nil, nil
+		}
+		return nil, io.EOF
+	}
+	var tok Token
+	tok, t.t = t.t[0], t.t[1:]
+	return tok, nil
+}
+
+func TestDecodeNilToken(t *testing.T) {
+	for _, strict := range []bool{true, false} {
+		name := fmt.Sprintf("Strict=%v", strict)
+		t.Run(name, func(t *testing.T) {
+			start := StartElement{Name: Name{Local: "test"}}
+			bad := StartElement{Name: Name{Local: "bad"}}
+			d := NewTokenDecoder(&toksNil{
+				// Malformed
+				t: []Token{start, bad, start.End()},
+			})
+			d.Strict = strict
+			err := d.Decode(&struct {
+				XMLName Name `xml:"test"`
+			}{})
+			if _, ok := err.(*SyntaxError); !ok {
+				t.Errorf("d.Decode: expected syntax error, got %v", err)
+			}
+		})
+	}
+}
+
 const testInput = `
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
@@ -479,15 +584,15 @@ func TestAllScalars(t *testing.T) {
 }
 
 type item struct {
-	Field_a string
+	FieldA string
 }
 
 func TestIssue569(t *testing.T) {
-	data := `<item><Field_a>abcd</Field_a></item>`
+	data := `<item><FieldA>abcd</FieldA></item>`
 	var i item
 	err := Unmarshal([]byte(data), &i)
 
-	if err != nil || i.Field_a != "abcd" {
+	if err != nil || i.FieldA != "abcd" {
 		t.Fatal("Expecting abcd")
 	}
 }
@@ -650,6 +755,20 @@ func TestDisallowedCharacters(t *testing.T) {
 	}
 }
 
+func TestIsInCharacterRange(t *testing.T) {
+	invalid := []rune{
+		utf8.MaxRune + 1,
+		0xD800, // surrogate min
+		0xDFFF, // surrogate max
+		-1,
+	}
+	for _, r := range invalid {
+		if isInCharacterRange(r) {
+			t.Errorf("rune %U considered valid", r)
+		}
+	}
+}
+
 var procInstTests = []struct {
 	input  string
 	expect [2]string
@@ -798,36 +917,89 @@ func TestIssue12417(t *testing.T) {
 	}
 }
 
-func TestIssue19333(t *testing.T) {
-	type X struct {
-		XMLName Name `xml:"X"`
-		A       int  `xml:",attr"`
-		C       int
-	}
-
-	var tests = []struct {
-		input string
-		ok    bool
-	}{
-		{`<X></X>`, true},
-		{`<X A=""></X>`, true},
-		{`<X A="bad"></X>`, true},
-		{`<X></X>`, true},
-		{`<X><C></C></X>`, false},
-		{`<X><C/></X>`, false},
-		{`<X><C>bad</C></X>`, false},
-	}
-
-	for _, tt := range tests {
-		err := Unmarshal([]byte(tt.input), new(X))
-		if tt.ok {
-			if err != nil {
-				t.Errorf("%s: unexpected error: %v", tt.input, err)
-			}
-		} else {
-			if err == nil {
-				t.Errorf("%s: unexpected success", tt.input)
-			}
+func tokenMap(mapping func(t Token) Token) func(TokenReader) TokenReader {
+	return func(src TokenReader) TokenReader {
+		return mapper{
+			t: src,
+			f: mapping,
 		}
 	}
+}
+
+type mapper struct {
+	t TokenReader
+	f func(Token) Token
+}
+
+func (m mapper) Token() (Token, error) {
+	tok, err := m.t.Token()
+	if err != nil {
+		return nil, err
+	}
+	return m.f(tok), nil
+}
+
+func TestNewTokenDecoderIdempotent(t *testing.T) {
+	d := NewDecoder(strings.NewReader(`<br/>`))
+	d2 := NewTokenDecoder(d)
+	if d != d2 {
+		t.Error("NewTokenDecoder did not detect underlying Decoder")
+	}
+}
+
+func TestWrapDecoder(t *testing.T) {
+	d := NewDecoder(strings.NewReader(`<quote>[Re-enter Clown with a letter, and FABIAN]</quote>`))
+	m := tokenMap(func(t Token) Token {
+		switch tok := t.(type) {
+		case StartElement:
+			if tok.Name.Local == "quote" {
+				tok.Name.Local = "blocking"
+				return tok
+			}
+		case EndElement:
+			if tok.Name.Local == "quote" {
+				tok.Name.Local = "blocking"
+				return tok
+			}
+		}
+		return t
+	})
+
+	d = NewTokenDecoder(m(d))
+
+	o := struct {
+		XMLName  Name   `xml:"blocking"`
+		Chardata string `xml:",chardata"`
+	}{}
+
+	if err := d.Decode(&o); err != nil {
+		t.Fatal("Got unexpected error while decoding:", err)
+	}
+
+	if o.Chardata != "[Re-enter Clown with a letter, and FABIAN]" {
+		t.Fatalf("Got unexpected chardata: `%s`\n", o.Chardata)
+	}
+}
+
+type tokReader struct{}
+
+func (tokReader) Token() (Token, error) {
+	return StartElement{}, nil
+}
+
+type Failure struct{}
+
+func (Failure) UnmarshalXML(*Decoder, StartElement) error {
+	return nil
+}
+
+func TestTokenUnmarshaler(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Error("Unexpected panic using custom token unmarshaler")
+		}
+	}()
+
+	d := NewTokenDecoder(tokReader{})
+	d.Decode(&Failure{})
 }

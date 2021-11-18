@@ -10,12 +10,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	. "net/http"
@@ -36,7 +34,7 @@ var robotsTxtHandler = HandlerFunc(func(w ResponseWriter, r *Request) {
 	fmt.Fprintf(w, "User-agent: go\nDisallow: /something/")
 })
 
-// pedanticReadAll works like ioutil.ReadAll but additionally
+// pedanticReadAll works like io.ReadAll but additionally
 // verifies that r obeys the documented io.Reader contract.
 func pedanticReadAll(r io.Reader) (b []byte, err error) {
 	var bufa [64]byte
@@ -73,7 +71,7 @@ func TestClient(t *testing.T) {
 	ts := httptest.NewServer(robotsTxtHandler)
 	defer ts.Close()
 
-	c := &Client{Transport: &Transport{DisableKeepAlives: true}}
+	c := ts.Client()
 	r, err := c.Get(ts.URL)
 	var b []byte
 	if err == nil {
@@ -191,7 +189,7 @@ func TestPostFormRequestFormat(t *testing.T) {
 	if g, e := tr.req.ContentLength, int64(len(expectedBody)); g != e {
 		t.Errorf("got ContentLength %d, want %d", g, e)
 	}
-	bodyb, err := ioutil.ReadAll(tr.req.Body)
+	bodyb, err := io.ReadAll(tr.req.Body)
 	if err != nil {
 		t.Fatalf("ReadAll on req.Body: %v", err)
 	}
@@ -220,45 +218,39 @@ func TestClientRedirects(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-
-	c := &Client{Transport: tr}
+	c := ts.Client()
 	_, err := c.Get(ts.URL)
-	if e, g := "Get /?n=10: stopped after 10 redirects", fmt.Sprintf("%v", err); e != g {
+	if e, g := `Get "/?n=10": stopped after 10 redirects`, fmt.Sprintf("%v", err); e != g {
 		t.Errorf("with default client Get, expected error %q, got %q", e, g)
 	}
 
 	// HEAD request should also have the ability to follow redirects.
 	_, err = c.Head(ts.URL)
-	if e, g := "Head /?n=10: stopped after 10 redirects", fmt.Sprintf("%v", err); e != g {
+	if e, g := `Head "/?n=10": stopped after 10 redirects`, fmt.Sprintf("%v", err); e != g {
 		t.Errorf("with default client Head, expected error %q, got %q", e, g)
 	}
 
 	// Do should also follow redirects.
 	greq, _ := NewRequest("GET", ts.URL, nil)
 	_, err = c.Do(greq)
-	if e, g := "Get /?n=10: stopped after 10 redirects", fmt.Sprintf("%v", err); e != g {
+	if e, g := `Get "/?n=10": stopped after 10 redirects`, fmt.Sprintf("%v", err); e != g {
 		t.Errorf("with default client Do, expected error %q, got %q", e, g)
 	}
 
 	// Requests with an empty Method should also redirect (Issue 12705)
 	greq.Method = ""
 	_, err = c.Do(greq)
-	if e, g := "Get /?n=10: stopped after 10 redirects", fmt.Sprintf("%v", err); e != g {
+	if e, g := `Get "/?n=10": stopped after 10 redirects`, fmt.Sprintf("%v", err); e != g {
 		t.Errorf("with default client Do and empty Method, expected error %q, got %q", e, g)
 	}
 
 	var checkErr error
 	var lastVia []*Request
 	var lastReq *Request
-	c = &Client{
-		Transport: tr,
-		CheckRedirect: func(req *Request, via []*Request) error {
-			lastReq = req
-			lastVia = via
-			return checkErr
-		},
+	c.CheckRedirect = func(req *Request, via []*Request) error {
+		lastReq = req
+		lastVia = via
+		return checkErr
 	}
 	res, err := c.Get(ts.URL)
 	if err != nil {
@@ -304,6 +296,7 @@ func TestClientRedirects(t *testing.T) {
 	}
 }
 
+// Tests that Client redirects' contexts are derived from the original request's context.
 func TestClientRedirectContext(t *testing.T) {
 	setParallel(t)
 	defer afterTest(t)
@@ -312,22 +305,18 @@ func TestClientRedirectContext(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &Client{
-		Transport: tr,
-		CheckRedirect: func(req *Request, via []*Request) error {
-			cancel()
-			if len(via) > 2 {
-				return errors.New("too many redirects")
-			}
+	c := ts.Client()
+	c.CheckRedirect = func(req *Request, via []*Request) error {
+		cancel()
+		select {
+		case <-req.Context().Done():
 			return nil
-		},
+		case <-time.After(5 * time.Second):
+			return errors.New("redirected request's context never expired after root request canceled")
+		}
 	}
-	req, _ := NewRequest("GET", ts.URL, nil)
-	req = req.WithContext(ctx)
+	req, _ := NewRequestWithContext(ctx, "GET", ts.URL, nil)
 	_, err := c.Do(req)
 	ue, ok := err.(*url.Error)
 	if !ok {
@@ -431,7 +420,7 @@ func testRedirectsByMethod(t *testing.T, method string, table []redirectTest, wa
 	var ts *httptest.Server
 	ts = httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
 		log.Lock()
-		slurp, _ := ioutil.ReadAll(r.Body)
+		slurp, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(&log.Buffer, "%s %s %q", r.Method, r.RequestURI, slurp)
 		if cl := r.Header.Get("Content-Length"); r.Method == "GET" && len(slurp) == 0 && (r.ContentLength != 0 || cl != "") {
 			fmt.Fprintf(&log.Buffer, " (but with body=%T, content-length = %v, %q)", r.Body, r.ContentLength, cl)
@@ -458,11 +447,12 @@ func testRedirectsByMethod(t *testing.T, method string, table []redirectTest, wa
 	}))
 	defer ts.Close()
 
+	c := ts.Client()
 	for _, tt := range table {
 		content := tt.redirectBody
 		req, _ := NewRequest(method, ts.URL+tt.suffix, strings.NewReader(content))
-		req.GetBody = func() (io.ReadCloser, error) { return ioutil.NopCloser(strings.NewReader(content)), nil }
-		res, err := DefaultClient.Do(req)
+		req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader(content)), nil }
+		res, err := c.Do(req)
 
 		if err != nil {
 			t.Fatal(err)
@@ -516,17 +506,12 @@ func TestClientRedirectUseResponse(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-
-	c := &Client{
-		Transport: tr,
-		CheckRedirect: func(req *Request, via []*Request) error {
-			if req.Response == nil {
-				t.Error("expected non-nil Request.Response")
-			}
-			return ErrUseLastResponse
-		},
+	c := ts.Client()
+	c.CheckRedirect = func(req *Request, via []*Request) error {
+		if req.Response == nil {
+			t.Error("expected non-nil Request.Response")
+		}
+		return ErrUseLastResponse
 	}
 	res, err := c.Get(ts.URL)
 	if err != nil {
@@ -536,7 +521,7 @@ func TestClientRedirectUseResponse(t *testing.T) {
 		t.Errorf("status = %d; want %d", res.StatusCode, StatusFound)
 	}
 	defer res.Body.Close()
-	slurp, err := ioutil.ReadAll(res.Body)
+	slurp, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +540,8 @@ func TestClientRedirect308NoLocation(t *testing.T) {
 		w.WriteHeader(308)
 	}))
 	defer ts.Close()
-	res, err := Get(ts.URL)
+	c := ts.Client()
+	res, err := c.Get(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,8 +568,9 @@ func TestClientRedirect308NoGetBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c := ts.Client()
 	req.GetBody = nil // so it can't rewind.
-	res, err := DefaultClient.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,12 +660,8 @@ func TestRedirectCookiesJar(t *testing.T) {
 	var ts *httptest.Server
 	ts = httptest.NewServer(echoCookiesRedirectHandler)
 	defer ts.Close()
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-	c := &Client{
-		Transport: tr,
-		Jar:       new(TestJar),
-	}
+	c := ts.Client()
+	c.Jar = new(TestJar)
 	u, _ := url.Parse(ts.URL)
 	c.Jar.SetCookies(u, []*Cookie{expectedCookies[0]})
 	resp, err := c.Get(ts.URL)
@@ -722,13 +705,10 @@ func TestJarCalls(t *testing.T) {
 	}))
 	defer ts.Close()
 	jar := new(RecordingJar)
-	c := &Client{
-		Jar: jar,
-		Transport: &Transport{
-			Dial: func(_ string, _ string) (net.Conn, error) {
-				return net.Dial("tcp", ts.Listener.Addr().String())
-			},
-		},
+	c := ts.Client()
+	c.Jar = jar
+	c.Transport.(*Transport).Dial = func(_ string, _ string) (net.Conn, error) {
+		return net.Dial("tcp", ts.Listener.Addr().String())
 	}
 	_, err := c.Get("http://firsthost.fake/")
 	if err != nil {
@@ -840,7 +820,8 @@ func TestClientWrites(t *testing.T) {
 		}
 		return c, err
 	}
-	c := &Client{Transport: &Transport{Dial: dialer}}
+	c := ts.Client()
+	c.Transport.(*Transport).Dial = dialer
 
 	_, err := c.Get(ts.URL)
 	if err != nil {
@@ -873,14 +854,11 @@ func TestClientInsecureTransport(t *testing.T) {
 	// TODO(bradfitz): add tests for skipping hostname checks too?
 	// would require a new cert for testing, and probably
 	// redundant with these tests.
+	c := ts.Client()
 	for _, insecure := range []bool{true, false} {
-		tr := &Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: insecure,
-			},
+		c.Transport.(*Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: insecure,
 		}
-		defer tr.CloseIdleConnections()
-		c := &Client{Transport: tr}
 		res, err := c.Get(ts.URL)
 		if (err == nil) != insecure {
 			t.Errorf("insecure=%v: got unexpected err=%v", insecure, err)
@@ -914,22 +892,6 @@ func TestClientErrorWithRequestURI(t *testing.T) {
 	}
 }
 
-func newTLSTransport(t *testing.T, ts *httptest.Server) *Transport {
-	certs := x509.NewCertPool()
-	for _, c := range ts.TLS.Certificates {
-		roots, err := x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
-		if err != nil {
-			t.Fatalf("error parsing server's root cert: %v", err)
-		}
-		for _, root := range roots {
-			certs.AddCert(root)
-		}
-	}
-	return &Transport{
-		TLSClientConfig: &tls.Config{RootCAs: certs},
-	}
-}
-
 func TestClientWithCorrectTLSServerName(t *testing.T) {
 	defer afterTest(t)
 
@@ -941,9 +903,8 @@ func TestClientWithCorrectTLSServerName(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	trans := newTLSTransport(t, ts)
-	trans.TLSClientConfig.ServerName = serverName
-	c := &Client{Transport: trans}
+	c := ts.Client()
+	c.Transport.(*Transport).TLSClientConfig.ServerName = serverName
 	if _, err := c.Get(ts.URL); err != nil {
 		t.Fatalf("expected successful TLS connection, got error: %v", err)
 	}
@@ -956,9 +917,8 @@ func TestClientWithIncorrectTLSServerName(t *testing.T) {
 	errc := make(chanWriter, 10) // but only expecting 1
 	ts.Config.ErrorLog = log.New(errc, "", 0)
 
-	trans := newTLSTransport(t, ts)
-	trans.TLSClientConfig.ServerName = "badserver"
-	c := &Client{Transport: trans}
+	c := ts.Client()
+	c.Transport.(*Transport).TLSClientConfig.ServerName = "badserver"
 	_, err := c.Get(ts.URL)
 	if err == nil {
 		t.Fatalf("expected an error")
@@ -992,13 +952,12 @@ func TestTransportUsesTLSConfigServerName(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := newTLSTransport(t, ts)
+	c := ts.Client()
+	tr := c.Transport.(*Transport)
 	tr.TLSClientConfig.ServerName = "example.com" // one of httptest's Server cert names
 	tr.Dial = func(netw, addr string) (net.Conn, error) {
 		return net.Dial(netw, ts.Listener.Addr().String())
 	}
-	defer tr.CloseIdleConnections()
-	c := &Client{Transport: tr}
 	res, err := c.Get("https://some-other-host.tld/")
 	if err != nil {
 		t.Fatal(err)
@@ -1013,13 +972,13 @@ func TestResponseSetsTLSConnectionState(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := newTLSTransport(t, ts)
+	c := ts.Client()
+	tr := c.Transport.(*Transport)
 	tr.TLSClientConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA}
+	tr.TLSClientConfig.MaxVersion = tls.VersionTLS12 // to get to pick the cipher suite
 	tr.Dial = func(netw, addr string) (net.Conn, error) {
 		return net.Dial(netw, ts.Listener.Addr().String())
 	}
-	defer tr.CloseIdleConnections()
-	c := &Client{Transport: tr}
 	res, err := c.Get("https://example.com/")
 	if err != nil {
 		t.Fatal(err)
@@ -1082,7 +1041,7 @@ func testClientHeadContentLength(t *testing.T, h2 bool) {
 		if res.ContentLength != tt.want {
 			t.Errorf("Content-Length = %d; want %d", res.ContentLength, tt.want)
 		}
-		bs, err := ioutil.ReadAll(res.Body)
+		bs, err := io.ReadAll(res.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1114,14 +1073,12 @@ func TestEmptyPasswordAuth(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-	c := &Client{Transport: tr}
 	req, err := NewRequest("GET", ts.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.URL.User = url.User(gopher)
+	c := ts.Client()
 	resp, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1204,6 +1161,45 @@ func TestBasicAuthHeadersPreserved(t *testing.T) {
 
 }
 
+func TestStripPasswordFromError(t *testing.T) {
+	client := &Client{Transport: &recordingTransport{}}
+	testCases := []struct {
+		desc string
+		in   string
+		out  string
+	}{
+		{
+			desc: "Strip password from error message",
+			in:   "http://user:password@dummy.faketld/",
+			out:  `Get "http://user:***@dummy.faketld/": dummy impl`,
+		},
+		{
+			desc: "Don't Strip password from domain name",
+			in:   "http://user:password@password.faketld/",
+			out:  `Get "http://user:***@password.faketld/": dummy impl`,
+		},
+		{
+			desc: "Don't Strip password from path",
+			in:   "http://user:password@dummy.faketld/password",
+			out:  `Get "http://user:***@dummy.faketld/password": dummy impl`,
+		},
+		{
+			desc: "Strip escaped password",
+			in:   "http://user:pa%2Fssword@dummy.faketld/",
+			out:  `Get "http://user:***@dummy.faketld/": dummy impl`,
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			_, err := client.Get(tC.in)
+			if err.Error() != tC.out {
+				t.Errorf("Unexpected output for %q: expected %q, actual %q",
+					tC.in, tC.out, err.Error())
+			}
+		})
+	}
+}
+
 func TestClientTimeout_h1(t *testing.T) { testClientTimeout(t, h1Mode) }
 func TestClientTimeout_h2(t *testing.T) { testClientTimeout(t, h2Mode) }
 
@@ -1260,7 +1256,7 @@ func testClientTimeout(t *testing.T, h2 bool) {
 
 	errc := make(chan error, 1)
 	go func() {
-		_, err := ioutil.ReadAll(res.Body)
+		_, err := io.ReadAll(res.Body)
 		errc <- err
 		res.Body.Close()
 	}()
@@ -1277,7 +1273,7 @@ func testClientTimeout(t *testing.T, h2 bool) {
 		} else if !ne.Timeout() {
 			t.Errorf("net.Error.Timeout = false; want true")
 		}
-		if got := ne.Error(); !strings.Contains(got, "Client.Timeout exceeded") {
+		if got := ne.Error(); !strings.Contains(got, "(Client.Timeout") {
 			t.Errorf("error string = %q; missing timeout substring", got)
 		}
 	case <-time.After(failTime):
@@ -1295,7 +1291,7 @@ func testClientTimeout_Headers(t *testing.T, h2 bool) {
 	donec := make(chan bool, 1)
 	cst := newClientServerTest(t, h2, HandlerFunc(func(w ResponseWriter, r *Request) {
 		<-donec
-	}))
+	}), optQuietLog)
 	defer cst.close()
 	// Note that we use a channel send here and not a close.
 	// The race detector doesn't know that we're waiting for a timeout
@@ -1351,7 +1347,7 @@ func TestClientTimeoutCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	_, err = io.Copy(ioutil.Discard, res.Body)
+	_, err = io.Copy(io.Discard, res.Body)
 	if err != ExportErrRequestCanceled {
 		t.Fatalf("error = %v; want errRequestCanceled", err)
 	}
@@ -1375,7 +1371,7 @@ func testClientRedirectEatsBody(t *testing.T, h2 bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ioutil.ReadAll(res.Body)
+	_, err = io.ReadAll(res.Body)
 	res.Body.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -1453,7 +1449,7 @@ func (issue15577Tripper) RoundTrip(*Request) (*Response, error) {
 	resp := &Response{
 		StatusCode: 303,
 		Header:     map[string][]string{"Location": {"http://www.example.com/"}},
-		Body:       ioutil.NopCloser(strings.NewReader("")),
+		Body:       io.NopCloser(strings.NewReader("")),
 	}
 	return resp, nil
 }
@@ -1468,7 +1464,7 @@ func TestClientRedirectResponseWithoutRequest(t *testing.T) {
 	c.Get("http://dummy.tld")
 }
 
-// Issue 4800: copy (some) headers when Client follows a redirect
+// Issue 4800: copy (some) headers when Client follows a redirect.
 func TestClientCopyHeadersOnRedirect(t *testing.T) {
 	const (
 		ua   = "some-agent/1.2"
@@ -1498,21 +1494,17 @@ func TestClientCopyHeadersOnRedirect(t *testing.T) {
 	defer ts2.Close()
 	ts2URL = ts2.URL
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-	c := &Client{
-		Transport: tr,
-		CheckRedirect: func(r *Request, via []*Request) error {
-			want := Header{
-				"User-Agent": []string{ua},
-				"X-Foo":      []string{xfoo},
-				"Referer":    []string{ts2URL},
-			}
-			if !reflect.DeepEqual(r.Header, want) {
-				t.Errorf("CheckRedirect Request.Header = %#v; want %#v", r.Header, want)
-			}
-			return nil
-		},
+	c := ts1.Client()
+	c.CheckRedirect = func(r *Request, via []*Request) error {
+		want := Header{
+			"User-Agent": []string{ua},
+			"X-Foo":      []string{xfoo},
+			"Referer":    []string{ts2URL},
+		}
+		if !reflect.DeepEqual(r.Header, want) {
+			t.Errorf("CheckRedirect Request.Header = %#v; want %#v", r.Header, want)
+		}
+		return nil
 	}
 
 	req, _ := NewRequest("GET", ts2.URL, nil)
@@ -1530,6 +1522,76 @@ func TestClientCopyHeadersOnRedirect(t *testing.T) {
 	}
 	if got := res.Header.Get("Result"); got != "ok" {
 		t.Errorf("result = %q; want ok", got)
+	}
+}
+
+// Issue 22233: copy host when Client follows a relative redirect.
+func TestClientCopyHostOnRedirect(t *testing.T) {
+	// Virtual hostname: should not receive any request.
+	virtual := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		t.Errorf("Virtual host received request %v", r.URL)
+		w.WriteHeader(403)
+		io.WriteString(w, "should not see this response")
+	}))
+	defer virtual.Close()
+	virtualHost := strings.TrimPrefix(virtual.URL, "http://")
+	t.Logf("Virtual host is %v", virtualHost)
+
+	// Actual hostname: should not receive any request.
+	const wantBody = "response body"
+	var tsURL string
+	var tsHost string
+	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		switch r.URL.Path {
+		case "/":
+			// Relative redirect.
+			if r.Host != virtualHost {
+				t.Errorf("Serving /: Request.Host = %#v; want %#v", r.Host, virtualHost)
+				w.WriteHeader(404)
+				return
+			}
+			w.Header().Set("Location", "/hop")
+			w.WriteHeader(302)
+		case "/hop":
+			// Absolute redirect.
+			if r.Host != virtualHost {
+				t.Errorf("Serving /hop: Request.Host = %#v; want %#v", r.Host, virtualHost)
+				w.WriteHeader(404)
+				return
+			}
+			w.Header().Set("Location", tsURL+"/final")
+			w.WriteHeader(302)
+		case "/final":
+			if r.Host != tsHost {
+				t.Errorf("Serving /final: Request.Host = %#v; want %#v", r.Host, tsHost)
+				w.WriteHeader(404)
+				return
+			}
+			w.WriteHeader(200)
+			io.WriteString(w, wantBody)
+		default:
+			t.Errorf("Serving unexpected path %q", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer ts.Close()
+	tsURL = ts.URL
+	tsHost = strings.TrimPrefix(ts.URL, "http://")
+	t.Logf("Server host is %v", tsHost)
+
+	c := ts.Client()
+	req, _ := NewRequest("GET", ts.URL, nil)
+	req.Host = virtualHost
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatal(resp.Status)
+	}
+	if got, err := io.ReadAll(resp.Body); err != nil || string(got) != wantBody {
+		t.Errorf("body = %q; want %q", got, wantBody)
 	}
 }
 
@@ -1601,13 +1663,9 @@ func TestClientAltersCookiesOnRedirect(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
 	jar, _ := cookiejar.New(nil)
-	c := &Client{
-		Transport: tr,
-		Jar:       jar,
-	}
+	c := ts.Client()
+	c.Jar = jar
 
 	u, _ := url.Parse(ts.URL)
 	req, _ := NewRequest("GET", ts.URL, nil)
@@ -1649,8 +1707,12 @@ func TestShouldCopyHeaderOnRedirect(t *testing.T) {
 		{"www-authenticate", "http://foo.com/", "http://foo.com/", true},
 		{"www-authenticate", "http://foo.com/", "http://sub.foo.com/", true},
 		{"www-authenticate", "http://foo.com/", "http://notfoo.com/", false},
-		// TODO(bradfitz): make this test work, once issue 16142 is fixed:
-		// {"www-authenticate", "http://foo.com:80/", "http://foo.com/", true},
+		{"www-authenticate", "http://foo.com/", "https://foo.com/", false},
+		{"www-authenticate", "http://foo.com:80/", "http://foo.com/", true},
+		{"www-authenticate", "http://foo.com:80/", "http://sub.foo.com/", true},
+		{"www-authenticate", "http://foo.com:443/", "https://foo.com/", true},
+		{"www-authenticate", "http://foo.com:443/", "https://sub.foo.com/", true},
+		{"www-authenticate", "http://foo.com:1234/", "http://foo.com/", false},
 	}
 	for i, tt := range tests {
 		u0, err := url.Parse(tt.initialURL)
@@ -1725,9 +1787,7 @@ func TestClientRedirectTypes(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-
+	c := ts.Client()
 	for i, tt := range tests {
 		handlerc <- func(w ResponseWriter, r *Request) {
 			w.Header().Set("Location", ts.URL)
@@ -1740,7 +1800,6 @@ func TestClientRedirectTypes(t *testing.T) {
 			continue
 		}
 
-		c := &Client{Transport: tr}
 		c.CheckRedirect = func(req *Request, via []*Request) error {
 			if got, want := req.Method, tt.wantMethod; got != want {
 				return fmt.Errorf("#%d: got next method %q; want %q", i, got, want)
@@ -1780,8 +1839,8 @@ func (b issue18239Body) Close() error {
 	return nil
 }
 
-// Issue 18239: make sure the Transport doesn't retry requests with bodies.
-// (Especially if Request.GetBody is not defined.)
+// Issue 18239: make sure the Transport doesn't retry requests with bodies
+// if Request.GetBody is not defined.
 func TestTransportBodyReadError(t *testing.T) {
 	setParallel(t)
 	defer afterTest(t)
@@ -1794,9 +1853,8 @@ func TestTransportBodyReadError(t *testing.T) {
 		w.Header().Set("X-Body-Read", fmt.Sprintf("%v, %v", n, err))
 	}))
 	defer ts.Close()
-	tr := &Transport{}
-	defer tr.CloseIdleConnections()
-	c := &Client{Transport: tr}
+	c := ts.Client()
+	tr := c.Transport.(*Transport)
 
 	// Do one initial successful request to create an idle TCP connection
 	// for the subsequent request to reuse. (The Transport only retries
@@ -1816,6 +1874,7 @@ func TestTransportBodyReadError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req = req.WithT(t)
 	_, err = tr.RoundTrip(req)
 	if err != someErr {
 		t.Errorf("Got error: %v; want Request.Body read error: %v", err, someErr)
@@ -1832,4 +1891,194 @@ func TestTransportBodyReadError(t *testing.T) {
 	if closeCalls != 1 {
 		t.Errorf("close calls = %d; want 1", closeCalls)
 	}
+}
+
+type roundTripperWithoutCloseIdle struct{}
+
+func (roundTripperWithoutCloseIdle) RoundTrip(*Request) (*Response, error) { panic("unused") }
+
+type roundTripperWithCloseIdle func() // underlying func is CloseIdleConnections func
+
+func (roundTripperWithCloseIdle) RoundTrip(*Request) (*Response, error) { panic("unused") }
+func (f roundTripperWithCloseIdle) CloseIdleConnections()               { f() }
+
+func TestClientCloseIdleConnections(t *testing.T) {
+	c := &Client{Transport: roundTripperWithoutCloseIdle{}}
+	c.CloseIdleConnections() // verify we don't crash at least
+
+	closed := false
+	var tr RoundTripper = roundTripperWithCloseIdle(func() {
+		closed = true
+	})
+	c = &Client{Transport: tr}
+	c.CloseIdleConnections()
+	if !closed {
+		t.Error("not closed")
+	}
+}
+
+func TestClientPropagatesTimeoutToContext(t *testing.T) {
+	errDial := errors.New("not actually dialing")
+	c := &Client{
+		Timeout: 5 * time.Second,
+		Transport: &Transport{
+			DialContext: func(ctx context.Context, netw, addr string) (net.Conn, error) {
+				deadline, ok := ctx.Deadline()
+				if !ok {
+					t.Error("no deadline")
+				} else {
+					t.Logf("deadline in %v", deadline.Sub(time.Now()).Round(time.Second/10))
+				}
+				return nil, errDial
+			},
+		},
+	}
+	c.Get("https://example.tld/")
+}
+
+func TestClientDoCanceledVsTimeout_h1(t *testing.T) {
+	testClientDoCanceledVsTimeout(t, h1Mode)
+}
+
+func TestClientDoCanceledVsTimeout_h2(t *testing.T) {
+	testClientDoCanceledVsTimeout(t, h2Mode)
+}
+
+// Issue 33545: lock-in the behavior promised by Client.Do's
+// docs about request cancelation vs timing out.
+func testClientDoCanceledVsTimeout(t *testing.T, h2 bool) {
+	defer afterTest(t)
+	cst := newClientServerTest(t, h2, HandlerFunc(func(w ResponseWriter, r *Request) {
+		w.Write([]byte("Hello, World!"))
+	}))
+	defer cst.close()
+
+	cases := []string{"timeout", "canceled"}
+
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			var ctx context.Context
+			var cancel func()
+			if name == "timeout" {
+				ctx, cancel = context.WithTimeout(context.Background(), -time.Nanosecond)
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+				cancel()
+			}
+			defer cancel()
+
+			req, _ := NewRequestWithContext(ctx, "GET", cst.ts.URL, nil)
+			_, err := cst.c.Do(req)
+			if err == nil {
+				t.Fatal("Unexpectedly got a nil error")
+			}
+
+			ue := err.(*url.Error)
+
+			var wantIsTimeout bool
+			var wantErr error = context.Canceled
+			if name == "timeout" {
+				wantErr = context.DeadlineExceeded
+				wantIsTimeout = true
+			}
+			if g, w := ue.Timeout(), wantIsTimeout; g != w {
+				t.Fatalf("url.Timeout() = %t, want %t", g, w)
+			}
+			if g, w := ue.Err, wantErr; g != w {
+				t.Errorf("url.Error.Err = %v; want %v", g, w)
+			}
+		})
+	}
+}
+
+type nilBodyRoundTripper struct{}
+
+func (nilBodyRoundTripper) RoundTrip(req *Request) (*Response, error) {
+	return &Response{
+		StatusCode: StatusOK,
+		Status:     StatusText(StatusOK),
+		Body:       nil,
+		Request:    req,
+	}, nil
+}
+
+func TestClientPopulatesNilResponseBody(t *testing.T) {
+	c := &Client{Transport: nilBodyRoundTripper{}}
+
+	resp, err := c.Get("http://localhost/anything")
+	if err != nil {
+		t.Fatalf("Client.Get rejected Response with nil Body: %v", err)
+	}
+
+	if resp.Body == nil {
+		t.Fatalf("Client failed to provide a non-nil Body as documented")
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("error from Close on substitute Response.Body: %v", err)
+		}
+	}()
+
+	if b, err := io.ReadAll(resp.Body); err != nil {
+		t.Errorf("read error from substitute Response.Body: %v", err)
+	} else if len(b) != 0 {
+		t.Errorf("substitute Response.Body was unexpectedly non-empty: %q", b)
+	}
+}
+
+// Issue 40382: Client calls Close multiple times on Request.Body.
+func TestClientCallsCloseOnlyOnce(t *testing.T) {
+	setParallel(t)
+	defer afterTest(t)
+	cst := newClientServerTest(t, h1Mode, HandlerFunc(func(w ResponseWriter, r *Request) {
+		w.WriteHeader(StatusNoContent)
+	}))
+	defer cst.close()
+
+	// Issue occurred non-deterministically: needed to occur after a successful
+	// write (into TCP buffer) but before end of body.
+	for i := 0; i < 50 && !t.Failed(); i++ {
+		body := &issue40382Body{t: t, n: 300000}
+		req, err := NewRequest(MethodPost, cst.ts.URL, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := cst.tr.RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+}
+
+// issue40382Body is an io.ReadCloser for TestClientCallsCloseOnlyOnce.
+// Its Read reads n bytes before returning io.EOF.
+// Its Close returns nil but fails the test if called more than once.
+type issue40382Body struct {
+	t                *testing.T
+	n                int
+	closeCallsAtomic int32
+}
+
+func (b *issue40382Body) Read(p []byte) (int, error) {
+	switch {
+	case b.n == 0:
+		return 0, io.EOF
+	case b.n < len(p):
+		p = p[:b.n]
+		fallthrough
+	default:
+		for i := range p {
+			p[i] = 'x'
+		}
+		b.n -= len(p)
+		return len(p), nil
+	}
+}
+
+func (b *issue40382Body) Close() error {
+	if atomic.AddInt32(&b.closeCallsAtomic, 1) == 2 {
+		b.t.Error("Body closed more than once")
+	}
+	return nil
 }

@@ -1,31 +1,88 @@
-2019-11-14  Release Manager
+2021-07-28  Release Manager
 
-	* GCC 7.5.0 released.
+	* GCC 11.2.0 released.
 
-2018-12-06  Release Manager
+2021-04-27  Release Manager
 
-	* GCC 7.4.0 released.
+	* GCC 11.1.0 released.
 
-2018-06-22  Jakub Jelinek  <jakub@redhat.com>
+2021-01-05  Samuel Thibault  <samuel.thibault@ens-lyon.org>
 
-	Backported from mainline
-	2018-04-18  David Malcolm  <dmalcolm@redhat.com>
+	* configure: Re-generate.
+	* plugin/configure: Re-generate.
+
+2020-11-29  John David Anglin  <danglin@gcc.gnu.org>
+
+	* configure: Regenerate.
+	* plugin/configure: Regenerate.
+
+2020-05-05  Martin Liska  <mliska@suse.cz>
+
+	PR other/89860
+	* runtime/offload_target.cpp: Put index check
+	before its use.
+
+2020-01-24  Maciej W. Rozycki  <macro@wdc.com>
+
+	* plugin/configure.ac: Handle `--with-toolexeclibdir='.
+	* plugin/Makefile.in: Regenerate.
+	* plugin/aclocal.m4: Regenerate.
+	* plugin/configure: Regenerate.
+	* configure.ac: Handle `--with-toolexeclibdir='.
+	* Makefile.in: Regenerate.
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+
+2020-01-10  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* plugin/libgomp-plugin-intelmic.cpp (GOMP_OFFLOAD_get_property):
+	Remove.
+
+2019-12-22  Maciej W. Rozycki  <macro@codesourcery.com>
+	    Frederik Harwath  <frederik@codesourcery.com>
+	    Thomas Schwinge  <tschwinge@codesourcery.com>
+
+	liboffloadmic/
+	* plugin/libgomp-plugin-intelmic.cpp (GOMP_OFFLOAD_get_property):
+	New function.
+
+2019-10-01  Maciej W. Rozycki  <macro@wdc.com>
+
+	* plugin/configure: Regenerate.
+
+2019-09-27  Maciej W. Rozycki  <macro@wdc.com>
+
+	* configure: Regenerate.
+
+2019-01-09  Sandra Loosemore  <sandra@codesourcery.com>
+
+	PR other/16615
+
+	* include/coi/common/COIResult_common.h: Mechanically replace
+	"can not" with "cannot".
+	* include/coi/source/COIBuffer_source.h: Likewise.
+
+2018-12-14  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* runtime/offload.h (omp_target_is_present, omp_target_memcpy)
+	(omp_target_memcpy_rect, omp_target_associate_ptr)
+	(omp_target_disassociate_ptr): Adjust to libgomp changes.
+
+2018-10-31  Joseph Myers  <joseph@codesourcery.com>
+
+	PR bootstrap/82856
+	* Makefile.am: Include multilib.am.
+	* configure.ac: Remove AC_PREREQ.
+	* plugin/Makefile.am: Include multilib.am.
+	* plugin/configure.ac: Remove AC_PREREQ.
+	* Makefile.in, aclocal.m4, configure, plugin/Makefile.in,
+	plugin/aclocal.m4, plugin/configure: Regenerate.
+
+2018-04-18  David Malcolm  <dmalcolm@redhat.com>
 
 	PR jit/85384
 	* configure: Regenerate.
-	* plugin/confugure: Regenerate.
-
-2018-01-25  Release Manager
-
-	* GCC 7.3.0 released.
-
-2017-08-14  Release Manager
-
-	* GCC 7.2.0 released.
-
-2017-05-02  Release Manager
-
-	* GCC 7.1.0 released.
+	* plugin/configure: Regenerate.
 
 2017-01-31  Thomas Schwinge  <thomas@codesourcery.com>
 
@@ -666,7 +723,7 @@
 	* runtime/orsl-lite/version.txt: Ditto.
 	* runtime/use_mpss2.txt: Ditto.
 
-Copyright (C) 2014-2017 Free Software Foundation, Inc.
+Copyright (C) 2014-2018 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

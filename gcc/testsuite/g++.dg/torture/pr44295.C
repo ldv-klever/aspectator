@@ -1,4 +1,5 @@
 /* { dg-do compile } */
+/* { dg-additional-options "-Wno-return-type" } */
 /* { dg-skip-if "no pthread_barrier" { *-*-darwin* } } */
 
 extern "C" {

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2008-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 2008-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,7 +26,7 @@
 --  The base name of the template file is given by Argument (1). This program
 --  generates the spec for this specified unit (let's call it UNIT_NAME).
 
---  It works in conjunction with a C template file which must be pre-processed
+--  It works in conjunction with a C template file which must be preprocessed
 --  and compiled using the cross compiler. Two input files are used:
 --    - the preprocessed C file: UNIT_NAME-tmplt.i
 --    - the generated assembly file: UNIT_NAME-tmplt.s
@@ -152,8 +152,8 @@ procedure XOSCons is
    --  True if S contains Tmpl_Name, possibly with different casing
 
    function Spaces (Count : Integer) return String;
-   --  If Count is positive, return a string of Count spaces, else return an
-   --  empty string.
+   --  If Count is positive, return a string of Count spaces, else return
+   --  an empty string.
 
    ---------
    -- ">" --
@@ -166,7 +166,7 @@ procedure XOSCons is
       A2 : Long_Unsigned renames V2.Abs_Value;
    begin
       return (P1 and then not P2)
-        or else (P1 and then P2 and then A1 > A2)
+        or else (P1 and then A1 > A2)
         or else (not P1 and then not P2 and then A1 < A2);
    end ">";
 
@@ -229,8 +229,7 @@ procedure XOSCons is
             case Lang is
                when Lang_Ada =>
                   Put ("   subtype " & Info.Constant_Name.all
-                       & " is Interfaces.C."
-                       & Info.Text_Value.all & ";");
+                       & " is " & Info.Text_Value.all & ";");
                when Lang_C =>
                   Put ("#define " & Info.Constant_Name.all & " "
                        & Info.Text_Value.all);
@@ -495,6 +494,9 @@ procedure XOSCons is
       Value1 := Get_Value (Slice (Sline, 2));
       Value2 := Get_Value (Slice (Sline, 4));
 
+      pragma Annotate (CodePeer, Modified, Value1);
+      pragma Annotate (CodePeer, Modified, Value2);
+
       if Slice (Sline, 3) = ">" then
          Res := Cond and (Value1 > Value2);
 
@@ -620,7 +622,7 @@ procedure XOSCons is
    Current_Line : Integer;
    Current_Info : Integer;
    In_Comment   : Boolean;
-   In_Template  : Boolean;
+   In_Template  : Boolean := False;
 
 --  Start of processing for XOSCons
 

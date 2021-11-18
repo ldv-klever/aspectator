@@ -1,6 +1,6 @@
 // ABI Support -*- C++ -*-
 
-// Copyright (C) 2000-2017 Free Software Foundation, Inc.
+// Copyright (C) 2000-2021 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -125,14 +125,22 @@ namespace __cxxabiv1
 
   // DSO destruction.
   int
+#ifdef _GLIBCXX_CDTOR_CALLABI
+  __cxa_atexit(void (_GLIBCXX_CDTOR_CALLABI *)(void*), void*, void*) _GLIBCXX_NOTHROW;
+#else
   __cxa_atexit(void (*)(void*), void*, void*) _GLIBCXX_NOTHROW;
+#endif
 
-  int
+  void
   __cxa_finalize(void*);
 
   // TLS destruction.
   int
+#ifdef _GLIBCXX_CDTOR_CALLABI
+  __cxa_thread_atexit(void (_GLIBCXX_CDTOR_CALLABI *)(void*), void*, void *) _GLIBCXX_NOTHROW;
+#else
   __cxa_thread_atexit(void (*)(void*), void*, void *) _GLIBCXX_NOTHROW;
+#endif
 
   // Pure virtual functions.
   void
@@ -165,10 +173,11 @@ namespace __cxxabiv1
    *  in that case, the demangled name is placed in a region of memory
    *  allocated with malloc.
    *
-   *  @param __length If @a __length is non-NULL, the length of the
+   *  @param __length If @a __length is non-null, the length of the
    *  buffer containing the demangled name is placed in @a *__length.
    *
-   *  @param __status @a *__status is set to one of the following values:
+   *  @param __status If @a __status is non-null, @a *__status is set to
+   *  one of the following values:
    *   0: The demangling operation succeeded.
    *  -1: A memory allocation failure occurred.
    *  -2: @a mangled_name is not a valid name under the C++ ABI mangling rules.

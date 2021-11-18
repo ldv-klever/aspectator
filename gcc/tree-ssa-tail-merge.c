@@ -1,5 +1,5 @@
 /* Tail merging for gimple.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
    Contributed by Tom de Vries (tom@codesourcery.com)
 
 This file is part of GCC.
@@ -201,10 +201,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
-#include "params.h"
 #include "tree-ssa-sccvn.h"
 #include "cfgloop.h"
 #include "tree-eh.h"
+#include "tree-cfgcleanup.h"
+
+const int ignore_edge_flags = EDGE_DFS_BACK | EDGE_EXECUTABLE;
 
 /* Describes a group of bbs with the same successors.  The successor bbs are
    cached in succs, and the successor edge flags are cached in succ_flags.
@@ -282,6 +284,21 @@ struct aux_bb_info
 #define BB_CLUSTER(bb) (((struct aux_bb_info *)bb->aux)->cluster)
 #define BB_VOP_AT_EXIT(bb) (((struct aux_bb_info *)bb->aux)->vop_at_exit)
 #define BB_DEP_BB(bb) (((struct aux_bb_info *)bb->aux)->dep_bb)
+
+/* Valueization helper querying the VN lattice.  */
+
+static tree
+tail_merge_valueize (tree name)
+{
+  if (TREE_CODE (name) == SSA_NAME
+      && has_VN_INFO (name))
+    {
+      tree tem = VN_INFO (name)->valnum;
+      if (tem != VN_TOP)
+	return tem;
+    }
+  return name;
+}
 
 /* Returns true if the only effect a statement STMT has, is to define locally
    used SSA_NAMEs.  */
@@ -368,7 +385,7 @@ gvn_uses_equal (tree val1, tree val2)
   if (val1 == val2)
     return true;
 
-  if (vn_valueize (val1) != vn_valueize (val2))
+  if (tail_merge_valueize (val1) != tail_merge_valueize (val2))
     return false;
 
   return ((TREE_CODE (val1) == SSA_NAME || CONSTANT_CLASS_P (val1))
@@ -478,13 +495,15 @@ same_succ_hash (const same_succ *e)
       for (i = 0; i < gimple_call_num_args (stmt); i++)
 	{
 	  arg = gimple_call_arg (stmt, i);
-	  arg = vn_valueize (arg);
+	  arg = tail_merge_valueize (arg);
 	  inchash::add_expr (arg, hstate);
 	}
     }
 
   hstate.add_int (size);
   BB_SIZE (bb) = size;
+
+  hstate.add_int (bb->loop_father->num);
 
   for (i = 0; i < e->succ_flags.length (); ++i)
     {
@@ -573,6 +592,9 @@ same_succ::equal (const same_succ *e1, const same_succ *e2)
   bb2 = BASIC_BLOCK_FOR_FN (cfun, first2);
 
   if (BB_SIZE (bb1) != BB_SIZE (bb2))
+    return 0;
+
+  if (bb1->loop_father != bb2->loop_father)
     return 0;
 
   gsi1 = gsi_start_nondebug_bb (bb1);
@@ -702,22 +724,14 @@ find_same_succ_bb (basic_block bb, same_succ **same_p)
   edge_iterator ei;
   edge e;
 
-  if (bb == NULL
-      /* Be conservative with loop structure.  It's not evident that this test
-	 is sufficient.  Before tail-merge, we've just called
-	 loop_optimizer_finalize, and LOOPS_MAY_HAVE_MULTIPLE_LATCHES is now
-	 set, so there's no guarantee that the loop->latch value is still valid.
-	 But we assume that, since we've forced LOOPS_HAVE_SIMPLE_LATCHES at the
-	 start of pre, we've kept that property intact throughout pre, and are
-	 keeping it throughout tail-merge using this test.  */
-      || bb->loop_father->latch == bb)
+  if (bb == NULL)
     return;
   bitmap_set_bit (same->bbs, bb->index);
   FOR_EACH_EDGE (e, ei, bb->succs)
     {
       int index = e->dest->index;
       bitmap_set_bit (same->succs, index);
-      same_succ_edge_flags[index] = e->flags;
+      same_succ_edge_flags[index] = (e->flags & ~ignore_edge_flags);
     }
   EXECUTE_IF_SET_IN_BITMAP (same->succs, 0, j, bj)
     same->succ_flags.safe_push (same_succ_edge_flags[j]);
@@ -1147,7 +1161,7 @@ gimple_equal_p (same_succ *same_succ, gimple *s1, gimple *s2)
       if (lhs1 == NULL_TREE || lhs2 == NULL_TREE)
 	return false;
       if (TREE_CODE (lhs1) == SSA_NAME && TREE_CODE (lhs2) == SSA_NAME)
-	return vn_valueize (lhs1) == vn_valueize (lhs2);
+	return tail_merge_valueize (lhs1) == tail_merge_valueize (lhs2);
       return operand_equal_p (lhs1, lhs2, 0);
 
     case GIMPLE_ASSIGN:
@@ -1175,8 +1189,8 @@ gimple_equal_p (same_succ *same_succ, gimple *s1, gimple *s2)
       if (!gimple_operand_equal_value_p (t1, t2))
 	return false;
 
-      code1 = gimple_expr_code (s1);
-      code2 = gimple_expr_code (s2);
+      code1 = gimple_cond_code (s1);
+      code2 = gimple_cond_code (s2);
       inv_cond = (bitmap_bit_p (same_succ->inverse, bb1->index)
 		  != bitmap_bit_p (same_succ->inverse, bb2->index));
       if (inv_cond)
@@ -1249,6 +1263,7 @@ merge_stmts_p (gimple *stmt1, gimple *stmt2)
       case IFN_UBSAN_CHECK_SUB:
       case IFN_UBSAN_CHECK_MUL:
       case IFN_UBSAN_OBJECT_SIZE:
+      case IFN_UBSAN_PTR:
       case IFN_ASAN_CHECK:
 	/* For these internal functions, gimple_location is an implicit
 	   parameter, which will be used explicitly after expansion.
@@ -1453,7 +1468,7 @@ find_clusters_1 (same_succ *same_succ)
   unsigned int i, j;
   bitmap_iterator bi, bj;
   int nr_comparisons;
-  int max_comparisons = PARAM_VALUE (PARAM_MAX_TAIL_MERGE_COMPARISONS);
+  int max_comparisons = param_max_tail_merge_comparisons;
 
   EXECUTE_IF_SET_IN_BITMAP (same_succ->bbs, 0, i, bi)
     {
@@ -1539,8 +1554,6 @@ static void
 replace_block_by (basic_block bb1, basic_block bb2)
 {
   edge pred_edge;
-  edge e1, e2;
-  edge_iterator ei;
   unsigned int i;
   gphi *bb2_phi;
 
@@ -1567,29 +1580,24 @@ replace_block_by (basic_block bb1, basic_block bb2)
 		   pred_edge, UNKNOWN_LOCATION);
     }
 
-  bb2->frequency += bb1->frequency;
-  if (bb2->frequency > BB_FREQ_MAX)
-    bb2->frequency = BB_FREQ_MAX;
-
-  bb2->count += bb1->count;
 
   /* Merge the outgoing edge counts from bb1 onto bb2.  */
-  gcov_type out_sum = 0;
-  FOR_EACH_EDGE (e1, ei, bb1->succs)
-    {
-      e2 = find_edge (bb2, e1->dest);
-      gcc_assert (e2);
-      e2->count += e1->count;
-      out_sum += e2->count;
-    }
-  /* Recompute the edge probabilities from the new merged edge count.
-     Use the sum of the new merged edge counts computed above instead
-     of bb2's merged count, in case there are profile count insanities
-     making the bb count inconsistent with the edge weights.  */
-  FOR_EACH_EDGE (e2, ei, bb2->succs)
-    {
-      e2->probability = GCOV_COMPUTE_SCALE (e2->count, out_sum);
-    }
+  edge e1, e2;
+  edge_iterator ei;
+
+  if (bb2->count.initialized_p ())
+    FOR_EACH_EDGE (e1, ei, bb1->succs)
+      {
+        e2 = find_edge (bb2, e1->dest);
+        gcc_assert (e2);
+
+	/* If probabilities are same, we are done.
+	   If counts are nonzero we can distribute accordingly. In remaining
+	   cases just avreage the values and hope for the best.  */
+	e2->probability = e1->probability.combine_with_count
+	                     (bb1->count, e2->probability, bb2->count);
+      }
+  bb2->count += bb1->count;
 
   /* Move over any user labels from bb1 after the bb2 labels.  */
   gimple_stmt_iterator gsi1 = gsi_start_bb (bb1);
@@ -1722,13 +1730,23 @@ tail_merge_optimize (unsigned int todo)
   int nr_bbs_removed;
   bool loop_entered = false;
   int iteration_nr = 0;
-  int max_iterations = PARAM_VALUE (PARAM_MAX_TAIL_MERGE_ITERATIONS);
+  int max_iterations = param_max_tail_merge_iterations;
 
   if (!flag_tree_tail_merge
       || max_iterations == 0)
     return 0;
 
   timevar_push (TV_TREE_TAIL_MERGE);
+
+  /* We enter from PRE which has critical edges split.  Elimination
+     does not process trivially dead code so cleanup the CFG if we
+     are told so.  And re-split critical edges then.  */
+  if (todo & TODO_cleanup_cfg)
+    {
+      cleanup_tree_cfg ();
+      todo &= ~TODO_cleanup_cfg;
+      split_edges_for_insertion ();
+    }
 
   if (!dom_info_available_p (CDI_DOMINATORS))
     {
@@ -1778,7 +1796,7 @@ tail_merge_optimize (unsigned int todo)
 
   if (nr_bbs_removed_total > 0)
     {
-      if (MAY_HAVE_DEBUG_STMTS)
+      if (MAY_HAVE_DEBUG_BIND_STMTS)
 	{
 	  calculate_dominance_info (CDI_DOMINATORS);
 	  update_debug_stmts ();

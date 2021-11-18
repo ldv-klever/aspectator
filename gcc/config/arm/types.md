@@ -1,6 +1,6 @@
 ;; Instruction Classification for ARM for GNU compiler.
 
-;; Copyright (C) 1991-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1991-2021 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 
 ;; This file is part of GCC.
@@ -18,6 +18,19 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GCC; see the file COPYING3.  If not see
 ;; <http://www.gnu.org/licenses/>.
+
+; The insn need to autodetect for specific type attribute
+(define_attr "autodetect_type"
+    "none,
+    alu_shift_lsl_op2,
+    alu_shift_lsr_op2,
+    alu_shift_asr_op2,
+    alu_shift_mul_op3,
+    alu_shift_operator1,
+    alu_shift_operator2,
+    alu_shift_operator3,
+    alu_shift_operator4"
+    (const_string "none"))
 
 ; TYPE attribute is used to classify instructions for use in scheduling.
 ;
@@ -39,16 +52,21 @@
 ;                    or an immediate operand.  This excludes
 ;                    MOV and MVN but includes MOVT.  This also excludes
 ;                    DSP-kind instructions.  This is also the default.
-; alu_shift_imm      any arithmetic instruction that has a source operand
-;                    shifted by a constant.  This excludes simple shifts.
-; alu_shift_reg      as alu_shift_imm, with the shift amount specified in a
+; alu_shift_imm_lsl_1to4
+;                    any arithmetic instruction that has a source operand
+;                    shifted left by a constant in range 1 to 4.  This
+;                    excludes simple shifts.
+; alu_shift_imm_other
+;                    as alu_shift_imm_lsl_1to4, with the shift type is LSR or
+;                    ASR, or the shift amount is greater than or equal 5.
+; alu_shift_reg      as alu_shift_imm_*, with the shift amount specified in a
 ;                    register.
 ; alu_dsp_reg        any DSP-kind instruction like QSUB8.
 ; alus_ext           From ARMv8-A: as alu_ext, setting condition flags.
 ;                    AArch64 Only.
 ; alus_imm           as alu_imm, setting condition flags.
 ; alus_sreg          as alu_sreg, setting condition flags.
-; alus_shift_imm     as alu_shift_imm, setting condition flags.
+; alus_shift_imm     as alu_shift_imm_*, setting condition flags.
 ; alus_shift_reg     as alu_shift_reg, setting condition flags.
 ; bfm                bitfield move operation.
 ; bfx                bitfield extract operation.
@@ -84,11 +102,11 @@
 ; fmul[d,s]          double/single floating point multiply.
 ; fsqrt[d,s]         double/single precision floating point square root.
 ; load_acq           load-acquire.
-; load_byte          load byte(s) from memory to arm registers.
-; load1              load 1 word from memory to arm registers.
-; load2              load 2 words from memory to arm registers.
-; load3              load 3 words from memory to arm registers.
-; load4              load 4 words from memory to arm registers.
+; load_byte          load 1 byte from memory.
+; load_4             load 4 bytes from memory.
+; load_8             load 8 bytes from memory.
+; load_12            load 12 bytes from memory.
+; load_16            load 16 bytes from memory.
 ; logic_imm          any logical instruction that doesn't have a shifted
 ;                    operand and has an immediate operand.
 ; logic_reg          any logical instruction that doesn't have a shifted
@@ -152,10 +170,10 @@
 ; smusd              signed dual multiply subtract.
 ; smusdx             signed dual multiply subtract reverse.
 ; store_rel          store-release.
-; store1             store 1 word to memory from arm registers.
-; store2             store 2 words to memory from arm registers.
-; store3             store 3 words to memory from arm registers.
-; store4             store 4 (or more) words to memory from arm registers.
+; store_4            store 4 bytes to memory.
+; store_8            store 8 bytes to memory.
+; store_12           store 12 bytes to memory.
+; store_16           store 16 bytes (or more) to memory.
 ; trap               cause a trap in the kernel.
 ; udiv               unsigned division.
 ; umaal              unsigned multiply accumulate accumulate long.
@@ -316,6 +334,8 @@
 ; neon_cls_q
 ; neon_cnt
 ; neon_cnt_q
+; neon_dot
+; neon_dot_q
 ; neon_ext
 ; neon_ext_q
 ; neon_rbit
@@ -539,10 +559,20 @@
 ; crypto_sha1_slow
 ; crypto_sha256_fast
 ; crypto_sha256_slow
+; crypto_pmull
 ;
 ; The classification below is for coprocessor instructions
 ;
 ; coproc
+;
+; The classification below is for TME instructions
+;
+; tme
+; The classification below is for M-profile Vector Extension instructions
+;
+; mve_move
+; mve_store
+; mve_load
 
 (define_attr "type"
  "adc_imm,\
@@ -553,7 +583,8 @@
   alu_ext,\
   alu_imm,\
   alu_sreg,\
-  alu_shift_imm,\
+  alu_shift_imm_lsl_1to4,\
+  alu_shift_imm_other,\
   alu_shift_reg,\
   alu_dsp_reg,\
   alus_ext,\
@@ -612,10 +643,10 @@
   fsqrtd,\
   load_acq,\
   load_byte,\
-  load1,\
-  load2,\
-  load3,\
-  load4,\
+  load_4,\
+  load_8,\
+  load_12,\
+  load_16,\
   logic_imm,\
   logic_reg,\
   logic_shift_imm,\
@@ -669,10 +700,10 @@
   smusd,\
   smusdx,\
   store_rel,\
-  store1,\
-  store2,\
-  store3,\
-  store4,\
+  store_4,\
+  store_8,\
+  store_12,\
+  store_16,\
   trap,\
   udiv,\
   umaal,\
@@ -761,8 +792,13 @@
   neon_sub_halve_q,\
   neon_sub_halve_narrow_q,\
 \
+  neon_fcadd,\
+  neon_fcmla,\
+\
   neon_abs,\
   neon_abs_q,\
+  neon_dot,\
+  neon_dot_q,\
   neon_neg,\
   neon_neg_q,\
   neon_qneg,\
@@ -1078,8 +1114,54 @@
   crypto_sha1_slow,\
   crypto_sha256_fast,\
   crypto_sha256_slow,\
-  coproc"
-   (const_string "untyped"))
+  crypto_pmull,\
+  crypto_sha512,\
+  crypto_sha3,\
+  crypto_sm3,\
+  crypto_sm4,\
+  coproc,\
+  tme,\
+  memtag,\
+  mve_move,\
+  mve_store,\
+  mve_load"
+   (cond [(eq_attr "autodetect_type" "alu_shift_lsr_op2,alu_shift_asr_op2")
+            (const_string "alu_shift_imm_other")
+          (eq_attr "autodetect_type" "alu_shift_lsl_op2")
+            (if_then_else (match_operand 2 "const_1_to_4_operand")
+                          (const_string "alu_shift_imm_lsl_1to4")
+                          (const_string "alu_shift_imm_other"))
+          (eq_attr "autodetect_type" "alu_shift_mul_op3")
+            (if_then_else (match_operand 3 "const_2_4_8_16_operand")
+                          (const_string "alu_shift_imm_lsl_1to4")
+                          (const_string "alu_shift_imm_other"))
+          (eq_attr "autodetect_type" "alu_shift_operator1")
+            (if_then_else (match_operand 1 "alu_shift_reg_p")
+               (const_string "alu_shift_reg")
+               (if_then_else (match_operand 1 "alu_shift_operator_lsl_1_to_4")
+                             (const_string "alu_shift_imm_lsl_1to4")
+                             (const_string "alu_shift_imm_other")))
+          (eq_attr "autodetect_type" "alu_shift_operator2")
+            (if_then_else (match_operand 2 "alu_shift_reg_p")
+               (const_string "alu_shift_reg")
+               (if_then_else (match_operand 2 "alu_shift_operator_lsl_1_to_4")
+                             (const_string "alu_shift_imm_lsl_1to4")
+                             (const_string "alu_shift_imm_other")))
+          (eq_attr "autodetect_type" "alu_shift_operator3")
+            (if_then_else (match_operand 3 "alu_shift_reg_p")
+               (const_string "alu_shift_reg")
+               (if_then_else (match_operand 3 "alu_shift_operator_lsl_1_to_4")
+                             (const_string "alu_shift_imm_lsl_1to4")
+                             (const_string "alu_shift_imm_other")))
+          (eq_attr "autodetect_type" "alu_shift_operator4")
+            (if_then_else (match_operand 4 "alu_shift_reg_p")
+               (const_string "alu_shift_reg")
+               (if_then_else (match_operand 4 "alu_shift_operator_lsl_1_to_4")
+                             (const_string "alu_shift_imm_lsl_1to4")
+                             (const_string "alu_shift_imm_other")))
+         ]
+         (const_string "untyped")))
+
 
 ; Is this an (integer side) multiply with a 32-bit (or smaller) result?
 (define_attr "mul32" "no,yes"
@@ -1090,8 +1172,8 @@
     (const_string "yes")
     (const_string "no")))
 
-; Is this an (integer side) multiply with a 64-bit result?
-(define_attr "mul64" "no,yes"
+; Is this an (integer side) widening multiply with a 64-bit result?
+(define_attr "widen_mul64" "no,yes"
   (if_then_else
     (eq_attr "type"
      "smlalxy,umull,umulls,umaal,umlal,umlals,smull,smulls,smlal,smlals")
@@ -1108,8 +1190,8 @@
           neon_sub, neon_sub_q, neon_sub_widen, neon_sub_long, neon_qsub,\
           neon_qsub_q, neon_sub_halve, neon_sub_halve_q,\
           neon_sub_halve_narrow_q,\
-          neon_abs, neon_abs_q, neon_neg, neon_neg_q, neon_qneg,\
-          neon_qneg_q, neon_qabs, neon_qabs_q, neon_abd, neon_abd_q,\
+	  neon_abs, neon_abs_q, neon_dot, neon_dot_q, neon_neg, neon_neg_q,\
+	  neon_qneg, neon_qneg_q, neon_qabs, neon_qabs_q, neon_abd, neon_abd_q,\
           neon_abd_long, neon_minmax, neon_minmax_q, neon_compare,\
           neon_compare_q, neon_compare_zero, neon_compare_zero_q,\
           neon_arith_acc, neon_arith_acc_q, neon_reduc_add,\
@@ -1202,3 +1284,15 @@
           crypto_sha256_fast, crypto_sha256_slow")
         (const_string "yes")
         (const_string "no")))
+
+;; YES if the "type" attribute assigned to the insn denotes an MVE instruction,
+;; No otherwise.
+(define_attr "is_mve_type" "yes,no"
+        (if_then_else (eq_attr "type"
+        "mve_move, mve_load, mve_store, mrs")
+        (const_string "yes")
+        (const_string "no")))
+
+(define_insn_reservation "no_reservation" 0
+  (eq_attr "type" "no_insn")
+  "nothing")

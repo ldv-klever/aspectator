@@ -1,4 +1,4 @@
-/* { dg-options "-fno-short-enums" } */
+/* { dg-options "-fno-short-enums -Wno-return-type" } */
 enum
 {
   _sch_isdigit = 0x0004,

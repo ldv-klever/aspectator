@@ -1,5 +1,6 @@
 /* { dg-do compile { target { { i?86-*-* x86_64-*-* } && ilp32 } } } */
 // { dg-require-effective-target c++11 }
+// { dg-require-effective-target fpic }
 /* { dg-options "-O2 -fno-omit-frame-pointer -fPIC" } */
 
 typedef int int32;
@@ -95,6 +96,8 @@ namespace __gnu_cxx __attribute__ ((__visibility__ ("default"))) {
     }
     __sso_string_base(const __sso_string_base& __rcs);
     const _CharT_alloc_type& _M_get_allocator() const {
+      static _CharT_alloc_type c;
+      return c;
     }
   };
   template<typename _CharT, typename _Traits, typename _Alloc>

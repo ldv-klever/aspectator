@@ -1,5 +1,5 @@
 /* go-c.h -- Header file for go frontend gcc C interface.
-   Copyright (C) 2009-2017 Free Software Foundation, Inc.
+   Copyright (C) 2009-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -29,7 +29,7 @@ class Backend;
    interface.  */
 
 extern int go_enable_dump (const char*);
-extern int go_enable_optimize (const char*);
+extern int go_enable_optimize (const char*, int);
 
 extern void go_add_search_path (const char*);
 
@@ -41,12 +41,17 @@ struct go_create_gogo_args
   const char* prefix;
   const char* relative_import_path;
   const char* c_header;
+  const char* embedcfg;
   Backend* backend;
   Linemap* linemap;
   bool check_divide_by_zero;
   bool check_divide_overflow;
   bool compiling_runtime;
   int debug_escape_level;
+  const char* debug_escape_hash;
+  int64_t nil_check_size_threshold;
+  bool debug_optimization;
+  bool need_eqtype;
 };
 
 extern void go_create_gogo (const struct go_create_gogo_args*);

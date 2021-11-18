@@ -1,5 +1,5 @@
 // { dg-do compile }
-// { dg-options "-ftracer -fno-tree-dce -fno-tree-sra" }
+// { dg-options "-ftracer -fno-tree-dce -fno-tree-sra -Wno-return-type" }
 
 struct bidirectional_iterator_tag
 {};

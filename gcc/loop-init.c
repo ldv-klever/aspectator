@@ -1,5 +1,5 @@
 /* Loop optimizer initialization routines and RTL loop optimization passes.
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -33,6 +33,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-loop-niter.h"
 #include "loop-unroll.h"
 #include "tree-scalar-evolution.h"
+#include "tree-cfgcleanup.h"
 
 
 /* Apply FLAGS to the loop state.  */
@@ -133,12 +134,18 @@ loop_optimizer_init (unsigned flags)
 /* Finalize loop structures.  */
 
 void
-loop_optimizer_finalize (struct function *fn)
+loop_optimizer_finalize (struct function *fn, bool clean_loop_closed_phi)
 {
-  struct loop *loop;
+  class loop *loop;
   basic_block bb;
 
   timevar_push (TV_LOOP_FINI);
+
+  if (clean_loop_closed_phi && loops_state_satisfies_p (fn, LOOP_CLOSED_SSA))
+    {
+      clean_up_loop_closed_phi (fn);
+      loops_state_clear (fn, LOOP_CLOSED_SSA);
+    }
 
   if (loops_state_satisfies_p (fn, LOOPS_HAVE_RECORDED_EXITS))
     release_recorded_exits (fn);
@@ -194,7 +201,7 @@ fix_loop_structure (bitmap changed_bbs)
 {
   basic_block bb;
   int record_exits = 0;
-  struct loop *loop;
+  class loop *loop;
   unsigned old_nloops, i;
 
   timevar_push (TV_LOOP_INIT);
@@ -237,7 +244,7 @@ fix_loop_structure (bitmap changed_bbs)
 
       while (loop->inner)
 	{
-	  struct loop *ploop = loop->inner;
+	  class loop *ploop = loop->inner;
 	  flow_loop_tree_node_remove (ploop);
 	  flow_loop_tree_node_add (loop_outer (loop), ploop);
 	}
@@ -361,8 +368,8 @@ pass_loop2::gate (function *fun)
       && (flag_move_loop_invariants
 	  || flag_unswitch_loops
 	  || flag_unroll_loops
-	  || (flag_branch_on_count_reg
-	      && targetm.have_doloop_end ())))
+	  || (flag_branch_on_count_reg && targetm.have_doloop_end ())
+	  || cfun->has_unroll))
     return true;
   else
     {
@@ -560,7 +567,7 @@ public:
   /* opt_pass methods: */
   virtual bool gate (function *)
     {
-      return (flag_unroll_loops || flag_unroll_all_loops);
+      return (flag_unroll_loops || flag_unroll_all_loops || cfun->has_unroll);
     }
 
   virtual unsigned int execute (function *);

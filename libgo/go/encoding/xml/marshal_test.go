@@ -309,6 +309,11 @@ type ChardataEmptyTest struct {
 	Contents *string `xml:",chardata"`
 }
 
+type PointerAnonFields struct {
+	*MyInt
+	*NamedType
+}
+
 type MyMarshalerTest struct {
 }
 
@@ -392,7 +397,6 @@ func stringptr(x string) *string {
 
 type T1 struct{}
 type T2 struct{}
-type T3 struct{}
 
 type IndirComment struct {
 	T1      T1
@@ -583,16 +587,6 @@ var marshalTests = []struct {
 		ExpectXML: `<PresenceTest></PresenceTest>`,
 	},
 
-	// A pointer to struct{} may be used to test for an element's presence.
-	{
-		Value:     &PresenceTest{new(struct{})},
-		ExpectXML: `<PresenceTest><Exists></Exists></PresenceTest>`,
-	},
-	{
-		Value:     &PresenceTest{},
-		ExpectXML: `<PresenceTest></PresenceTest>`,
-	},
-
 	// A []byte field is only nil if the element was not found.
 	{
 		Value:         &Data{},
@@ -646,7 +640,7 @@ var marshalTests = []struct {
 	{Value: &Universe{Visible: 9.3e13}, ExpectXML: `<universe>9.3e+13</universe>`},
 	{Value: &Particle{HasMass: true}, ExpectXML: `<particle>true</particle>`},
 	{Value: &Departure{When: ParseTime("2013-01-09T00:15:00-09:00")}, ExpectXML: `<departure>2013-01-09T00:15:00-09:00</departure>`},
-	{Value: atomValue, ExpectXML: atomXml},
+	{Value: atomValue, ExpectXML: atomXML},
 	{
 		Value: &Ship{
 			Name:  "Heart of Gold",
@@ -898,6 +892,18 @@ var marshalTests = []struct {
 			`<FieldA>A.A</FieldA>` +
 			`<FieldE>A.D.E</FieldE>` +
 			`</EmbedA>`,
+	},
+
+	// Anonymous struct pointer field which is nil
+	{
+		Value:     &EmbedB{},
+		ExpectXML: `<EmbedB><FieldB></FieldB></EmbedB>`,
+	},
+
+	// Other kinds of nil anonymous fields
+	{
+		Value:     &PointerAnonFields{},
+		ExpectXML: `<PointerAnonFields></PointerAnonFields>`,
 	},
 
 	// Test that name casing matters
@@ -1652,28 +1658,31 @@ func TestMarshal(t *testing.T) {
 		if test.UnmarshalOnly {
 			continue
 		}
-		data, err := Marshal(test.Value)
-		if err != nil {
-			if test.MarshalError == "" {
-				t.Errorf("#%d: marshal(%#v): %s", idx, test.Value, err)
-				continue
+
+		t.Run(fmt.Sprintf("%d", idx), func(t *testing.T) {
+			data, err := Marshal(test.Value)
+			if err != nil {
+				if test.MarshalError == "" {
+					t.Errorf("marshal(%#v): %s", test.Value, err)
+					return
+				}
+				if !strings.Contains(err.Error(), test.MarshalError) {
+					t.Errorf("marshal(%#v): %s, want %q", test.Value, err, test.MarshalError)
+				}
+				return
 			}
-			if !strings.Contains(err.Error(), test.MarshalError) {
-				t.Errorf("#%d: marshal(%#v): %s, want %q", idx, test.Value, err, test.MarshalError)
+			if test.MarshalError != "" {
+				t.Errorf("Marshal succeeded, want error %q", test.MarshalError)
+				return
 			}
-			continue
-		}
-		if test.MarshalError != "" {
-			t.Errorf("#%d: Marshal succeeded, want error %q", idx, test.MarshalError)
-			continue
-		}
-		if got, want := string(data), test.ExpectXML; got != want {
-			if strings.Contains(want, "\n") {
-				t.Errorf("#%d: marshal(%#v):\nHAVE:\n%s\nWANT:\n%s", idx, test.Value, got, want)
-			} else {
-				t.Errorf("#%d: marshal(%#v):\nhave %#q\nwant %#q", idx, test.Value, got, want)
+			if got, want := string(data), test.ExpectXML; got != want {
+				if strings.Contains(want, "\n") {
+					t.Errorf("marshal(%#v):\nHAVE:\n%s\nWANT:\n%s", test.Value, got, want)
+				} else {
+					t.Errorf("marshal(%#v):\nhave %#q\nwant %#q", test.Value, got, want)
+				}
 			}
-		}
+		})
 	}
 }
 
@@ -1781,27 +1790,29 @@ func TestUnmarshal(t *testing.T) {
 		dest := reflect.New(vt.Elem()).Interface()
 		err := Unmarshal([]byte(test.ExpectXML), dest)
 
-		switch fix := dest.(type) {
-		case *Feed:
-			fix.Author.InnerXML = ""
-			for i := range fix.Entry {
-				fix.Entry[i].Author.InnerXML = ""
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			switch fix := dest.(type) {
+			case *Feed:
+				fix.Author.InnerXML = ""
+				for i := range fix.Entry {
+					fix.Entry[i].Author.InnerXML = ""
+				}
 			}
-		}
 
-		if err != nil {
-			if test.UnmarshalError == "" {
-				t.Errorf("#%d: unmarshal(%#v): %s", i, test.ExpectXML, err)
-				continue
+			if err != nil {
+				if test.UnmarshalError == "" {
+					t.Errorf("unmarshal(%#v): %s", test.ExpectXML, err)
+					return
+				}
+				if !strings.Contains(err.Error(), test.UnmarshalError) {
+					t.Errorf("unmarshal(%#v): %s, want %q", test.ExpectXML, err, test.UnmarshalError)
+				}
+				return
 			}
-			if !strings.Contains(err.Error(), test.UnmarshalError) {
-				t.Errorf("#%d: unmarshal(%#v): %s, want %q", i, test.ExpectXML, err, test.UnmarshalError)
+			if got, want := dest, test.Value; !reflect.DeepEqual(got, want) {
+				t.Errorf("unmarshal(%q):\nhave %#v\nwant %#v", test.ExpectXML, got, want)
 			}
-			continue
-		}
-		if got, want := dest, test.Value; !reflect.DeepEqual(got, want) {
-			t.Errorf("#%d: unmarshal(%q):\nhave %#v\nwant %#v", i, test.ExpectXML, got, want)
-		}
+		})
 	}
 }
 
@@ -1896,17 +1907,21 @@ func TestMarshalFlush(t *testing.T) {
 
 func BenchmarkMarshal(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		Marshal(atomValue)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Marshal(atomValue)
+		}
+	})
 }
 
 func BenchmarkUnmarshal(b *testing.B) {
 	b.ReportAllocs()
-	xml := []byte(atomXml)
-	for i := 0; i < b.N; i++ {
-		Unmarshal(xml, &Feed{})
-	}
+	xml := []byte(atomXML)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Unmarshal(xml, &Feed{})
+		}
+	})
 }
 
 // golang.org/issue/6556
@@ -2268,6 +2283,30 @@ var encodeTokenTests = []struct {
 		}},
 	},
 	want: `<foo xmlns="space"><bar xmlns="space" xmlns:space="space" space:attr="value">`,
+}, {
+	desc: "reserved namespace prefix -- all lower case",
+	toks: []Token{
+		StartElement{Name{"", "foo"}, []Attr{
+			{Name{"http://www.w3.org/2001/xmlSchema-instance", "nil"}, "true"},
+		}},
+	},
+	want: `<foo xmlns:_xmlSchema-instance="http://www.w3.org/2001/xmlSchema-instance" _xmlSchema-instance:nil="true">`,
+}, {
+	desc: "reserved namespace prefix -- all upper case",
+	toks: []Token{
+		StartElement{Name{"", "foo"}, []Attr{
+			{Name{"http://www.w3.org/2001/XMLSchema-instance", "nil"}, "true"},
+		}},
+	},
+	want: `<foo xmlns:_XMLSchema-instance="http://www.w3.org/2001/XMLSchema-instance" _XMLSchema-instance:nil="true">`,
+}, {
+	desc: "reserved namespace prefix -- all mixed case",
+	toks: []Token{
+		StartElement{Name{"", "foo"}, []Attr{
+			{Name{"http://www.w3.org/2001/XmLSchema-instance", "nil"}, "true"},
+		}},
+	},
+	want: `<foo xmlns:_XmLSchema-instance="http://www.w3.org/2001/XmLSchema-instance" _XmLSchema-instance:nil="true">`,
 }}
 
 func TestEncodeToken(t *testing.T) {
@@ -2428,10 +2467,26 @@ func TestIssue16158(t *testing.T) {
 	err := Unmarshal([]byte(data), &struct {
 		B byte `xml:"b,attr,omitempty"`
 	}{})
+	if err == nil {
+		t.Errorf("Unmarshal: expected error, got nil")
+	}
+}
 
-	// For Go 1.8.1 we've restored the old "no errors reported" behavior.
-	// We'll try again in Go 1.9 to report errors.
-	if err != nil {
-		t.Errorf("Unmarshal: expected nil, got error")
+// Issue 20953. Crash on invalid XMLName attribute.
+
+type InvalidXMLName struct {
+	XMLName Name `xml:"error"`
+	Type    struct {
+		XMLName Name `xml:"type,attr"`
+	}
+}
+
+func TestInvalidXMLName(t *testing.T) {
+	var buf bytes.Buffer
+	enc := NewEncoder(&buf)
+	if err := enc.Encode(InvalidXMLName{}); err == nil {
+		t.Error("unexpected success")
+	} else if want := "invalid tag"; !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q does not contain %q", err, want)
 	}
 }

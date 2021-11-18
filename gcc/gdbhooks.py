@@ -1,5 +1,5 @@
 # Python hooks for gdb for debugging GCC
-# Copyright (C) 2013-2017 Free Software Foundation, Inc.
+# Copyright (C) 2013-2021 Free Software Foundation, Inc.
 
 # Contributed by David Malcolm <dmalcolm@redhat.com>
 
@@ -105,10 +105,19 @@ it's a quick way of getting lots of debuggability quickly.
 Callgraph nodes are printed with the name of the function decl, if
 available:
   (gdb) frame 5
-  #5  0x00000000006c288a in expand_function (node=<cgraph_node* 0x7ffff0312720 "foo">) at ../../src/gcc/cgraphunit.c:1594
+  #5  0x00000000006c288a in expand_function (node=<cgraph_node* 0x7ffff0312720 "foo"/12345>) at ../../src/gcc/cgraphunit.c:1594
   1594	  execute_pass_list (g->get_passes ()->all_passes);
   (gdb) p node
-  $1 = <cgraph_node* 0x7ffff0312720 "foo">
+  $1 = <cgraph_node* 0x7ffff0312720 "foo"/12345>
+
+Similarly for symtab_node and varpool_node classes.
+
+Cgraph edges are printed with the name of caller and callee:
+    (gdb) p this->callees
+    $4 = <cgraph_edge* 0x7fffe25aa000 (<cgraph_node * 0x7fffe62b22e0 "_GLOBAL__sub_I__ZN5Pooma5pinfoE"/19660> -> <cgraph_node * 0x7fffe620f730 "__static_initialization_and_destruction_1"/19575>)>
+
+IPA reference follow very similar format:
+    (gdb) Value returned is $5 = <ipa_ref* 0x7fffefcb80c8 (<symtab_node * 0x7ffff562f000 "__dt_base "/875> -> <symtab_node * 0x7fffe795f000 "_ZTVN6Smarts8RunnableE"/16056>:IPA_REF_ADDR)>
 
 vec<> pointers are printed as the address followed by the elements in
 braces.  Here's a length 2 vec:
@@ -145,6 +154,7 @@ tree_code_dict = gdb.types.make_enum_dict(gdb.lookup_type('enum tree_code'))
 # ...and look up specific values for use later:
 IDENTIFIER_NODE = tree_code_dict['IDENTIFIER_NODE']
 TYPE_DECL = tree_code_dict['TYPE_DECL']
+SSA_NAME = tree_code_dict['SSA_NAME']
 
 # Similarly for "enum tree_code_class" (tree.h):
 tree_code_class_dict = gdb.types.make_enum_dict(gdb.lookup_type('enum tree_code_class'))
@@ -213,6 +223,9 @@ class TreePrinter:
         # extern const enum tree_code_class tree_code_type[];
         # #define TREE_CODE_CLASS(CODE)	tree_code_type[(int) (CODE)]
 
+        if val_TREE_CODE == 0xa5a5:
+            return '<ggc_freed 0x%x>' % intptr(self.gdbval)
+
         val_tree_code_type = gdb.parse_and_eval('tree_code_type')
         val_tclass = val_tree_code_type[val_TREE_CODE]
 
@@ -220,7 +233,10 @@ class TreePrinter:
         val_code_name = val_tree_code_name[intptr(val_TREE_CODE)]
         #print(val_code_name.string())
 
-        result = '<%s 0x%x' % (val_code_name.string(), intptr(self.gdbval))
+        try:
+            result = '<%s 0x%x' % (val_code_name.string(), intptr(self.gdbval))
+        except:
+            return '<tree 0x%x>' % intptr(self.gdbval)
         if intptr(val_tclass) == tcc_declaration:
             tree_DECL_NAME = self.node.DECL_NAME()
             if tree_DECL_NAME.is_nonnull():
@@ -237,6 +253,8 @@ class TreePrinter:
                         result += ' %s' % tree_TYPE_NAME.DECL_NAME().IDENTIFIER_POINTER()
         if self.node.TREE_CODE() == IDENTIFIER_NODE:
             result += ' %s' % self.node.IDENTIFIER_POINTER()
+        elif self.node.TREE_CODE() == SSA_NAME:
+            result += ' %u' % self.gdbval['base']['u']['version']
         # etc
         result += '>'
         return result
@@ -245,18 +263,45 @@ class TreePrinter:
 # Callgraph pretty-printers
 ######################################################################
 
-class CGraphNodePrinter:
+class SymtabNodePrinter:
     def __init__(self, gdbval):
         self.gdbval = gdbval
 
     def to_string (self):
-        result = '<cgraph_node* 0x%x' % intptr(self.gdbval)
+        t = str(self.gdbval.type)
+        result = '<%s 0x%x' % (t, intptr(self.gdbval))
         if intptr(self.gdbval):
             # symtab_node::name calls lang_hooks.decl_printable_name
             # default implementation (lhd_decl_printable_name) is:
             #    return IDENTIFIER_POINTER (DECL_NAME (decl));
             tree_decl = Tree(self.gdbval['decl'])
-            result += ' "%s"' % tree_decl.DECL_NAME().IDENTIFIER_POINTER()
+            result += ' "%s"/%d' % (tree_decl.DECL_NAME().IDENTIFIER_POINTER(), self.gdbval['order'])
+        result += '>'
+        return result
+
+class CgraphEdgePrinter:
+    def __init__(self, gdbval):
+        self.gdbval = gdbval
+
+    def to_string (self):
+        result = '<cgraph_edge* 0x%x' % intptr(self.gdbval)
+        if intptr(self.gdbval):
+            src = SymtabNodePrinter(self.gdbval['caller']).to_string()
+            dest = SymtabNodePrinter(self.gdbval['callee']).to_string()
+            result += ' (%s -> %s)' % (src, dest)
+        result += '>'
+        return result
+
+class IpaReferencePrinter:
+    def __init__(self, gdbval):
+        self.gdbval = gdbval
+
+    def to_string (self):
+        result = '<ipa_ref* 0x%x' % intptr(self.gdbval)
+        if intptr(self.gdbval):
+            src = SymtabNodePrinter(self.gdbval['referring']).to_string()
+            dest = SymtabNodePrinter(self.gdbval['referred']).to_string()
+            result += ' (%s -> %s:%s)' % (src, dest, str(self.gdbval['use']))
         result += '>'
         return result
 
@@ -422,6 +467,28 @@ class VecPrinter:
 
 ######################################################################
 
+class MachineModePrinter:
+    def __init__(self, gdbval):
+        self.gdbval = gdbval
+
+    def to_string (self):
+        name = str(self.gdbval['m_mode'])
+        return name[2:] if name.startswith('E_') else name
+
+######################################################################
+
+class OptMachineModePrinter:
+    def __init__(self, gdbval):
+        self.gdbval = gdbval
+
+    def to_string (self):
+        name = str(self.gdbval['m_mode'])
+        if name == 'E_VOIDmode':
+            return '<None>'
+        return name[2:] if name.startswith('E_') else name
+
+######################################################################
+
 # TODO:
 #   * hashtab
 #   * location_t
@@ -460,11 +527,11 @@ class GdbPrettyPrinters(gdb.printing.PrettyPrinter):
     def __init__(self, name):
         super(GdbPrettyPrinters, self).__init__(name, [])
 
-    def add_printer_for_types(self, name, class_, types):
-        self.subprinters.append(GdbSubprinterTypeList(name, class_, types))
+    def add_printer_for_types(self, types, name, class_):
+        self.subprinters.append(GdbSubprinterTypeList(types, name, class_))
 
-    def add_printer_for_regex(self, name, class_, regex):
-        self.subprinters.append(GdbSubprinterRegex(name, class_, regex))
+    def add_printer_for_regex(self, regex, name, class_):
+        self.subprinters.append(GdbSubprinterRegex(regex, name, class_))
 
     def __call__(self, gdbval):
         type_ = gdbval.type.unqualified()
@@ -479,10 +546,14 @@ class GdbPrettyPrinters(gdb.printing.PrettyPrinter):
 
 def build_pretty_printer():
     pp = GdbPrettyPrinters('gcc')
-    pp.add_printer_for_types(['tree'],
+    pp.add_printer_for_types(['tree', 'const_tree'],
                              'tree', TreePrinter)
-    pp.add_printer_for_types(['cgraph_node *'],
-                             'cgraph_node', CGraphNodePrinter)
+    pp.add_printer_for_types(['cgraph_node *', 'varpool_node *', 'symtab_node *'],
+                             'symtab_node', SymtabNodePrinter)
+    pp.add_printer_for_types(['cgraph_edge *'],
+                             'cgraph_edge', CgraphEdgePrinter)
+    pp.add_printer_for_types(['ipa_ref *'],
+                             'ipa_ref', IpaReferencePrinter)
     pp.add_printer_for_types(['dw_die_ref'],
                              'dw_die_ref', DWDieRefPrinter)
     pp.add_printer_for_types(['gimple', 'gimple *',
@@ -518,11 +589,27 @@ def build_pretty_printer():
                              'vec',
                              VecPrinter)
 
+    pp.add_printer_for_regex(r'opt_mode<(\S+)>',
+                             'opt_mode', OptMachineModePrinter)
+    pp.add_printer_for_types(['opt_scalar_int_mode',
+                              'opt_scalar_float_mode',
+                              'opt_scalar_mode'],
+                             'opt_mode', OptMachineModePrinter)
+    pp.add_printer_for_regex(r'pod_mode<(\S+)>',
+                             'pod_mode', MachineModePrinter)
+    pp.add_printer_for_types(['scalar_int_mode_pod',
+                              'scalar_mode_pod'],
+                             'pod_mode', MachineModePrinter)
+    for mode in ('scalar_mode', 'scalar_int_mode', 'scalar_float_mode',
+                 'complex_mode'):
+        pp.add_printer_for_types([mode], mode, MachineModePrinter)
+
     return pp
 
 gdb.printing.register_pretty_printer(
     gdb.current_objfile(),
-    build_pretty_printer())
+    build_pretty_printer(),
+    replace=True)
 
 def find_gcc_source_dir():
     # Use location of global "g" to locate the source tree
@@ -657,18 +744,17 @@ class DumpFn(gdb.Command):
             f.close()
 
         # Open file
-        fp = gdb.parse_and_eval("fopen (\"%s\", \"w\")" % filename)
+        fp = gdb.parse_and_eval("(FILE *) fopen (\"%s\", \"w\")" % filename)
         if fp == 0:
             print ("Could not open file: %s" % filename)
             return
-        fp = "(FILE *)%u" % fp
 
         # Dump function to file
         _ = gdb.parse_and_eval("dump_function_to_file (%s, %s, %u)" %
                                (func, fp, flags))
 
         # Close file
-        ret = gdb.parse_and_eval("fclose (%s)" % fp)
+        ret = gdb.parse_and_eval("(int) fclose (%s)" % fp)
         if ret != 0:
             print ("Could not close file: %s" % filename)
             return
@@ -727,11 +813,10 @@ class DotFn(gdb.Command):
 
         # Close and reopen temp file to get C FILE*
         f.close()
-        fp = gdb.parse_and_eval("fopen (\"%s\", \"w\")" % filename)
+        fp = gdb.parse_and_eval("(FILE *) fopen (\"%s\", \"w\")" % filename)
         if fp == 0:
             print("Cannot open temp file")
             return
-        fp = "(FILE *)%u" % fp
 
         # Write graph to temp file
         _ = gdb.parse_and_eval("start_graph_dump (%s, \"<debug>\")" % fp)
@@ -740,7 +825,7 @@ class DotFn(gdb.Command):
         _ = gdb.parse_and_eval("end_graph_dump (%s)" % fp)
 
         # Close temp file
-        ret = gdb.parse_and_eval("fclose (%s)" % fp)
+        ret = gdb.parse_and_eval("(int) fclose (%s)" % fp)
         if ret != 0:
             print("Could not close temp file: %s" % filename)
             return

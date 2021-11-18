@@ -1,6 +1,6 @@
 // <experimental/any> -*- C++ -*-
 
-// Copyright (C) 2014-2017 Free Software Foundation, Inc.
+// Copyright (C) 2014-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -24,6 +24,7 @@
 
 /** @file experimental/any
  *  This is a TS C++ Library header.
+ *  @ingroup libfund-ts
  */
 
 #ifndef _GLIBCXX_EXPERIMENTAL_ANY
@@ -41,15 +42,15 @@
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
 namespace experimental
 {
 inline namespace fundamentals_v1
 {
-_GLIBCXX_BEGIN_NAMESPACE_VERSION
-
   /**
    * @defgroup any Type-safe container of any type
-   * @ingroup experimental
+   * @ingroup libfund-ts
    *
    * A type-safe container for single values of value types, as
    * described in n3804 "Any Library Proposal (Revision 3)".
@@ -69,6 +70,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     virtual const char* what() const noexcept { return "bad any_cast"; }
   };
 
+  /// @cond undocumented
   [[gnu::noreturn]] inline void __throw_bad_any_cast()
   {
 #if __cpp_exceptions
@@ -77,6 +79,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     __builtin_abort();
 #endif
   }
+  /// @endcond
 
   /**
    *  @brief A type-safe container of any type.
@@ -266,7 +269,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     // observers
 
     /// Reports whether there is a contained object or not.
-    bool empty() const noexcept { return _M_manager == nullptr; }
+    _GLIBCXX_NODISCARD bool empty() const noexcept { return _M_manager == nullptr; }
 
 #if __cpp_rtti
     /// The @c typeid of the contained object, or @c typeid(void) if empty.
@@ -409,7 +412,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	return std::move(*__p);
       __throw_bad_any_cast();
     }
-  // @}
+  /// @}
 
   /// @cond undocumented
   template<typename _Tp>
@@ -476,7 +479,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	return static_cast<_ValueType*>(__any_caster<_ValueType>(__any));
       return nullptr;
     }
-  // @}
+  /// @}
 
   template<typename _Tp>
     void
@@ -552,10 +555,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_manage(_Op, const any*, _Arg*) { }
     };
 
-  // @} group any
-_GLIBCXX_END_NAMESPACE_VERSION
+  /// @} group any
 } // namespace fundamentals_v1
 } // namespace experimental
+
+_GLIBCXX_END_NAMESPACE_VERSION
 } // namespace std
 
 #endif // C++14

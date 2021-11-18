@@ -1,5 +1,5 @@
 /* Conditional constant propagation pass for the GNU compiler.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
    Adapted from original RTL SSA-CCP by Daniel Berlin <dberlin@dberlin.org>
    Adapted to GIMPLE trees by Diego Novillo <dnovillo@redhat.com>
 
@@ -136,15 +136,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-cfg.h"
 #include "tree-ssa-propagate.h"
 #include "dbgcnt.h"
-#include "params.h"
 #include "builtins.h"
-#include "tree-chkp.h"
 #include "cfgloop.h"
 #include "stor-layout.h"
 #include "optabs-query.h"
 #include "tree-ssa-ccp.h"
 #include "tree-dfa.h"
 #include "diagnostic-core.h"
+#include "stringpool.h"
+#include "attribs.h"
+#include "tree-vector-builder.h"
+#include "cgraph.h"
+#include "alloc-pool.h"
+#include "symbol-summary.h"
+#include "ipa-utils.h"
+#include "ipa-prop.h"
 
 /* Possible lattice values.  */
 typedef enum
@@ -155,7 +161,8 @@ typedef enum
   VARYING
 } ccp_lattice_t;
 
-struct ccp_prop_value_t {
+class ccp_prop_value_t {
+public:
     /* Lattice value.  */
     ccp_lattice_t lattice_val;
 
@@ -169,6 +176,13 @@ struct ccp_prop_value_t {
     widest_int mask;
 };
 
+class ccp_propagate : public ssa_propagation_engine
+{
+ public:
+  enum ssa_prop_result visit_stmt (gimple *, edge *, tree *) FINAL OVERRIDE;
+  enum ssa_prop_result visit_phi (gphi *) FINAL OVERRIDE;
+};
+
 /* Array of propagated constant values.  After propagation,
    CONST_VAL[I].VALUE holds the constant value for SSA_NAME(I).  If
    the constant is held in an SSA name representing a memory store
@@ -179,7 +193,6 @@ static ccp_prop_value_t *const_val;
 static unsigned n_const_val;
 
 static void canonicalize_value (ccp_prop_value_t *);
-static bool ccp_fold_stmt (gimple_stmt_iterator *);
 static void ccp_lattice_meet (ccp_prop_value_t *, ccp_prop_value_t *);
 
 /* Dump constant propagation value VAL to file OUTF prefixed by PREFIX.  */
@@ -284,11 +297,29 @@ get_default_value (tree var)
 	  if (flag_tree_bit_ccp)
 	    {
 	      wide_int nonzero_bits = get_nonzero_bits (var);
-	      if (nonzero_bits != -1)
+	      tree value;
+	      widest_int mask;
+
+	      if (SSA_NAME_VAR (var)
+		  && TREE_CODE (SSA_NAME_VAR (var)) == PARM_DECL
+		  && ipcp_get_parm_bits (SSA_NAME_VAR (var), &value, &mask))
+		{
+		  val.lattice_val = CONSTANT;
+		  val.value = value;
+		  widest_int ipa_value = wi::to_widest (value);
+		  /* Unknown bits from IPA CP must be equal to zero.  */
+		  gcc_assert (wi::bit_and (ipa_value, mask) == 0);
+		  val.mask = mask;
+		  if (nonzero_bits != -1)
+		    val.mask &= extend_mask (nonzero_bits,
+					     TYPE_SIGN (TREE_TYPE (var)));
+		}
+	      else if (nonzero_bits != -1)
 		{
 		  val.lattice_val = CONSTANT;
 		  val.value = build_zero_cst (TREE_TYPE (var));
-		  val.mask = extend_mask (nonzero_bits, TYPE_SIGN (TREE_TYPE (var)));
+		  val.mask = extend_mask (nonzero_bits,
+					  TYPE_SIGN (TREE_TYPE (var)));
 		}
 	    }
 	}
@@ -457,11 +488,14 @@ valid_lattice_transition (ccp_prop_value_t old_val, ccp_prop_value_t new_val)
   else if (VECTOR_FLOAT_TYPE_P (type)
 	   && !HONOR_NANS (type))
     {
-      for (unsigned i = 0; i < VECTOR_CST_NELTS (old_val.value); ++i)
+      unsigned int count
+	= tree_vector_builder::binary_encoded_nelts (old_val.value,
+						     new_val.value);
+      for (unsigned int i = 0; i < count; ++i)
 	if (!REAL_VALUE_ISNAN
-	       (TREE_REAL_CST (VECTOR_CST_ELT (old_val.value, i)))
-	    && !operand_equal_p (VECTOR_CST_ELT (old_val.value, i),
-				 VECTOR_CST_ELT (new_val.value, i), 0))
+	       (TREE_REAL_CST (VECTOR_CST_ENCODED_ELT (old_val.value, i)))
+	    && !operand_equal_p (VECTOR_CST_ENCODED_ELT (old_val.value, i),
+				 VECTOR_CST_ENCODED_ELT (new_val.value, i), 0))
 	  return false;
       return true;
     }
@@ -567,9 +601,11 @@ get_value_from_alignment (tree expr)
   gcc_assert (TREE_CODE (expr) == ADDR_EXPR);
 
   get_pointer_alignment_1 (expr, &align, &bitpos);
-  val.mask = (POINTER_TYPE_P (type) || TYPE_UNSIGNED (type)
-	      ? wi::mask <widest_int> (TYPE_PRECISION (type), false)
-	      : -1).and_not (align / BITS_PER_UNIT - 1);
+  val.mask = wi::bit_and_not
+    (POINTER_TYPE_P (type) || TYPE_UNSIGNED (type)
+     ? wi::mask <widest_int> (TYPE_PRECISION (type), false)
+     : -1,
+     align / BITS_PER_UNIT - 1);
   val.lattice_val
     = wi::sext (val.mask, TYPE_PRECISION (type)) == -1 ? VARYING : CONSTANT;
   if (val.lattice_val == CONSTANT)
@@ -601,9 +637,17 @@ get_value_for_expr (tree expr, bool for_bits_p)
 	  val.mask = -1;
 	}
       if (for_bits_p
-	  && val.lattice_val == CONSTANT
-	  && TREE_CODE (val.value) == ADDR_EXPR)
-	val = get_value_from_alignment (val.value);
+	  && val.lattice_val == CONSTANT)
+	{
+	  if (TREE_CODE (val.value) == ADDR_EXPR)
+	    val = get_value_from_alignment (val.value);
+	  else if (TREE_CODE (val.value) != INTEGER_CST)
+	    {
+	      val.lattice_val = VARYING;
+	      val.value = NULL_TREE;
+	      val.mask = -1;
+	    }
+	}
       /* Fall back to a copy value.  */
       if (!for_bits_p
 	  && val.lattice_val == VARYING
@@ -615,7 +659,7 @@ get_value_for_expr (tree expr, bool for_bits_p)
 	}
     }
   else if (is_gimple_min_invariant (expr)
-	   && (!for_bits_p || TREE_CODE (expr) != ADDR_EXPR))
+	   && (!for_bits_p || TREE_CODE (expr) == INTEGER_CST))
     {
       val.lattice_val = CONSTANT;
       val.value = expr;
@@ -794,7 +838,7 @@ surely_varying_stmt_p (gimple *stmt)
       tree fndecl, fntype = gimple_call_fntype (stmt);
       if (!gimple_call_lhs (stmt)
 	  || ((fndecl = gimple_call_fndecl (stmt)) != NULL_TREE
-	      && !DECL_BUILT_IN (fndecl)
+	      && !fndecl_built_in_p (fndecl)
 	      && !lookup_attribute ("assume_aligned",
 				    TYPE_ATTRIBUTES (fntype))
 	      && !lookup_attribute ("alloc_align",
@@ -898,6 +942,24 @@ do_dbg_cnt (void)
 }
 
 
+/* We want to provide our own GET_VALUE and FOLD_STMT virtual methods.  */
+class ccp_folder : public substitute_and_fold_engine
+{
+ public:
+  tree value_of_expr (tree, gimple *) FINAL OVERRIDE;
+  bool fold_stmt (gimple_stmt_iterator *) FINAL OVERRIDE;
+};
+
+/* This method just wraps GET_CONSTANT_VALUE for now.  Over time
+   naked calls to GET_CONSTANT_VALUE should be eliminated in favor
+   of calling member functions.  */
+
+tree
+ccp_folder::value_of_expr (tree op, gimple *)
+{
+  return get_constant_value (op);
+}
+
 /* Do final substitution of propagated values, cleanup the flowgraph and
    free allocated storage.  If NONZERO_P, record nonzero bits.
 
@@ -947,19 +1009,21 @@ ccp_finalize (bool nonzero_p)
       else
 	{
 	  unsigned int precision = TYPE_PRECISION (TREE_TYPE (val->value));
-	  wide_int nonzero_bits = wide_int::from (val->mask, precision,
-						  UNSIGNED) | val->value;
+	  wide_int nonzero_bits
+	    = (wide_int::from (val->mask, precision, UNSIGNED)
+	       | wi::to_wide (val->value));
 	  nonzero_bits &= get_nonzero_bits (name);
 	  set_nonzero_bits (name, nonzero_bits);
 	}
     }
 
   /* Perform substitutions based on the known constant values.  */
-  something_changed = substitute_and_fold (get_constant_value, ccp_fold_stmt);
+  class ccp_folder ccp_folder;
+  something_changed = ccp_folder.substitute_and_fold ();
 
   free (const_val);
   const_val = NULL;
-  return something_changed;;
+  return something_changed;
 }
 
 
@@ -1059,8 +1123,8 @@ ccp_lattice_meet (ccp_prop_value_t *val1, ccp_prop_value_t *val2)
    PHI node is determined calling ccp_lattice_meet with all the arguments
    of the PHI node that are incoming via executable edges.  */
 
-static enum ssa_prop_result
-ccp_visit_phi_node (gphi *phi)
+enum ssa_prop_result
+ccp_propagate::visit_phi (gphi *phi)
 {
   unsigned i;
   ccp_prop_value_t new_val;
@@ -1086,7 +1150,7 @@ ccp_visit_phi_node (gphi *phi)
       if (dump_file && (dump_flags & TDF_DETAILS))
 	{
 	  fprintf (dump_file,
-	      "\n    Argument #%d (%d -> %d %sexecutable)\n",
+	      "\tArgument #%d (%d -> %d %sexecutable)\n",
 	      i, e->src->index, e->dest->index,
 	      (e->flags & EDGE_EXECUTABLE) ? "" : "not ");
 	}
@@ -1306,8 +1370,9 @@ bit_value_binop (enum tree_code code, signop sgn, int width,
     case BIT_IOR_EXPR:
       /* The mask is constant where there is a known
 	 set bit, (m1 | m2) & ~((v1 & ~m1) | (v2 & ~m2)).  */
-      *mask = (r1mask | r2mask)
-	      .and_not (r1val.and_not (r1mask) | r2val.and_not (r2mask));
+      *mask = wi::bit_and_not (r1mask | r2mask,
+			       wi::bit_and_not (r1val, r1mask)
+			       | wi::bit_and_not (r2val, r2mask));
       *val = r1val | r2val;
       break;
 
@@ -1367,13 +1432,7 @@ bit_value_binop (enum tree_code code, signop sgn, int width,
 	  else
 	    {
 	      if (wi::neg_p (shift))
-		{
-		  shift = -shift;
-		  if (code == RSHIFT_EXPR)
-		    code = LSHIFT_EXPR;
-		  else
-		    code = RSHIFT_EXPR;
-		}
+		break;
 	      if (code == RSHIFT_EXPR)
 		{
 		  *mask = wi::rshift (wi::ext (r1mask, width, sgn), shift, sgn);
@@ -1393,7 +1452,8 @@ bit_value_binop (enum tree_code code, signop sgn, int width,
       {
 	/* Do the addition with unknown bits set to zero, to give carry-ins of
 	   zero wherever possible.  */
-	widest_int lo = r1val.and_not (r1mask) + r2val.and_not (r2mask);
+	widest_int lo = (wi::bit_and_not (r1val, r1mask)
+			 + wi::bit_and_not (r2val, r2mask));
 	lo = wi::ext (lo, width, sgn);
 	/* Do the addition with unknown bits set to one, to give carry-ins of
 	   one wherever possible.  */
@@ -1445,7 +1505,7 @@ bit_value_binop (enum tree_code code, signop sgn, int width,
     case NE_EXPR:
       {
 	widest_int m = r1mask | r2mask;
-	if (r1val.and_not (m) != r2val.and_not (m))
+	if (wi::bit_and_not (r1val, m) != wi::bit_and_not (r2val, m))
 	  {
 	    *mask = 0;
 	    *val = ((code == EQ_EXPR) ? 0 : 1);
@@ -1484,8 +1544,10 @@ bit_value_binop (enum tree_code code, signop sgn, int width,
 	/* If we know the most significant bits we know the values
 	   value ranges by means of treating varying bits as zero
 	   or one.  Do a cross comparison of the max/min pairs.  */
-	maxmin = wi::cmp (o1val | o1mask, o2val.and_not (o2mask), sgn);
-	minmax = wi::cmp (o1val.and_not (o1mask), o2val | o2mask, sgn);
+	maxmin = wi::cmp (o1val | o1mask,
+			  wi::bit_and_not (o2val, o2mask), sgn);
+	minmax = wi::cmp (wi::bit_and_not (o1val, o1mask),
+			  o2val | o2mask, sgn);
 	if (maxmin < 0)  /* o1 is less than o2.  */
 	  {
 	    *mask = 0;
@@ -1584,6 +1646,17 @@ bit_value_binop (enum tree_code code, tree type, tree rhs1, tree rhs2)
 		   value_to_wide_int (r1val), r1val.mask,
 		   TYPE_SIGN (TREE_TYPE (rhs2)), TYPE_PRECISION (TREE_TYPE (rhs2)),
 		   value_to_wide_int (r2val), r2val.mask);
+
+  /* (x * x) & 2 == 0.  */
+  if (code == MULT_EXPR && rhs1 == rhs2 && TYPE_PRECISION (type) > 1)
+    {
+      widest_int m = 2;
+      if (wi::sext (mask, TYPE_PRECISION (type)) != -1)
+	value = wi::bit_and_not (value, m);
+      else
+	value = 0;
+      mask = wi::bit_and_not (mask, m);
+    }
 
   if (wi::sext (mask, TYPE_PRECISION (type)) != -1)
     {
@@ -1717,6 +1790,7 @@ evaluate_stmt (gimple *stmt)
   ccp_lattice_t likelyvalue = likely_value (stmt);
   bool is_constant = false;
   unsigned int align;
+  bool ignore_return_flags = false;
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
@@ -1877,35 +1951,22 @@ evaluate_stmt (gimple *stmt)
 			   / BITS_PER_UNIT - 1);
 	      break;
 
-	    case BUILT_IN_ALLOCA:
-	    case BUILT_IN_ALLOCA_WITH_ALIGN:
-	      align = (DECL_FUNCTION_CODE (fndecl) == BUILT_IN_ALLOCA_WITH_ALIGN
-		       ? TREE_INT_CST_LOW (gimple_call_arg (stmt, 1))
-		       : BIGGEST_ALIGNMENT);
+	    CASE_BUILT_IN_ALLOCA:
+	      align = (DECL_FUNCTION_CODE (fndecl) == BUILT_IN_ALLOCA
+		       ? BIGGEST_ALIGNMENT
+		       : TREE_INT_CST_LOW (gimple_call_arg (stmt, 1)));
 	      val.lattice_val = CONSTANT;
 	      val.value = build_int_cst (TREE_TYPE (gimple_get_lhs (stmt)), 0);
 	      val.mask = ~((HOST_WIDE_INT) align / BITS_PER_UNIT - 1);
 	      break;
 
-	    /* These builtins return their first argument, unmodified.  */
-	    case BUILT_IN_MEMCPY:
-	    case BUILT_IN_MEMMOVE:
-	    case BUILT_IN_MEMSET:
-	    case BUILT_IN_STRCPY:
-	    case BUILT_IN_STRNCPY:
-	    case BUILT_IN_MEMCPY_CHK:
-	    case BUILT_IN_MEMMOVE_CHK:
-	    case BUILT_IN_MEMSET_CHK:
-	    case BUILT_IN_STRCPY_CHK:
-	    case BUILT_IN_STRNCPY_CHK:
-	      val = get_value_for_expr (gimple_call_arg (stmt, 0), true);
-	      break;
-
 	    case BUILT_IN_ASSUME_ALIGNED:
 	      val = bit_value_assume_aligned (stmt, NULL_TREE, val, false);
+	      ignore_return_flags = true;
 	      break;
 
 	    case BUILT_IN_ALIGNED_ALLOC:
+	    case BUILT_IN_GOMP_ALLOC:
 	      {
 		tree align = get_constant_value (gimple_call_arg (stmt, 0));
 		if (align
@@ -1924,6 +1985,36 @@ evaluate_stmt (gimple *stmt)
 		break;
 	      }
 
+	    case BUILT_IN_BSWAP16:
+	    case BUILT_IN_BSWAP32:
+	    case BUILT_IN_BSWAP64:
+	    case BUILT_IN_BSWAP128:
+	      val = get_value_for_expr (gimple_call_arg (stmt, 0), true);
+	      if (val.lattice_val == UNDEFINED)
+		break;
+	      else if (val.lattice_val == CONSTANT
+		       && val.value
+		       && TREE_CODE (val.value) == INTEGER_CST)
+		{
+		  tree type = TREE_TYPE (gimple_call_lhs (stmt));
+		  int prec = TYPE_PRECISION (type);
+		  wide_int wval = wi::to_wide (val.value);
+		  val.value
+		    = wide_int_to_tree (type,
+					wide_int::from (wval, prec,
+							UNSIGNED).bswap ());
+		  val.mask
+		    = widest_int::from (wide_int::from (val.mask, prec,
+							UNSIGNED).bswap (),
+					UNSIGNED);
+		  if (wi::sext (val.mask, prec) != -1)
+		    break;
+		}
+	      val.lattice_val = VARYING;
+	      val.value = NULL_TREE;
+	      val.mask = -1;
+	      break;
+
 	    default:;
 	    }
 	}
@@ -1940,6 +2031,15 @@ evaluate_stmt (gimple *stmt)
 					TYPE_ATTRIBUTES (fntype));
 	      if (attrs)
 		val = bit_value_assume_aligned (stmt, attrs, val, true);
+	    }
+	  int flags = ignore_return_flags
+		      ? 0 : gimple_call_return_flags (as_a <gcall *> (stmt));
+	  if (flags & ERF_RETURNS_ARG
+	      && (flags & ERF_RETURN_ARG_MASK) < gimple_call_num_args (stmt))
+	    {
+	      val = get_value_for_expr
+			 (gimple_call_arg (stmt,
+					   flags & ERF_RETURN_ARG_MASK), true);
 	    }
 	}
       is_constant = (val.lattice_val == CONSTANT);
@@ -1964,9 +2064,10 @@ evaluate_stmt (gimple *stmt)
 	    }
 	  else
 	    {
-	      if (wi::bit_and_not (val.value, nonzero_bits) != 0)
+	      if (wi::bit_and_not (wi::to_wide (val.value), nonzero_bits) != 0)
 		val.value = wide_int_to_tree (TREE_TYPE (lhs),
-					      nonzero_bits & val.value);
+					      nonzero_bits
+					      & wi::to_wide (val.value));
 	      if (nonzero_bits == 0)
 		val.mask = 0;
 	      else
@@ -2018,9 +2119,7 @@ insert_clobber_before_stack_restore (tree saved_val, tree var,
   FOR_EACH_IMM_USE_STMT (stmt, iter, saved_val)
     if (gimple_call_builtin_p (stmt, BUILT_IN_STACK_RESTORE))
       {
-	clobber = build_constructor (TREE_TYPE (var),
-				     NULL);
-	TREE_THIS_VOLATILE (clobber) = 1;
+	clobber = build_clobber (TREE_TYPE (var));
 	clobber_stmt = gimple_build_assign (var, clobber);
 
 	i = gsi_for_stmt (stmt);
@@ -2042,10 +2141,6 @@ insert_clobber_before_stack_restore (tree saved_val, tree var,
     else if (gimple_assign_ssa_name_copy_p (stmt))
       insert_clobber_before_stack_restore (gimple_assign_lhs (stmt), var,
 					   visited);
-    else if (chkp_gimple_call_builtin_p (stmt, BUILT_IN_CHKP_BNDRET))
-      continue;
-    else
-      gcc_assert (is_gimple_debug (stmt));
 }
 
 /* Advance the iterator to the previous non-debug gimple statement in the same
@@ -2059,7 +2154,7 @@ gsi_prev_dom_bb_nondebug (gimple_stmt_iterator *i)
   gsi_prev_nondebug (i);
   while (gsi_end_p (*i))
     {
-      dom = get_immediate_dominator (CDI_DOMINATORS, i->bb);
+      dom = get_immediate_dominator (CDI_DOMINATORS, gsi_bb (*i));
       if (dom == NULL || dom == ENTRY_BLOCK_PTR_FOR_FN (cfun))
 	return;
 
@@ -2070,9 +2165,9 @@ gsi_prev_dom_bb_nondebug (gimple_stmt_iterator *i)
 /* Find a BUILT_IN_STACK_SAVE dominating gsi_stmt (I), and insert
    a clobber of VAR before each matching BUILT_IN_STACK_RESTORE.
 
-   It is possible that BUILT_IN_STACK_SAVE cannot be find in a dominator when a
-   previous pass (such as DOM) duplicated it along multiple paths to a BB.  In
-   that case the function gives up without inserting the clobbers.  */
+   It is possible that BUILT_IN_STACK_SAVE cannot be found in a dominator when
+   a previous pass (such as DOM) duplicated it along multiple paths to a BB.
+   In that case the function gives up without inserting the clobbers.  */
 
 static void
 insert_clobbers_for_var (gimple_stmt_iterator i, tree var)
@@ -2124,7 +2219,7 @@ fold_builtin_alloca_with_align (gimple *stmt)
   size = tree_to_uhwi (arg);
 
   /* Heuristic: don't fold large allocas.  */
-  threshold = (unsigned HOST_WIDE_INT)PARAM_VALUE (PARAM_LARGE_STACK_FRAME);
+  threshold = (unsigned HOST_WIDE_INT)param_large_stack_frame;
   /* In case the alloca is located at function entry, it has the same lifetime
      as a declared array, so we allow a larger size.  */
   block = gimple_block (stmt);
@@ -2135,23 +2230,44 @@ fold_builtin_alloca_with_align (gimple *stmt)
   if (size > threshold)
     return NULL_TREE;
 
+  /* We have to be able to move points-to info.  We used to assert
+     that we can but IPA PTA might end up with two UIDs here
+     as it might need to handle more than one instance being
+     live at the same time.  Instead of trying to detect this case
+     (using the first UID would be OK) just give up for now.  */
+  struct ptr_info_def *pi = SSA_NAME_PTR_INFO (lhs);
+  unsigned uid = 0;
+  if (pi != NULL
+      && !pi->pt.anything
+      && !pt_solution_singleton_or_null_p (&pi->pt, &uid))
+    return NULL_TREE;
+
   /* Declare array.  */
   elem_type = build_nonstandard_integer_type (BITS_PER_UNIT, 1);
   n_elem = size * 8 / BITS_PER_UNIT;
   array_type = build_array_type_nelts (elem_type, n_elem);
-  var = create_tmp_var (array_type);
+
+  if (tree ssa_name = SSA_NAME_IDENTIFIER (lhs))
+    {
+      /* Give the temporary a name derived from the name of the VLA
+	 declaration so it can be referenced in diagnostics.  */
+      const char *name = IDENTIFIER_POINTER (ssa_name);
+      var = create_tmp_var (array_type, name);
+    }
+  else
+    var = create_tmp_var (array_type);
+
+  if (gimple *lhsdef = SSA_NAME_DEF_STMT (lhs))
+    {
+      /* Set the temporary's location to that of the VLA declaration
+	 so it can be pointed to in diagnostics.  */
+      location_t loc = gimple_location (lhsdef);
+      DECL_SOURCE_LOCATION (var) = loc;
+    }
+
   SET_DECL_ALIGN (var, TREE_INT_CST_LOW (gimple_call_arg (stmt, 1)));
-  {
-    struct ptr_info_def *pi = SSA_NAME_PTR_INFO (lhs);
-    if (pi != NULL && !pi->pt.anything)
-      {
-	bool singleton_p;
-	unsigned uid;
-	singleton_p = pt_solution_singleton_or_null_p (&pi->pt, &uid);
-	gcc_assert (singleton_p);
-	SET_DECL_PT_UID (var, uid);
-      }
-  }
+  if (uid != 0)
+    SET_DECL_PT_UID (var, uid);
 
   /* Fold alloca to the address of the array.  */
   return fold_convert (TREE_TYPE (lhs), build_fold_addr_expr (var));
@@ -2160,8 +2276,8 @@ fold_builtin_alloca_with_align (gimple *stmt)
 /* Fold the stmt at *GSI with CCP specific information that propagating
    and regular folding does not catch.  */
 
-static bool
-ccp_fold_stmt (gimple_stmt_iterator *gsi)
+bool
+ccp_folder::fold_stmt (gimple_stmt_iterator *gsi)
 {
   gimple *stmt = gsi_stmt (*gsi);
 
@@ -2182,9 +2298,9 @@ ccp_fold_stmt (gimple_stmt_iterator *gsi)
 	if (dump_file)
 	  {
 	    fprintf (dump_file, "Folding predicate ");
-	    print_gimple_expr (dump_file, stmt, 0, 0);
+	    print_gimple_expr (dump_file, stmt, 0);
 	    fprintf (dump_file, " to ");
-	    print_generic_expr (dump_file, val.value, 0);
+	    print_generic_expr (dump_file, val.value);
 	    fprintf (dump_file, "\n");
 	  }
 
@@ -2233,7 +2349,8 @@ ccp_fold_stmt (gimple_stmt_iterator *gsi)
         /* The heuristic of fold_builtin_alloca_with_align differs before and
 	   after inlining, so we don't require the arg to be changed into a
 	   constant for folding, but just to be constant.  */
-        if (gimple_call_builtin_p (stmt, BUILT_IN_ALLOCA_WITH_ALIGN))
+        if (gimple_call_builtin_p (stmt, BUILT_IN_ALLOCA_WITH_ALIGN)
+	    || gimple_call_builtin_p (stmt, BUILT_IN_ALLOCA_WITH_ALIGN_AND_MAX))
           {
             tree new_rhs = fold_builtin_alloca_with_align (stmt);
             if (new_rhs)
@@ -2245,6 +2362,32 @@ ccp_fold_stmt (gimple_stmt_iterator *gsi)
 		return true;
 	      }
           }
+
+	/* If there's no extra info from an assume_aligned call,
+	   drop it so it doesn't act as otherwise useless dataflow
+	   barrier.  */
+	if (gimple_call_builtin_p (stmt, BUILT_IN_ASSUME_ALIGNED))
+	  {
+	    tree ptr = gimple_call_arg (stmt, 0);
+	    ccp_prop_value_t ptrval = get_value_for_expr (ptr, true);
+	    if (ptrval.lattice_val == CONSTANT
+		&& TREE_CODE (ptrval.value) == INTEGER_CST
+		&& ptrval.mask != 0)
+	      {
+		ccp_prop_value_t val
+		  = bit_value_assume_aligned (stmt, NULL_TREE, ptrval, false);
+		unsigned int ptralign = least_bit_hwi (ptrval.mask.to_uhwi ());
+		unsigned int align = least_bit_hwi (val.mask.to_uhwi ());
+		if (ptralign == align
+		    && ((TREE_INT_CST_LOW (ptrval.value) & (align - 1))
+			== (TREE_INT_CST_LOW (val.value) & (align - 1))))
+		  {
+		    bool res = update_call_from_tree (gsi, ptr);
+		    gcc_assert (res);
+		    return true;
+		  }
+	      }
+	  }
 
 	/* Propagate into the call arguments.  Compared to replace_uses_in
 	   this can use the argument slot types for type verification
@@ -2368,8 +2511,8 @@ visit_cond_stmt (gimple *stmt, edge *taken_edge_p)
    value, set *TAKEN_EDGE_P accordingly.  If STMT produces a varying
    value, return SSA_PROP_VARYING.  */
 
-static enum ssa_prop_result
-ccp_visit_stmt (gimple *stmt, edge *taken_edge_p, tree *output_p)
+enum ssa_prop_result
+ccp_propagate::visit_stmt (gimple *stmt, edge *taken_edge_p, tree *output_p)
 {
   tree def;
   ssa_op_iter iter;
@@ -2431,7 +2574,8 @@ do_ssa_ccp (bool nonzero_p)
   calculate_dominance_info (CDI_DOMINATORS);
 
   ccp_initialize ();
-  ssa_propagate (ccp_visit_stmt, ccp_visit_phi_node);
+  class ccp_propagate ccp_propagate;
+  ccp_propagate.ssa_propagate ();
   if (ccp_finalize (nonzero_p || flag_ipa_bit_cp))
     {
       todo = (TODO_cleanup_cfg | TODO_update_ssa);
@@ -2523,13 +2667,12 @@ optimize_stack_restore (gimple_stmt_iterator i)
 
       callee = gimple_call_fndecl (stmt);
       if (!callee
-	  || DECL_BUILT_IN_CLASS (callee) != BUILT_IN_NORMAL
+	  || !fndecl_built_in_p (callee, BUILT_IN_NORMAL)
 	  /* All regular builtins are ok, just obviously not alloca.  */
-	  || DECL_FUNCTION_CODE (callee) == BUILT_IN_ALLOCA
-	  || DECL_FUNCTION_CODE (callee) == BUILT_IN_ALLOCA_WITH_ALIGN)
+	  || ALLOCA_FUNCTION_CODE_P (DECL_FUNCTION_CODE (callee)))
 	return NULL_TREE;
 
-      if (DECL_FUNCTION_CODE (callee) == BUILT_IN_STACK_RESTORE)
+      if (fndecl_built_in_p (callee, BUILT_IN_STACK_RESTORE))
 	goto second_stack_restore;
     }
 
@@ -2560,9 +2703,7 @@ optimize_stack_restore (gimple_stmt_iterator i)
       if (is_gimple_call (stack_save))
 	{
 	  callee = gimple_call_fndecl (stack_save);
-	  if (callee
-	      && DECL_BUILT_IN_CLASS (callee) == BUILT_IN_NORMAL
-	      && DECL_FUNCTION_CODE (callee) == BUILT_IN_STACK_SAVE)
+	  if (callee && fndecl_built_in_p (callee, BUILT_IN_STACK_SAVE))
 	    {
 	      gimple_stmt_iterator stack_save_gsi;
 	      tree rhs;
@@ -2589,9 +2730,6 @@ optimize_stdarg_builtin (gimple *call)
   tree callee, lhs, rhs, cfun_va_list;
   bool va_list_simple_ptr;
   location_t loc = gimple_location (call);
-
-  if (gimple_code (call) != GIMPLE_CALL)
-    return NULL_TREE;
 
   callee = gimple_call_fndecl (call);
 
@@ -2713,7 +2851,8 @@ optimize_unreachable (gimple_stmt_iterator i)
 	}
       else
 	{
-	  /* Todo: handle other cases, f.i. switch statement.  */
+	  /* Todo: handle other cases.  Note that unreachable switch case
+	     statements have already been removed.  */
 	  continue;
 	}
 
@@ -2881,7 +3020,7 @@ optimize_atomic_bit_test_and (gimple_stmt_iterator *gsip,
 	}
 
       use_bool = false;
-      BREAK_FROM_IMM_USE_STMT (iter);
+      break;
     }
 
   tree new_lhs = make_ssa_name (TREE_TYPE (lhs));
@@ -2894,12 +3033,10 @@ optimize_atomic_bit_test_and (gimple_stmt_iterator *gsip,
 				    bit, flag);
   gimple_call_set_lhs (g, new_lhs);
   gimple_set_location (g, gimple_location (call));
-  gimple_set_vuse (g, gimple_vuse (call));
-  gimple_set_vdef (g, gimple_vdef (call));
-  bool throws = stmt_can_throw_internal (call);
+  gimple_move_vops (g, call);
+  bool throws = stmt_can_throw_internal (cfun, call);
   gimple_call_set_nothrow (as_a <gcall *> (g),
 			   gimple_call_nothrow_p (as_a <gcall *> (call)));
-  SSA_NAME_DEF_STMT (gimple_vdef (call)) = g;
   gimple_stmt_iterator gsi = *gsip;
   gsi_insert_after (&gsi, g, GSI_NEW_STMT);
   edge e = NULL;
@@ -2992,7 +3129,7 @@ optimize_memcpy (gimple_stmt_iterator *gsip, tree dest, tree src, tree len)
 
   gimple *defstmt = SSA_NAME_DEF_STMT (vuse);
   tree src2 = NULL_TREE, len2 = NULL_TREE;
-  HOST_WIDE_INT offset, offset2;
+  poly_int64 offset, offset2;
   tree val = integer_zero_node;
   if (gimple_store_p (defstmt)
       && gimple_assign_single_p (defstmt)
@@ -3024,16 +3161,16 @@ optimize_memcpy (gimple_stmt_iterator *gsip, tree dest, tree src, tree len)
 	    ? DECL_SIZE_UNIT (TREE_OPERAND (src2, 1))
 	    : TYPE_SIZE_UNIT (TREE_TYPE (src2)));
   if (len == NULL_TREE
-      || TREE_CODE (len) != INTEGER_CST
+      || !poly_int_tree_p (len)
       || len2 == NULL_TREE
-      || TREE_CODE (len2) != INTEGER_CST)
+      || !poly_int_tree_p (len2))
     return;
 
   src = get_addr_base_and_unit_offset (src, &offset);
   src2 = get_addr_base_and_unit_offset (src2, &offset2);
   if (src == NULL_TREE
       || src2 == NULL_TREE
-      || offset < offset2)
+      || maybe_lt (offset, offset2))
     return;
 
   if (!operand_equal_p (src, src2, 0))
@@ -3042,7 +3179,8 @@ optimize_memcpy (gimple_stmt_iterator *gsip, tree dest, tree src, tree len)
   /* [ src + offset2, src + offset2 + len2 - 1 ] is set to val.
      Make sure that
      [ src + offset, src + offset + len - 1 ] is a subset of that.  */
-  if (wi::to_offset (len) + (offset - offset2) > wi::to_offset (len2))
+  if (maybe_gt (wi::to_poly_offset (len) + (offset - offset2),
+		wi::to_poly_offset (len2)))
     return;
 
   if (dump_file && (dump_flags & TDF_DETAILS))
@@ -3157,7 +3295,7 @@ pass_fold_builtins::execute (function *fun)
 	    }
 
 	  callee = gimple_call_fndecl (stmt);
-	  if (!callee || DECL_BUILT_IN_CLASS (callee) != BUILT_IN_NORMAL)
+	  if (!callee || !fndecl_built_in_p (callee, BUILT_IN_NORMAL))
 	    {
 	      gsi_next (&i);
 	      continue;
@@ -3332,8 +3470,7 @@ pass_fold_builtins::execute (function *fun)
 	    }
 	  callee = gimple_call_fndecl (stmt);
 	  if (!callee
-              || DECL_BUILT_IN_CLASS (callee) != BUILT_IN_NORMAL
-	      || DECL_FUNCTION_CODE (callee) == fcode)
+	      || !fndecl_built_in_p (callee, fcode))
 	    gsi_next (&i);
 	}
     }
@@ -3398,42 +3535,62 @@ pass_post_ipa_warn::execute (function *fun)
 	  if (!is_gimple_call (stmt) || gimple_no_warning_p (stmt))
 	    continue;
 
-	  if (warn_nonnull)
+	  tree fntype = gimple_call_fntype (stmt);
+	  bitmap nonnullargs = get_nonnull_args (fntype);
+	  if (!nonnullargs)
+	    continue;
+
+	  tree fndecl = gimple_call_fndecl (stmt);
+	  const bool closure = fndecl && DECL_LAMBDA_FUNCTION_P (fndecl);
+
+	  for (unsigned i = 0; i < gimple_call_num_args (stmt); i++)
 	    {
-	      bitmap nonnullargs
-		= get_nonnull_args (gimple_call_fntype (stmt));
-	      if (nonnullargs)
+	      tree arg = gimple_call_arg (stmt, i);
+	      if (TREE_CODE (TREE_TYPE (arg)) != POINTER_TYPE)
+		continue;
+	      if (!integer_zerop (arg))
+		continue;
+	      if (i == 0 && closure)
+		/* Avoid warning for the first argument to lambda functions.  */
+		continue;
+	      if (!bitmap_empty_p (nonnullargs)
+		  && !bitmap_bit_p (nonnullargs, i))
+		continue;
+
+	      /* In C++ non-static member functions argument 0 refers
+		 to the implicit this pointer.  Use the same one-based
+		 numbering for ordinary arguments.  */
+	      unsigned argno = TREE_CODE (fntype) == METHOD_TYPE ? i : i + 1;
+	      location_t loc = (EXPR_HAS_LOCATION (arg)
+				? EXPR_LOCATION (arg)
+				: gimple_location (stmt));
+	      auto_diagnostic_group d;
+	      if (argno == 0)
 		{
-		  for (unsigned i = 0; i < gimple_call_num_args (stmt); i++)
-		    {
-		      tree arg = gimple_call_arg (stmt, i);
-		      if (TREE_CODE (TREE_TYPE (arg)) != POINTER_TYPE)
-			continue;
-		      if (!integer_zerop (arg))
-			continue;
-		      if (!bitmap_empty_p (nonnullargs)
-			  && !bitmap_bit_p (nonnullargs, i))
-			continue;
-
-		      location_t loc = gimple_location (stmt);
-		      if (warning_at (loc, OPT_Wnonnull,
-				      "argument %u null where non-null "
-				      "expected", i + 1))
-			{
-			  tree fndecl = gimple_call_fndecl (stmt);
-			  if (fndecl && DECL_IS_BUILTIN (fndecl))
-			    inform (loc, "in a call to built-in function %qD",
-				    fndecl);
-			  else if (fndecl)
-			    inform (DECL_SOURCE_LOCATION (fndecl),
-				    "in a call to function %qD declared here",
-				    fndecl);
-
-			}
-		    }
-		  BITMAP_FREE (nonnullargs);
+		  if (warning_at (loc, OPT_Wnonnull,
+				  "%G%qs pointer is null", stmt, "this")
+		      && fndecl)
+		    inform (DECL_SOURCE_LOCATION (fndecl),
+			    "in a call to non-static member function %qD",
+			    fndecl);
+		  continue;
 		}
+
+	      if (!warning_at (loc, OPT_Wnonnull,
+			       "%Gargument %u null where non-null "
+			       "expected", stmt, argno))
+		continue;
+
+	      tree fndecl = gimple_call_fndecl (stmt);
+	      if (fndecl && DECL_IS_UNDECLARED_BUILTIN (fndecl))
+		inform (loc, "in a call to built-in function %qD",
+			fndecl);
+	      else if (fndecl)
+		inform (DECL_SOURCE_LOCATION (fndecl),
+			"in a call to function %qD declared %qs",
+			fndecl, "nonnull");
 	    }
+	  BITMAP_FREE (nonnullargs);
 	}
     }
   return 0;

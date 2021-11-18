@@ -1,5 +1,5 @@
 ;; ARM Cortex-A9 pipeline description
-;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2021 Free Software Foundation, Inc.
 ;; Originally written by CodeSourcery for VFP.
 ;;
 ;; Rewritten by Ramana Radhakrishnan <ramana.radhakrishnan@arm.com>
@@ -87,13 +87,13 @@ cortex_a9_p1_e2 + cortex_a9_p0_e1 + cortex_a9_p1_e1")
                         shift_imm,shift_reg,\
                         mov_imm,mov_reg,mvn_imm,mvn_reg,\
                         mov_shift_reg,mov_shift,\
-                        mrs,multiple,no_insn"))
+                        mrs,multiple"))
   "cortex_a9_p0_default|cortex_a9_p1_default")
 
 ;; An instruction using the shifter will go down E1.
 (define_insn_reservation "cortex_a9_dp_shift" 3
    (and (eq_attr "tune" "cortexa9")
-        (eq_attr "type" "alu_shift_imm,alus_shift_imm,\
+        (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm,\
                          logic_shift_imm,logics_shift_imm,\
                          alu_shift_reg,alus_shift_reg,\
                          logic_shift_reg,logics_shift_reg,\
@@ -107,7 +107,7 @@ cortex_a9_p1_e2 + cortex_a9_p0_e1 + cortex_a9_p1_e1")
 
 (define_insn_reservation "cortex_a9_load1_2" 4
   (and (eq_attr "tune" "cortexa9")
-       (eq_attr "type" "load1, load2, load_byte, f_loads, f_loadd"))
+       (eq_attr "type" "load_4, load_8, load_byte, f_loads, f_loadd"))
   "cortex_a9_ls")
 
 ;; Loads multiples and store multiples can't be issued for 2 cycles in a
@@ -116,12 +116,12 @@ cortex_a9_p1_e2 + cortex_a9_p0_e1 + cortex_a9_p1_e1")
 
 (define_insn_reservation "cortex_a9_load3_4" 5
   (and (eq_attr "tune" "cortexa9")
-       (eq_attr "type" "load3, load4"))
+       (eq_attr "type" "load_12, load_16"))
   "cortex_a9_ls, cortex_a9_ls")
 
 (define_insn_reservation "cortex_a9_store1_2" 0
   (and (eq_attr "tune" "cortexa9")
-       (eq_attr "type" "store1, store2, f_stores, f_stored"))
+       (eq_attr "type" "store_4, store_8, f_stores, f_stored"))
   "cortex_a9_ls")
 
 ;; Almost all our store multiples use an auto-increment
@@ -130,7 +130,7 @@ cortex_a9_p1_e2 + cortex_a9_p0_e1 + cortex_a9_p1_e1")
 
 (define_insn_reservation "cortex_a9_store3_4" 0
   (and (eq_attr "tune" "cortexa9")
-       (eq_attr "type" "store3, store4"))
+       (eq_attr "type" "store_12, store_16"))
   "cortex_a9_ls+(cortex_a9_p0_default | cortex_a9_p1_default), cortex_a9_ls")
 
 ;; We get 16*16 multiply / mac results in 3 cycles.

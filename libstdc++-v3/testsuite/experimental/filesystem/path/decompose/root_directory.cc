@@ -1,8 +1,8 @@
-// { dg-options "-lstdc++fs" }
+// { dg-options "-DUSE_FILESYSTEM_TS -lstdc++fs" }
 // { dg-do run { target c++11 } }
 // { dg-require-filesystem-ts "" }
 
-// Copyright (C) 2014-2017 Free Software Foundation, Inc.
+// Copyright (C) 2014-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -43,13 +43,13 @@ test01()
 void
 test02()
 {
-  for (const path& p : __gnu_test::test_paths)
+  for (const path p : __gnu_test::test_paths)
   {
     path rootdir = p.root_directory();
     // If root-directory is composed of 'slash name',
     // 'slash' is excluded from the returned string.
-    if (!rootdir.empty() && rootdir.native() != "/")
-      VERIFY( rootdir.native()[0] != '/' );
+    if (!rootdir.empty() && rootdir.string() != "/")
+      VERIFY( rootdir.string()[0] != '/' );
   }
 }
 

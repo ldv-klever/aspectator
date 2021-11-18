@@ -5,6 +5,8 @@
 // This file implements API tests across platforms and will never have a build
 // tag.
 
+// +build !js
+
 package net
 
 import (
@@ -54,7 +56,7 @@ func TestTCPListenerSpecificMethods(t *testing.T) {
 	}
 
 	if f, err := ln.File(); err != nil {
-		condFatalf(t, "%v", err)
+		condFatalf(t, "file+net", "%v", err)
 	} else {
 		f.Close()
 	}
@@ -70,7 +72,7 @@ func TestTCPConnSpecificMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch := make(chan error, 1)
-	handler := func(ls *localServer, ln Listener) { transponder(ls.Listener, ch) }
+	handler := func(ls *localServer, ln Listener) { ls.transponder(ls.Listener, ch) }
 	ls, err := (&streamListener{Listener: ln}).newLocalServer()
 	if err != nil {
 		t.Fatal(err)
@@ -139,14 +141,14 @@ func TestUDPConnSpecificMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := c.WriteMsgUDP(wb, nil, c.LocalAddr().(*UDPAddr)); err != nil {
-		condFatalf(t, "%v", err)
+		condFatalf(t, c.LocalAddr().Network(), "%v", err)
 	}
 	if _, _, _, _, err := c.ReadMsgUDP(rb, nil); err != nil {
-		condFatalf(t, "%v", err)
+		condFatalf(t, c.LocalAddr().Network(), "%v", err)
 	}
 
 	if f, err := c.File(); err != nil {
-		condFatalf(t, "%v", err)
+		condFatalf(t, "file+net", "%v", err)
 	} else {
 		f.Close()
 	}
@@ -184,7 +186,7 @@ func TestIPConnSpecificMethods(t *testing.T) {
 	c.SetWriteBuffer(2048)
 
 	if f, err := c.File(); err != nil {
-		condFatalf(t, "%v", err)
+		condFatalf(t, "file+net", "%v", err)
 	} else {
 		f.Close()
 	}

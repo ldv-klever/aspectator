@@ -1,3 +1,5 @@
+/* Disabling epilogues until we find a better way to deal with scans.  */
+/* { dg-additional-options "--param vect-epilogues-nomask=0" } */
 /* { dg-require-effective-target vect_int } */
 
 #include <stdarg.h>
@@ -12,8 +14,6 @@
 
 int ib[N+OFF] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__))) = {0, 1, 3, 5, 7, 11, 13, 17};
 
-volatile int y = 0;
-
 __attribute__ ((noinline))
 int main1 (int *ib)
 {
@@ -23,8 +23,7 @@ int main1 (int *ib)
   for (i = OFF; i < N+OFF; i++)
     {
       ib[i] = ib[i%OFF]*(i/OFF);
-      if (y)
-	abort ();
+      asm volatile ("" ::: "memory");
     }
   for (i = 0; i < N; i++)
     {
@@ -53,4 +52,5 @@ int main (void)
 
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
 /*  { dg-final { scan-tree-dump-times "Alignment of access forced using versioning" 1 "vect" { target { vect_no_align && { ! vect_hw_misalign } } } } } */
-/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 1 "vect" { xfail { vect_no_align && { ! vect_hw_misalign } } } } } */
+/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 2 "vect" { target { ! vect_align_stack_vars } xfail { ! vect_unaligned_possible } } } } */
+/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 1 "vect" { target vect_align_stack_vars xfail { ! vect_unaligned_possible } } } } */

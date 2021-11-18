@@ -1,5 +1,5 @@
 /* Support routines shared by all runtimes.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
    Contributed by Iain Sandoe (partially split from objc-act.c)
 
 This file is part of GCC.
@@ -117,14 +117,17 @@ add_field_decl (tree type, const char *name, tree **chain)
 tree
 start_var_decl (tree type, const char *name)
 {
-  tree var = build_decl (input_location,
-			 VAR_DECL, get_identifier (name), type);
-  TREE_STATIC (var) = 1;
+  tree name_id = get_identifier (name);
+  tree var = build_decl (input_location, VAR_DECL, name_id, type);
   DECL_INITIAL (var) = error_mark_node;  /* A real initializer is coming... */
+  TREE_STATIC (var) = 1;
   DECL_IGNORED_P (var) = 1;
   DECL_ARTIFICIAL (var) = 1;
   DECL_CONTEXT (var) = NULL_TREE;
 #ifdef OBJCPLUS
+  /* Meta-data for the NeXT runtime is expected to be 'extern "C"'.  */
+  if (flag_next_runtime)
+    SET_DECL_ASSEMBLER_NAME (var, name_id);
   DECL_THIS_STATIC (var) = 1; /* squash redeclaration errors */
 #endif
   return var;
@@ -500,11 +503,7 @@ build_module_descriptor (long vers, tree attr)
   objc_finish_struct (objc_module_template, decls);
 
   /* Create an instance of "_objc_module".  */
-  UOBJC_MODULES_decl = start_var_decl (objc_module_template,
-				       /* FIXME - why the conditional
-					  if the symbol is the
-					  same.  */
-				       flag_next_runtime ? "_OBJC_Module" :  "_OBJC_Module");
+  UOBJC_MODULES_decl = start_var_decl (objc_module_template, "_OBJC_Module");
 
   /* This is the root of the metadata for defined classes and categories, it
      is referenced by the runtime and, therefore, needed.  */
@@ -532,34 +531,32 @@ build_ivar_list_initializer (tree type, tree field_decl)
 {
   vec<constructor_elt, va_gc> *inits = NULL;
 
-  do
-    {
-      vec<constructor_elt, va_gc> *ivar = NULL;
-      tree id;
+  for (; field_decl; field_decl = DECL_CHAIN (field_decl))
+    if (TREE_CODE (field_decl) == FIELD_DECL)
+      {
+	vec<constructor_elt, va_gc> *ivar = NULL;
+	tree id;
 
-      /* Set name.  */
-      if (DECL_NAME (field_decl))
-	CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE,
-				add_objc_string (DECL_NAME (field_decl),
-						 meth_var_names));
-      else
-	/* Unnamed bit-field ivar (yuck).  */
-	CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE, build_int_cst (NULL_TREE, 0));
+	/* Set name.  */
+	if (DECL_NAME (field_decl))
+	  CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE,
+				  add_objc_string (DECL_NAME (field_decl),
+						   meth_var_names));
+	else
+	  /* Unnamed bit-field ivar (yuck).  */
+	  CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE,
+				  build_int_cst (NULL_TREE, 0));
 
-      /* Set type.  */
-      id = add_objc_string (encode_field_decl (field_decl),
-                            meth_var_types);
-      CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE, id);
+	/* Set type.  */
+	id = add_objc_string (encode_field_decl (field_decl),
+			      meth_var_types);
+	CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE, id);
 
-      /* Set offset.  */
-      CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE, byte_position (field_decl));
-      CONSTRUCTOR_APPEND_ELT (inits, NULL_TREE,
-			      objc_build_constructor (type, ivar));
-      do
-	field_decl = DECL_CHAIN (field_decl);
-      while (field_decl && TREE_CODE (field_decl) != FIELD_DECL);
+	/* Set offset.  */
+	CONSTRUCTOR_APPEND_ELT (ivar, NULL_TREE, byte_position (field_decl));
+	CONSTRUCTOR_APPEND_ELT (inits, NULL_TREE,
+				objc_build_constructor (type, ivar));
     }
-  while (field_decl);
 
   return objc_build_constructor (build_array_type (type, 0), inits);
 }

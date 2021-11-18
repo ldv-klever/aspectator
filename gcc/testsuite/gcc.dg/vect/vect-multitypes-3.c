@@ -1,10 +1,16 @@
+/* Disabling epilogues until we find a better way to deal with scans.  */
+/* { dg-additional-options "--param vect-epilogues-nomask=0" } */
 /* { dg-require-effective-target vect_int } */
 /* { dg-add-options double_vectors } */
 
 #include <stdarg.h>
 #include "tree-vect.h"
 
+#if VECTOR_BITS > 128
+#define N (VECTOR_BITS * 2 / 8)
+#else
 #define N 32
+#endif
 
 int ib[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__))) = 
 	{0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45};
@@ -55,5 +61,5 @@ int main (void)
 
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
 /* { dg-final { scan-tree-dump-times "Alignment of access forced using versioning" 3 "vect" { target { vect_no_align && { ! vect_hw_misalign } } } } } */
-/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 3 "vect" {xfail { vect_no_align && { ! vect_hw_misalign } } } } } */
+/* { dg-final { scan-tree-dump-times "Vectorizing an unaligned access" 3 "vect" { xfail { ! { vect_unaligned_possible && vect_align_stack_vars } } } } } */
 

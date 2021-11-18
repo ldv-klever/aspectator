@@ -8,7 +8,7 @@
     !$omp taskgroup
       !$omp task
 	!$omp cancel taskgroup
-	call abort
+	stop 1
       !$omp endtask
     !$omp endtaskgroup
   !$omp endparallel

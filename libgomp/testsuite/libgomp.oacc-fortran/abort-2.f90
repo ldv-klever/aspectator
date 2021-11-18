@@ -1,3 +1,8 @@
+! { dg-do run }
+!
+! Verify that a conditional "call abort" inside an OpenACC parallel region does
+! the right thing.
+
 program main
   implicit none
 

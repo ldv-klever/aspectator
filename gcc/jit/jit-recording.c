@@ -1,5 +1,5 @@
 /* Internals of libgccjit: classes for recording calls made to the JIT API.
-   Copyright (C) 2013-2017 Free Software Foundation, Inc.
+   Copyright (C) 2013-2021 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -236,7 +236,16 @@ class reproducer : public dump
     GNU_PRINTF(2, 3);
 
  private:
-  hash_map<recording::memento *, const char *> m_identifiers;
+  const char * ensure_identifier_is_unique (const char *candidate, void *ptr);
+
+ private:
+  hash_map<recording::memento *, const char *> m_map_memento_to_identifier;
+
+  struct hash_traits : public string_hash
+  {
+    static void remove (const char *) {}
+  };
+  hash_set<const char *, false, hash_traits> m_set_identifiers;
   allocator m_allocator;
 };
 
@@ -245,7 +254,8 @@ class reproducer : public dump
 reproducer::reproducer (recording::context &ctxt,
 			const char *filename) :
   dump (ctxt, filename, 0),
-  m_identifiers (),
+  m_map_memento_to_identifier (),
+  m_set_identifiers (),
   m_allocator ()
 {
 }
@@ -286,6 +296,35 @@ reproducer::write_args (const vec <recording::context *> &contexts)
     }
 }
 
+/* Ensure that STR is a valid C identifier by overwriting
+   any invalid chars in-place with underscores.
+
+   This doesn't special-case the first character.  */
+
+static void
+convert_to_identifier (char *str)
+{
+  for (char *p = str; *p; p++)
+    if (!ISALNUM (*p))
+      *p = '_';
+}
+
+/* Given CANDIDATE, a possible C identifier for use in a reproducer,
+   ensure that it is unique within the generated source file by
+   appending PTR to it if necessary.  Return the resulting string.
+
+   The reproducer will eventually clean up the buffer in its dtor.  */
+
+const char *
+reproducer::ensure_identifier_is_unique (const char *candidate, void *ptr)
+{
+  if (m_set_identifiers.contains (candidate))
+    candidate = m_allocator.xstrdup_printf ("%s_%p", candidate, ptr);
+  gcc_assert (!m_set_identifiers.contains (candidate));
+  m_set_identifiers.add (candidate);
+  return candidate;
+}
+
 /* Generate a C identifier for the given memento, associating the generated
    buffer with the memento (for future calls to get_identifier et al).
 
@@ -293,21 +332,20 @@ reproducer::write_args (const vec <recording::context *> &contexts)
 const char *
 reproducer::make_identifier (recording::memento *m, const char *prefix)
 {
-  char *result;
+  const char *result;
   if (strlen (m->get_debug_string ()) < 100)
     {
-      result = m_allocator.xstrdup_printf ("%s_%s_%p",
-					   prefix,
-					   m->get_debug_string (),
-					   (void *) m);
-      for (char *p = result; *p; p++)
-	if (!ISALNUM (*p))
-	  *p = '_';
+      char *buf = m_allocator.xstrdup_printf ("%s_%s",
+					      prefix,
+					      m->get_debug_string ());
+      convert_to_identifier (buf);
+      result = buf;
     }
   else
     result = m_allocator.xstrdup_printf ("%s_%p",
 					 prefix, (void *) m);
-  m_identifiers.put (m, result);
+  result = ensure_identifier_is_unique (result, m);
+  m_map_memento_to_identifier.put (m, result);
   return result;
 }
 
@@ -350,7 +388,7 @@ reproducer::get_identifier (recording::memento *m)
     if (!loc->created_by_user ())
       return "NULL";
 
-  const char **slot = m_identifiers.get (m);
+  const char **slot = m_map_memento_to_identifier.get (m);
   if (!slot)
     {
       get_context ().add_error (NULL,
@@ -407,6 +445,62 @@ reproducer::xstrdup_printf (const char *fmt, ...)
   result = m_allocator.xstrdup_printf_va (fmt, ap);
   va_end (ap);
   return result;
+}
+
+/* A helper class for implementing make_debug_string, for building
+   a temporary string from a vec of rvalues.  */
+
+class comma_separated_string
+{
+ public:
+  comma_separated_string (const auto_vec<recording::rvalue *> &rvalues,
+			  enum recording::precedence prec);
+  ~comma_separated_string ();
+
+  const char *as_char_ptr () const { return m_buf; }
+
+ private:
+  char *m_buf;
+};
+
+/* comma_separated_string's ctor
+   Build m_buf.  */
+
+comma_separated_string::comma_separated_string
+  (const auto_vec<recording::rvalue *> &rvalues,
+   enum recording::precedence prec)
+: m_buf (NULL)
+{
+  /* Calculate length of said buffer.  */
+  size_t sz = 1; /* nil terminator */
+  for (unsigned i = 0; i< rvalues.length (); i++)
+    {
+      sz += strlen (rvalues[i]->get_debug_string_parens (prec));
+      sz += 2; /* ", " separator */
+    }
+
+  /* Now allocate and populate the buffer.  */
+  m_buf = new char[sz];
+  size_t len = 0;
+
+  for (unsigned i = 0; i< rvalues.length (); i++)
+    {
+      strcpy (m_buf + len, rvalues[i]->get_debug_string_parens (prec));
+      len += strlen (rvalues[i]->get_debug_string_parens (prec));
+      if (i + 1 < rvalues.length ())
+	{
+	  strcpy (m_buf + len, ", ");
+	  len += 2;
+	}
+    }
+  m_buf[len] = '\0';
+}
+
+/* comma_separated_string's dtor.  */
+
+comma_separated_string::~comma_separated_string ()
+{
+  delete[] m_buf;
 }
 
 /**********************************************************************
@@ -522,6 +616,8 @@ recording::context::~context ()
   char *optname;
   FOR_EACH_VEC_ELT (m_command_line_options, i, optname)
     free (optname);
+  FOR_EACH_VEC_ELT (m_driver_options, i, optname)
+    free (optname);
 
   if (m_builtins_manager)
     delete m_builtins_manager;
@@ -628,12 +724,12 @@ recording::context::disassociate_from_playback ()
    This creates a fresh copy of the given 0-terminated buffer.  */
 
 recording::string *
-recording::context::new_string (const char *text)
+recording::context::new_string (const char *text, bool escaped)
 {
   if (!text)
     return NULL;
 
-  recording::string *result = new string (this, text);
+  recording::string *result = new string (this, text, escaped);
   record (result);
   return result;
 }
@@ -772,6 +868,24 @@ recording::context::new_field (recording::location *loc,
 {
   recording::field *result =
     new recording::field (this, loc, type, new_string (name));
+  record (result);
+  return result;
+}
+
+/* Create a recording::bitfield instance and add it to this context's list
+   of mementos.
+
+   Implements the post-error-checking part of
+   gcc_jit_context_new_bitfield.  */
+
+recording::field *
+recording::context::new_bitfield (recording::location *loc,
+				  recording::type *type,
+				  int width,
+				  const char *name)
+{
+  recording::field *result =
+    new recording::bitfield (this, loc, type, width, new_string (name));
   record (result);
   return result;
 }
@@ -959,6 +1073,23 @@ recording::context::new_string_literal (const char *value)
 {
   recording::rvalue *result =
     new memento_of_new_string_literal (this, NULL, new_string (value));
+  record (result);
+  return result;
+}
+
+/* Create a recording::memento_of_new_rvalue_from_vector instance and add it
+   to this context's list of mementos.
+
+   Implements the post-error-checking part of
+   gcc_jit_context_new_rvalue_from_vector.  */
+
+recording::rvalue *
+recording::context::new_rvalue_from_vector (location *loc,
+					    vector_type *type,
+					    rvalue **elements)
+{
+  recording::rvalue *result
+    = new memento_of_new_rvalue_from_vector (this, loc, type, elements);
   record (result);
   return result;
 }
@@ -1196,6 +1327,31 @@ recording::context::append_command_line_options (vec <char *> *argvec)
     argvec->safe_push (xstrdup (optname));
 }
 
+/* Add the given optname to this context's list of extra driver options.  */
+
+void
+recording::context::add_driver_option (const char *optname)
+{
+  m_driver_options.safe_push (xstrdup (optname));
+}
+
+/* Add any user-provided driver options, starting with any from
+   parent contexts.
+   Called by playback::context::invoke_driver.  */
+
+void
+recording::context::append_driver_options (auto_string_vec *argvec)
+{
+  if (m_parent_ctxt)
+    m_parent_ctxt->append_driver_options (argvec);
+
+  int i;
+  char *optname;
+
+  FOR_EACH_VEC_ELT (m_driver_options, i, optname)
+    argvec->safe_push (xstrdup (optname));
+}
+
 /* Add the given dumpname/out_ptr pair to this context's list of requested
    dumps.
 
@@ -1422,6 +1578,10 @@ recording::context::dump_to_file (const char *path, bool update_locations)
     {
       fn->write_to_dump (d);
     }
+
+  top_level_asm *tla;
+  FOR_EACH_VEC_ELT (m_top_level_asms, i, tla)
+    tla->write_to_dump (d);
 }
 
 static const char * const
@@ -1688,6 +1848,17 @@ recording::context::dump_reproducer_to_file (const char *path)
 		     optname);
 	}
 
+      if (!m_driver_options.is_empty ())
+	{
+	  int i;
+	  char *optname;
+	  r.write ("  /* User-provided driver options.  */\n");
+	  FOR_EACH_VEC_ELT (m_driver_options, i, optname)
+	    r.write ("  gcc_jit_context_add_driver_option (%s, \"%s\");\n",
+		     r.get_identifier (contexts[ctxt_idx]),
+		     optname);
+	}
+
       if (m_requested_dumps.length ())
 	{
 	  r.write ("  /* Requested dumps.  */\n");
@@ -1735,6 +1906,22 @@ recording::context::get_all_requested_dumps (vec <recording::requested_dump> *ou
 
   out->reserve (m_requested_dumps.length ());
   out->splice (m_requested_dumps);
+}
+
+/* Create a recording::top_level_asm instance and add it to this
+   context's list of mementos and to m_top_level_asms.
+
+   Implements the post-error-checking part of
+   gcc_jit_context_add_top_level_asm.  */
+
+void
+recording::context::add_top_level_asm (recording::location *loc,
+				       const char *asm_stmts)
+{
+  recording::top_level_asm *asm_obj
+    = new recording::top_level_asm (this, loc, new_string (asm_stmts));
+  record (asm_obj);
+  m_top_level_asms.safe_push (asm_obj);
 }
 
 /* This is a pre-compilation check for the context (and any parents).
@@ -1787,8 +1974,9 @@ recording::memento::write_to_dump (dump &d)
 /* Constructor for gcc::jit::recording::string::string, allocating a
    copy of the given text using new char[].  */
 
-recording::string::string (context *ctxt, const char *text)
-  : memento (ctxt)
+recording::string::string (context *ctxt, const char *text, bool escaped)
+: memento (ctxt),
+  m_escaped (escaped)
 {
   m_len = strlen (text);
   m_buffer = new char[m_len + 1];
@@ -1838,9 +2026,9 @@ recording::string::from_printf (context *ctxt, const char *fmt, ...)
 recording::string *
 recording::string::make_debug_string ()
 {
-  /* Hack to avoid infinite recursion into strings when logging all
-     mementos: don't re-escape strings:  */
-  if (m_buffer[0] == '"')
+  /* Avoid infinite recursion into strings when logging all mementos:
+     don't re-escape strings:  */
+  if (m_escaped)
     return this;
 
   /* Wrap in quotes and do escaping etc */
@@ -1857,15 +2045,31 @@ recording::string::make_debug_string ()
   for (size_t i = 0; i < m_len ; i++)
     {
       char ch = m_buffer[i];
-      if (ch == '\t' || ch == '\n' || ch == '\\' || ch == '"')
-	APPEND('\\');
-      APPEND(ch);
+      switch (ch)
+	{
+	default:
+	  APPEND(ch);
+	  break;
+	case '\t':
+	  APPEND('\\');
+	  APPEND('t');
+	  break;
+	case '\n':
+	  APPEND('\\');
+	  APPEND('n');
+	  break;
+	case '\\':
+	case '"':
+	  APPEND('\\');
+	  APPEND(ch);
+	  break;
+	}
     }
   APPEND('"'); /* closing quote */
 #undef APPEND
   tmp[len] = '\0'; /* nil termintator */
 
-  string *result = m_ctxt->new_string (tmp);
+  string *result = m_ctxt->new_string (tmp, true);
 
   delete[] tmp;
   return result;
@@ -1974,10 +2178,93 @@ recording::type::get_volatile ()
   return result;
 }
 
+/* Given a type, get an aligned version of the type.
+
+   Implements the post-error-checking part of
+   gcc_jit_type_get_aligned.  */
+
+recording::type *
+recording::type::get_aligned (size_t alignment_in_bytes)
+{
+  recording::type *result
+    = new memento_of_get_aligned (this, alignment_in_bytes);
+  m_ctxt->record (result);
+  return result;
+}
+
+/* Given a type, get a vector version of the type.
+
+   Implements the post-error-checking part of
+   gcc_jit_type_get_vector.  */
+
+recording::type *
+recording::type::get_vector (size_t num_units)
+{
+  recording::type *result
+    = new vector_type (this, num_units);
+  m_ctxt->record (result);
+  return result;
+}
+
 const char *
 recording::type::access_as_type (reproducer &r)
 {
   return r.get_identifier (this);
+}
+
+/* Override of default implementation of
+   recording::type::get_size.
+
+   Return the size in bytes.  This is in use for global
+   initialization.  */
+
+size_t
+recording::memento_of_get_type::get_size ()
+{
+  int size;
+  switch (m_kind)
+    {
+    case GCC_JIT_TYPE_VOID:
+      return 0;
+    case GCC_JIT_TYPE_BOOL:
+    case GCC_JIT_TYPE_CHAR:
+    case GCC_JIT_TYPE_SIGNED_CHAR:
+    case GCC_JIT_TYPE_UNSIGNED_CHAR:
+      return 1;
+    case GCC_JIT_TYPE_SHORT:
+    case GCC_JIT_TYPE_UNSIGNED_SHORT:
+      size = SHORT_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_INT:
+    case GCC_JIT_TYPE_UNSIGNED_INT:
+      size = INT_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_LONG:
+    case GCC_JIT_TYPE_UNSIGNED_LONG:
+      size = LONG_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_LONG_LONG:
+    case GCC_JIT_TYPE_UNSIGNED_LONG_LONG:
+      size = LONG_LONG_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_FLOAT:
+      size = FLOAT_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_DOUBLE:
+      size = DOUBLE_TYPE_SIZE;
+      break;
+    case GCC_JIT_TYPE_LONG_DOUBLE:
+      size = LONG_DOUBLE_TYPE_SIZE;
+      break;
+    default:
+      /* As this function is called by
+	 'gcc_jit_global_set_initializer' and
+	 'recording::global::write_reproducer' possible types are only
+	 integrals and are covered by the previous cases.  */
+      gcc_unreachable ();
+    }
+
+  return size / BITS_PER_UNIT;
 }
 
 /* Implementation of pure virtual hook recording::type::dereference for
@@ -2288,6 +2575,15 @@ recording::memento_of_get_type::write_reproducer (reproducer &r)
 /* The implementation of class gcc::jit::recording::memento_of_get_pointer.  */
 
 /* Override of default implementation of
+   recording::type::get_size for get_pointer.  */
+
+size_t
+recording::memento_of_get_pointer::get_size ()
+{
+  return POINTER_SIZE / BITS_PER_UNIT;
+}
+
+/* Override of default implementation of
    recording::type::accepts_writes_from for get_pointer.
 
    Require a pointer type, and allowing writes to
@@ -2419,6 +2715,83 @@ recording::memento_of_get_volatile::write_reproducer (reproducer &r)
 	   r.get_identifier_as_type (m_other_type));
 }
 
+/* The implementation of class gcc::jit::recording::memento_of_get_aligned.  */
+
+/* Implementation of pure virtual hook recording::memento::replay_into
+   for recording::memento_of_get_aligned.  */
+
+void
+recording::memento_of_get_aligned::replay_into (replayer *)
+{
+  set_playback_obj
+    (m_other_type->playback_type ()->get_aligned (m_alignment_in_bytes));
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   results of get_aligned.  */
+
+recording::string *
+recording::memento_of_get_aligned::make_debug_string ()
+{
+  return string::from_printf (m_ctxt,
+			      "%s  __attribute__((aligned(%zi)))",
+			      m_other_type->get_debug_string (),
+			      m_alignment_in_bytes);
+}
+
+/* Implementation of recording::memento::write_reproducer for aligned
+   types. */
+
+void
+recording::memento_of_get_aligned::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "type");
+  r.write ("  gcc_jit_type *%s =\n"
+	   "    gcc_jit_type_get_aligned (%s, %zi);\n",
+	   id,
+	   r.get_identifier_as_type (m_other_type),
+	   m_alignment_in_bytes);
+}
+
+/* The implementation of class gcc::jit::recording::vector_type.  */
+
+/* Implementation of pure virtual hook recording::memento::replay_into
+   for recording::vector_type.  */
+
+void
+recording::vector_type::replay_into (replayer *)
+{
+  set_playback_obj
+    (m_other_type->playback_type ()->get_vector (m_num_units));
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   results of get_vector.  */
+
+recording::string *
+recording::vector_type::make_debug_string ()
+{
+  return string::from_printf
+    (m_ctxt,
+     "%s  __attribute__((vector_size(sizeof (%s) * %zi)))",
+     m_other_type->get_debug_string (),
+     m_other_type->get_debug_string (),
+     m_num_units);
+}
+
+/* Implementation of recording::memento::write_reproducer for vector types. */
+
+void
+recording::vector_type::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "type");
+  r.write ("  gcc_jit_type *%s =\n"
+	   "    gcc_jit_type_get_vector (%s, %zi);\n",
+	   id,
+	   r.get_identifier_as_type (m_other_type),
+	   m_num_units);
+}
+
 /* The implementation of class gcc::jit::recording::array_type */
 
 /* Implementation of pure virtual hook recording::type::dereference for
@@ -2497,6 +2870,53 @@ recording::type *
 recording::function_type::dereference ()
 {
   return NULL;
+}
+
+/* Implementation of virtual hook recording::type::is_same_type_as for
+   recording::function_type.
+
+   We override this to avoid requiring identity of function pointer types,
+   so that if client code has obtained the same signature in
+   different ways (e.g. via gcc_jit_context_new_function_ptr_type
+   vs gcc_jit_function_get_address), the different function_type
+   instances are treated as compatible.
+
+   We can't use type::accepts_writes_from for this as we need a stronger
+   notion of "sameness": if we have a fn_ptr type that has args that are
+   themselves fn_ptr types, then those args still need to match exactly.
+
+   Alternatively, we could consolidate attempts to create identical
+   function_type instances so that pointer equality works, but that runs
+   into issues about the lifetimes of the cache (w.r.t. nested contexts).  */
+
+bool
+recording::function_type::is_same_type_as (type *other)
+{
+  gcc_assert (other);
+
+  function_type *other_fn_type = other->dyn_cast_function_type ();
+  if (!other_fn_type)
+    return false;
+
+  /* Everything must match.  */
+
+  if (!m_return_type->is_same_type_as (other_fn_type->m_return_type))
+    return false;
+
+  if (m_param_types.length () != other_fn_type->m_param_types.length ())
+    return false;
+
+  unsigned i;
+  type *param_type;
+  FOR_EACH_VEC_ELT (m_param_types, i, param_type)
+    if (!param_type->is_same_type_as (other_fn_type->m_param_types[i]))
+      return false;
+
+  if (m_is_variadic != other_fn_type->m_is_variadic)
+    return false;
+
+  /* Passed all tests.  */
+  return true;
 }
 
 /* Implementation of pure virtual hook recording::memento::replay_into
@@ -2661,7 +3081,7 @@ recording::field::replay_into (replayer *r)
    recording::memento::write_to_dump.  Dump each field
    by dumping a line of the form:
       TYPE NAME;
-   so that we can build up a struct/union field-byfield.  */
+   so that we can build up a struct/union field by field.  */
 
 void
 recording::field::write_to_dump (dump &d)
@@ -2698,6 +3118,66 @@ recording::field::write_reproducer (reproducer &r)
 	  m_name->get_debug_string ());
 }
 
+/* The implementation of class gcc::jit::recording::bitfield.  */
+
+/* Implementation of pure virtual hook recording::memento::replay_into
+   for recording::bitfield.  */
+
+void
+recording::bitfield::replay_into (replayer *r)
+{
+  set_playback_obj (r->new_bitfield (playback_location (r, m_loc),
+				     m_type->playback_type (),
+				     m_width,
+				     playback_string (m_name)));
+}
+
+/* Override the default implementation of
+   recording::memento::write_to_dump.  Dump each bit field
+   by dumping a line of the form:
+      TYPE NAME:WIDTH;
+   so that we can build up a struct/union field by field.  */
+
+void
+recording::bitfield::write_to_dump (dump &d)
+{
+  d.write ("  %s %s:%d;\n",
+	   m_type->get_debug_string (),
+	   m_name->c_str (),
+	   m_width);
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   results of new_bitfield.  */
+
+recording::string *
+recording::bitfield::make_debug_string ()
+{
+  return string::from_printf (m_ctxt,
+			      "%s:%d",
+			      m_name->c_str (), m_width);
+}
+
+/* Implementation of recording::memento::write_reproducer for bitfields.  */
+
+void
+recording::bitfield::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "bitfield");
+  r.write ("  gcc_jit_field *%s =\n"
+	   "    gcc_jit_context_new_bitfield (%s,\n"
+	   "                               %s, /* gcc_jit_location *loc */\n"
+	   "                               %s, /* gcc_jit_type *type, */\n"
+	   "                               %d, /* int width, */\n"
+	   "                               %s); /* const char *name */\n",
+	   id,
+	   r.get_identifier (get_context ()),
+	   r.get_identifier (m_loc),
+	   r.get_identifier_as_type (m_type),
+	   m_width,
+	   m_name->get_debug_string ());
+}
+
 /* The implementation of class gcc::jit::recording::compound_type */
 
 /* The constructor for gcc::jit::recording::compound_type.  */
@@ -2724,7 +3204,7 @@ recording::compound_type::set_fields (location *loc,
 				      field **field_array)
 {
   m_loc = loc;
-  gcc_assert (NULL == m_fields);
+  gcc_assert (m_fields == NULL);
 
   m_fields = new fields (this, num_fields, field_array);
   m_ctxt->record (m_fields);
@@ -2919,7 +3399,7 @@ void
 recording::fields::write_reproducer (reproducer &r)
 {
   if (m_struct_or_union)
-    if (NULL == m_struct_or_union->dyn_cast_struct ())
+    if (m_struct_or_union->dyn_cast_struct () == NULL)
       /* We have a union; the fields have already been written by
 	 union::write_reproducer.  */
       return;
@@ -3107,7 +3587,7 @@ void
 recording::rvalue::set_scope (function *scope)
 {
   gcc_assert (scope);
-  gcc_assert (NULL == m_scope);
+  gcc_assert (m_scope == NULL);
   m_scope = scope;
 }
 
@@ -3308,7 +3788,8 @@ recording::function::function (context *ctxt,
   m_is_variadic (is_variadic),
   m_builtin_id (builtin_id),
   m_locals (),
-  m_blocks ()
+  m_blocks (),
+  m_fn_ptr_type (NULL)
 {
   for (int i = 0; i< num_params; i++)
     {
@@ -3486,7 +3967,7 @@ recording::function::validate ()
   /* Complain about empty functions with non-void return type.  */
   if (m_kind != GCC_JIT_FUNCTION_IMPORTED
       && m_return_type != m_ctxt->get_type (GCC_JIT_TYPE_VOID))
-    if (0 == m_blocks.length ())
+    if (m_blocks.length () == 0)
       m_ctxt->add_error (m_loc,
 			 "function %s returns non-void (type: %s)"
 			 " but has no blocks",
@@ -3507,7 +3988,7 @@ recording::function::validate ()
   /* Check that all blocks are reachable.  */
   if (!m_ctxt->get_inner_bool_option
         (INNER_BOOL_OPTION_ALLOW_UNREACHABLE_BLOCKS)
-      && m_blocks.length () > 0 && 0 == num_invalid_blocks)
+      && m_blocks.length () > 0 && num_invalid_blocks == 0)
     {
       /* Iteratively walk the graph of blocks, marking their "m_is_reachable"
 	 flag, starting at the initial block.  */
@@ -3557,8 +4038,8 @@ recording::function::dump_to_dot (const char *path)
 
   pretty_printer *pp = &the_pp;
 
-  pp_printf (pp,
-	     "digraph %s {\n", get_debug_string ());
+  pp_printf (pp, "digraph %s", get_debug_string ());
+  pp_string (pp, " {\n");
 
   /* Blocks: */
   {
@@ -3576,9 +4057,38 @@ recording::function::dump_to_dot (const char *path)
       b->dump_edges_to_dot (pp);
   }
 
-  pp_printf (pp, "}\n");
+  pp_string (pp, "}\n");
   pp_flush (pp);
   fclose (fp);
+}
+
+/* Implements the post-error-checking part of
+   gcc_jit_function_get_address.  */
+
+recording::rvalue *
+recording::function::get_address (recording::location *loc)
+{
+  /* Lazily create and cache the function pointer type.  */
+  if (!m_fn_ptr_type)
+    {
+      /* Make a recording::function_type for this function.  */
+      auto_vec <recording::type *> param_types (m_params.length ());
+      unsigned i;
+      recording::param *param;
+      FOR_EACH_VEC_ELT (m_params, i, param)
+	param_types.safe_push (param->get_type ());
+      recording::function_type *fn_type
+	= m_ctxt->new_function_type (m_return_type,
+				     m_params.length (),
+				     param_types.address (),
+				     m_is_variadic);
+      m_fn_ptr_type = fn_type->get_pointer ();
+    }
+  gcc_assert (m_fn_ptr_type);
+
+  rvalue *result = new function_pointer (get_context (), loc, this, m_fn_ptr_type);
+  m_ctxt->record (result);
+  return result;
 }
 
 /* Implementation of recording::memento::make_debug_string for
@@ -3716,6 +4226,23 @@ recording::block::add_comment (recording::location *loc,
   return result;
 }
 
+/* Create a recording::extended_asm_simple instance and add it to
+   the block's context's list of mementos, and to the block's
+   list of statements.
+
+   Implements the heart of gcc_jit_block_add_extended_asm.  */
+
+recording::extended_asm *
+recording::block::add_extended_asm (location *loc,
+				    const char *asm_template)
+{
+  extended_asm *result
+    = new extended_asm_simple (this, loc, new_string (asm_template));
+  m_ctxt->record (result);
+  m_statements.safe_push (result);
+  return result;
+}
+
 /* Create a recording::end_with_conditional instance and add it to
    the block's context's list of mementos, and to the block's
    list of statements.
@@ -3792,6 +4319,30 @@ recording::block::end_with_switch (recording::location *loc,
 				   default_block,
 				   num_cases,
 				   cases);
+  m_ctxt->record (result);
+  m_statements.safe_push (result);
+  m_has_been_terminated = true;
+  return result;
+}
+
+/* Create a recording::extended_asm_goto instance and add it to
+   the block's context's list of mementos, and to the block's
+   list of statements.
+
+   Implements the heart of gcc_jit_block_end_with_extended_asm_goto.  */
+
+
+recording::extended_asm *
+recording::block::end_with_extended_asm_goto (location *loc,
+					      const char *asm_template,
+					      int num_goto_blocks,
+					      block **goto_blocks,
+					      block *fallthrough_block)
+{
+  extended_asm *result
+    = new extended_asm_goto (this, loc, new_string (asm_template),
+			     num_goto_blocks, goto_blocks,
+			     fallthrough_block);
   m_ctxt->record (result);
   m_statements.safe_push (result);
   m_has_been_terminated = true;
@@ -3928,6 +4479,14 @@ recording::block::write_reproducer (reproducer &r)
 	   m_name ? m_name->get_debug_string () : "NULL");
 }
 
+/* Disable warnings about missing quoting in GCC diagnostics for
+   the pp_printf calls.  Their format strings deliberately don't
+   follow GCC diagnostic conventions.  */
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wformat-diag"
+#endif
+
 /* Dump a block in graphviz form into PP, capturing the block name (if
    any) and the statements.  */
 
@@ -3956,7 +4515,7 @@ recording::block::dump_to_dot (pretty_printer *pp)
       pp_write_text_as_dot_label_to_stream (pp, true /*for_record*/);
     }
 
-  pp_printf (pp,
+  pp_string (pp,
 	     "}\"];\n\n");
   pp_flush (pp);
 }
@@ -3976,6 +4535,10 @@ recording::block::dump_edges_to_dot (pretty_printer *pp)
   successors.release ();
 }
 
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic pop
+#endif
+
 /* The implementation of class gcc::jit::recording::global.  */
 
 /* Implementation of pure virtual hook recording::memento::replay_into
@@ -3984,10 +4547,20 @@ recording::block::dump_edges_to_dot (pretty_printer *pp)
 void
 recording::global::replay_into (replayer *r)
 {
-  set_playback_obj (r->new_global (playback_location (r, m_loc),
-				   m_kind,
-				   m_type->playback_type (),
-				   playback_string (m_name)));
+  set_playback_obj (
+    m_initializer
+    ? r->new_global_initialized (playback_location (r, m_loc),
+				 m_kind,
+				 m_type->playback_type (),
+				 m_type->dereference ()->get_size (),
+				 m_initializer_num_bytes
+				 / m_type->dereference ()->get_size (),
+				 m_initializer,
+				 playback_string (m_name))
+    : r->new_global (playback_location (r, m_loc),
+		     m_kind,
+		     m_type->playback_type (),
+		     playback_string (m_name)));
 }
 
 /* Override the default implementation of
@@ -4031,9 +4604,26 @@ recording::global::write_to_dump (dump &d)
       d.write ("extern ");
       break;
     }
-  d.write ("%s %s;\n",
+
+  d.write ("%s %s",
 	   m_type->get_debug_string (),
 	   get_debug_string ());
+
+  if (!m_initializer)
+    {
+      d.write (";\n");
+      return;
+    }
+
+  d.write ("=\n  { ");
+  const unsigned char *p = (const unsigned char *)m_initializer;
+  for (size_t i = 0; i < m_initializer_num_bytes; i++)
+    {
+      d.write ("0x%x, ", p[i]);
+      if (i && !(i % 64))
+	d.write ("\n    ");
+    }
+  d.write ("};\n");
 }
 
 /* A table of enum gcc_jit_global_kind values expressed in string
@@ -4044,6 +4634,27 @@ static const char * const global_kind_reproducer_strings[] = {
   "GCC_JIT_GLOBAL_INTERNAL",
   "GCC_JIT_GLOBAL_IMPORTED"
 };
+
+template <typename T>
+void
+recording::global::write_initializer_reproducer (const char *id, reproducer &r)
+{
+  const char *init_id = r.make_tmp_identifier ("init_for", this);
+  r.write ("  %s %s[] =\n    {",
+	   m_type->dereference ()->get_debug_string (),
+	   init_id);
+
+  const T *p = (const T *)m_initializer;
+  for (size_t i = 0; i < m_initializer_num_bytes / sizeof (T); i++)
+    {
+      r.write ("%" PRIu64 ", ", (uint64_t)p[i]);
+      if (i && !(i % 64))
+	r.write ("\n    ");
+    }
+  r.write ("};\n");
+  r.write ("  gcc_jit_global_set_initializer (%s, %s, sizeof (%s));\n",
+	   id, init_id, init_id);
+}
 
 /* Implementation of recording::memento::write_reproducer for globals. */
 
@@ -4063,6 +4674,27 @@ recording::global::write_reproducer (reproducer &r)
     global_kind_reproducer_strings[m_kind],
     r.get_identifier_as_type (get_type ()),
     m_name->get_debug_string ());
+
+  if (m_initializer)
+    switch (m_type->dereference ()->get_size ())
+      {
+      case 1:
+	write_initializer_reproducer<uint8_t> (id, r);
+	break;
+      case 2:
+	write_initializer_reproducer<uint16_t> (id, r);
+	break;
+      case 4:
+	write_initializer_reproducer<uint32_t> (id, r);
+	break;
+      case 8:
+	write_initializer_reproducer<uint64_t> (id, r);
+	break;
+      default:
+	/* This function is serving on sizes returned by 'get_size',
+	   these are all covered by the previous cases.  */
+	gcc_unreachable ();
+      }
 }
 
 /* The implementation of the various const-handling classes:
@@ -4194,7 +4826,7 @@ recording::memento_of_new_rvalue_from_const <long>::write_reproducer (reproducer
 	       id,
 	       r.get_identifier (get_context ()),
 	       r.get_identifier_as_type (m_type),
-	       m_value + 1);;
+	       m_value + 1);
       return;
     }
 
@@ -4348,6 +4980,96 @@ recording::memento_of_new_string_literal::write_reproducer (reproducer &r)
     m_value->get_debug_string ());
 }
 
+/* The implementation of class
+   gcc::jit::recording::memento_of_new_rvalue_from_vector.  */
+
+/* The constructor for
+   gcc::jit::recording::memento_of_new_rvalue_from_vector.  */
+
+recording::memento_of_new_rvalue_from_vector::
+memento_of_new_rvalue_from_vector (context *ctxt,
+				   location *loc,
+				   vector_type *type,
+				   rvalue **elements)
+: rvalue (ctxt, loc, type),
+  m_vector_type (type),
+  m_elements ()
+{
+  for (unsigned i = 0; i < type->get_num_units (); i++)
+    m_elements.safe_push (elements[i]);
+}
+
+/* Implementation of pure virtual hook recording::memento::replay_into
+   for recording::memento_of_new_rvalue_from_vector.  */
+
+void
+recording::memento_of_new_rvalue_from_vector::replay_into (replayer *r)
+{
+  auto_vec<playback::rvalue *> playback_elements;
+  playback_elements.create (m_elements.length ());
+  for (unsigned i = 0; i< m_elements.length (); i++)
+    playback_elements.safe_push (m_elements[i]->playback_rvalue ());
+
+  set_playback_obj (r->new_rvalue_from_vector (playback_location (r, m_loc),
+					       m_type->playback_type (),
+					       playback_elements));
+}
+
+/* Implementation of pure virtual hook recording::rvalue::visit_children
+   for recording::memento_of_new_rvalue_from_vector.  */
+
+void
+recording::memento_of_new_rvalue_from_vector::visit_children (rvalue_visitor *v)
+{
+  for (unsigned i = 0; i< m_elements.length (); i++)
+    v->visit (m_elements[i]);
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   vectors.  */
+
+recording::string *
+recording::memento_of_new_rvalue_from_vector::make_debug_string ()
+{
+  comma_separated_string elements (m_elements, get_precedence ());
+
+  /* Now build a string.  */
+  string *result = string::from_printf (m_ctxt,
+					"{%s}",
+					elements.as_char_ptr ());
+
+ return result;
+
+}
+
+/* Implementation of recording::memento::write_reproducer for
+   vectors.  */
+
+void
+recording::memento_of_new_rvalue_from_vector::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "vector");
+  const char *elements_id = r.make_tmp_identifier ("elements_for_", this);
+  r.write ("  gcc_jit_rvalue *%s[%i] = {\n",
+	   elements_id,
+	   m_elements.length ());
+  for (unsigned i = 0; i< m_elements.length (); i++)
+    r.write ("    %s,\n", r.get_identifier_as_rvalue (m_elements[i]));
+  r.write ("  };\n");
+  r.write ("  gcc_jit_rvalue *%s =\n"
+	   "    gcc_jit_context_new_rvalue_from_vector (%s, /* gcc_jit_context *ctxt */\n"
+	   "                                            %s, /* gcc_jit_location *loc */\n"
+	   "                                            %s, /* gcc_jit_type *vec_type */\n"
+	   "                                            %i, /* size_t num_elements  */ \n"
+	   "                                            %s); /* gcc_jit_rvalue **elements*/\n",
+	   id,
+	   r.get_identifier (get_context ()),
+	   r.get_identifier (m_loc),
+	   r.get_identifier (m_vector_type),
+	   m_elements.length (),
+	   elements_id);
+}
+
 /* The implementation of class gcc::jit::recording::unary_op.  */
 
 /* Implementation of pure virtual hook recording::memento::replay_into
@@ -4389,7 +5111,7 @@ recording::unary_op::make_debug_string ()
 			      m_a->get_debug_string ());
 }
 
-static const char * const unary_op_reproducer_strings[] = {
+const char * const unary_op_reproducer_strings[] = {
   "GCC_JIT_UNARY_OP_MINUS",
   "GCC_JIT_UNARY_OP_BITWISE_NEGATE",
   "GCC_JIT_UNARY_OP_LOGICAL_NEGATE",
@@ -4469,7 +5191,7 @@ recording::binary_op::make_debug_string ()
 			      m_b->get_debug_string_parens (prec));
 }
 
-static const char * const binary_op_reproducer_strings[] = {
+const char * const binary_op_reproducer_strings[] = {
   "GCC_JIT_BINARY_OP_PLUS",
   "GCC_JIT_BINARY_OP_MINUS",
   "GCC_JIT_BINARY_OP_MULT",
@@ -4761,39 +5483,14 @@ recording::call::visit_children (rvalue_visitor *v)
 recording::string *
 recording::call::make_debug_string ()
 {
-  enum precedence prec = get_precedence ();
   /* First, build a buffer for the arguments.  */
-  /* Calculate length of said buffer.  */
-  size_t sz = 1; /* nil terminator */
-  for (unsigned i = 0; i< m_args.length (); i++)
-    {
-      sz += strlen (m_args[i]->get_debug_string_parens (prec));
-      sz += 2; /* ", " separator */
-    }
-
-  /* Now allocate and populate the buffer.  */
-  char *argbuf = new char[sz];
-  size_t len = 0;
-
-  for (unsigned i = 0; i< m_args.length (); i++)
-    {
-      strcpy (argbuf + len, m_args[i]->get_debug_string_parens (prec));
-      len += strlen (m_args[i]->get_debug_string_parens (prec));
-      if (i + 1 < m_args.length ())
-	{
-	  strcpy (argbuf + len, ", ");
-	  len += 2;
-	}
-    }
-  argbuf[len] = '\0';
+  comma_separated_string args (m_args, get_precedence ());
 
   /* ...and use it to get the string for the call as a whole.  */
   string *result = string::from_printf (m_ctxt,
 					"%s (%s)",
 					m_func->get_debug_string (),
-					argbuf);
-
-  delete[] argbuf;
+					args.as_char_ptr ());
 
   return result;
 }
@@ -5253,6 +5950,51 @@ recording::get_address_of_lvalue::write_reproducer (reproducer &r)
 	   "                                %s); /* gcc_jit_location *loc */\n",
 	   id,
 	   r.get_identifier_as_lvalue (m_lvalue),
+	   r.get_identifier (m_loc));
+}
+
+/* The implementation of class gcc::jit::recording::function_pointer.  */
+
+/* Implementation of pure virtual hook recording::memento::replay_into
+   for recording::function_pointer.  */
+
+void
+recording::function_pointer::replay_into (replayer *r)
+{
+  set_playback_obj (
+    m_fn->playback_function ()->
+      get_address (playback_location (r, m_loc)));
+}
+
+void
+recording::function_pointer::visit_children (rvalue_visitor *)
+{
+  /* Empty.  */
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   getting the address of an lvalue.  */
+
+recording::string *
+recording::function_pointer::make_debug_string ()
+{
+  return string::from_printf (m_ctxt,
+			      "%s",
+			      m_fn->get_debug_string ());
+}
+
+/* Implementation of recording::memento::write_reproducer for
+   function_pointer.  */
+
+void
+recording::function_pointer::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "address_of");
+  r.write ("  gcc_jit_rvalue *%s =\n"
+	   "    gcc_jit_function_get_address (%s, /* gcc_jit_function *fn */\n"
+	   "                                  %s); /* gcc_jit_location *loc */\n",
+	   id,
+	   r.get_identifier (m_fn),
 	   r.get_identifier (m_loc));
 }
 
@@ -5791,7 +6533,7 @@ recording::switch_::make_debug_string ()
     {
       size_t len = strlen (c->get_debug_string ());
       unsigned idx = cases_str.length ();
-      cases_str.safe_grow (idx + 1 + len);
+      cases_str.safe_grow (idx + 1 + len, true);
       cases_str[idx] = ' ';
       memcpy (&(cases_str[idx + 1]),
 	      c->get_debug_string (),
@@ -5837,6 +6579,459 @@ recording::switch_::write_reproducer (reproducer &r)
 	     r.get_identifier (m_default_block),
 	     m_cases.length (),
 	     cases_id);
+}
+
+/* class asm_operand : public memento.  */
+
+recording::asm_operand::asm_operand (extended_asm *ext_asm,
+				     string *asm_symbolic_name,
+				     string *constraint)
+: memento (ext_asm->get_context ()),
+  m_ext_asm (ext_asm),
+  m_asm_symbolic_name (asm_symbolic_name),
+  m_constraint (constraint)
+{
+}
+
+void
+recording::asm_operand::print (pretty_printer *pp) const
+{
+  if (m_asm_symbolic_name)
+    {
+      pp_character (pp, '[');
+      pp_string (pp, m_asm_symbolic_name->c_str ());
+      pp_character (pp, ']');
+      pp_space (pp);
+    }
+  pp_string (pp, m_constraint->get_debug_string ());
+  /* Subclass will add lvalue/rvalue.  */
+}
+
+recording::string *
+recording::asm_operand::make_debug_string ()
+{
+  pretty_printer pp;
+  print (&pp);
+  return m_ctxt->new_string (pp_formatted_text (&pp), false);
+}
+
+/* class output_asm_operand : public asm_operand.  */
+
+void
+recording::output_asm_operand::write_reproducer (reproducer &r)
+{
+  const char *fmt =
+    "  gcc_jit_extended_asm_add_output_operand (%s, /* gcc_jit_extended_asm *ext_asm */\n"
+    "                                           %s, /* const char *asm_symbolic_name */\n"
+    "                                           %s, /* const char *constraint */\n"
+    "                                           %s); /* gcc_jit_lvalue *dest */\n";
+  r.write (fmt,
+	   r.get_identifier (m_ext_asm),
+	   (m_asm_symbolic_name
+	    ? m_asm_symbolic_name->get_debug_string () : "NULL"),
+	   m_constraint->get_debug_string (),
+	   r.get_identifier (m_dest));
+}
+
+void
+recording::output_asm_operand::print (pretty_printer *pp) const
+{
+  asm_operand::print (pp);
+  pp_string (pp, " (");
+  pp_string (pp, m_dest->get_debug_string ());
+  pp_string (pp, ")");
+}
+
+/* class input_asm_operand : public asm_operand.  */
+
+void
+recording::input_asm_operand::write_reproducer (reproducer &r)
+{
+  const char *fmt =
+    "  gcc_jit_extended_asm_add_input_operand (%s, /* gcc_jit_extended_asm *ext_asm */\n"
+    "                                          %s, /* const char *asm_symbolic_name */\n"
+    "                                          %s, /* const char *constraint */\n"
+    "                                          %s); /* gcc_jit_rvalue *src */\n";
+  r.write (fmt,
+	   r.get_identifier (m_ext_asm),
+	   (m_asm_symbolic_name
+	    ? m_asm_symbolic_name->get_debug_string () : "NULL"),
+	   m_constraint->get_debug_string (),
+	   r.get_identifier_as_rvalue (m_src));
+}
+
+void
+recording::input_asm_operand::print (pretty_printer *pp) const
+{
+  asm_operand::print (pp);
+  pp_string (pp, " (");
+  pp_string (pp, m_src->get_debug_string ());
+  pp_string (pp, ")");
+}
+
+/* The implementation of class gcc::jit::recording::extended_asm.  */
+
+void
+recording::extended_asm::add_output_operand (const char *asm_symbolic_name,
+					     const char *constraint,
+					     lvalue *dest)
+{
+  output_asm_operand *op
+    = new output_asm_operand (this,
+			      new_string (asm_symbolic_name),
+			      new_string (constraint),
+			      dest);
+  m_ctxt->record (op);
+  m_output_ops.safe_push (op);
+}
+
+void
+recording::extended_asm::add_input_operand (const char *asm_symbolic_name,
+					    const char *constraint,
+					    rvalue *src)
+{
+  input_asm_operand *op
+    = new input_asm_operand (this,
+			     new_string (asm_symbolic_name),
+			     new_string (constraint),
+			     src);
+  m_ctxt->record (op);
+  m_input_ops.safe_push (op);
+}
+
+void
+recording::extended_asm::add_clobber (const char *victim)
+{
+  m_clobbers.safe_push (new_string (victim));
+}
+
+/* Implementation of recording::memento::replay_into
+   for recording::extended_asm.  */
+
+void
+recording::extended_asm::replay_into (replayer *r)
+{
+  auto_vec<playback::asm_operand> playback_output_ops;
+  auto_vec<playback::asm_operand> playback_input_ops;
+  auto_vec<const char *> playback_clobbers;
+  auto_vec<playback::block *> playback_goto_blocks;
+
+  /* Populate outputs.  */
+  {
+    output_asm_operand *rec_asm_op;
+    unsigned i;
+    FOR_EACH_VEC_ELT (m_output_ops, i, rec_asm_op)
+      {
+	playback::asm_operand playback_asm_op
+	  (rec_asm_op->get_symbolic_name (),
+	   rec_asm_op->get_constraint (),
+	   rec_asm_op->get_lvalue ()->playback_lvalue ()->as_tree ());
+	playback_output_ops.safe_push (playback_asm_op);
+      }
+  }
+
+  /* Populate inputs.  */
+  {
+    input_asm_operand *rec_asm_op;
+    unsigned i;
+    FOR_EACH_VEC_ELT (m_input_ops, i, rec_asm_op)
+      {
+	playback::asm_operand playback_asm_op
+	  (rec_asm_op->get_symbolic_name (),
+	   rec_asm_op->get_constraint (),
+	   rec_asm_op->get_rvalue ()->playback_rvalue ()->as_tree ());
+	playback_input_ops.safe_push (playback_asm_op);
+      }
+  }
+
+  /* Populate clobbers.  */
+  {
+    string *rec_clobber;
+    unsigned i;
+    FOR_EACH_VEC_ELT (m_clobbers, i, rec_clobber)
+      playback_clobbers.safe_push (rec_clobber->c_str ());
+  }
+
+  /* Populate playback blocks if an "asm goto".  */
+  maybe_populate_playback_blocks (&playback_goto_blocks);
+
+  playback_block (get_block ())
+    ->add_extended_asm (playback_location (r),
+			m_asm_template->c_str (),
+			m_is_volatile, m_is_inline,
+			&playback_output_ops,
+			&playback_input_ops,
+			&playback_clobbers,
+			&playback_goto_blocks);
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   an extended_asm "statement".  */
+
+recording::string *
+recording::extended_asm::make_debug_string ()
+{
+  pretty_printer pp;
+  pp_string (&pp, "asm ");
+  if (m_is_volatile)
+    pp_string (&pp, "volatile ");
+  if (m_is_inline)
+    pp_string (&pp, "inline ");
+  if (is_goto ())
+    pp_string (&pp, "goto ");
+  pp_character (&pp, '(');
+  pp_string (&pp, m_asm_template->get_debug_string ());
+  pp_string (&pp, " : ");
+  unsigned i;
+  {
+    output_asm_operand *asm_op;
+    FOR_EACH_VEC_ELT (m_output_ops, i, asm_op)
+      {
+	if (i > 0)
+	  pp_string (&pp, ", ");
+	asm_op->print (&pp);
+      }
+  }
+  pp_string (&pp, " : ");
+  {
+    input_asm_operand *asm_op;
+    FOR_EACH_VEC_ELT (m_input_ops, i, asm_op)
+      {
+	if (i > 0)
+	  pp_string (&pp, ", ");
+	asm_op->print (&pp);
+      }
+  }
+  pp_string (&pp, " : ");
+  string *rec_clobber;
+  FOR_EACH_VEC_ELT (m_clobbers, i, rec_clobber)
+      {
+	if (i > 0)
+	  pp_string (&pp, ", ");
+	pp_string (&pp, rec_clobber->get_debug_string ());
+      }
+  maybe_print_gotos (&pp);
+  pp_character (&pp, ')');
+  return new_string (pp_formatted_text (&pp));
+}
+
+void
+recording::extended_asm::write_flags (reproducer &r)
+{
+  if (m_is_volatile)
+    r.write ("  gcc_jit_extended_asm_set_volatile_flag (%s, 1);\n",
+	     r.get_identifier (this));
+  if (m_is_inline)
+    r.write ("  gcc_jit_extended_asm_set_inline_flag (%s, 1);\n",
+	     r.get_identifier (this));
+}
+
+void
+recording::extended_asm::write_clobbers (reproducer &r)
+{
+  string *clobber;
+  unsigned i;
+  FOR_EACH_VEC_ELT (m_clobbers, i, clobber)
+    r.write ("  gcc_jit_extended_asm_add_clobber (%s, %s);\n",
+	     r.get_identifier (this),
+	     clobber->get_debug_string ());
+}
+
+/* Implementation of recording::memento::write_reproducer for
+   extended_asm_simple.  */
+
+void
+recording::extended_asm_simple::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "extended_asm");
+  r.write ("  gcc_jit_extended_asm *%s =\n"
+	   "    gcc_jit_block_add_extended_asm (%s, /*gcc_jit_block *block */\n"
+	   "                                    %s, /* gcc_jit_location *loc */\n"
+	   "                                    %s); /* const char *asm_template */\n",
+	   id,
+	   r.get_identifier (get_block ()),
+	   r.get_identifier (get_loc ()),
+	   m_asm_template->get_debug_string ());
+  write_flags (r);
+  write_clobbers (r);
+}
+
+void
+recording::extended_asm::
+maybe_populate_playback_blocks (auto_vec <playback::block *> *)
+{
+  /* Do nothing; not an "asm goto".  */
+}
+
+/* The implementation of class gcc::jit::recording::extended_asm_goto.  */
+
+/* recording::extended_asm_goto's ctor.  */
+
+recording::extended_asm_goto::extended_asm_goto (block *b,
+						 location *loc,
+						 string *asm_template,
+						 int num_goto_blocks,
+						 block **goto_blocks,
+						 block *fallthrough_block)
+: extended_asm (b, loc, asm_template),
+  m_goto_blocks (num_goto_blocks),
+  m_fallthrough_block (fallthrough_block)
+{
+  for (int i = 0; i < num_goto_blocks; i++)
+    m_goto_blocks.quick_push (goto_blocks[i]);
+}
+
+/* Implementation of recording::memento::replay_into
+   for recording::extended_asm_goto.  */
+
+void
+recording::extended_asm_goto::replay_into (replayer *r)
+{
+  /* Chain up to base class impl.  */
+  recording::extended_asm::replay_into (r);
+
+  /* ...and potentially add a goto for the fallthrough.  */
+  if (m_fallthrough_block)
+    playback_block (get_block ())
+      ->add_jump (playback_location (r),
+		  m_fallthrough_block->playback_block ());
+}
+
+/* Implementation of recording::memento::write_reproducer for
+   extended_asm_goto.  */
+
+void
+recording::extended_asm_goto::write_reproducer (reproducer &r)
+{
+  const char *id = r.make_identifier (this, "extended_asm");
+  const char *blocks_id = r.make_tmp_identifier ("blocks_for", this);
+  r.write ("  gcc_jit_block *%s[%i] = {\n",
+	   blocks_id,
+	   m_goto_blocks.length ());
+  int i;
+  block *b;
+  FOR_EACH_VEC_ELT (m_goto_blocks, i, b)
+    r.write ("    %s,\n", r.get_identifier (b));
+  r.write ("  };\n");
+  r.write ("  gcc_jit_extended_asm *%s =\n"
+	   "    gcc_jit_block_end_with_extended_asm_goto (%s, /*gcc_jit_block *block */\n"
+	   "                                              %s, /* gcc_jit_location *loc */\n"
+	   "                                              %s, /* const char *asm_template */\n"
+	   "                                              %i, /* int num_goto_blocks */\n"
+	   "                                              %s, /* gcc_jit_block **goto_blocks */\n"
+	   "                                              %s); /* gcc_jit_block *fallthrough_block */\n",
+	   id,
+	   r.get_identifier (get_block ()),
+	   r.get_identifier (get_loc ()),
+	   m_asm_template->get_debug_string (),
+	   m_goto_blocks.length (),
+	   blocks_id,
+	   (m_fallthrough_block
+	    ? r.get_identifier (m_fallthrough_block)
+	    : "NULL"));
+  write_flags (r);
+  write_clobbers (r);
+}
+
+/* Override the poisoned default implementation of
+   gcc::jit::recording::statement::get_successor_blocks
+
+   An extended_asm_goto can jump to the m_goto_blocks, and to
+   the (optional) m_fallthrough_block.  */
+
+vec <recording::block *>
+recording::extended_asm_goto::get_successor_blocks () const
+{
+  vec <block *> result;
+  result.create (m_goto_blocks.length () + 1);
+  if (m_fallthrough_block)
+    result.quick_push (m_fallthrough_block);
+  result.splice (m_goto_blocks);
+  return result;
+}
+
+/* Vfunc for use by recording::extended_asm::make_debug_string.  */
+
+void
+recording::extended_asm_goto::maybe_print_gotos (pretty_printer *pp) const
+{
+  pp_string (pp, " : ");
+  unsigned i;
+  block *b;
+  FOR_EACH_VEC_ELT (m_goto_blocks, i, b)
+    {
+      if (i > 0)
+	pp_string (pp, ", ");
+      pp_string (pp, b->get_debug_string ());
+    }
+  /* Non-C syntax here.  */
+  if (m_fallthrough_block)
+    pp_printf (pp, " [fallthrough: %s]",
+	       m_fallthrough_block->get_debug_string ());
+}
+
+/* Vfunc for use by recording::extended_asm::replay_into.  */
+
+void
+recording::extended_asm_goto::
+maybe_populate_playback_blocks (auto_vec <playback::block *> *out)
+{
+  unsigned i;
+  block *b;
+  FOR_EACH_VEC_ELT (m_goto_blocks, i, b)
+    out->safe_push (b->playback_block ());
+}
+
+/* class top_level_asm : public memento.  */
+
+recording::top_level_asm::top_level_asm (context *ctxt,
+					 location *loc,
+					 string *asm_stmts)
+: memento (ctxt),
+  m_loc (loc),
+  m_asm_stmts (asm_stmts)
+{
+}
+
+/* Implementation of recording::memento::replay_into for top-level asm.  */
+
+void
+recording::top_level_asm::replay_into (replayer *r)
+{
+  r->add_top_level_asm (m_asm_stmts->c_str ());
+}
+
+/* Implementation of recording::memento::make_debug_string for
+   top-level asm.  */
+
+recording::string *
+recording::top_level_asm::make_debug_string ()
+{
+  return string::from_printf (m_ctxt, "asm (%s)",
+			      m_asm_stmts->get_debug_string ());
+}
+
+/* Override the default implementation of
+   recording::memento::write_to_dump.
+   Don't indent the string.  */
+
+void
+recording::top_level_asm::write_to_dump (dump &d)
+{
+  d.write ("%s;\n", get_debug_string ());
+}
+
+/* Implementation of recording::memento::write_reproducer for top-level asm. */
+
+void
+recording::top_level_asm::write_reproducer (reproducer &r)
+{
+  r.write ("  gcc_jit_context_add_top_level_asm (%s, /* gcc_jit_context *ctxt */\n"
+	   "                                     %s, /* gcc_jit_location *loc */\n"
+	   "                                     %s); /* const char *asm_stmts */\n",
+	   r.get_identifier (get_context ()),
+	   r.get_identifier (m_loc),
+	   m_asm_stmts->get_debug_string ());
 }
 
 } // namespace gcc::jit

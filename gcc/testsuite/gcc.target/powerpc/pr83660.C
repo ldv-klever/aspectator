@@ -1,6 +1,6 @@
 /* PR target/83660 */
 /* { dg-do compile } */
-/* { dg-options "-mcpu=power7" } */
+/* { dg-options "-mdejagnu-cpu=power7" } */
 
 #include <altivec.h>
 
@@ -11,4 +11,3 @@ unsigned get_word(uvec32_t v)
     return ({const unsigned _B1 = 32;
             vec_extract((uvec32_t)v, 2);});
 }
-

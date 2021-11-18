@@ -1,5 +1,5 @@
 /* Output routines for graphical representation.
-   Copyright (C) 1998-2017 Free Software Foundation, Inc.
+   Copyright (C) 1998-2021 Free Software Foundation, Inc.
    Contributed by Ulrich Drepper <drepper@cygnus.com>, 1998.
    Rewritten for DOT output by Steven Bosscher, 2012.
 
@@ -52,10 +52,17 @@ open_graph_file (const char *base, const char *mode)
 
   fp = fopen (buf, mode);
   if (fp == NULL)
-    fatal_error (input_location, "can%'t open %s: %m", buf);
+    fatal_error (input_location, "cannot open %s: %m", buf);
 
   return fp;
 }
+
+/* Disable warnings about quoting issues in the pp_xxx calls below
+   that (intentionally) don't follow GCC diagnostic conventions.  */
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wformat-diag"
+#endif
 
 /* Draw a basic block BB belonging to the function with FUNCDEF_NO
    as its unique number.  */
@@ -136,12 +143,16 @@ draw_cfg_node_succ_edges (pretty_printer *pp, int funcdef_no, basic_block bb)
 
       pp_printf (pp,
 		 "\tfn_%d_basic_block_%d:s -> fn_%d_basic_block_%d:n "
-		 "[style=%s,color=%s,weight=%d,constraint=%s, label=\"[%i%%]\"];\n",
+		 "[style=%s,color=%s,weight=%d,constraint=%s",
 		 funcdef_no, e->src->index,
 		 funcdef_no, e->dest->index,
 		 style, color, weight,
-		 (e->flags & (EDGE_FAKE | EDGE_DFS_BACK)) ? "false" : "true",
-		 e->probability * 100 / REG_BR_PROB_BASE);
+		 (e->flags & (EDGE_FAKE | EDGE_DFS_BACK)) ? "false" : "true");
+      if (e->probability.initialized_p ())
+        pp_printf (pp, ",label=\"[%i%%]\"",
+		   e->probability.to_reg_br_prob_base ()
+		   * 100 / REG_BR_PROB_BASE);
+      pp_printf (pp, "];\n");
     }
   pp_flush (pp);
 }
@@ -186,7 +197,7 @@ draw_cfg_nodes_no_loops (pretty_printer *pp, struct function *fun)
 
 static void
 draw_cfg_nodes_for_loop (pretty_printer *pp, int funcdef_no,
-			 struct loop *loop)
+			 class loop *loop)
 {
   basic_block *body;
   unsigned int i;
@@ -206,7 +217,7 @@ draw_cfg_nodes_for_loop (pretty_printer *pp, int funcdef_no,
 	       fillcolors[(loop_depth (loop) - 1) % 3],
 	       loop->num);
 
-  for (struct loop *inner = loop->inner; inner; inner = inner->next)
+  for (class loop *inner = loop->inner; inner; inner = inner->next)
     draw_cfg_nodes_for_loop (pp, funcdef_no, inner);
 
   if (loop->header == NULL)
@@ -243,18 +254,41 @@ draw_cfg_nodes (pretty_printer *pp, struct function *fun)
 }
 
 /* Draw all edges in the CFG.  Retreating edges are drawin as not
-   constraining, this makes the layout of the graph better.
-   (??? Calling mark_dfs_back may change the compiler's behavior when
-   dumping, but computing back edges here for ourselves is also not
-   desirable.)  */
+   constraining, this makes the layout of the graph better.  */
 
 static void
 draw_cfg_edges (pretty_printer *pp, struct function *fun)
 {
   basic_block bb;
+
+  /* Save EDGE_DFS_BACK flag to dfs_back.  */
+  auto_bitmap dfs_back;
+  edge e;
+  edge_iterator ei;
+  unsigned int idx = 0;
+  FOR_EACH_BB_FN (bb, cfun)
+    FOR_EACH_EDGE (e, ei, bb->succs)
+      {
+	if (e->flags & EDGE_DFS_BACK)
+	  bitmap_set_bit (dfs_back, idx);
+	idx++;
+      }
+
   mark_dfs_back_edges ();
   FOR_ALL_BB_FN (bb, cfun)
     draw_cfg_node_succ_edges (pp, fun->funcdef_no, bb);
+
+  /* Restore EDGE_DFS_BACK flag from dfs_back.  */
+  idx = 0;
+  FOR_EACH_BB_FN (bb, cfun)
+    FOR_EACH_EDGE (e, ei, bb->succs)
+      {
+	if (bitmap_bit_p (dfs_back, idx))
+	  e->flags |= EDGE_DFS_BACK;
+	else
+	  e->flags &= ~EDGE_DFS_BACK;
+	idx++;
+      }
 
   /* Add an invisible edge from ENTRY to EXIT, to improve the graph layout.  */
   pp_printf (pp,
@@ -291,9 +325,9 @@ print_graph_cfg (FILE *fp, struct function *fun)
 /* Overload with additional flag argument.  */
 
 void DEBUG_FUNCTION
-print_graph_cfg (FILE *fp, struct function *fun, int flags)
+print_graph_cfg (FILE *fp, struct function *fun, dump_flags_t flags)
 {
-  int saved_dump_flags = dump_flags;
+  dump_flags_t saved_dump_flags = dump_flags;
   dump_flags = flags;
   print_graph_cfg (fp, fun);
   dump_flags = saved_dump_flags;
@@ -354,3 +388,7 @@ finish_graph_dump_file (const char *base)
   end_graph_dump (fp);
   fclose (fp);
 }
+
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic pop
+#endif

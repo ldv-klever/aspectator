@@ -1,3 +1,5 @@
+/* Disabling epilogues until we find a better way to deal with scans.  */
+/* { dg-additional-options "--param vect-epilogues-nomask=0" } */
 /* { dg-require-effective-target vect_int } */
 
 #include <stdarg.h>
@@ -6,8 +8,6 @@
 #define N 128
 unsigned char udata_ch[N];
 #define SUM N*(N-1)
-
-volatile int y = 0;
 
 __attribute__ ((noinline)) int
 foo ()
@@ -18,9 +18,7 @@ foo ()
   for (i = 0; i < N; i++)
     {
       udata_ch[i] = i*2;
-      /* Avoid vectorization.  */
-      if (y)
-	abort ();
+      asm volatile ("" ::: "memory");
     }
 
   /* widenning sum: sum chars into int.  */

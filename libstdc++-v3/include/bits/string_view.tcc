@@ -1,6 +1,6 @@
 // Components for manipulating non-owning sequences of characters -*- C++ -*-
 
-// Copyright (C) 2013-2017 Free Software Foundation, Inc.
+// Copyright (C) 2013-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -22,7 +22,7 @@
 // see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 // <http://www.gnu.org/licenses/>.
 
-/** @file bits/string_view.tcc
+/** @file include/bits/string_view.tcc
  *  This is an internal header file, included by other library headers.
  *  Do not attempt to use it directly. @headername{string_view}
  */
@@ -50,15 +50,27 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       __glibcxx_requires_string_len(__str, __n);
 
       if (__n == 0)
-	return __pos <= this->_M_len ? __pos : npos;
+	return __pos <= _M_len ? __pos : npos;
+      if (__pos >= _M_len)
+	return npos;
 
-      if (__n <= this->_M_len)
+      const _CharT __elem0 = __str[0];
+      const _CharT* __first = _M_str + __pos;
+      const _CharT* const __last = _M_str + _M_len;
+      size_type __len = _M_len - __pos;
+
+      while (__len >= __n)
 	{
-	  for (; __pos <= this->_M_len - __n; ++__pos)
-	    if (traits_type::eq(this->_M_str[__pos], __str[0])
-		&& traits_type::compare(this->_M_str + __pos + 1,
-					__str + 1, __n - 1) == 0)
-	      return __pos;
+	  // Find the first occurrence of __elem0:
+	  __first = traits_type::find(__first, __len - __n + 1, __elem0);
+	  if (!__first)
+	    return npos;
+	  // Compare the full strings from the first occurrence of __elem0.
+	  // We already know that __first[0] == __s[0] but compare them again
+	  // anyway because __s is probably aligned, which helps memcmp.
+	  if (traits_type::compare(__first, __str, __n) == 0)
+	    return __first - _M_str;
+	  __len = __last - ++__first;
 	}
       return npos;
     }
@@ -119,7 +131,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _CharT, typename _Traits>
     constexpr typename basic_string_view<_CharT, _Traits>::size_type
     basic_string_view<_CharT, _Traits>::
-    find_first_of(const _CharT* __str, size_type __pos, size_type __n) const
+    find_first_of(const _CharT* __str, size_type __pos,
+		  size_type __n) const noexcept
     {
       __glibcxx_requires_string_len(__str, __n);
       for (; __n && __pos < this->_M_len; ++__pos)
@@ -135,7 +148,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _CharT, typename _Traits>
     constexpr typename basic_string_view<_CharT, _Traits>::size_type
     basic_string_view<_CharT, _Traits>::
-    find_last_of(const _CharT* __str, size_type __pos, size_type __n) const
+    find_last_of(const _CharT* __str, size_type __pos,
+		 size_type __n) const noexcept
     {
       __glibcxx_requires_string_len(__str, __n);
       size_type __size = this->size();
@@ -156,7 +170,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _CharT, typename _Traits>
     constexpr typename basic_string_view<_CharT, _Traits>::size_type
     basic_string_view<_CharT, _Traits>::
-    find_first_not_of(const _CharT* __str, size_type __pos, size_type __n) const
+    find_first_not_of(const _CharT* __str, size_type __pos,
+		      size_type __n) const noexcept
     {
       __glibcxx_requires_string_len(__str, __n);
       for (; __pos < this->_M_len; ++__pos)
@@ -179,7 +194,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _CharT, typename _Traits>
     constexpr typename basic_string_view<_CharT, _Traits>::size_type
     basic_string_view<_CharT, _Traits>::
-    find_last_not_of(const _CharT* __str, size_type __pos, size_type __n) const
+    find_last_not_of(const _CharT* __str, size_type __pos,
+		     size_type __n) const noexcept
     {
       __glibcxx_requires_string_len(__str, __n);
       size_type __size = this->_M_len;

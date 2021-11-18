@@ -5,6 +5,8 @@
 package runtime_test
 
 import (
+	"internal/testenv"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -435,6 +437,65 @@ func TestSelectStress(t *testing.T) {
 	wg.Wait()
 }
 
+func TestSelectFairness(t *testing.T) {
+	const trials = 10000
+	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
+		testenv.SkipFlaky(t, 22047)
+	}
+	c1 := make(chan byte, trials+1)
+	c2 := make(chan byte, trials+1)
+	for i := 0; i < trials+1; i++ {
+		c1 <- 1
+		c2 <- 2
+	}
+	c3 := make(chan byte)
+	c4 := make(chan byte)
+	out := make(chan byte)
+	done := make(chan byte)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			var b byte
+			select {
+			case b = <-c3:
+			case b = <-c4:
+			case b = <-c1:
+			case b = <-c2:
+			}
+			select {
+			case out <- b:
+			case <-done:
+				return
+			}
+		}
+	}()
+	cnt1, cnt2 := 0, 0
+	for i := 0; i < trials; i++ {
+		switch b := <-out; b {
+		case 1:
+			cnt1++
+		case 2:
+			cnt2++
+		default:
+			t.Fatalf("unexpected value %d on channel", b)
+		}
+	}
+	// If the select in the goroutine is fair,
+	// cnt1 and cnt2 should be about the same value.
+	// With 10,000 trials, the expected margin of error at
+	// a confidence level of six nines is 4.891676 / (2 * Sqrt(10000)).
+	r := float64(cnt1) / trials
+	e := math.Abs(r - 0.5)
+	t.Log(cnt1, cnt2, r, e)
+	if e > 4.891676/(2*math.Sqrt(trials)) {
+		t.Errorf("unfair select: in %d trials, results were %d, %d", trials, cnt1, cnt2)
+	}
+	close(done)
+	wg.Wait()
+}
+
 func TestChanSendInterface(t *testing.T) {
 	type mt struct{}
 	m := &mt{}
@@ -567,6 +628,62 @@ func TestShrinkStackDuringBlockedSend(t *testing.T) {
 	<-done
 }
 
+func TestNoShrinkStackWhileParking(t *testing.T) {
+	// The goal of this test is to trigger a "racy sudog adjustment"
+	// throw. Basically, there's a window between when a goroutine
+	// becomes available for preemption for stack scanning (and thus,
+	// stack shrinking) but before the goroutine has fully parked on a
+	// channel. See issue 40641 for more details on the problem.
+	//
+	// The way we try to induce this failure is to set up two
+	// goroutines: a sender and a reciever that communicate across
+	// a channel. We try to set up a situation where the sender
+	// grows its stack temporarily then *fully* blocks on a channel
+	// often. Meanwhile a GC is triggered so that we try to get a
+	// mark worker to shrink the sender's stack and race with the
+	// sender parking.
+	//
+	// Unfortunately the race window here is so small that we
+	// either need a ridiculous number of iterations, or we add
+	// "usleep(1000)" to park_m, just before the unlockf call.
+	const n = 10
+	send := func(c chan<- int, done chan struct{}) {
+		for i := 0; i < n; i++ {
+			c <- i
+			// Use lots of stack briefly so that
+			// the GC is going to want to shrink us
+			// when it scans us. Make sure not to
+			// do any function calls otherwise
+			// in order to avoid us shrinking ourselves
+			// when we're preempted.
+			stackGrowthRecursive(20)
+		}
+		done <- struct{}{}
+	}
+	recv := func(c <-chan int, done chan struct{}) {
+		for i := 0; i < n; i++ {
+			// Sleep here so that the sender always
+			// fully blocks.
+			time.Sleep(10 * time.Microsecond)
+			<-c
+		}
+		done <- struct{}{}
+	}
+	for i := 0; i < n*20; i++ {
+		c := make(chan int)
+		done := make(chan struct{})
+		go recv(c, done)
+		go send(c, done)
+		// Wait a little bit before triggering
+		// the GC to make sure the sender and
+		// reciever have gotten into their groove.
+		time.Sleep(50 * time.Microsecond)
+		runtime.GC()
+		<-done
+		<-done
+	}
+}
+
 func TestSelectDuplicateChannel(t *testing.T) {
 	// This test makes sure we can queue a G on
 	// the same channel multiple times.
@@ -663,6 +780,7 @@ func TestSelectStackAdjust(t *testing.T) {
 		if after.NumGC-before.NumGC >= 2 {
 			goto done
 		}
+		runtime.Gosched()
 	}
 	t.Fatal("failed to trigger concurrent GC")
 done:
@@ -672,6 +790,55 @@ done:
 	close(d)
 	<-ready1
 	<-ready2
+}
+
+type struct0 struct{}
+
+func BenchmarkMakeChan(b *testing.B) {
+	b.Run("Byte", func(b *testing.B) {
+		var x chan byte
+		for i := 0; i < b.N; i++ {
+			x = make(chan byte, 8)
+		}
+		close(x)
+	})
+	b.Run("Int", func(b *testing.B) {
+		var x chan int
+		for i := 0; i < b.N; i++ {
+			x = make(chan int, 8)
+		}
+		close(x)
+	})
+	b.Run("Ptr", func(b *testing.B) {
+		var x chan *byte
+		for i := 0; i < b.N; i++ {
+			x = make(chan *byte, 8)
+		}
+		close(x)
+	})
+	b.Run("Struct", func(b *testing.B) {
+		b.Run("0", func(b *testing.B) {
+			var x chan struct0
+			for i := 0; i < b.N; i++ {
+				x = make(chan struct0, 8)
+			}
+			close(x)
+		})
+		b.Run("32", func(b *testing.B) {
+			var x chan struct32
+			for i := 0; i < b.N; i++ {
+				x = make(chan struct32, 8)
+			}
+			close(x)
+		})
+		b.Run("40", func(b *testing.B) {
+			var x chan struct40
+			for i := 0; i < b.N; i++ {
+				x = make(chan struct40, 8)
+			}
+			close(x)
+		})
+	})
 }
 
 func BenchmarkChanNonblocking(b *testing.B) {
@@ -1019,6 +1186,20 @@ func BenchmarkChanPopular(b *testing.B) {
 		}
 	}
 	wg.Wait()
+}
+
+func BenchmarkChanClosed(b *testing.B) {
+	c := make(chan struct{})
+	close(c)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			select {
+			case <-c:
+			default:
+				b.Error("Unreachable")
+			}
+		}
+	})
 }
 
 var (

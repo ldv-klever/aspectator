@@ -1,5 +1,5 @@
 /* Unit tests for function-handling.
-   Copyright (C) 2015-2017 Free Software Foundation, Inc.
+   Copyright (C) 2015-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -22,7 +22,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "opts.h"
-#include "signop.h"
 #include "hash-set.h"
 #include "fixed-value.h"
 #include "alias.h"
@@ -38,7 +37,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "vec.h"
 #include "hashtab.h"
 #include "hash-set.h"
-#include "machmode.h"
 #include "hard-reg-set.h"
 #include "input.h"
 #include "function.h"
@@ -56,10 +54,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimplify.h"
 #include "tree-cfg.h"
 #include "basic-block.h"
-#include "double-int.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
 #include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
@@ -86,11 +82,11 @@ namespace selftest {
 
 /* Helper function for selftests of function-creation.  */
 
-static tree
+tree
 make_fndecl (tree return_type,
 	     const char *name,
 	     vec <tree> &param_types,
-	     bool is_variadic = false)
+	     bool is_variadic)
 {
   tree fn_type;
   if (is_variadic)
@@ -574,6 +570,20 @@ test_conversion_to_ssa ()
   ASSERT_EQ (SSA_NAME, TREE_CODE (gimple_return_retval (return_stmt)));
 }
 
+/* Test range folding.  We must start this here because we need cfun
+   set.  */
+
+static void
+test_ranges ()
+{
+  tree fndecl = build_trivial_high_gimple_function ();
+  function *fun = DECL_STRUCT_FUNCTION (fndecl);
+  push_cfun (fun);
+  range_tests ();
+  range_op_tests ();
+  pop_cfun ();
+}
+
 /* Test of expansion from gimple-ssa to RTL.  */
 
 static void
@@ -665,6 +675,7 @@ test_expansion_to_rtl ()
   ASSERT_STR_CONTAINS (dump, ") ;; function \"test_fn\"\n");
 
   free (dump);
+  free_after_compilation (fun);
 }
 
 /* Run all of the selftests within this file.  */
@@ -677,6 +688,7 @@ function_tests_c_tests ()
   test_gimplification ();
   test_building_cfg ();
   test_conversion_to_ssa ();
+  test_ranges ();
   test_expansion_to_rtl ();
 }
 

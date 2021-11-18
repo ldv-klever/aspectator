@@ -1,7 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-fstack-usage" } */
 /* nvptx doesn't have a reg allocator, and hence no stack usage data.  */
-/* { dg-skip-if "" { nvptx-*-* } { "*" } { "" } } */
+/* { dg-skip-if "" { nvptx-*-* } } */
 
 /* This is aimed at testing basic support for -fstack-usage in the back-ends.
    See the SPARC back-end for example (grep flag_stack_usage_info in sparc.c).
@@ -64,7 +64,11 @@
 #    define SIZE 240
 #  endif
 #elif defined (__riscv)
-#  define SIZE 240
+#  if defined (__riscv_32e)
+#    define SIZE 252
+#  else
+#    define SIZE 240
+#  endif
 #elif defined (__AVR__)
 #if defined (__AVR_3_BYTE_PC__ )
 #  define SIZE 251 /* 256 - 2 bytes for Y - 3 bytes for return address */
@@ -75,8 +79,6 @@
 #  define SIZE 96  /* 256 - 160 bytes for register save area */
 #elif defined (__s390__)
 #  define SIZE 160 /* 256 -  96 bytes for register save area */
-#elif defined (__SPU__)
-#  define SIZE 224
 #elif defined (__epiphany__)
 #  define SIZE (256 - __EPIPHANY_STACK_OFFSET__)
 #elif defined (__RL78__)
@@ -89,6 +91,8 @@
 #  define SIZE 254
 #elif defined (__nios2__)
 #  define SIZE 252
+#elif defined (__PRU__)
+#  define SIZE 252
 #elif defined (__v850__)
 #define SIZE 260
 #elif defined (__mn10300__)
@@ -97,6 +101,10 @@
 #define SIZE 252
 #elif defined (__M32R__)
 #define SIZE 252
+#elif defined (__csky__)
+#  define SIZE 252
+#elif defined (__CRIS__)
+#  define SIZE 252
 #else
 #  define SIZE 256
 #endif

@@ -1,6 +1,6 @@
 // class template regex -*- C++ -*-
 
-// Copyright (C) 2013-2017 Free Software Foundation, Inc.
+// Copyright (C) 2013-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -35,10 +35,10 @@
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
-namespace __detail
-{
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
+namespace __detail
+{
   /**
    *  @defgroup regex-detail Base and Implementation Classes
    *  @ingroup regex
@@ -210,7 +210,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     _M_sub_count() const
     { return _M_subexpr_count; }
 
-    std::vector<size_t>       _M_paren_stack;
+    _GLIBCXX_STD_C::vector<size_t> _M_paren_stack;
     _FlagT                    _M_flags;
     _StateIdT                 _M_start_state;
     _SizeT                    _M_subexpr_count;
@@ -219,7 +219,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _TraitsT>
     struct _NFA
-    : _NFA_base, std::vector<_State<typename _TraitsT::char_type>>
+    : _NFA_base, _GLIBCXX_STD_C::vector<_State<typename _TraitsT::char_type>>
     {
       typedef typename _TraitsT::char_type	_Char_type;
       typedef _State<_Char_type>		_StateT;
@@ -392,9 +392,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _StateIdT _M_end;
     };
 
- //@} regex-detail
-_GLIBCXX_END_NAMESPACE_VERSION
+ ///@} regex-detail
 } // namespace __detail
+
+_GLIBCXX_END_NAMESPACE_VERSION
 } // namespace std
 
 #include <bits/regex_automaton.tcc>

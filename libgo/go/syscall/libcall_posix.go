@@ -184,17 +184,11 @@ func FDZero(set *FdSet) {
 //sys	Close(fd int) (err error)
 //close(fd _C_int) _C_int
 
-//sys	Creat(path string, mode uint32) (fd int, err error)
-//creat(path *byte, mode Mode_t) _C_int
-
 //sysnb	Dup(oldfd int) (fd int, err error)
 //dup(oldfd _C_int) _C_int
 
 //sysnb	Dup2(oldfd int, newfd int) (err error)
 //dup2(oldfd _C_int, newfd _C_int) _C_int
-
-//sys	Exit(code int)
-//exit(code _C_int)
 
 //sys	Fchdir(fd int) (err error)
 //fchdir(fd _C_int) _C_int
@@ -268,9 +262,6 @@ func Gettimeofday(tv *Timeval) (err error) {
 //sys	Mknod(path string, mode uint32, dev int) (err error)
 //mknod(path *byte, mode Mode_t, dev _dev_t) _C_int
 
-//sys	Mount(source string, target string, fstype string, flags uintptr, data string) (err error)
-//mount(source *byte, target *byte, fstype *byte, flags _C_long, data *byte) _C_int
-
 //sys	Nanosleep(time *Timespec, leftover *Timespec) (err error)
 //nanosleep(time *Timespec, leftover *Timespec) _C_int
 
@@ -301,6 +292,9 @@ func Gettimeofday(tv *Timeval) (err error) {
 //sysnb	Setgid(gid int) (err error)
 //setgid(gid Gid_t) _C_int
 
+//sysnb Setegid(uid int) (err error)
+//setegid(uid Uid_t) _C_int
+
 //sysnb Setregid(rgid int, egid int) (err error)
 //setregid(rgid Gid_t, egid Gid_t) _C_int
 
@@ -325,6 +319,9 @@ func Settimeofday(tv *Timeval) (err error) {
 
 //sysnb	Setuid(uid int) (err error)
 //setuid(uid Uid_t) _C_int
+
+//sysnb Seteuid(uid int) (err error)
+//seteuid(uid Uid_t) _C_int
 
 //sys	Symlink(oldpath string, newpath string) (err error)
 //symlink(oldpath *byte, newpath *byte) _C_int
@@ -355,9 +352,6 @@ func Settimeofday(tv *Timeval) (err error) {
 
 //sys	munmap(addr uintptr, length uintptr) (err error)
 //munmap(addr *byte, length Size_t) _C_int
-
-//sys Madvise(b []byte, advice int) (err error)
-//madvise(addr *byte, len Size_t, advice _C_int) _C_int
 
 //sys	Mprotect(b []byte, prot int) (err error)
 //mprotect(addr *byte, len Size_t, prot _C_int) _C_int

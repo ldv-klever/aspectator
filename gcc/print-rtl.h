@@ -1,5 +1,5 @@
 /* Print RTL for GCC.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -84,6 +84,7 @@ extern void dump_rtl_slim (FILE *, const rtx_insn *, const rtx_insn *,
 extern void print_value (pretty_printer *, const_rtx, int);
 extern void print_pattern (pretty_printer *, const_rtx, int);
 extern void print_insn (pretty_printer *pp, const rtx_insn *x, int verbose);
+extern void print_insn_with_notes (pretty_printer *, const rtx_insn *);
 
 extern void rtl_dump_bb_for_graph (pretty_printer *, basic_block);
 extern const char *str_pattern_slim (const_rtx);
@@ -153,7 +154,7 @@ class rtx_reuse_manager
  private:
   hash_map<const_rtx, int> m_rtx_occurrence_count;
   hash_map<const_rtx, int> m_rtx_reuse_ids;
-  bitmap_head m_defs_seen;
+  auto_bitmap m_defs_seen;
   int m_next_id;
 };
 

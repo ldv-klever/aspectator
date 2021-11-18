@@ -15,9 +15,11 @@
 #include "expressions.h"
 #include "statements.h"
 #include "escape.h"
+#include "lex.h"
 #include "ast-dump.h"
 #include "go-optimize.h"
 #include "go-diagnostics.h"
+#include "go-sha1.h"
 
 // class Node.
 
@@ -34,6 +36,25 @@ Node::type() const
     return this->object()->func_value()->type();
   else if (this->expr() != NULL)
     return this->expr()->type();
+  else if (this->is_indirect())
+    {
+      if (this->child()->type()->deref()->is_void_type())
+        // This is a void*. The referred type can be actually any type,
+        // which may also be pointer. We model it as another void*, so
+        // we don't lose pointer-ness.
+        return this->child()->type();
+      else if (this->child()->type()->is_slice_type())
+        // We model "indirect" of a slice as dereferencing its pointer
+        // field (to get element). Use element type here.
+        return this->child()->type()->array_type()->element_type();
+      else if (this->child()->type()->is_string_type())
+        return Type::lookup_integer_type("uint8");
+      else
+        return this->child()->type()->deref();
+    }
+  else if (this->statement() != NULL
+           && this->statement()->temporary_statement() != NULL)
+    return this->statement()->temporary_statement()->type();
   else
     return NULL;
 }
@@ -49,8 +70,42 @@ Node::location() const
     return this->expr()->location();
   else if (this->statement() != NULL)
     return this->statement()->location();
+  else if (this->is_indirect())
+    return this->child()->location();
   else
     return Linemap::unknown_location();
+}
+
+// A helper for reporting; return the location where the underlying
+// object is defined.
+
+Location
+Node::definition_location() const
+{
+  if (this->object() != NULL && !this->object()->is_sink())
+    {
+      Named_object* no = this->object();
+      if (no->is_variable() || no->is_result_variable())
+        return no->location();
+    }
+  else if (this->expr() != NULL)
+    {
+      Var_expression* ve = this->expr()->var_expression();
+      if (ve != NULL)
+        {
+          Named_object* no = ve->named_object();
+          if (no->is_variable() || no->is_result_variable())
+            return no->location();
+        }
+      Enclosed_var_expression* eve = this->expr()->enclosed_var_expression();
+      if (eve != NULL)
+        {
+          Named_object* no = eve->variable();
+          if (no->is_variable() || no->is_result_variable())
+            return no->location();
+        }
+    }
+  return this->location();
 }
 
 // To match the cmd/gc debug output, strip away the packed prefixes on functions
@@ -82,26 +137,30 @@ Node::ast_format(Gogo* gogo) const
       Named_object* no = this->object();
       if (no->is_function() && no->func_value()->enclosing() != NULL)
 	return "func literal";
-      ss << no->name();
+      ss << no->message_name();
     }
   else if (this->expr() != NULL)
     {
       Expression* e = this->expr();
+
       bool is_call = e->call_expression() != NULL;
       if (is_call)
-	e->call_expression()->fn();
+	e = e->call_expression()->fn();
       Func_expression* fe = e->func_expression();;
-
-      bool is_closure = fe != NULL && fe->closure() != NULL;
-      if (is_closure)
+      if (fe != NULL)
 	{
-	  if (is_call)
-	    return "(func literal)()";
-	  return "func literal";
+	  Named_object* no = fe->named_object();
+	  if (no->is_function() && no->func_value()->enclosing() != NULL)
+	    {
+	      if (is_call)
+		return "(func literal)()";
+	      return "func literal";
+	    }
 	}
+
       Ast_dump_context::dump_to_stream(this->expr(), &ss);
     }
-  else
+  else if (this->statement() != NULL)
     {
       Statement* s = this->statement();
       Goto_unnamed_statement* unnamed = s->goto_unnamed_statement();
@@ -130,17 +189,37 @@ Node::ast_format(Gogo* gogo) const
 		}
 	    }
 	}
-      Ast_dump_context::dump_to_stream(s, &ss);
+      Temporary_statement* tmp = s->temporary_statement();
+      if (tmp != NULL)
+        {
+          // Temporary's format can never match gc's output, and
+          // temporaries are inserted differently anyway. We just
+          // print something convenient.
+          ss << "tmp." << (uintptr_t) tmp;
+          if (tmp->init() != NULL)
+            {
+              ss << " [ = ";
+              Ast_dump_context::dump_to_stream(tmp->init(), &ss);
+              ss << " ]";
+            }
+        }
+      else
+        Ast_dump_context::dump_to_stream(s, &ss);
     }
+  else if (this->is_indirect())
+    return "*(" + this->child()->ast_format(gogo) + ")";
 
-  return strip_packed_prefix(gogo, ss.str());
+  std::string s = strip_packed_prefix(gogo, ss.str());
+
+  // trim trailing space
+  return s.substr(0, s.find_last_not_of(' ') + 1);
 }
 
 // A helper for debugging; return this node's detailed format string.
 // This is an implementation of gc's Jconv with obj.FmtShort.
 
 std::string
-Node::details() const
+Node::details()
 {
   std::stringstream details;
 
@@ -223,10 +302,6 @@ Node::details() const
       details << " esc(h)";
       break;
 
-    case Node::ESCAPE_SCOPE:
-      details << " esc(s)";
-      break;
-
     case Node::ESCAPE_NONE:
       details << " esc(no)";
       break;
@@ -288,13 +363,12 @@ Node::op_format() const
 		  op << "append";
 		  break;
 
-		case Runtime::SLICECOPY:
-		case Runtime::SLICESTRINGCOPY:
 		case Runtime::TYPEDSLICECOPY:
 		  op << "copy";
 		  break;
 
 		case Runtime::MAKECHAN:
+		case Runtime::MAKECHAN64:
 		case Runtime::MAKEMAP:
 		case Runtime::MAKESLICE:
 		case Runtime::MAKESLICE64:
@@ -348,6 +422,8 @@ Node::op_format() const
 	  break;
 	}
     }
+  if (this->is_indirect())
+    op << "*";
   return op.str();
 }
 
@@ -378,16 +454,51 @@ Node::state(Escape_context* context, Named_object* fn)
   return this->state_;
 }
 
+Node::~Node()
+{
+  if (this->state_ != NULL)
+    {
+      if (this->expr() == NULL || this->expr()->var_expression() == NULL)
+        // Var expression Node is excluded since it shares state with the
+        // underlying var Node.
+        delete this->state_;
+    }
+}
+
+int
+Node::encoding()
+{
+  if (this->expr() != NULL
+      && this->expr()->var_expression() != NULL)
+    {
+      // Get the underlying object's encoding.
+      Named_object* no = this->expr()->var_expression()->named_object();
+      int enc = Node::make_node(no)->encoding();
+      this->encoding_ = enc;
+    }
+  return this->encoding_;
+}
+
 void
 Node::set_encoding(int enc)
 {
   this->encoding_ = enc;
-  if (this->expr() != NULL
-      && this->expr()->var_expression() != NULL)
+  if (this->expr() != NULL)
     {
-      // Set underlying object as well.
-      Named_object* no = this->expr()->var_expression()->named_object();
-      Node::make_node(no)->set_encoding(enc);
+      if (this->expr()->var_expression() != NULL)
+        {
+          // Set underlying object as well.
+          Named_object* no = this->expr()->var_expression()->named_object();
+          Node::make_node(no)->set_encoding(enc);
+        }
+      else if (this->expr()->func_expression() != NULL)
+        {
+          // Propagate the escape state to the underlying
+          // closure (heap expression).
+          Expression* closure = this->expr()->func_expression()->closure();
+          if (closure != NULL)
+            Node::make_node(closure)->set_encoding(enc);
+        }
     }
 }
 
@@ -402,16 +513,28 @@ Node::is_big(Escape_context* context) const
       || t->is_abstract())
     return false;
 
-  int64_t size;
-  bool ok = t->backend_type_size(context->gogo(), &size);
-  bool big = ok && (size < 0 || size > 10 * 1024 * 1024);
+  bool big = false;
+  if (t->struct_type() != NULL
+      || (t->array_type() != NULL && !t->is_slice_type()))
+    {
+      int64_t size;
+      bool ok = t->backend_type_size(context->gogo(), &size);
+      big = ok && (size < 0 || size > 10 * 1024 * 1024);
+    }
 
   if (this->expr() != NULL)
     {
       if (this->expr()->allocation_expression() != NULL)
 	{
-	  ok = t->deref()->backend_type_size(context->gogo(), &size);
-	  big = big || size <= 0 || size >= (1 << 16);
+	  Type* pt = t->deref();
+	  if (pt->struct_type() != NULL
+	      || (pt->array_type() != NULL && !pt->is_slice_type()))
+	    {
+	      int64_t size;
+	      bool ok = pt->backend_type_size(context->gogo(), &size);
+	      if (ok)
+		big = big || size <= 0 || size >= (1 << 16);
+	    }
 	}
       else if (this->expr()->call_expression() != NULL)
 	{
@@ -426,9 +549,17 @@ Node::is_big(Escape_context* context) const
 	      Expression_list::iterator p = call->args()->begin();
 	      ++p;
 
+              Expression* e = *p;
+              if (e->temporary_reference_expression() != NULL)
+                {
+                  Temporary_reference_expression* tre = e->temporary_reference_expression();
+                  if (tre->statement() != NULL && tre->statement()->init() != NULL)
+                    e = tre->statement()->init();
+                }
+
 	      Numeric_constant nc;
 	      unsigned long v;
-	      if ((*p)->numeric_constant_value(&nc)
+	      if (e->numeric_constant_value(&nc)
 		  && nc.to_unsigned_long(&v) == Numeric_constant::NC_UL_VALID)
 		big = big || v >= (1 << 16);
 	    }
@@ -450,22 +581,22 @@ Node::is_sink() const
   return false;
 }
 
-std::map<Named_object*, Node*> Node::objects;
-std::map<Expression*, Node*> Node::expressions;
-std::map<Statement*, Node*> Node::statements;
+Unordered_map(Named_object*, Node*) Node::objects;
+Unordered_map(Expression*, Node*) Node::expressions;
+Unordered_map(Statement*, Node*) Node::statements;
+std::vector<Node*> Node::indirects;
 
 // Make a object node or return a cached node for this object.
 
 Node*
 Node::make_node(Named_object* no)
 {
-  if (Node::objects.find(no) != Node::objects.end())
-    return Node::objects[no];
-
-  Node* n = new Node(no);
-  std::pair<Named_object*, Node*> val(no, n);
-  Node::objects.insert(val);
-  return n;
+  std::pair<Named_object*, Node*> val(no, NULL);
+  std::pair<Unordered_map(Named_object*, Node*)::iterator, bool> ins =
+    Node::objects.insert(val);
+  if (ins.second)
+    ins.first->second = new Node(no);
+  return ins.first->second;
 }
 
 // Make an expression node or return a cached node for this expression.
@@ -473,13 +604,12 @@ Node::make_node(Named_object* no)
 Node*
 Node::make_node(Expression* e)
 {
-  if (Node::expressions.find(e) != Node::expressions.end())
-    return Node::expressions[e];
-
-  Node* n = new Node(e);
-  std::pair<Expression*, Node*> val(e, n);
-  Node::expressions.insert(val);
-  return n;
+  std::pair<Expression*, Node*> val(e, NULL);
+  std::pair<Unordered_map(Expression*, Node*)::iterator, bool> ins =
+    Node::expressions.insert(val);
+  if (ins.second)
+    ins.first->second = new Node(e);
+  return ins.first->second;
 }
 
 // Make a statement node or return a cached node for this statement.
@@ -487,12 +617,21 @@ Node::make_node(Expression* e)
 Node*
 Node::make_node(Statement* s)
 {
-  if (Node::statements.find(s) != Node::statements.end())
-    return Node::statements[s];
+  std::pair<Statement*, Node*> val(s, NULL);
+  std::pair<Unordered_map(Statement*, Node*)::iterator, bool> ins =
+    Node::statements.insert(val);
+  if (ins.second)
+    ins.first->second = new Node(s);
+  return ins.first->second;
+}
 
-  Node* n = new Node(s);
-  std::pair<Statement*, Node*> val(s, n);
-  Node::statements.insert(val);
+// Make an indirect node with given child.
+
+Node*
+Node::make_indirect_node(Node* child)
+{
+  Node* n = new Node(child);
+  Node::indirects.push_back(n);
   return n;
 }
 
@@ -502,7 +641,7 @@ Node::make_node(Statement* s)
 int
 Node::max_encoding(int e, int etype)
 {
-  if ((e & ESCAPE_MASK) >= etype)
+  if ((e & ESCAPE_MASK) > etype)
     return e;
   if (etype == Node::ESCAPE_NONE || etype == Node::ESCAPE_RETURN)
     return (e & ~ESCAPE_MASK) | etype;
@@ -552,7 +691,6 @@ Escape_context::Escape_context(Gogo* gogo, bool recursive)
 {
   // The sink always escapes to heap and strictly lives outside of the
   // current function i.e. loop_depth == -1.
-  this->sink_->set_encoding(Node::ESCAPE_HEAP);
   Node::Escape_state* state = this->sink_->state(this, NULL);
   state->loop_depth = -1;
 }
@@ -563,25 +701,35 @@ debug_function_name(Named_object* fn)
   if (fn == NULL)
     return "<S>";
 
-  if (!fn->is_function()
-      || fn->func_value()->enclosing() == NULL)
+  if (!fn->is_function())
     return Gogo::unpack_hidden_name(fn->name());
 
-  // Closures are named ".$nested#" where # starts from 0 to distinguish
-  // between closures.  The cmd/gc closures are named in the format
-  // "enclosing.func#" where # starts from 1.  If this is a closure, format
-  // its name to match cmd/gc.
-  Named_object* enclosing = fn->func_value()->enclosing();
+  std::string fnname = Gogo::unpack_hidden_name(fn->name());
+  if (fn->func_value()->is_method())
+    {
+      // Methods in gc compiler are named "T.m" or "(*T).m" where
+      // T is the receiver type. Add the receiver here.
+      Type* rt = fn->func_value()->type()->receiver()->type();
+      switch (rt->classification())
+	{
+	case Type::TYPE_NAMED:
+	  fnname = rt->named_type()->name() + "." + fnname;
+	  break;
 
-  // Extract #.
-  std::string name = Gogo::unpack_hidden_name(fn->name());
-  int closure_num = (int)strtol(name.substr(6).c_str(), NULL, 0);
-  closure_num++;
+	case Type::TYPE_POINTER:
+	  {
+	    Named_type* nt = rt->points_to()->named_type();
+	    if (nt != NULL)
+	      fnname = "(*" + nt->name() + ")." + fnname;
+	    break;
+	  }
 
-  name = Gogo::unpack_hidden_name(enclosing->name());
-  char buf[200];
-  snprintf(buf, sizeof buf, "%s.func%d", name.c_str(), closure_num);
-  return buf;
+	default:
+	  break;
+	}
+    }
+
+  return fnname;
 }
 
 // Return the name of the current function.
@@ -602,6 +750,7 @@ Escape_context::init_retvals(Node* n, Function_type* fntype)
     return;
 
   Node::Escape_state* state = n->state(this, NULL);
+  state->retvals.clear();
   Location loc = n->location();
 
   int i = 0;
@@ -618,7 +767,8 @@ Escape_context::init_retvals(Node* n, Function_type* fntype)
 	Named_object::make_variable(buf, NULL, dummy_var);
       Node* dummy_node = Node::make_node(dummy_no);
       // Initialize the state of the dummy output node.
-      dummy_node->state(this, NULL);
+      Node::Escape_state* dummy_node_state = dummy_node->state(this, NULL);
+      dummy_node_state->loop_depth = this->loop_depth_;
 
       // Add dummy node to the retvals of n.
       state->retvals.push_back(dummy_node);
@@ -627,20 +777,30 @@ Escape_context::init_retvals(Node* n, Function_type* fntype)
 
 
 // Apply an indirection to N and return the result.
-// This really only works if N is an expression node; it essentially becomes
-// Node::make_node(n->expr()->deref()).  We need the escape context to set the
-// correct loop depth, however.
 
 Node*
 Escape_context::add_dereference(Node* n)
 {
-  // Just return the original node if we can't add an indirection.
-  if (n->object() != NULL || n->statement() != NULL)
-    return n;
+  Expression* e = n->expr();
+  Location loc = n->location();
+  Node* ind;
+  if (e != NULL
+      && e->type()->points_to() != NULL
+      && !e->type()->points_to()->is_void_type())
+    {
+      // We don't dereference void*, which can be actually any pointer type.
+      Expression* deref_expr = Expression::make_unary(OPERATOR_MULT, e, loc);
+      ind = Node::make_node(deref_expr);
+    }
+  else
+    // The gc compiler simply makes an OIND node. We can't do it
+    // for non-pointer type because that will result in a type error.
+    // Instead, we model this by making a node with a special flavor.
+    ind = Node::make_indirect_node(n);
 
-  Node* ind = Node::make_node(n->expr()->deref());
-  // Initialize the state if this node doesn't already exist.
-  ind->state(this, NULL);
+  // Initialize the state.
+  Node::Escape_state* state = ind->state(this, NULL);
+  state->loop_depth = n->state(this, NULL)->loop_depth;
   return ind;
 }
 
@@ -682,25 +842,98 @@ Escape_note::parse_tag(std::string* tag)
 
 // The -fgo-optimize-alloc flag activates this escape analysis.
 
-Go_optimize optimize_allocation_flag("allocs");
+Go_optimize optimize_allocation_flag("allocs", true);
+
+// A helper function to compute whether a function name has a
+// matching hash value.
+
+static bool
+escape_hash_match(std::string suffix, std::string name)
+{
+  if (suffix.empty())
+    return true;
+  if (suffix.at(0) == '-')
+    return !escape_hash_match(suffix.substr(1), name);
+
+  const char* p = name.c_str();
+  Go_sha1_helper* sha1_helper = go_create_sha1_helper();
+  sha1_helper->process_bytes(p, strlen(p));
+  std::string s = sha1_helper->finish();
+  delete sha1_helper;
+
+  int j = suffix.size() - 1;
+  for (int i = s.size() - 1; i >= 0; i--)
+    {
+      char c = s.at(i);
+      for (int k = 0; k < 8; k++, j--, c>>=1)
+        {
+          if (j < 0)
+            return true;
+          char bit = suffix.at(j) - '0';
+          if ((c&1) != bit)
+            return false;
+        }
+    }
+  return false;
+}
 
 // Analyze the program flow for escape information.
 
 void
 Gogo::analyze_escape()
 {
-  if (!optimize_allocation_flag.is_enabled() || saw_errors())
+  if (saw_errors())
+    return;
+
+  if (!optimize_allocation_flag.is_enabled()
+      && !this->compiling_runtime())
+    // We always run escape analysis when compiling runtime.
     return;
 
   // Discover strongly connected groups of functions to analyze for escape
   // information in this package.
   this->discover_analysis_sets();
 
+  if (!this->debug_escape_hash().empty())
+    std::cerr << "debug-escape-hash " << this->debug_escape_hash() << "\n";
+
   for (std::vector<Analysis_set>::iterator p = this->analysis_sets_.begin();
        p != this->analysis_sets_.end();
        ++p)
     {
       std::vector<Named_object*> stack = p->first;
+
+      if (!this->debug_escape_hash().empty())
+        {
+          bool match = false;
+          for (std::vector<Named_object*>::const_iterator fn = stack.begin();
+               fn != stack.end();
+               ++fn)
+            match = match || escape_hash_match(this->debug_escape_hash(), (*fn)->message_name());
+          if (!match)
+            {
+              // Escape analysis won't run on these functions, but still
+              // need to tag them, so the caller knows.
+              for (std::vector<Named_object*>::iterator fn = stack.begin();
+                   fn != stack.end();
+                   ++fn)
+                if ((*fn)->is_function())
+                  {
+                    Function_type* fntype = (*fn)->func_value()->type();
+                    fntype->set_is_tagged();
+
+                    std::cerr << "debug-escape-hash disables " << debug_function_name(*fn) << "\n";
+                  }
+
+              continue;
+            }
+          for (std::vector<Named_object*>::const_iterator fn = stack.begin();
+               fn != stack.end();
+               ++fn)
+            if ((*fn)->is_function())
+              std::cerr << "debug-escape-hash triggers " << debug_function_name(*fn) << "\n";
+        }
+
       Escape_context* context = new Escape_context(this, p->second);
 
       // Analyze the flow of each function; build the connection graph.
@@ -715,10 +948,43 @@ Gogo::analyze_escape()
 
       // Propagate levels across each dst.  This is the flood phase.
       std::set<Node*> dsts = context->dsts();
+      Unordered_map(Node*, int) escapes;
       for (std::set<Node*>::iterator n = dsts.begin();
            n != dsts.end();
            ++n)
-        this->propagate_escape(context, *n);
+        {
+          escapes[*n] = (*n)->encoding();
+          this->propagate_escape(context, *n);
+        }
+      for (;;)
+        {
+          // Reflood if the roots' escape states increase. Run until fix point.
+          // This is rare.
+          bool done = true;
+          for (std::set<Node*>::iterator n = dsts.begin();
+               n != dsts.end();
+               ++n)
+            {
+              if ((*n)->object() == NULL
+                  && ((*n)->expr() == NULL
+                      || ((*n)->expr()->var_expression() == NULL
+                          && (*n)->expr()->enclosed_var_expression() == NULL
+                          && (*n)->expr()->func_expression() == NULL)))
+                continue;
+              if (escapes[*n] != (*n)->encoding())
+                {
+                  done = false;
+                  if (this->debug_escape_level() > 2)
+                    go_debug((*n)->location(), "Reflooding %s %s",
+			     debug_function_name((*n)->state(context, NULL)->fn).c_str(),
+			     (*n)->ast_format(this).c_str());
+                  escapes[*n] = (*n)->encoding();
+                  this->propagate_escape(context, *n);
+                }
+            }
+          if (done)
+            break;
+        }
 
       // Tag each exported function's parameters with escape information.
       for (std::vector<Named_object*>::iterator fn = stack.begin();
@@ -734,12 +1000,11 @@ Gogo::analyze_escape()
 	       ++n)
 	    {
 	      Node::Escape_state* state = (*n)->state(context, NULL);
-	      if (((*n)->encoding() & ESCAPE_MASK) == int(Node::ESCAPE_NONE))
-		go_inform((*n)->location(), "%s %s does not escape",
-			  strip_packed_prefix(this, debug_function_name(state->fn)).c_str(),
-			  (*n)->ast_format(this).c_str());
+	      if ((*n)->encoding() == Node::ESCAPE_NONE)
+		go_debug((*n)->location(), "%s %s does not escape",
+			 strip_packed_prefix(this, debug_function_name(state->fn)).c_str(),
+			 (*n)->ast_format(this).c_str());
 	    }
-	  // TODO(cmang): Which objects in context->noesc actually don't escape.
 	}
       delete context;
     }
@@ -753,12 +1018,15 @@ class Escape_analysis_discover : public Traverse
 {
  public:
   Escape_analysis_discover(Gogo* gogo)
-    : Traverse(traverse_functions),
+    : Traverse(traverse_functions | traverse_func_declarations),
       gogo_(gogo), component_ids_()
   { }
 
   int
   function(Named_object*);
+
+  int
+  function_declaration(Named_object*);
 
   int
   visit(Named_object*);
@@ -787,6 +1055,13 @@ int Escape_analysis_discover::id = 0;
 
 int
 Escape_analysis_discover::function(Named_object* fn)
+{
+  this->visit(fn);
+  return TRAVERSE_CONTINUE;
+}
+
+int
+Escape_analysis_discover::function_declaration(Named_object* fn)
 {
   this->visit(fn);
   return TRAVERSE_CONTINUE;
@@ -833,8 +1108,8 @@ Escape_analysis_discover::visit(Named_object* fn)
   this->stack_.push(fn);
   min = this->visit_code(fn, min);
   if ((min == id || min == id + 1)
-      && fn->is_function()
-      && fn->func_value()->enclosing() == NULL)
+      && ((fn->is_function() && fn->func_value()->enclosing() == NULL)
+          || fn->is_function_declaration()))
     {
       bool recursive = min == id;
       std::vector<Named_object*> group;
@@ -899,11 +1174,14 @@ Escape_discover_expr::expression(Expression** pexpr)
       // Method call or function call.
       fn = e->call_expression()->fn()->func_expression()->named_object();
     }
-  else if (e->func_expression() != NULL
-           && e->func_expression()->closure() != NULL)
+  else if (e->func_expression() != NULL)
     {
-      // Closure.
-      fn = e->func_expression()->named_object();
+      Named_object* no = e->func_expression()->named_object();
+      if (no->is_function() && no->func_value()->enclosing() != NULL)
+	{
+	  // Nested function.
+	  fn = no;
+	}
     }
 
   if (fn != NULL)
@@ -1012,6 +1290,38 @@ private:
   Named_object* fn_;
 };
 
+// Helper function to detect self assignment like the following.
+//
+// func (b *Buffer) Foo() {
+//   n, m := ...
+//   b.buf = b.buf[n:m]
+// }
+
+static bool
+is_self_assignment(Expression* lhs, Expression* rhs)
+{
+  Unary_expression* lue =
+    (lhs->field_reference_expression() != NULL
+     ? lhs->field_reference_expression()->expr()->unary_expression()
+     : lhs->unary_expression());
+  Var_expression* lve =
+    (lue != NULL && lue->op() == OPERATOR_MULT ? lue->operand()->var_expression() : NULL);
+  Array_index_expression* raie = rhs->array_index_expression();
+  String_index_expression* rsie = rhs->string_index_expression();
+  Expression* rarray =
+    (raie != NULL && raie->end() != NULL && raie->array()->type()->is_slice_type()
+     ? raie->array()
+     : (rsie != NULL && rsie->type()->is_string_type() ? rsie->string() : NULL));
+  Unary_expression* rue =
+    (rarray != NULL && rarray->field_reference_expression() != NULL
+     ? rarray->field_reference_expression()->expr()->unary_expression()
+     : (rarray != NULL ? rarray->unary_expression() : NULL));
+  Var_expression* rve =
+    (rue != NULL && rue->op() == OPERATOR_MULT ? rue->operand()->var_expression() : NULL);
+  return lve != NULL && rve != NULL
+         && lve->named_object() == rve->named_object();
+}
+
 // Model statements within a function as assignments and flows between nodes.
 
 int
@@ -1037,9 +1347,9 @@ Escape_analysis_assign::statement(Block*, size_t*, Statement* s)
     {
       Node* n = Node::make_node(s);
       std::string fn_name = this->context_->current_function_name();
-      go_inform(s->location(), "[%d] %s esc: %s",
-	        this->context_->loop_depth(), fn_name.c_str(),
-	        n->ast_format(gogo).c_str());
+      go_debug(s->location(), "[%d] %s esc: %s",
+	       this->context_->loop_depth(), fn_name.c_str(),
+	       n->ast_format(gogo).c_str());
     }
 
   switch (s->classification())
@@ -1057,6 +1367,20 @@ Escape_analysis_assign::statement(Block*, size_t*, Statement* s)
 	  {
 	    Node* init_node = Node::make_node(var->var_value()->init());
 	    this->assign(var_node, init_node);
+	  }
+      }
+      break;
+
+    case Statement::STATEMENT_TEMPORARY:
+      {
+        Expression* init = s->temporary_statement()->init();
+        if (init != NULL)
+	  {
+	    Node* n = Node::make_node(init);
+	    if (s->temporary_statement()->value_escapes())
+	      this->assign(this->context_->sink(), n);
+	    else
+	      this->assign(Node::make_node(s), n);
 	  }
       }
       break;
@@ -1084,22 +1408,36 @@ Escape_analysis_assign::statement(Block*, size_t*, Statement* s)
       // Want to model the assignment of each case variable to the switched upon
       // variable.  This should be lowered into assignment statements; nothing
       // to here if that's the case.
-      // TODO(cmang): Verify.
       break;
 
     case Statement::STATEMENT_ASSIGNMENT:
       {
 	Assignment_statement* assn = s->assignment_statement();
-	Node* lhs = Node::make_node(assn->lhs());
-	Node* rhs = Node::make_node(assn->rhs());
+        Expression* lhs = assn->lhs();
+        Expression* rhs = assn->rhs();
+        Node* lhs_node = Node::make_node(lhs);
+        Node* rhs_node = Node::make_node(rhs);
 
-	// TODO(cmang): Add special case for escape analysis no-op:
-	// func (b *Buffer) Foo() {
-	// 	n, m := ...
-	//	b.buf = b.buf[n:m]
-	// }
-	// This is okay for now, it just means b escapes; it is conservative.
-	this->assign(lhs, rhs);
+        // Filter out the following special case.
+        //
+        // func (b *Buffer) Foo() {
+        //   n, m := ...
+        //   b.buf = b.buf[n:m]
+        // }
+        //
+        // This assignment is a no-op for escape analysis,
+        // it does not store any new pointers into b that were not already there.
+        // However, without this special case b will escape.
+        if (is_self_assignment(lhs, rhs))
+          {
+            if (debug_level != 0)
+              go_inform(s->location(), "%s ignoring self-assignment to %s",
+                        strip_packed_prefix(gogo, this->context_->current_function_name()).c_str(),
+                        lhs_node->ast_format(gogo).c_str());
+            break;
+          }
+
+        this->assign(lhs_node, rhs_node);
       }
       break;
 
@@ -1112,7 +1450,14 @@ Escape_analysis_assign::statement(Block*, size_t*, Statement* s)
 
     case Statement::STATEMENT_DEFER:
       if (this->context_->loop_depth() == 1)
-	break;
+        {
+          // Defer statement may need to allocate a thunk. When it is
+          // not inside a loop, this can be stack allocated, as it
+          // runs before the function finishes.
+          Node* n = Node::make_node(s);
+          n->set_encoding(Node::ESCAPE_NONE);
+          break;
+        }
       // fallthrough
 
     case Statement::STATEMENT_GO:
@@ -1139,12 +1484,39 @@ Escape_analysis_assign::statement(Block*, size_t*, Statement* s)
       }
       break;
 
-      // TODO(cmang): Associate returned values with dummy return nodes.
-
     default:
       break;
     }
   return TRAVERSE_SKIP_COMPONENTS;
+}
+
+// Helper function to emit moved-to-heap diagnostics.
+
+static void
+move_to_heap(Gogo* gogo, Expression *expr)
+{
+  Named_object* no;
+  if (expr->var_expression() != NULL)
+    no = expr->var_expression()->named_object();
+  else if (expr->enclosed_var_expression() != NULL)
+    no = expr->enclosed_var_expression()->variable();
+  else
+    return;
+
+  if ((no->is_variable()
+       && !no->var_value()->is_global())
+      || no->is_result_variable())
+    {
+      Node* n = Node::make_node(expr);
+      if (gogo->debug_escape_level() != 0)
+        go_debug(n->definition_location(),
+		 "moved to heap: %s",
+		 n->ast_format(gogo).c_str());
+      if (gogo->compiling_runtime() && gogo->package_name() == "runtime")
+        go_error_at(expr->location(),
+                    "%s escapes to heap, not allowed in runtime",
+                    n->ast_format(gogo).c_str());
+    }
 }
 
 // Model expressions within a function as assignments and flows between nodes.
@@ -1161,7 +1533,9 @@ Escape_analysis_assign::expression(Expression** pexpr)
       && n->is_big(this->context_))
     {
       if (debug_level > 1)
-	go_inform((*pexpr)->location(), "too large for stack");
+	go_debug((*pexpr)->location(), "%s too large for stack",
+		 n->ast_format(gogo).c_str());
+      move_to_heap(gogo, *pexpr);
       n->set_encoding(Node::ESCAPE_HEAP);
       (*pexpr)->address_taken(true);
       this->assign(this->context_->sink(), n);
@@ -1172,11 +1546,10 @@ Escape_analysis_assign::expression(Expression** pexpr)
 
   if (debug_level > 1)
     {
-      Node* n = Node::make_node(*pexpr);
       std::string fn_name = this->context_->current_function_name();
-      go_inform((*pexpr)->location(), "[%d] %s esc: %s",
-		this->context_->loop_depth(), fn_name.c_str(),
-		n->ast_format(gogo).c_str());
+      go_debug((*pexpr)->location(), "[%d] %s esc: %s",
+	       this->context_->loop_depth(), fn_name.c_str(),
+	       n->ast_format(gogo).c_str());
     }
 
   switch ((*pexpr)->classification())
@@ -1184,105 +1557,174 @@ Escape_analysis_assign::expression(Expression** pexpr)
     case Expression::EXPRESSION_CALL:
       {
 	Call_expression* call = (*pexpr)->call_expression();
-	this->call(call);
+        if (call->is_builtin())
+          {
+            Builtin_call_expression* bce = call->builtin_call_expression();
+            switch (bce->code())
+              {
+              case Builtin_call_expression::BUILTIN_PANIC:
+                {
+                  // Argument could leak through recover.
+                  Node* panic_arg = Node::make_node(call->args()->front());
+                  this->assign(this->context_->sink(), panic_arg);
+                }
+                break;
 
+              case Builtin_call_expression::BUILTIN_APPEND:
+                {
+                  // The contents being appended leak.
+                  if (call->is_varargs())
+                    {
+                      // append(slice1, slice2...) -- slice2 itself does not escape, but contents do
+                      Node* appended = Node::make_node(call->args()->back());
+                      this->assign_deref(this->context_->sink(), appended);
+                      if (debug_level > 2)
+                        go_debug((*pexpr)->location(),
+				 "special treatment of append(slice1, slice2...)");
+                    }
+                  else
+                    {
+                      for (Expression_list::const_iterator pa =
+                             call->args()->begin() + 1;
+                           pa != call->args()->end();
+                           ++pa)
+                        {
+                          Node* arg = Node::make_node(*pa);
+                          this->assign(this->context_->sink(), arg);
+                        }
+                    }
+
+                  // The content of the original slice leaks as well.
+                  Node* appendee = Node::make_node(call->args()->front());
+                  this->assign_deref(this->context_->sink(), appendee);
+                }
+                break;
+
+              case Builtin_call_expression::BUILTIN_COPY:
+                {
+                  // Lose track of the copied content.
+                  Node* copied = Node::make_node(call->args()->back());
+                  this->assign_deref(this->context_->sink(), copied);
+                }
+                break;
+
+              default:
+                break;
+              }
+            break;
+          }
 	Func_expression* fe = call->fn()->func_expression();
 	if (fe != NULL && fe->is_runtime_function())
 	  {
 	    switch (fe->runtime_code())
 	      {
-	      case Runtime::GOPANIC:
-		{
-		  // Argument could leak through recover.
-		  Node* panic_arg = Node::make_node(call->args()->front());
-		  this->assign(this->context_->sink(), panic_arg);
-		}
-		break;
-
-	      case Runtime::GROWSLICE:
-		{
-		  // The contents being appended leak.
-		  if (call->is_varargs())
-		    {
-		      Node* appended = Node::make_node(call->args()->back());
-		      this->assign_deref(this->context_->sink(), appended);
-		    }
-		  else
-		    {
-		      for (Expression_list::const_iterator pa =
-			     call->args()->begin();
-			   pa != call->args()->end();
-			   ++pa)
-			{
-			  Node* arg = Node::make_node(*pa);
-			  this->assign(this->context_->sink(), arg);
-			}
-		    }
-
-		  if (debug_level > 2)
-		    go_error_at((*pexpr)->location(),
-			     "special treatment of append(slice1, slice2...)");
-
-		  // The content of the original slice leaks as well.
-		  Node* appendee = Node::make_node(call->args()->front());
-		  this->assign_deref(this->context_->sink(), appendee);
-		}
-		break;
-
-	      case Runtime::SLICECOPY:
-	      case Runtime::SLICESTRINGCOPY:
-	      case Runtime::TYPEDSLICECOPY:
-		{
-		  // Lose track of the copied content.
-		  Node* copied = Node::make_node(call->args()->back());
-		  this->assign_deref(this->context_->sink(), copied);
-		}
-		break;
-
 	      case Runtime::MAKECHAN:
+	      case Runtime::MAKECHAN64:
 	      case Runtime::MAKEMAP:
 	      case Runtime::MAKESLICE:
 	      case Runtime::MAKESLICE64:
-	      case Runtime::SLICEBYTETOSTRING:
-	      case Runtime::SLICERUNETOSTRING:
-	      case Runtime::STRINGTOSLICEBYTE:
-	      case Runtime::STRINGTOSLICERUNE:
-	      case Runtime::CONCATSTRINGS:
-	      case Runtime::CONCATSTRING2:
-	      case Runtime::CONCATSTRING3:
-	      case Runtime::CONCATSTRING4:
-	      case Runtime::CONCATSTRING5:
-	      case Runtime::CONSTRUCT_MAP:
-	      case Runtime::INTSTRING:
-		{
-		  Node* runtime_node = Node::make_node(fe);
-		  this->context_->track(runtime_node);
-		}
+                this->context_->track(n);
 		break;
+
+              case Runtime::MAPASSIGN:
+                {
+                  // Map key escapes. The last argument is the address
+                  // of the key.
+                  Node* key_node = Node::make_node(call->args()->back());
+                  this->assign_deref(this->context_->sink(), key_node);
+                }
+                break;
+
+              case Runtime::MAPASSIGN_FAST32PTR:
+              case Runtime::MAPASSIGN_FAST64PTR:
+              case Runtime::MAPASSIGN_FASTSTR:
+                {
+                  // Map key escapes. The last argument is the key.
+                  Node* key_node = Node::make_node(call->args()->back());
+                  this->assign(this->context_->sink(), key_node);
+                }
+                break;
+
+              case Runtime::IFACEE2T2:
+              case Runtime::IFACEI2T2:
+                {
+                  // x, ok = v.(T), where T is non-pointer non-interface,
+                  // is lowered to
+                  // ok = IFACEI2T2(type, v, (void*)&tmp_x)
+                  // Here v flows to tmp_x.
+                  // Note: other IFACEX2Y2 returns the conversion result.
+                  // Those are handled in ::assign.
+                  Node* src_node = Node::make_node(call->args()->at(1));
+                  Node* dst_node;
+                  Expression* arg2 = call->args()->at(2);
+                  // Try to pull tmp_x out of the arg2 expression, and let v
+                  // flows into it, instead of simply dereference arg2,
+                  // which looks like dereference of an arbitrary pointer
+                  // and causes v immediately escape.
+                  // The expression form matches statement.cc,
+                  // Tuple_type_guard_assignment_statement::lower_to_object_type.
+                  Unary_expression* ue =
+                    (arg2->conversion_expression() != NULL
+                     ? arg2->conversion_expression()->expr()->unary_expression()
+                     : arg2->unary_expression());
+                  if (ue != NULL && ue->op() == OPERATOR_AND)
+                    {
+                      if (!ue->operand()->type()->has_pointer())
+                        // Don't bother flowing non-pointer.
+                        break;
+                      dst_node = Node::make_node(ue->operand());
+                    }
+                  else
+                    dst_node = this->context_->add_dereference(Node::make_node(arg2));
+                  this->assign(dst_node, src_node);
+                }
+                break;
 
 	      default:
 		break;
 	      }
 	  }
+        else
+          this->call(call);
       }
       break;
 
     case Expression::EXPRESSION_ALLOCATION:
-      {
-	// Same as above; this is Runtime::NEW.
-	Node* alloc_node = Node::make_node(*pexpr);
-	this->context_->track(alloc_node);
-      }
+      // This is Runtime::NEW.
+      this->context_->track(n);
+      break;
+
+    case Expression::EXPRESSION_STRING_CONCAT:
+      this->context_->track(n);
       break;
 
     case Expression::EXPRESSION_CONVERSION:
       {
 	Type_conversion_expression* tce = (*pexpr)->conversion_expression();
+        Type* ft = tce->expr()->type();
+        Type* tt = tce->type();
+        if ((ft->is_string_type() && tt->is_slice_type())
+            || (ft->is_slice_type() && tt->is_string_type())
+            || (ft->integer_type() != NULL && tt->is_string_type()))
+          {
+            // string([]byte), string([]rune), []byte(string), []rune(string), string(rune)
+            this->context_->track(n);
+            break;
+          }
 	Node* tce_node = Node::make_node(tce);
 	Node* converted = Node::make_node(tce->expr());
 	this->context_->track(tce_node);
 
 	this->assign(tce_node, converted);
+      }
+      break;
+
+    case Expression::EXPRESSION_UNSAFE_CONVERSION:
+      {
+        Unsafe_type_conversion_expression* uce =
+          (*pexpr)->unsafe_conversion_expression();
+        Node* expr_node = Node::make_node(uce->expr());
+        this->assign(n, expr_node);
       }
       break;
 
@@ -1324,6 +1766,16 @@ Escape_analysis_assign::expression(Expression** pexpr)
 		  this->assign(struct_node, Node::make_node(*p));
 	      }
 	  }
+      }
+      break;
+
+    case Expression::EXPRESSION_SLICE_VALUE:
+      {
+	// Connect the pointer field to the slice value.
+	Node* slice_node = Node::make_node(*pexpr);
+	Node* ptr_node =
+	  Node::make_node((*pexpr)->slice_value_expression()->valmem());
+	this->assign(slice_node, ptr_node);
       }
       break;
 
@@ -1395,9 +1847,7 @@ Escape_analysis_assign::expression(Expression** pexpr)
 	    for (; p != sce->vals()->end(); ++p)
 	      {
 		Node* enclosed_node = Node::make_node(*p);
-		Node::Escape_state* state =
-		  enclosed_node->state(this->context_, NULL);
-		state->loop_depth = this->context_->loop_depth();
+		this->context_->track(enclosed_node);
 		this->assign(closure_node, enclosed_node);
 	      }
 	  }
@@ -1406,62 +1856,75 @@ Escape_analysis_assign::expression(Expression** pexpr)
 
     case Expression::EXPRESSION_UNARY:
       {
-	if ((*pexpr)->unary_expression()->op() != OPERATOR_AND)
-	  break;
-
-	Node* addr_node = Node::make_node(*pexpr);
-	this->context_->track(addr_node);
-
 	Expression* operand = (*pexpr)->unary_expression()->operand();
-	Named_object* var = NULL;
-	if (operand->var_expression() != NULL)
-	  var = operand->var_expression()->named_object();
-	else if (operand->enclosed_var_expression() != NULL)
-	  var = operand->enclosed_var_expression()->variable();
-	else if (operand->temporary_reference_expression() != NULL)
-	  {
-	    // Found in runtime/chanbarrier_test.go.  The address of a struct
-	    // reference is usually a heap expression, except when it is a part
-	    // of a case statement.  In that case, it is lowered into a
-	    // temporary reference and never linked to the heap expression that
-	    // initializes it.  In general, when taking the address of some
-	    // temporary, the analysis should really be looking at the initial
-	    // value of that temporary.
-	    Temporary_reference_expression* tre =
-	      operand->temporary_reference_expression();
-	    if (tre->statement() != NULL
-		&& tre->statement()->temporary_statement()->init() != NULL)
-	      {
-		Expression* init =
-		  tre->statement()->temporary_statement()->init();
-		Node* init_node = Node::make_node(init);
-		this->assign(addr_node, init_node);
-	      }
-	  }
 
-	if (var == NULL)
-	  break;
+        if ((*pexpr)->unary_expression()->op() == OPERATOR_AND)
+          {
+            this->context_->track(n);
 
-	if (var->is_variable()
-	    && !var->var_value()->is_parameter())
-	  {
-	    // For &x, use the loop depth of x if known.
-	    Node::Escape_state* addr_state =
-	      addr_node->state(this->context_, NULL);
-	    Node* operand_node = Node::make_node(operand);
-	    Node::Escape_state* operand_state =
-	      operand_node->state(this->context_, NULL);
-	    if (operand_state->loop_depth != 0)
-	      addr_state->loop_depth = operand_state->loop_depth;
-	  }
-	else if ((var->is_variable()
-		  && var->var_value()->is_parameter())
-		 || var->is_result_variable())
-	  {
-	    Node::Escape_state* addr_state =
-	      addr_node->state(this->context_, NULL);
-	    addr_state->loop_depth = 1;
-	  }
+            Named_object* var = NULL;
+            if (operand->var_expression() != NULL)
+              var = operand->var_expression()->named_object();
+            else if (operand->enclosed_var_expression() != NULL)
+              var = operand->enclosed_var_expression()->variable();
+
+            if (var != NULL
+                && ((var->is_variable() && var->var_value()->is_parameter())
+                    || var->is_result_variable()))
+              {
+                Node::Escape_state* addr_state = n->state(this->context_, NULL);
+                addr_state->loop_depth = 1;
+                break;
+              }
+          }
+
+        if ((*pexpr)->unary_expression()->op() != OPERATOR_AND
+            && (*pexpr)->unary_expression()->op() != OPERATOR_MULT)
+          break;
+
+        // For &x and *x, use the loop depth of x if known.
+        Node::Escape_state* expr_state = n->state(this->context_, NULL);
+        Node* operand_node = Node::make_node(operand);
+        Node::Escape_state* operand_state = operand_node->state(this->context_, NULL);
+        if (operand_state->loop_depth != 0)
+          expr_state->loop_depth = operand_state->loop_depth;
+      }
+      break;
+
+    case Expression::EXPRESSION_ARRAY_INDEX:
+      {
+        Array_index_expression* aie = (*pexpr)->array_index_expression();
+
+        // Propagate the loopdepth to element.
+        Node* array_node = Node::make_node(aie->array());
+        Node::Escape_state* elem_state = n->state(this->context_, NULL);
+        Node::Escape_state* array_state = array_node->state(this->context_, NULL);
+        elem_state->loop_depth = array_state->loop_depth;
+
+        if (aie->end() != NULL && !aie->array()->type()->is_slice_type())
+          {
+            // Slicing an array. This effectively takes the address of the array.
+            Expression* addr = Expression::make_unary(OPERATOR_AND, aie->array(),
+                                                      aie->location());
+            Node* addr_node = Node::make_node(addr);
+            n->set_child(addr_node);
+            this->context_->track(addr_node);
+
+            Node::Escape_state* addr_state = addr_node->state(this->context_, NULL);
+            if (array_state->loop_depth != 0)
+              addr_state->loop_depth = array_state->loop_depth;
+          }
+      }
+      break;
+
+    case Expression::EXPRESSION_FIELD_REFERENCE:
+      {
+        // Propagate the loopdepth to field.
+        Node* struct_node =
+          Node::make_node((*pexpr)->field_reference_expression()->expr());
+        Node::Escape_state* field_state = n->state(this->context_, NULL);
+        Node::Escape_state* struct_state = struct_node->state(this->context_, NULL);
+        field_state->loop_depth = struct_state->loop_depth;
       }
       break;
 
@@ -1520,13 +1983,24 @@ Escape_analysis_assign::call(Call_expression* call)
            ++p)
 	{
 	  if (debug_level > 2)
-	    go_inform(call->location(),
-		      "esccall:: indirect call <- %s, untracked",
-		      (*p)->ast_format(gogo).c_str());
+	    go_debug(call->location(),
+		     "esccall:: indirect call <- %s, untracked",
+		     (*p)->ast_format(gogo).c_str());
 	  this->assign(this->context_->sink(), *p);
 	}
 
       this->context_->init_retvals(call_node, fntype);
+
+      // It could be a closure call that returns captured variable.
+      // Model this by flowing the func expression to result.
+      // See issue #14409.
+      Node* fn_node = Node::make_node(call->fn());
+      std::vector<Node*> retvals = call_node->state(this->context_, NULL)->retvals;
+      for (std::vector<Node*>::const_iterator p = retvals.begin();
+           p != retvals.end();
+           ++p)
+        this->assign_deref(*p, fn_node);
+
       return;
     }
 
@@ -1536,38 +2010,31 @@ Escape_analysis_assign::call(Call_expression* call)
       && !fntype->is_tagged())
     {
       if (debug_level > 2)
-	go_inform(call->location(), "esccall:: %s in recursive group",
-		  call_node->ast_format(gogo).c_str());
+	go_debug(call->location(), "esccall:: %s in recursive group",
+		 call_node->ast_format(gogo).c_str());
 
       Function* f = fn->named_object()->func_value();
       const Bindings* callee_bindings = f->block()->bindings();
-
-      const Typed_identifier_list* results = fntype->results();
+      Function::Results* results = f->result_variables();
       if (results != NULL)
 	{
 	  // Setup output list on this call node.
 	  Node::Escape_state* state = call_node->state(this->context_, NULL);
-	  for (Typed_identifier_list::const_iterator p1 = results->begin();
+	  for (Function::Results::const_iterator p1 = results->begin();
 	       p1 != results->end();
 	       ++p1)
 	    {
-	      if (p1->name().empty() || Gogo::is_sink_name(p1->name()))
-		continue;
-
-	      Named_object* result_no =
-		callee_bindings->lookup_local(p1->name());
-	      go_assert(result_no != NULL);
-	      Node* result_node = Node::make_node(result_no);
+	      Node* result_node = Node::make_node(*p1);
 	      state->retvals.push_back(result_node);
 	    }
 	}
 
       std::vector<Node*>::iterator p = arg_nodes.begin();
-      if (fntype->is_method()
-	  && fntype->receiver()->type()->has_pointer())
+      if (fntype->is_method())
 	{
 	  std::string rcvr_name = fntype->receiver()->name();
-	  if (rcvr_name.empty() || Gogo::is_sink_name(rcvr_name))
+	  if (rcvr_name.empty() || Gogo::is_sink_name(rcvr_name)
+              || !fntype->receiver()->type()->has_pointer())
 	    ;
 	  else
 	    {
@@ -1575,7 +2042,17 @@ Escape_analysis_assign::call(Call_expression* call)
 		callee_bindings->lookup_local(fntype->receiver()->name());
 	      go_assert(rcvr_no != NULL);
 	      Node* rcvr_node = Node::make_node(rcvr_no);
-	      this->assign(rcvr_node, *p);
+              if (fntype->receiver()->type()->points_to() == NULL
+                  && (*p)->expr()->type()->points_to() != NULL)
+                // This is a call to a value method that has been lowered into a call
+                // to a pointer method.  Gccgo generates a pointer method for all
+                // method calls and takes the address of the value passed as the
+                // receiver then immediately dereferences it within the function.
+                // In this case, the receiver address does not escape; its content
+                // flows to the call.
+                this->assign_deref(rcvr_node, *p);
+              else
+                this->assign(rcvr_node, *p);
 	    }
 	  ++p;
 	}
@@ -1605,8 +2082,8 @@ Escape_analysis_assign::call(Call_expression* call)
 	  for (; p != arg_nodes.end(); ++p)
 	    {
 	      if (debug_level > 2)
-		go_inform(call->location(), "esccall:: ... <- %s, untracked",
-			  (*p)->ast_format(gogo).c_str());
+		go_debug(call->location(), "esccall:: ... <- %s, untracked",
+			 (*p)->ast_format(gogo).c_str());
 	      this->assign(this->context_->sink(), *p);
 	    }
 	}
@@ -1615,8 +2092,8 @@ Escape_analysis_assign::call(Call_expression* call)
     }
 
   if (debug_level > 2)
-    go_inform(call->location(), "esccall:: %s not recursive",
-	      call_node->ast_format(gogo).c_str());
+    go_debug(call->location(), "esccall:: %s not recursive",
+	     call_node->ast_format(gogo).c_str());
 
   Node::Escape_state* call_state = call_node->state(this->context_, NULL);
   if (!call_state->retvals.empty())
@@ -1628,25 +2105,25 @@ Escape_analysis_assign::call(Call_expression* call)
   // Receiver.
   std::vector<Node*>::iterator p = arg_nodes.begin();
   if (fntype->is_method()
-      && fntype->receiver()->type()->has_pointer()
       && p != arg_nodes.end())
     {
       // First argument to call will be the receiver.
       std::string* note = fntype->receiver()->note();
       if (fntype->receiver()->type()->points_to() == NULL
-	  && (*p)->expr()->unary_expression() != NULL
-	  && (*p)->expr()->unary_expression()->op() == OPERATOR_AND)
-	{
-	  // This is a call to a value method that has been lowered into a call
-	  // to a pointer method.  Gccgo generates a pointer method for all
-	  // method calls and takes the address of the value passed as the
-	  // receiver then immediately dereferences it within the function.
-	  // In this case, the receiver does not escape.
-	}
+          && (*p)->expr()->type()->points_to() != NULL)
+        // This is a call to a value method that has been lowered into a call
+        // to a pointer method.  Gccgo generates a pointer method for all
+        // method calls and takes the address of the value passed as the
+        // receiver then immediately dereferences it within the function.
+        // In this case, the receiver address does not escape; its content
+        // flows to the call.
+        this->assign_from_note(note, call_state->retvals,
+                               this->context_->add_dereference(*p));
       else
 	{
 	  if (!Type::are_identical(fntype->receiver()->type(),
-			       (*p)->expr()->type(), true, NULL))
+				   (*p)->expr()->type(), Type::COMPARE_TAGS,
+				   NULL))
 	    {
 	      // This will be converted later, preemptively track it instead
 	      // of its conversion expression which will show up in a later pass.
@@ -1665,14 +2142,13 @@ Escape_analysis_assign::call(Call_expression* call)
 	   ++pn, ++p)
 	{
 	  if (!Type::are_identical(pn->type(), (*p)->expr()->type(),
-				   true, NULL))
+				   Type::COMPARE_TAGS, NULL))
 	    {
 	      // This will be converted later, preemptively track it instead
 	      // of its conversion expression which will show up in a later pass.
 	      this->context_->track(*p);
 	    }
 
-	  // TODO(cmang): Special care for varargs parameter?
 	  Type* t = pn->type();
 	  if (t != NULL
 	      && t->has_pointer())
@@ -1680,10 +2156,12 @@ Escape_analysis_assign::call(Call_expression* call)
 	      std::string* note = pn->note();
 	      int enc = this->assign_from_note(note, call_state->retvals, *p);
 	      if (enc == Node::ESCAPE_NONE
-		  && (call->is_deferred()
-		      || call->is_concurrent()))
+		  && !call->is_deferred()
+		  && !call->is_concurrent())
 		{
-		  // TODO(cmang): Mark the argument as strictly non-escaping.
+                  // TODO(cmang): Mark the argument as strictly non-escaping?
+                  // In the gc compiler this is for limiting the lifetime of
+                  // temporaries. We probably don't need this?
 		}
 	    }
 	}
@@ -1691,8 +2169,8 @@ Escape_analysis_assign::call(Call_expression* call)
       for (; p != arg_nodes.end(); ++p)
 	{
 	  if (debug_level > 2)
-	    go_inform(call->location(), "esccall:: ... <- %s, untracked",
-                      (*p)->ast_format(gogo).c_str());
+	    go_debug(call->location(), "esccall:: ... <- %s, untracked",
+		     (*p)->ast_format(gogo).c_str());
 	  this->assign(this->context_->sink(), *p);
 	}
     }
@@ -1710,15 +2188,18 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
   Gogo* gogo = this->context_->gogo();
   int debug_level = gogo->debug_escape_level();
   if (debug_level > 1)
-    go_inform(dst->location(), "[%d] %s escassign: %s(%s)[%s] = %s(%s)[%s]",
-	      this->context_->loop_depth(),
-	      strip_packed_prefix(gogo, this->context_->current_function_name()).c_str(),
-	      dst->ast_format(gogo).c_str(), dst->details().c_str(),
-	      dst->op_format().c_str(),
-	      src->ast_format(gogo).c_str(), src->details().c_str(),
-	      src->op_format().c_str());
+    go_debug(dst->location(), "[%d] %s escassign: %s(%s)[%s] = %s(%s)[%s]",
+	     this->context_->loop_depth(),
+	     strip_packed_prefix(gogo, this->context_->current_function_name()).c_str(),
+	     dst->ast_format(gogo).c_str(), dst->details().c_str(),
+	     dst->op_format().c_str(),
+	     src->ast_format(gogo).c_str(), src->details().c_str(),
+	     src->op_format().c_str());
 
-  if (dst->expr() != NULL)
+  if (dst->is_indirect())
+    // Lose track of the dereference.
+    dst = this->context_->sink();
+  else if (dst->expr() != NULL)
     {
       // Analyze the lhs of the assignment.
       // Replace DST with this->context_->sink() if we can't track it.
@@ -1785,6 +2266,18 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	  }
 	  break;
 
+        case Expression::EXPRESSION_TEMPORARY_REFERENCE:
+          {
+            // Temporary is tracked through the underlying Temporary_statement.
+            Temporary_statement* t =
+	      dst->expr()->temporary_reference_expression()->statement();
+	    if (t->value_escapes())
+	      dst = this->context_->sink();
+	    else
+	      dst = Node::make_node(t);
+          }
+          break;
+
 	default:
 	  // TODO(cmang): Add debugging info here: only a few expressions
 	  // should leave DST unmodified.
@@ -1792,12 +2285,17 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
         }
     }
 
-  if (src->expr() != NULL)
+  if (src->object() != NULL)
+    this->flows(dst, src);
+  else if (src->is_indirect())
+    this->flows(dst, src);
+  else if (src->expr() != NULL)
     {
       Expression* e = src->expr();
       switch (e->classification())
         {
 	case Expression::EXPRESSION_VAR_REFERENCE:
+        case Expression::EXPRESSION_ENCLOSED_VAR_REFERENCE:
 	  // DST = var
 	case Expression::EXPRESSION_HEAP:
 	  // DST = &T{...}.
@@ -1808,10 +2306,14 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	  // DST = map[T]V{...}.
 	case Expression::EXPRESSION_STRUCT_CONSTRUCTION:
 	  // DST = T{...}.
+	case Expression::EXPRESSION_SLICE_VALUE:
+	  // DST = slice{ptr, len, cap}
 	case Expression::EXPRESSION_ALLOCATION:
 	  // DST = new(T).
 	case Expression::EXPRESSION_BOUND_METHOD:
 	  // DST = x.M.
+        case Expression::EXPRESSION_STRING_CONCAT:
+          // DST = str1 + str2
 	  this->flows(dst, src);
 	  break;
 
@@ -1823,73 +2325,35 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	  }
 	  break;
 
-	case Expression::EXPRESSION_ENCLOSED_VAR_REFERENCE:
-	  {
-	    Named_object* var = e->enclosed_var_expression()->variable();
-	    Node* var_node = Node::make_node(var);
-	    this->flows(dst, var_node);
-	  }
-	  break;
-
 	case Expression::EXPRESSION_CALL:
 	  {
 	    Call_expression* call = e->call_expression();
+            if (call->is_builtin())
+              {
+                Builtin_call_expression* bce = call->builtin_call_expression();
+                if (bce->code() == Builtin_call_expression::BUILTIN_APPEND)
+                  {
+                    // Append returns the first argument.
+                    // The subsequent arguments are already leaked because
+                    // they are operands to append.
+                    Node* appendee = Node::make_node(call->args()->front());
+                    this->assign(dst, appendee);
+                  }
+                break;
+              }
 	    Func_expression* fe = call->fn()->func_expression();
 	    if (fe != NULL && fe->is_runtime_function())
 	      {
 		switch (fe->runtime_code())
 		  {
-		  case Runtime::GROWSLICE:
-		    {
-		      // Append returns the first argument.
-		      // The subsequent arguments are already leaked because
-		      // they are operands to append.
-		      Node* appendee = Node::make_node(call->args()->front());
-		      this->assign(dst, appendee);
-		      break;
-		    }
-
 		  case Runtime::MAKECHAN:
+		  case Runtime::MAKECHAN64:
 		  case Runtime::MAKEMAP:
 		  case Runtime::MAKESLICE:
 		  case Runtime::MAKESLICE64:
 		    // DST = make(...).
-		  case Runtime::SLICEBYTETOSTRING:
-		    // DST = string([]byte{...}).
-		  case Runtime::SLICERUNETOSTRING:
-		    // DST = string([]int{...}).
-		  case Runtime::STRINGTOSLICEBYTE:
-		    // DST = []byte(str).
-		  case Runtime::STRINGTOSLICERUNE:
-		    // DST = []rune(str).
-		  case Runtime::CONCATSTRINGS:
-		  case Runtime::CONCATSTRING2:
-		  case Runtime::CONCATSTRING3:
-		  case Runtime::CONCATSTRING4:
-		  case Runtime::CONCATSTRING5:
-		    // DST = str1 + str2
-		  case Runtime::CONSTRUCT_MAP:
-		    // When building a map literal's backend representation.
-		    // Likely never seen here and covered in
-		    // Expression::EXPRESSION_MAP_CONSTRUCTION.
-		  case Runtime::INTSTRING:
-		    // DST = string(i).
-		  case Runtime::IFACEE2E2:
-		  case Runtime::IFACEI2E2:
-		  case Runtime::IFACEE2I2:
-		  case Runtime::IFACEI2I2:
-		  case Runtime::IFACEE2T2P:
-		  case Runtime::IFACEI2T2P:
-		  case Runtime::IFACEE2T2:
-		  case Runtime::IFACEI2T2:
-		  case Runtime::REQUIREITAB:
-		    // All versions of interface conversion that might result
-		    // from a type assertion.  Some of these are the result of
-		    // a tuple type assertion statement and may not be covered
-		    // by the case in Expression::EXPRESSION_CONVERSION or
-		    // Expression::EXPRESSION_TYPE_GUARD.
-		    this->flows(dst, src);
-		    break;
+                    this->flows(dst, src);
+                    break;
 
 		  default:
 		    break;
@@ -1909,27 +2373,86 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 		break;
 	      }
 
-	    // TODO(cmang): Handle case from issue 4529.
-	    // Node* call_node = Node::make_node(e);
-	    // Node::Escape_state* call_state = call_node->state(this->context_, NULL);
-	    // std::vector<Node*> retvals = call_state->retvals;
-	    // for (std::vector<Node*>::const_iterator p = retvals.begin();
-	    //	    p != retvals.end();
-	    //	    ++p)
-	    //	 this->flows(dst, *p);
+            // Result flows to dst.
+            Node* call_node = Node::make_node(e);
+            Node::Escape_state* call_state = call_node->state(this->context_, NULL);
+            std::vector<Node*> retvals = call_state->retvals;
+            for (std::vector<Node*>::const_iterator p = retvals.begin();
+                 p != retvals.end();
+                 ++p)
+              this->flows(dst, *p);
 	  }
 	  break;
 
+        case Expression::EXPRESSION_CALL_RESULT:
+          {
+            Call_result_expression* cre = e->call_result_expression();
+            Call_expression* call = cre->call()->call_expression();
+            if (call->is_builtin())
+              break;
+            if (call->fn()->func_expression() != NULL
+                && call->fn()->func_expression()->is_runtime_function())
+              {
+                switch (call->fn()->func_expression()->runtime_code())
+                  {
+                  case Runtime::IFACEE2E2:
+                  case Runtime::IFACEI2E2:
+                  case Runtime::IFACEE2I2:
+                  case Runtime::IFACEI2I2:
+                  case Runtime::IFACEE2T2P:
+                  case Runtime::IFACEI2T2P:
+                    {
+                      // x, ok = v.(T), where T is a pointer or interface,
+                      // is lowered to
+                      // x, ok = IFACEI2E2(v), or
+                      // x, ok = IFACEI2I2(type, v)
+                      // The last arg flows to the first result.
+                      // Note: IFACEX2T2 has different signature, handled by
+                      // ::expression.
+                      if (cre->index() != 0)
+                        break;
+                      Node* arg_node = Node::make_node(call->args()->back());
+                      this->assign(dst, arg_node);
+                    }
+                    break;
+
+                  default:
+                    break;
+                  }
+                break;
+              }
+
+            Node* call_node = Node::make_node(call);
+            Node* ret_node = call_node->state(context_, NULL)->retvals[cre->index()];
+            this->assign(dst, ret_node);
+          }
+          break;
+
 	case Expression::EXPRESSION_FUNC_REFERENCE:
 	  if (e->func_expression()->closure() != NULL)
-	    {
-	      // If SRC is a reference to a function closure, DST flows into
-	      // the underyling closure variable.
-	      Expression* closure = e->func_expression()->closure();
-	      Node* closure_node = Node::make_node(closure);
-	      this->flows(dst, closure_node);
-	    }
+            this->flows(dst, src);
 	  break;
+
+        case Expression::EXPRESSION_CONVERSION:
+          {
+            Type_conversion_expression* tce = e->conversion_expression();
+            Type* ft = tce->expr()->type();
+            Type* tt = tce->type();
+            if ((ft->is_string_type() && tt->is_slice_type())
+                || (ft->is_slice_type() && tt->is_string_type())
+                || (ft->integer_type() != NULL && tt->is_string_type())
+                || tt->interface_type() != NULL)
+              {
+                // string([]byte), string([]rune), []byte(string), []rune(string), string(rune),
+                // interface(T)
+                this->flows(dst, src);
+                break;
+              }
+            // Conversion preserves input value.
+            Expression* underlying = tce->expr();
+            this->assign(dst, Node::make_node(underlying));
+          }
+          break;
 
 	case Expression::EXPRESSION_FIELD_REFERENCE:
 	  {
@@ -1939,7 +2462,6 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	  }
 	  // Fall through.
 
-	case Expression::EXPRESSION_CONVERSION:
 	case Expression::EXPRESSION_TYPE_GUARD:
 	case Expression::EXPRESSION_ARRAY_INDEX:
 	case Expression::EXPRESSION_STRING_INDEX:
@@ -1956,15 +2478,23 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 		    break;
 		  }
 	      }
-	    else if (e->conversion_expression() != NULL)
-	      left = e->conversion_expression()->expr();
 	    else if (e->type_guard_expression() != NULL)
 	      left = e->type_guard_expression()->expr();
 	    else if (e->array_index_expression() != NULL)
 	      {
 		Array_index_expression* aie = e->array_index_expression();
-		if (e->type()->is_slice_type())
-		  left = aie->array();
+		if (aie->end() != NULL)
+                  // slicing
+                  if (aie->array()->type()->is_slice_type())
+                    left = aie->array();
+                  else
+                    {
+                      // slicing an array
+                      // The gc compiler has an implicit address operator.
+                      go_assert(src->child() != NULL);
+                      this->assign(dst, src->child());
+                      break;
+                    }
 		else if (!aie->array()->type()->is_slice_type())
 		  {
 		    // Indexing an array preserves the input value.
@@ -1981,15 +2511,9 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	    else if (e->string_index_expression() != NULL)
 	      {
 		String_index_expression* sie = e->string_index_expression();
-		if (e->type()->is_slice_type())
+		if (e->type()->is_string_type())
+                  // slicing
 		  left = sie->string();
-		else if (!sie->string()->type()->is_slice_type())
-		  {
-		    // Indexing a string preserves the input value.
-		    Node* string_node = Node::make_node(sie->string());
-		    this->assign(dst, string_node);
-		    break;
-		  }
 		else
 		  {
 		    this->flows(dst, src);
@@ -2012,6 +2536,7 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	      case OPERATOR_PLUS:
 	      case OPERATOR_MINUS:
 	      case OPERATOR_XOR:
+              case OPERATOR_OR:
 	      case OPERATOR_MULT:
 	      case OPERATOR_DIV:
 	      case OPERATOR_MOD:
@@ -2063,13 +2588,7 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	case Expression::EXPRESSION_TEMPORARY_REFERENCE:
 	  {
 	    Statement* temp = e->temporary_reference_expression()->statement();
-	    if (temp != NULL
-		&& temp->temporary_statement()->init() != NULL)
-	      {
-		Expression* init = temp->temporary_statement()->init();
-		Node* init_node = Node::make_node(init);
-		this->assign(dst, init_node);
-	      }
+            this->assign(dst, Node::make_node(temp));
 	  }
 	  break;
 
@@ -2079,6 +2598,8 @@ Escape_analysis_assign::assign(Node* dst, Node* src)
 	  break;
 	}
     }
+  else if (src->statement() != NULL && src->statement()->temporary_statement() != NULL)
+    this->flows(dst, src);
 }
 
 // Model the assignment of DST to an indirection of SRC.
@@ -2099,36 +2620,6 @@ Escape_analysis_assign::assign_deref(Node* dst, Node* src)
 	case Expression::EXPRESSION_IOTA:
 	  // No need to try indirections on literal values
 	  // or numeric constants.
-	  return;
-
-	case Expression::EXPRESSION_FIXED_ARRAY_CONSTRUCTION:
-	case Expression::EXPRESSION_SLICE_CONSTRUCTION:
-	case Expression::EXPRESSION_STRUCT_CONSTRUCTION:
-	  {
-	    // Dereferencing an array, slice, or struct is like accessing each
-	    // of its values.  In this situation, we model the flow from src to
-	    // dst where src is one of the above as a flow from each of src's
-	    // values to dst.
-	    Expression* e = src->expr();
-	    Expression_list* vals = NULL;
-	    if (e->slice_literal() != NULL)
-	      vals = e->slice_literal()->vals();
-	    else if (e->array_literal() != NULL)
-	      vals = e->array_literal()->vals();
-	    else
-	      vals = e->struct_literal()->vals();
-
-	    if (vals != NULL)
-	      {
-		for (Expression_list::const_iterator p = vals->begin();
-		     p != vals->end();
-		     ++p)
-		  {
-		    if ((*p) != NULL)
-		      this->assign(dst, Node::make_node(*p));
-		  }
-	      }
-	  }
 	  return;
 
 	default:
@@ -2169,8 +2660,9 @@ Escape_analysis_assign::assign_from_note(std::string* note,
     }
 
   if (this->context_->gogo()->debug_escape_level() > 2)
-    go_inform(src->location(), "assignfromtag:: src=  em=%s",
-	      Escape_note::make_tag(enc).c_str());
+    go_debug(src->location(), "assignfromtag:: src=%s em=%s",
+	     src->ast_format(context_->gogo()).c_str(),
+	     Escape_note::make_tag(enc).c_str());
 
   if (enc == Node::ESCAPE_UNKNOWN)
     {
@@ -2222,8 +2714,7 @@ void
 Escape_analysis_assign::flows(Node* dst, Node* src)
 {
   // Don't bother capturing the flow from scalars.
-  if (src->expr() != NULL
-      && !src->expr()->type()->has_pointer())
+  if (src->type() != NULL && !src->type()->has_pointer())
     return;
 
   // Don't confuse a blank identifier with the sink.
@@ -2234,14 +2725,13 @@ Escape_analysis_assign::flows(Node* dst, Node* src)
   Node::Escape_state* src_state = src->state(this->context_, NULL);
   if (dst == src
       || dst_state == src_state
-      || dst_state->flows.find(src) != dst_state->flows.end()
-      || src_state->flows.find(dst) != src_state->flows.end())
+      || dst_state->flows.find(src) != dst_state->flows.end())
     return;
 
   Gogo* gogo = this->context_->gogo();
   if (gogo->debug_escape_level() > 2)
-    go_inform(Linemap::unknown_location(), "flows:: %s <- %s",
-              dst->ast_format(gogo).c_str(), src->ast_format(gogo).c_str());
+    go_debug(Linemap::unknown_location(), "flows:: %s <- %s",
+	     dst->ast_format(gogo).c_str(), src->ast_format(gogo).c_str());
 
   if (dst_state->flows.empty())
     this->context_->add_dst(dst);
@@ -2271,6 +2761,7 @@ Gogo::assign_connectivity(Escape_context* context, Named_object* fn)
 	{
 	  Node* res_node = Node::make_node(*p);
 	  Node::Escape_state* res_state = res_node->state(context, fn);
+          res_state->fn = fn;
 	  res_state->loop_depth = 0;
 
 	  // If this set of functions is recursive, we lose track of the return values.
@@ -2299,19 +2790,14 @@ Gogo::assign_connectivity(Escape_context* context, Named_object* fn)
       go_assert(param_no != NULL);
       Node* param_node = Node::make_node(param_no);
       Node::Escape_state* param_state = param_node->state(context, fn);
+      param_state->fn = fn;
       param_state->loop_depth = 1;
 
       if (!p->type()->has_pointer())
         continue;
 
-      // External function?  Parameters must escape unless //go:noescape is set.
-      // TODO(cmang): Implement //go:noescape directive.
-      if (fn->package() != NULL)
-	param_node->set_encoding(Node::ESCAPE_HEAP);
-      else
-	param_node->set_encoding(Node::ESCAPE_NONE);
-
-      // TODO(cmang): Track this node in no_escape list.
+      param_node->set_encoding(Node::ESCAPE_NONE);
+      context->track(param_node);
     }
 
   Escape_analysis_loop el;
@@ -2401,18 +2887,18 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
   Gogo* gogo = this->context_->gogo();
   int debug_level = gogo->debug_escape_level();
   if (debug_level > 1)
-    go_inform(Linemap::unknown_location(),
-	      "escwalk: level:{%d %d} depth:%d "
-	      "op=%s %s(%s) "
-	      "scope:%s[%d] "
-	      "extraloopdepth=%d",
-	      level.value(), level.suffix_value(), this->context_->pdepth(),
-	      src->op_format().c_str(),
-	      src->ast_format(gogo).c_str(),
-	      src->details().c_str(),
-	      debug_function_name(src_state->fn).c_str(),
-	      src_state->loop_depth,
-	      extra_loop_depth);
+    go_debug(Linemap::unknown_location(),
+	     "escwalk: level:{%d %d} depth:%d "
+	     "op=%s %s(%s) "
+	     "scope:%s[%d] "
+	     "extraloopdepth=%d",
+	     level.value(), level.suffix_value(), this->context_->pdepth(),
+	     src->op_format().c_str(),
+	     src->ast_format(gogo).c_str(),
+	     src->details().c_str(),
+	     debug_function_name(src_state->fn).c_str(),
+	     src_state->loop_depth,
+	     extra_loop_depth);
 
   this->context_->increase_pdepth();
 
@@ -2432,10 +2918,12 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
   else
     dst_no = dst->object();
   bool dst_is_result = dst_no != NULL && dst_no->is_result_variable();
+  Node::Escape_state* dst_state = dst->state(this->context_, NULL);
 
   if (src_is_param
       && dst_is_result
-      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_SCOPE)
+      && src_state->fn == dst_state->fn
+      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_HEAP)
       && dst->encoding() != Node::ESCAPE_HEAP)
     {
       // This case handles:
@@ -2446,17 +2934,17 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
       if (debug_level != 0)
 	{
 	  if (debug_level == 1)
-	    go_inform(src->location(),
-		      "leaking param: %s to result %s level=%d",
-		      src->ast_format(gogo).c_str(),
-		      dst->ast_format(gogo).c_str(),
-		      level.value());
+	    go_debug(src->definition_location(),
+		     "leaking param: %s to result %s level=%d",
+		     src->ast_format(gogo).c_str(),
+		     dst->ast_format(gogo).c_str(),
+		     level.value());
 	  else
-	    go_inform(src->location(),
-		      "leaking param: %s to result %s level={%d %d}",
-		      src->ast_format(gogo).c_str(),
-		      dst->ast_format(gogo).c_str(),
-		      level.value(), level.suffix_value());
+	    go_debug(src->definition_location(),
+		     "leaking param: %s to result %s level={%d %d}",
+		     src->ast_format(gogo).c_str(),
+		     dst->ast_format(gogo).c_str(),
+		     level.value(), level.suffix_value());
 	}
 
       if ((src->encoding() & ESCAPE_MASK) != Node::ESCAPE_RETURN)
@@ -2486,7 +2974,7 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
   // escape from struct.
   if (src_is_param
       && dst->encoding() == Node::ESCAPE_HEAP
-      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_SCOPE)
+      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_HEAP)
       && level.value() > 0)
     {
       int enc =
@@ -2494,20 +2982,23 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 			   Node::ESCAPE_NONE);
       src->set_encoding(enc);
       if (debug_level != 0)
-	go_inform(src->location(), "mark escaped content: %s",
-		  src->ast_format(gogo).c_str());
+	go_debug(src->definition_location(), "mark escaped content: %s",
+		 src->ast_format(gogo).c_str());
     }
 
   // A src object leaks if its value or address is assigned to a dst object
   // in a different scope (at a different loop depth).
-  Node::Escape_state* dst_state = dst->state(this->context_, NULL);
   bool src_leaks = (level.value() <= 0
 		    && level.suffix_value() <= 0
 		    && dst_state->loop_depth < mod_loop_depth);
+  src_leaks = src_leaks || (level.value() <= 0
+              && (dst->encoding() & ESCAPE_MASK) == Node::ESCAPE_HEAP);
+  // old src encoding, used to prevent duplicate error messages
+  int osrcesc = src->encoding();
 
   if (src_is_param
       && (src_leaks || dst_state->loop_depth < 0)
-      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_SCOPE))
+      && (src->encoding() & ESCAPE_MASK) < int(Node::ESCAPE_HEAP))
     {
       if (level.suffix_value() > 0)
 	{
@@ -2515,15 +3006,16 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 	    Node::max_encoding((src->encoding() | ESCAPE_CONTENT_ESCAPES),
 			       Node::ESCAPE_NONE);
 	  src->set_encoding(enc);
-	  if (debug_level != 0)
-	    go_inform(src->location(), "leaking param content: %s",
-		      src->ast_format(gogo).c_str());
+	  if (debug_level != 0 && osrcesc != src->encoding())
+	    go_debug(src->definition_location(), "leaking param content: %s",
+		     src->ast_format(gogo).c_str());
 	}
       else
 	{
 	  if (debug_level != 0)
-	    go_inform(src->location(), "leaking param");
-	  src->set_encoding(Node::ESCAPE_SCOPE);
+	    go_debug(src->definition_location(), "leaking param: %s",
+		     src->ast_format(gogo).c_str());
+	  src->set_encoding(Node::ESCAPE_HEAP);
 	}
     }
   else if (src->expr() != NULL)
@@ -2532,8 +3024,8 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
       if (e->enclosed_var_expression() != NULL)
 	{
 	  if (src_leaks && debug_level != 0)
-	    go_inform(src->location(), "leaking closure reference %s",
-		      src->ast_format(gogo).c_str());
+	    go_debug(src->location(), "leaking closure reference %s",
+		     src->ast_format(gogo).c_str());
 
 	  Node* enclosed_node =
 	    Node::make_node(e->enclosed_var_expression()->variable());
@@ -2557,22 +3049,20 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 	  if (src_leaks)
 	    {
 	      src->set_encoding(Node::ESCAPE_HEAP);
-	      if (debug_level != 0)
-		{
-		  go_inform(underlying->location(), "moved to heap: %s",
-                            underlying_node->ast_format(gogo).c_str());
-
-		  if (debug_level > 1)
-		    go_inform(src->location(),
-			      "%s escapes to heap, level={%d %d}, "
-			      "dst.eld=%d, src.eld=%d",
-			      src->ast_format(gogo).c_str(), level.value(),
-			      level.suffix_value(), dst_state->loop_depth,
-			      mod_loop_depth);
-		  else
-		    go_inform(src->location(), "%s escapes to heap",
-			      src->ast_format(gogo).c_str());
-		}
+              if (osrcesc != src->encoding())
+                {
+                  move_to_heap(gogo, underlying);
+                  if (debug_level > 1)
+                    go_debug(src->location(),
+			     "%s escapes to heap, level={%d %d}, "
+			     "dst.eld=%d, src.eld=%d",
+			     src->ast_format(gogo).c_str(), level.value(),
+			     level.suffix_value(), dst_state->loop_depth,
+			     mod_loop_depth);
+                  else if (debug_level > 0)
+                    go_debug(src->location(), "%s escapes to heap",
+			     src->ast_format(gogo).c_str());
+                }
 
 	      this->flood(level.decrease(), dst,
 			  underlying_node, mod_loop_depth);
@@ -2600,91 +3090,142 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 	  if (src_leaks)
 	    {
 	      src->set_encoding(Node::ESCAPE_HEAP);
-	      if (debug_level != 0)
-		go_inform(src->location(), "%s escapes to heap",
-			  src->ast_format(gogo).c_str());
+	      if (debug_level != 0 && osrcesc != src->encoding())
+		go_debug(src->location(), "%s escapes to heap",
+			 src->ast_format(gogo).c_str());
 	      extra_loop_depth = mod_loop_depth;
 	    }
 	}
       else if (e->call_expression() != NULL)
 	{
 	  Call_expression* call = e->call_expression();
-	  if (call->fn()->func_expression() != NULL)
-	    {
-	      Func_expression* func = call->fn()->func_expression();
-	      if (func->is_runtime_function())
-		{
-		  switch (func->runtime_code())
-		    {
-		    case Runtime::GROWSLICE:
-		      {
-			// Propagate escape information to appendee.
-			Expression* appendee = call->args()->front();
-			this->flood(level, dst, Node::make_node(appendee), -1);
-		      }
-		      break;
+          if (call->is_builtin())
+            {
+              Builtin_call_expression* bce = call->builtin_call_expression();
+              if (bce->code() == Builtin_call_expression::BUILTIN_APPEND)
+                {
+                  // Propagate escape information to appendee.
+                  Expression* appendee = call->args()->front();
+                  this->flood(level, dst, Node::make_node(appendee), -1);
+                }
+            }
+          else if (call->fn()->func_expression() != NULL
+                   && call->fn()->func_expression()->is_runtime_function())
+            {
+              switch (call->fn()->func_expression()->runtime_code())
+                {
+                case Runtime::MAKECHAN:
+		case Runtime::MAKECHAN64:
+                case Runtime::MAKEMAP:
+                case Runtime::MAKESLICE:
+                case Runtime::MAKESLICE64:
+                  if (src_leaks)
+                    {
+                      src->set_encoding(Node::ESCAPE_HEAP);
+                      if (debug_level != 0 && osrcesc != src->encoding())
+                        go_debug(src->location(), "%s escapes to heap",
+				 src->ast_format(gogo).c_str());
+                      extra_loop_depth = mod_loop_depth;
+                    }
+                  break;
 
-		    case Runtime::MAKECHAN:
-		    case Runtime::MAKEMAP:
-		    case Runtime::MAKESLICE:
-		    case Runtime::MAKESLICE64:
-		    case Runtime::SLICEBYTETOSTRING:
-		    case Runtime::SLICERUNETOSTRING:
-		    case Runtime::STRINGTOSLICEBYTE:
-		    case Runtime::STRINGTOSLICERUNE:
-		    case Runtime::CONCATSTRINGS:
-		    case Runtime::CONCATSTRING2:
-		    case Runtime::CONCATSTRING3:
-		    case Runtime::CONCATSTRING4:
-		    case Runtime::CONCATSTRING5:
-		    case Runtime::CONSTRUCT_MAP:
-		    case Runtime::INTSTRING:
-		    case Runtime::REQUIREITAB:
-		      // All runtime calls that involve allocation of memory
-		      // except new.  Runtime::NEW gets lowered into an
-		      // allocation expression.
-		      if (src_leaks)
-			{
-			  src->set_encoding(Node::ESCAPE_HEAP);
-			  if (debug_level != 0)
-			    go_inform(src->location(), "%s escapes to heap",
-				      src->ast_format(gogo).c_str());
-			  extra_loop_depth = mod_loop_depth;
-			}
-		      break;
-
-		    default:
-		      break;
-		    }
-		}
-	      else if (src_leaks
-		       && (func->closure() != NULL
-			   || func->bound_method_expression() != NULL))
-		{
-		  // A closure or bound method; we lost track of actual function
-		  // so if this leaks, this call must be done on the heap.
-		  src->set_encoding(Node::ESCAPE_HEAP);
-		  if (debug_level != 0)
-		    go_inform(src->location(), "%s escapes to heap",
-			      src->ast_format(gogo).c_str());
-		}
-	    }
+                default:
+                  break;
+                }
+            }
+          else if (src_state->retvals.size() > 0)
+            {
+              // In this case a link went directly to a call, but should really go
+              // to the dummy .outN outputs that were created for the call that
+              // themselves link to the inputs with levels adjusted.
+              // See e.g. #10466.
+              // This can only happen with functions returning a single result.
+              go_assert(src_state->retvals.size() == 1);
+              if (debug_level > 2)
+                go_debug(src->location(), "[%d] dst %s escwalk replace src: %s with %s",
+			 this->context_->loop_depth(),
+			 dst->ast_format(gogo).c_str(),
+			 src->ast_format(gogo).c_str(),
+			 src_state->retvals[0]->ast_format(gogo).c_str());
+              src = src_state->retvals[0];
+              src_state = src->state(this->context_, NULL);
+            }
 	}
       else if (e->allocation_expression() != NULL && src_leaks)
 	{
 	  // Calls to Runtime::NEW get lowered into an allocation expression.
 	  src->set_encoding(Node::ESCAPE_HEAP);
-	  if (debug_level != 0)
-	    go_inform(src->location(), "%s escapes to heap",
-                      src->ast_format(gogo).c_str());
+	  if (debug_level != 0 && osrcesc != src->encoding())
+	    go_debug(src->location(), "%s escapes to heap",
+		     src->ast_format(gogo).c_str());
+          extra_loop_depth = mod_loop_depth;
 	}
+      else if ((e->map_literal() != NULL
+               || e->string_concat_expression() != NULL
+               || (e->func_expression() != NULL && e->func_expression()->closure() != NULL)
+               || e->bound_method_expression() != NULL)
+               && src_leaks)
+        {
+          src->set_encoding(Node::ESCAPE_HEAP);
+          if (debug_level != 0 && osrcesc != src->encoding())
+            go_debug(src->location(), "%s escapes to heap",
+		     src->ast_format(gogo).c_str());
+          extra_loop_depth = mod_loop_depth;
+        }
+      else if (e->conversion_expression() != NULL && src_leaks)
+        {
+          Type_conversion_expression* tce = e->conversion_expression();
+          Type* ft = tce->expr()->type();
+          Type* tt = tce->type();
+          if ((ft->is_string_type() && tt->is_slice_type())
+              || (ft->is_slice_type() && tt->is_string_type())
+              || (ft->integer_type() != NULL && tt->is_string_type())
+              || tt->interface_type() != NULL)
+            {
+              // string([]byte), string([]rune), []byte(string), []rune(string), string(rune),
+              // interface(T)
+              src->set_encoding(Node::ESCAPE_HEAP);
+              if (debug_level != 0 && osrcesc != src->encoding())
+                go_debug(src->location(), "%s escapes to heap",
+			 src->ast_format(gogo).c_str());
+              extra_loop_depth = mod_loop_depth;
+              if (tt->interface_type() != NULL
+                  && ft->has_pointer()
+                  && !ft->is_direct_iface_type())
+                // We're converting from a non-direct interface type.
+                // The interface will hold a heap copy of the data
+                // Flow the data to heap. See issue 29353.
+                this->flood(level, this->context_->sink(),
+                            Node::make_node(tce->expr()), -1);
+            }
+        }
+      else if (e->array_index_expression() != NULL
+               && !e->array_index_expression()->array()->type()->is_slice_type())
+        {
+          Array_index_expression* aie = e->array_index_expression();
+          if (aie->end() != NULL)
+            {
+              // Slicing an array.
+              // Flow its implicit address-of node to DST.
+              this->flood(level, dst, src->child(), -1);
+            }
+          else
+            {
+              // Indexing an array.
+              // An array element flowing to DST behaves like the array
+              // flowing to DST.
+              Expression* underlying = e->array_index_expression()->array();
+              Node* underlying_node = Node::make_node(underlying);
+              this->flood(level, dst, underlying_node, -1);
+            }
+        }
       else if ((e->field_reference_expression() != NULL
 		&& e->field_reference_expression()->expr()->unary_expression() == NULL)
 	       || e->type_guard_expression() != NULL
 	       || (e->array_index_expression() != NULL
-		   && e->type()->is_slice_type())
+		   && e->array_index_expression()->end() != NULL)
 	       || (e->string_index_expression() != NULL
-		   && e->type()->is_slice_type()))
+		   && e->type()->is_string_type()))
 	{
 	  Expression* underlying;
 	  if (e->field_reference_expression() != NULL)
@@ -2713,14 +3254,7 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 	      underlying = underlying->unary_expression()->operand();
 	    }
 	  else if (e->array_index_expression() != NULL)
-	    {
-	      underlying = e->array_index_expression()->array();
-	      if (!underlying->type()->is_slice_type())
-		{
-		  Node* underlying_node = Node::make_node(underlying);
-		  this->flood(level, dst, underlying_node, 1);
-		}
-	    }
+	    underlying = e->array_index_expression()->array();
 	  else if (e->map_index_expression() != NULL)
 	    underlying = e->map_index_expression()->map();
 	  else
@@ -2730,9 +3264,15 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 	  Node* underlying_node = Node::make_node(underlying);
 	  this->flood(level.increase(), dst, underlying_node, -1);
 	}
-
-      // TODO(cmang): Add case for Issue #10466.
+      else if (e->temporary_reference_expression() != NULL)
+        {
+          Statement* t = e->temporary_reference_expression()->statement();
+          this->flood(level, dst, Node::make_node(t), -1);
+        }
     }
+  else if (src->is_indirect())
+    // Increase the level for a dereference.
+    this->flood(level.increase(), dst, src->child(), -1);
 
   level = level.copy();
   for (std::set<Node*>::const_iterator p = src_state->flows.begin();
@@ -2749,13 +3289,20 @@ Escape_analysis_flood::flood(Level level, Node* dst, Node* src,
 void
 Gogo::propagate_escape(Escape_context* context, Node* dst)
 {
+  if (dst->object() == NULL
+      && (dst->expr() == NULL
+          || (dst->expr()->var_expression() == NULL
+              && dst->expr()->enclosed_var_expression() == NULL
+              && dst->expr()->func_expression() == NULL)))
+    return;
+
   Node::Escape_state* state = dst->state(context, NULL);
   Gogo* gogo = context->gogo();
   if (gogo->debug_escape_level() > 1)
-    go_inform(Linemap::unknown_location(), "escflood:%d: dst %s scope:%s[%d]",
-	      context->flood_id(), dst->ast_format(gogo).c_str(),
-	      debug_function_name(state->fn).c_str(),
-	      state->loop_depth);
+    go_debug(Linemap::unknown_location(), "escflood:%d: dst %s scope:%s[%d]",
+	     context->flood_id(), dst->ast_format(gogo).c_str(),
+	     debug_function_name(state->fn).c_str(),
+	     state->loop_depth);
 
   Escape_analysis_flood eaf(context);
   for (std::set<Node*>::const_iterator p = state->flows.begin();
@@ -2788,39 +3335,58 @@ Escape_analysis_tag::tag(Named_object* fn)
 {
   // External functions are assumed unsafe
   // unless //go:noescape is given before the declaration.
-  if (fn->package() != NULL || !fn->is_function())
+  if (fn->is_function_declaration())
     {
-      // TODO(cmang): Implement //go:noescape directive for external functions;
-      // mark input parameters as not escaping.
-      return;
+      Function_declaration* fdcl = fn->func_declaration_value();
+      if ((fdcl->pragmas() & GOPRAGMA_NOESCAPE) != 0)
+        {
+          Function_type* fntype = fdcl->type();
+          if (fntype->parameters() != NULL)
+            {
+              const Typed_identifier_list* til = fntype->parameters();
+              int i = 0;
+              for (Typed_identifier_list::const_iterator p = til->begin();
+                   p != til->end();
+                   ++p, ++i)
+                if (p->type()->has_pointer())
+                  fntype->add_parameter_note(i, Node::ESCAPE_NONE);
+            }
+        }
     }
+
+  if (!fn->is_function())
+    return;
 
   Function_type* fntype = fn->func_value()->type();
   Bindings* bindings = fn->func_value()->block()->bindings();
 
-  if (fntype->is_method()
-      && !fntype->receiver()->name().empty()
-      && !Gogo::is_sink_name(fntype->receiver()->name()))
+  if (fntype->is_method())
     {
-      Named_object* rcvr_no = bindings->lookup(fntype->receiver()->name());
-      go_assert(rcvr_no != NULL);
-      Node* rcvr_node = Node::make_node(rcvr_no);
-      switch ((rcvr_node->encoding() & ESCAPE_MASK))
-	{
-	case Node::ESCAPE_NONE: // not touched by flood
-	case Node::ESCAPE_RETURN:
-	  if (fntype->receiver()->type()->has_pointer())
-	    // Don't bother tagging for scalars.
-	    fntype->add_receiver_note(rcvr_node->encoding());
-	  break;
+      if (fntype->receiver()->name().empty()
+          || Gogo::is_sink_name(fntype->receiver()->name()))
+        // Unnamed receiver is not used in the function body, does not escape.
+        fntype->add_receiver_note(Node::ESCAPE_NONE);
+      else
+        {
+          Named_object* rcvr_no = bindings->lookup(fntype->receiver()->name());
+          go_assert(rcvr_no != NULL);
+          Node* rcvr_node = Node::make_node(rcvr_no);
+          switch ((rcvr_node->encoding() & ESCAPE_MASK))
+            {
+            case Node::ESCAPE_NONE: // not touched by flood
+            case Node::ESCAPE_RETURN:
+              if (fntype->receiver()->type()->has_pointer())
+                // Don't bother tagging for scalars.
+                fntype->add_receiver_note(rcvr_node->encoding());
+              break;
 
-	case Node::ESCAPE_HEAP: // flooded, moved to heap.
-	case Node::ESCAPE_SCOPE: // flooded, value leaves scope.
-	  break;
+            case Node::ESCAPE_HEAP: // flooded, moved to heap.
+              break;
 
-	default:
-	  break;
-	}
+            default:
+              break;
+            }
+        }
     }
 
   int i = 0;
@@ -2832,7 +3398,12 @@ Escape_analysis_tag::tag(Named_object* fn)
 	   ++p, ++i)
 	{
 	  if (p->name().empty() || Gogo::is_sink_name(p->name()))
-	    continue;
+            {
+              // Parameter not used in the function body, does not escape.
+              if (p->type()->has_pointer())
+                fntype->add_parameter_note(i, Node::ESCAPE_NONE);
+              continue;
+            }
 
 	  Named_object* param_no = bindings->lookup(p->name());
 	  go_assert(param_no != NULL);
@@ -2847,7 +3418,6 @@ Escape_analysis_tag::tag(Named_object* fn)
 	      break;
 
 	    case Node::ESCAPE_HEAP: // flooded, moved to heap.
-	    case Node::ESCAPE_SCOPE: // flooded, value leaves scope.
 	      break;
 
 	    default:
@@ -2866,4 +3436,43 @@ Gogo::tag_function(Escape_context* context, Named_object* fn)
 {
   Escape_analysis_tag eat(context);
   eat.tag(fn);
+}
+
+// Reclaim memory of escape analysis Nodes.
+
+void
+Gogo::reclaim_escape_nodes()
+{
+  Node::reclaim_nodes();
+}
+
+void
+Node::reclaim_nodes()
+{
+  for (Unordered_map(Named_object*, Node*)::iterator p =
+	 Node::objects.begin();
+       p != Node::objects.end();
+       ++p)
+    delete p->second;
+  Node::objects.clear();
+
+  for (Unordered_map(Expression*, Node*)::iterator p =
+	 Node::expressions.begin();
+       p != Node::expressions.end();
+       ++p)
+    delete p->second;
+  Node::expressions.clear();
+
+  for (Unordered_map(Statement*, Node*)::iterator p =
+	 Node::statements.begin();
+       p != Node::statements.end();
+       ++p)
+    delete p->second;
+  Node::statements.clear();
+
+  for (std::vector<Node*>::iterator p = Node::indirects.begin();
+       p != Node::indirects.end();
+       ++p)
+    delete *p;
+  Node::indirects.clear();
 }

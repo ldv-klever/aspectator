@@ -1,7 +1,8 @@
 //===-- tsan_interface_java.h -----------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,7 +18,7 @@
 // For volatile memory accesses and atomic operations JVM is intended to use
 // standard atomics API: __tsan_atomicN_load/store/etc.
 //
-// For usage examples see lit_tests/java_*.cc
+// For usage examples see lit_tests/java_*.cpp
 //===----------------------------------------------------------------------===//
 #ifndef TSAN_INTERFACE_JAVA_H
 #define TSAN_INTERFACE_JAVA_H
@@ -30,7 +31,7 @@
 extern "C" {
 #endif
 
-typedef unsigned long jptr;  // NOLINT
+typedef unsigned long jptr;
 
 // Must be called before any other callback from Java.
 void __tsan_java_init(jptr heap_begin, jptr heap_size) INTERFACE_ATTRIBUTE;
@@ -55,6 +56,10 @@ void __tsan_java_move(jptr src, jptr dst, jptr size) INTERFACE_ATTRIBUTE;
 // It ensures necessary synchronization between
 // java object creation and finalization.
 void __tsan_java_finalize() INTERFACE_ATTRIBUTE;
+// Finds the first allocated memory block in the [*from_ptr, to) range, saves
+// its address in *from_ptr and returns its size. Returns 0 if there are no
+// allocated memory blocks in the range.
+jptr __tsan_java_find(jptr *from_ptr, jptr to) INTERFACE_ATTRIBUTE;
 
 // Mutex lock.
 // Addr is any unique address associated with the mutex.

@@ -16,7 +16,7 @@ S::S (const S &x)
   s = x.s;
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 foo (int i, int j, int k, S s)
 {
   if (i != 0 || j != 0 || k != 0 || s.s != 12)

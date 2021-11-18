@@ -6,23 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
 -- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
---                                                                          --
--- As a special exception under Section 7 of GPL version 3, you are granted --
--- additional permissions described in the GCC Runtime Library Exception,   --
--- version 3.1, as published by the Free Software Foundation.               --
---                                                                          --
--- You should have received a copy of the GNU General Public License and    --
--- a copy of the GCC Runtime Library Exception along with this program;     --
--- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
--- <http://www.gnu.org/licenses/>.                                          --
+-- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
+-- for  more details.  You should have  received  a copy of the GNU General --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -38,7 +32,7 @@
 --  would have to be dealt with.
 
 --  WARNING: There is a C version of this package. Any changes to this source
---  file must be properly reflected in the C header file types.h declarations.
+--  file must be properly reflected in the C header file types.h
 
 --  Note: the declarations in this package reflect an expectation that the host
 --  machine has an efficient integer base type with a range at least 32 bits
@@ -138,7 +132,7 @@ package Types is
    -- Types Used for Text Buffer Handling --
    -----------------------------------------
 
-   --  We can not use type String for text buffers, since we must use the
+   --  We cannot use type String for text buffers, since we must use the
    --  standard 32-bit integer as an index value, since we count on all index
    --  values being the same size.
 
@@ -196,19 +190,26 @@ package Types is
    --  which are one greater than the previous upper bound, rounded up to
    --  a multiple of Source_Align.
 
-   subtype Big_Source_Buffer is Text_Buffer (0 .. Text_Ptr'Last);
-   --  This is a virtual type used as the designated type of the access type
-   --  Source_Buffer_Ptr, see Osint.Read_Source_File for details.
+   type Source_Buffer_Ptr_Var is access all Source_Buffer;
+   type Source_Buffer_Ptr is access constant Source_Buffer;
+   --  Pointer to source buffer. Source_Buffer_Ptr_Var is used for allocation
+   --  and deallocation; Source_Buffer_Ptr is used for all other uses of source
+   --  buffers.
 
-   type Source_Buffer_Ptr is access all Big_Source_Buffer;
-   --  Pointer to source buffer. We use virtual origin addressing for source
-   --  buffers, with thin pointers. The pointer points to a virtual instance
-   --  of type Big_Source_Buffer, where the actual type is in fact of type
-   --  Source_Buffer. The address is adjusted so that the virtual origin
-   --  addressing works correctly. See Osint.Read_Source_Buffer for further
-   --  details. Again, as for Big_String_Ptr, we should never allocate using
-   --  this type, but we don't give a storage size clause of zero, since we
-   --  may end up doing deallocations of instances allocated manually.
+   function Null_Source_Buffer_Ptr (X : Source_Buffer_Ptr) return Boolean;
+   --  True if X = null
+
+   function Source_Buffer_Ptr_Equal (X, Y : Source_Buffer_Ptr) return Boolean
+     renames "=";
+   --  Squirrel away the predefined "=", for use in Null_Source_Buffer_Ptr.
+   --  Do not call this elsewhere.
+
+   function "=" (X, Y : Source_Buffer_Ptr) return Boolean is abstract;
+   --  Make "=" abstract. Note that this makes "/=" abstract as well. This is a
+   --  vestige of the zero-origin array indexing we used to use, where "=" is
+   --  always wrong (including the one in Null_Source_Buffer_Ptr). We keep this
+   --  just because we never need to compare Source_Buffer_Ptrs other than to
+   --  null.
 
    subtype Source_Ptr is Text_Ptr;
    --  Type used to represent a source location, which is a subscript of a
@@ -256,94 +257,88 @@ package Types is
    --    Universal integers (type Uint)
    --    Universal reals (type Ureal)
 
+   --  These types are represented as integer indices into various tables.
+   --  However, they should be treated as private, except in a few documented
+   --  cases. In particular it is usually inappropriate to perform arithmetic
+   --  operations using these types. One exception is in computing hash
+   --  functions of these types.
+
    --  In most contexts, the strongly typed interface determines which of these
    --  types is present. However, there are some situations (involving untyped
    --  traversals of the tree), where it is convenient to be easily able to
    --  distinguish these values. The underlying representation in all cases is
    --  an integer type Union_Id, and we ensure that the range of the various
-   --  possible values for each of the above types is disjoint so that this
-   --  distinction is possible.
+   --  possible values for each of the above types is disjoint (except that
+   --  List_Id and Node_Id overlap at Empty) so that this distinction is
+   --  possible.
 
    --  Note: it is also helpful for debugging purposes to make these ranges
    --  distinct. If a bug leads to misidentification of a value, then it will
    --  typically result in an out of range value and a Constraint_Error.
 
+   --  The range of Node_Id is most of the nonnegative integers. The other
+   --  ranges are negative. Uint has a very large range, because a substantial
+   --  part of this range is used to store direct values; see Uintp for
+   --  details. The other types have 100 million values, which should be
+   --  plenty.
+
    type Union_Id is new Int;
    --  The type in the tree for a union of possible ID values
 
-   List_Low_Bound : constant := -100_000_000;
+   --  Following are the Low and High bounds of the various ranges.
+
+   List_Low_Bound : constant := -099_999_999;
    --  The List_Id values are subscripts into an array of list headers which
-   --  has List_Low_Bound as its lower bound. This value is chosen so that all
-   --  List_Id values are negative, and the value zero is in the range of both
-   --  List_Id and Node_Id values (see further description below).
+   --  has List_Low_Bound as its lower bound.
 
    List_High_Bound : constant := 0;
-   --  Maximum List_Id subscript value. This allows up to 100 million list Id
-   --  values, which is in practice infinite, and there is no need to check the
-   --  range. The range overlaps the node range by one element (with value
-   --  zero), which is used both for the Empty node, and for indicating no
-   --  list. The fact that the same value is used is convenient because it
-   --  means that the default value of Empty applies to both nodes and lists,
-   --  and also is more efficient to test for.
+   --  Maximum List_Id subscript value. The ranges of List_Id and Node_Id
+   --  overlap by one element (with value zero), which is used both for the
+   --  Empty node, and for No_List. The fact that the same value is used is
+   --  convenient because it means that the default value of Empty applies to
+   --  both nodes and lists, and also is more efficient to test for.
 
    Node_Low_Bound : constant := 0;
    --  The tree Id values start at zero, because we use zero for Empty (to
-   --  allow a zero test for Empty). Actual tree node subscripts start at 0
-   --  since Empty is a legitimate node value.
+   --  allow a zero test for Empty).
 
-   Node_High_Bound : constant := 099_999_999;
-   --  Maximum number of nodes that can be allocated is 100 million, which
-   --  is in practice infinite, and there is no need to check the range.
+   Node_High_Bound : constant :=
+     (if Standard'Address_Size = 32 then 299_999_999 else 1_999_999_999);
 
-   Elist_Low_Bound : constant := 100_000_000;
+   Elist_Low_Bound : constant := -199_999_999;
    --  The Elist_Id values are subscripts into an array of elist headers which
    --  has Elist_Low_Bound as its lower bound.
 
-   Elist_High_Bound : constant := 199_999_999;
-   --  Maximum Elist_Id subscript value. This allows up to 100 million Elists,
-   --  which is in practice infinite and there is no need to check the range.
+   Elist_High_Bound : constant := -100_000_000;
 
-   Elmt_Low_Bound : constant := 200_000_000;
+   Elmt_Low_Bound : constant := -299_999_999;
    --  Low bound of element Id values. The use of these values is internal to
    --  the Elists package, but the definition of the range is included here
    --  since it must be disjoint from other Id values. The Elmt_Id values are
    --  subscripts into an array of list elements which has this as lower bound.
 
-   Elmt_High_Bound : constant := 299_999_999;
-   --  Upper bound of Elmt_Id values. This allows up to 100 million element
-   --  list members, which is in practice infinite (no range check needed).
+   Elmt_High_Bound : constant := -200_000_000;
 
-   Names_Low_Bound : constant := 300_000_000;
-   --  Low bound for name Id values
+   Names_Low_Bound : constant := -399_999_999;
 
-   Names_High_Bound : constant := 399_999_999;
-   --  Maximum number of names that can be allocated is 100 million, which is
-   --  in practice infinite and there is no need to check the range.
+   Names_High_Bound : constant := -300_000_000;
 
-   Strings_Low_Bound : constant := 400_000_000;
-   --  Low bound for string Id values
+   Strings_Low_Bound : constant := -499_999_999;
 
-   Strings_High_Bound : constant := 499_999_999;
-   --  Maximum number of strings that can be allocated is 100 million, which
-   --  is in practice infinite and there is no need to check the range.
+   Strings_High_Bound : constant := -400_000_000;
 
-   Ureal_Low_Bound : constant := 500_000_000;
-   --  Low bound for Ureal values
+   Ureal_Low_Bound : constant := -599_999_999;
 
-   Ureal_High_Bound : constant := 599_999_999;
-   --  Maximum number of Ureal values stored is 100_000_000 which is in
-   --  practice infinite so that no check is required.
+   Ureal_High_Bound : constant := -500_000_000;
 
-   Uint_Low_Bound : constant := 600_000_000;
+   Uint_Low_Bound : constant := -2_100_000_000;
    --  Low bound for Uint values
 
-   Uint_Table_Start : constant := 2_000_000_000;
+   Uint_Table_Start : constant := -699_999_999;
    --  Location where table entries for universal integers start (see
    --  Uintp spec for details of the representation of Uint values).
 
-   Uint_High_Bound : constant := 2_099_999_999;
-   --  The range of Uint values is very large, since a substantial part
-   --  of this range is used to store direct values, see Uintp for details.
+   Uint_High_Bound : constant := -600_000_000;
 
    --  The following subtype definitions are used to provide convenient names
    --  for membership tests on Int values to see what data type range they
@@ -486,11 +481,6 @@ package Types is
    --  String_Id values are used to identify entries in the strings table. They
    --  are subscripts into the Strings table defined in package Stringt.
 
-   --  Note that with only a few exceptions, which are clearly documented, the
-   --  type String_Id should be regarded as a private type. In particular it is
-   --  never appropriate to perform arithmetic operations using this type.
-   --  Doesn't this also apply to all other *_Id types???
-
    type String_Id is range Strings_Low_Bound .. Strings_High_Bound;
    --  Type used to identify entries in the strings table
 
@@ -568,13 +558,11 @@ package Types is
    type Source_File_Index is new Int range -1 .. Int'Last;
    --  Type used to index the source file table (see package Sinput)
 
-   Internal_Source_File : constant Source_File_Index :=
-                            Source_File_Index'First;
-   --  Value used to indicate the buffer for the source-code-like strings
-   --  internally created withing the compiler (see package Sinput)
-
    No_Source_File : constant Source_File_Index := 0;
    --  Value used to indicate no source file present
+
+   No_Access_To_Source_File : constant Source_File_Index := -1;
+   --  Value used to indicate a source file is present but unreadable
 
    -----------------------------------
    -- Representation of Time Stamps --
@@ -663,30 +651,39 @@ package Types is
    No_Check_Id : constant := 0;
    --  Check_Id value used to indicate no check
 
-   Access_Check           : constant :=  1;
-   Accessibility_Check    : constant :=  2;
-   Alignment_Check        : constant :=  3;
-   Allocation_Check       : constant :=  4;
-   Atomic_Synchronization : constant :=  5;
-   Discriminant_Check     : constant :=  6;
-   Division_Check         : constant :=  7;
-   Duplicated_Tag_Check   : constant :=  8;
-   Elaboration_Check      : constant :=  9;
-   Index_Check            : constant := 10;
-   Length_Check           : constant := 11;
-   Overflow_Check         : constant := 12;
-   Predicate_Check        : constant := 13;
-   Range_Check            : constant := 14;
-   Storage_Check          : constant := 15;
-   Tag_Check              : constant := 16;
-   Validity_Check         : constant := 17;
-   Container_Checks       : constant := 18;
-   Tampering_Check        : constant := 19;
+   Access_Check               : constant :=  1;
+   Accessibility_Check        : constant :=  2;
+   Alignment_Check            : constant :=  3;
+   Allocation_Check           : constant :=  4;
+   Atomic_Synchronization     : constant :=  5;
+   Characters_Assertion_Check : constant :=  6;
+   Containers_Assertion_Check : constant :=  7;
+   Discriminant_Check         : constant :=  8;
+   Division_Check             : constant :=  9;
+   Duplicated_Tag_Check       : constant := 10;
+   Elaboration_Check          : constant := 11;
+   Index_Check                : constant := 12;
+   Interfaces_Assertion_Check : constant := 13;
+   IO_Assertion_Check         : constant := 14;
+   Length_Check               : constant := 15;
+   Numerics_Assertion_Check   : constant := 16;
+   Overflow_Check             : constant := 17;
+   Predicate_Check            : constant := 18;
+   Program_Error_Check        : constant := 19;
+   Range_Check                : constant := 20;
+   Storage_Check              : constant := 21;
+   Strings_Assertion_Check    : constant := 22;
+   System_Assertion_Check     : constant := 23;
+   Tag_Check                  : constant := 24;
+   Validity_Check             : constant := 25;
+   Container_Checks           : constant := 26;
+   Tampering_Check            : constant := 27;
+   Tasking_Check              : constant := 28;
    --  Values used to represent individual predefined checks (including the
    --  setting of Atomic_Synchronization, which is implemented internally using
    --  a "check" whose name is Atomic_Synchronization).
 
-   All_Checks : constant := 20;
+   All_Checks : constant := 29;
    --  Value used to represent All_Checks value
 
    subtype Predefined_Check_Id is Check_Id range 1 .. All_Checks;
@@ -710,7 +707,8 @@ package Types is
    --  To add a new check type to GNAT, the following steps are required:
 
    --    1.  Add an entry to Snames spec for the new name
-   --    2.  Add an entry to the definition of Check_Id above
+   --    2.  Add an entry to the definition of Check_Id above (very important:
+   --        these definitions should be in the same order in Snames and here)
    --    3.  Add a new function to Checks to handle the new check test
    --    4.  Add a new Do_xxx_Check flag to Sinfo (if required)
    --    5.  Add appropriate checks for the new test
@@ -846,8 +844,7 @@ package Types is
 
    --  Note on ordering of references. For the tables in Ada.Exceptions units,
    --  usually the ordering does not matter, and we use the same ordering as
-   --  is used here (note the requirement in the ordering here that CE/PE/SE
-   --  codes be kept together, so the subtype declarations work OK).
+   --  is used here.
 
    type RT_Exception_Code is
      (CE_Access_Check_Failed,            -- 00
@@ -889,9 +886,11 @@ package Types is
       SE_Explicit_Raise,                 -- 33
       SE_Infinite_Recursion,             -- 34
       SE_Object_Too_Large,               -- 35
-      PE_Stream_Operation_Not_Allowed);  -- 36
+      PE_Stream_Operation_Not_Allowed,   -- 36
+      PE_Build_In_Place_Mismatch);       -- 37
 
-   Last_Reason_Code : constant := 36;
+   Last_Reason_Code : constant :=
+     RT_Exception_Code'Pos (RT_Exception_Code'Last);
    --  Last reason code
 
    type Reason_Kind is (CE_Reason, PE_Reason, SE_Reason);
@@ -932,6 +931,7 @@ package Types is
               PE_Unchecked_Union_Restriction    => PE_Reason,
               PE_Non_Transportable_Actual       => PE_Reason,
               PE_Stream_Operation_Not_Allowed   => PE_Reason,
+              PE_Build_In_Place_Mismatch        => PE_Reason,
 
               SE_Empty_Storage_Pool             => SE_Reason,
               SE_Explicit_Raise                 => SE_Reason,

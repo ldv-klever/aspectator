@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -50,6 +50,14 @@ package Erroutc is
    Has_Double_Exclam : Boolean := False;
    --  Set true to indicate that the current message contains the insertion
    --  sequence !! (force warnings even in non-main unit source files).
+
+   Has_Insertion_Line : Boolean := False;
+   --  Set True to indicate that the current message contains the insertion
+   --  character # (insert line number reference).
+
+   Is_Compile_Time_Msg : Boolean := False;
+   --  Set true to indicate that the current message originates from a
+   --  Compile_Time_Warning or Compile_Time_Error pragma.
 
    Is_Serious_Error : Boolean := False;
    --  Set True for a serious error (i.e. any message that is not a warning
@@ -132,6 +140,11 @@ package Erroutc is
    --  output. This is used for internal processing for the case of an
    --  illegal instantiation. See Error_Msg routine for further details.
 
+   type Subprogram_Name_Type is access function (N : Node_Id) return String;
+   Subprogram_Name_Ptr : Subprogram_Name_Type;
+   --  Indirect call to Sem_Util.Subprogram_Name to break circular
+   --  dependency with the static elaboration model.
+
    ----------------------------
    -- Message ID Definitions --
    ----------------------------
@@ -192,19 +205,26 @@ package Erroutc is
       --  have Sptr pointing to the instantiation point.
 
       Optr : Source_Ptr;
-      --  Flag location used in the call to post the error. This is normally
-      --  the same as Sptr, except when an error is posted on a particular
-      --  instantiation of a generic. In such a case, Sptr will point to
-      --  the original source location of the instantiation itself, but
-      --  Optr will point to the template location (more accurately to the
-      --  template copy in the instantiation copy corresponding to the
-      --  instantiation referenced by Sptr).
+      --  Flag location used in the call to post the error. This is the same as
+      --  Sptr, except when an error is posted on a particular instantiation of
+      --  a generic. In such a case, Sptr will point to the original source
+      --  location of the instantiation itself, but Optr will point to the
+      --  template location (more accurately to the template copy in the
+      --  instantiation copy corresponding to the instantiation referenced by
+      --  Sptr).
+
+      Insertion_Sloc : Source_Ptr;
+      --  Location in message for insertion character # when used
 
       Line : Physical_Line_Number;
       --  Line number for error message
 
       Col : Column_Number;
       --  Column number for error message
+
+      Compile_Time_Pragma : Boolean;
+      --  True if the message originates from a Compile_Time_Warning or
+      --  Compile_Time_Error pragma
 
       Warn : Boolean;
       --  True if warning message
@@ -251,6 +271,11 @@ package Erroutc is
       Deleted : Boolean;
       --  If this flag is set, the message is not printed. This is used
       --  in the circuit for deleting duplicate/redundant error messages.
+
+      Node : Node_Id;
+      --  If set, points to the node relevant for this message which will be
+      --  used to compute the enclosing subprogram name if
+      --  Opt.Include_Subprogram_In_Messages is set.
    end record;
 
    package Errors is new Table.Table (
@@ -403,6 +428,10 @@ package Erroutc is
    --  redundant. If so, the message to be deleted and all its continuations
    --  are marked with the Deleted flag set to True.
 
+   function Count_Compile_Time_Pragma_Warnings return Int;
+   --  Returns the number of warnings in the Errors table that were triggered
+   --  by a Compile_Time_Warning pragma.
+
    function Get_Warning_Tag (Id : Error_Msg_Id) return String;
    --  Given an error message ID, return tag showing warning message class, or
    --  the null string if this option is not enabled or this is not a warning.
@@ -448,11 +477,15 @@ package Erroutc is
    --    Has_Double_Exclam is set True if the message contains the sequence !!
    --    and is otherwise set False.
    --
+   --    Has_Insertion_Line is set True if the message contains the character #
+   --    and is otherwise set False.
+   --
    --  We need to know right away these aspects of a message, since we will
    --  test these values before doing the full error scan.
    --
    --  Note that the call has no effect for continuation messages (those whose
-   --  first character is '\'), and all variables are left unchanged.
+   --  first character is '\'), and all variables are left unchanged, unless
+   --  -gnatdF is set.
 
    procedure Purge_Messages (From : Source_Ptr; To : Source_Ptr);
    --  All error messages whose location is in the range From .. To (not
@@ -602,7 +635,7 @@ package Erroutc is
    function Warning_Treated_As_Error (Msg : String) return Boolean;
    --  Returns True if the warning message Msg matches any of the strings
    --  given by Warning_As_Error pragmas, as stored in the Warnings_As_Errors
-   --  table by Set_Warning_As_Error.
+   --  table.
 
    type Error_Msg_Proc is
      access procedure (Msg : String; Flag_Location : Source_Ptr);

@@ -1,4 +1,4 @@
-! { dg-do run { xfail *-*-mingw* spu-*-* } }
+! { dg-do run { xfail *-*-mingw* } }
 ! { dg-add-options ieee }
 !
 ! PR fortran/36158
@@ -7,9 +7,6 @@
 ! For mingw targets this test is disabled as the MS implementation
 ! of BESSEL_YN(n,x) has different results.  It returns NAN rather than
 ! -INF for "x=0.0" and all "n".
-!
-! XFAILed for SPU targets since we don't have an accurate library
-! implementation of the single-precision Bessel functions.
 !
 ! Run-time tests for transformations BESSEL_YN
 !
@@ -49,9 +46,9 @@ do i = 0, Nmax
 !        rec(i) == lib(i) .or. abs((rec(i)-lib(i))/rec(i)) < myeps
 if (.not. (i > nit .or. rec(i) == lib(i) &
                    .or. abs((rec(i)-lib(i))/rec(i)) < myeps2)) &
-  call abort ()
+  STOP 1
 if (.not. (rec(i) == lib(i) .or. abs((rec(i)-lib(i))/rec(i)) < myeps)) &
-  call abort ()
+  STOP 2
 end do
 
 end

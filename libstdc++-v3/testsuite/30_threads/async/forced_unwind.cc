@@ -1,10 +1,11 @@
 // { dg-do run { target *-*-linux* *-*-gnu* } }
-// { dg-options "-pthread" { target *-*-linux* *-*-gnu* } }
+// { dg-options "-pthread" }
 // { dg-require-effective-target c++11 }
-// { dg-require-cstdint "" }
+// { dg-require-effective-target pthread }
 // { dg-require-gthreads "" }
+// { dg-xfail-run-if "cannot catch forced_unwind" { *-*-* } { "-fno-rtti" } }
 
-// Copyright (C) 2014-2017 Free Software Foundation, Inc.
+// Copyright (C) 2014-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the

@@ -12,16 +12,15 @@ import (
 )
 
 // For gccgo, while we still have C runtime code, use go:linkname to
-// rename some functions to themselves, so that the compiler will
-// export them.
+// export some functions.
 //
-//go:linkname lock runtime.lock
-//go:linkname unlock runtime.unlock
-//go:linkname noteclear runtime.noteclear
-//go:linkname notewakeup runtime.notewakeup
-//go:linkname notesleep runtime.notesleep
-//go:linkname notetsleep runtime.notetsleep
-//go:linkname notetsleepg runtime.notetsleepg
+//go:linkname lock
+//go:linkname unlock
+//go:linkname noteclear
+//go:linkname notewakeup
+//go:linkname notesleep
+//go:linkname notetsleep
+//go:linkname notetsleepg
 
 // This implementation depends on OS-specific implementations of
 //
@@ -50,11 +49,16 @@ const (
 // affect mutex's state.
 
 // We use the uintptr mutex.key and note.key as a uint32.
+//go:nosplit
 func key32(p *uintptr) *uint32 {
 	return (*uint32)(unsafe.Pointer(p))
 }
 
 func lock(l *mutex) {
+	lockWithRank(l, getLockRank(l))
+}
+
+func lock2(l *mutex) {
 	gp := getg()
 
 	if gp.m.locks < 0 {
@@ -115,6 +119,10 @@ func lock(l *mutex) {
 }
 
 func unlock(l *mutex) {
+	unlockWithRank(l)
+}
+
+func unlock2(l *mutex) {
 	v := atomic.Xchg(key32(&l.key), mutex_unlocked)
 	if v == mutex_unlocked {
 		throw("unlock of unlocked lock")
@@ -152,9 +160,17 @@ func notesleep(n *note) {
 	if gp != gp.m.g0 {
 		throw("notesleep not on g0")
 	}
+	ns := int64(-1)
+	if *cgo_yield != nil {
+		// Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+		ns = 10e6
+	}
 	for atomic.Load(key32(&n.key)) == 0 {
 		gp.m.blocked = true
-		futexsleep(key32(&n.key), 0, -1)
+		futexsleep(key32(&n.key), 0, ns)
+		if *cgo_yield != nil {
+			asmcgocall(*cgo_yield, nil)
+		}
 		gp.m.blocked = false
 	}
 }
@@ -168,9 +184,16 @@ func notetsleep_internal(n *note, ns int64) bool {
 	gp := getg()
 
 	if ns < 0 {
+		if *cgo_yield != nil {
+			// Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+			ns = 10e6
+		}
 		for atomic.Load(key32(&n.key)) == 0 {
 			gp.m.blocked = true
-			futexsleep(key32(&n.key), 0, -1)
+			futexsleep(key32(&n.key), 0, ns)
+			if *cgo_yield != nil {
+				asmcgocall(*cgo_yield, nil)
+			}
 			gp.m.blocked = false
 		}
 		return true
@@ -182,8 +205,14 @@ func notetsleep_internal(n *note, ns int64) bool {
 
 	deadline := nanotime() + ns
 	for {
+		if *cgo_yield != nil && ns > 10e6 {
+			ns = 10e6
+		}
 		gp.m.blocked = true
 		futexsleep(key32(&n.key), 0, ns)
+		if *cgo_yield != nil {
+			asmcgocall(*cgo_yield, nil)
+		}
 		gp.m.blocked = false
 		if atomic.Load(key32(&n.key)) != 0 {
 			break
@@ -198,13 +227,10 @@ func notetsleep_internal(n *note, ns int64) bool {
 }
 
 func notetsleep(n *note, ns int64) bool {
-	// Currently OK to sleep in non-g0 for gccgo.  It happens in
-	// stoptheworld because our version of systemstack does not
-	// change to g0.
-	// gp := getg()
-	// if gp != gp.m.g0 && gp.m.preemptoff != "" {
-	//	throw("notetsleep not on g0")
-	// }
+	gp := getg()
+	if gp != gp.m.g0 && gp.m.preemptoff != "" {
+		throw("notetsleep not on g0")
+	}
 
 	return notetsleep_internal(n, ns)
 }
@@ -217,8 +243,14 @@ func notetsleepg(n *note, ns int64) bool {
 		throw("notetsleepg on g0")
 	}
 
-	entersyscallblock(0)
+	entersyscallblock()
 	ok := notetsleep_internal(n, ns)
-	exitsyscall(0)
+	exitsyscall()
 	return ok
 }
+
+func beforeIdle(int64) (*g, bool) {
+	return nil, false
+}
+
+func checkTimeouts() {}

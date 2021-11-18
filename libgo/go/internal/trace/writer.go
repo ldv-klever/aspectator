@@ -1,3 +1,7 @@
+// Copyright 2017 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package trace
 
 import "bytes"
@@ -9,7 +13,7 @@ type Writer struct {
 
 func NewWriter() *Writer {
 	w := new(Writer)
-	w.Write([]byte("go 1.7 trace\x00\x00\x00\x00"))
+	w.Write([]byte("go 1.9 trace\x00\x00\x00\x00"))
 	return w
 }
 

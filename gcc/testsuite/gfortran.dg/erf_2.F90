@@ -1,9 +1,5 @@
-! { dg-do run { xfail spu-*-* } }
 ! { dg-options "-fno-range-check -ffree-line-length-none -O0" }
 ! { dg-add-options ieee }
-!
-! XFAILed for SPU targets because our library implementation of
-! the double-precision erf/erfc functions is not accurate enough.
 !
 ! Check that simplification functions and runtime library agree on ERF,
 ! ERFC and ERFC_SCALED.
@@ -44,12 +40,12 @@ contains
 
   subroutine check_r4 (a, b)
     real(kind=4), intent(in) :: a, b
-    if (abs(a - b) > 10 * spacing(a)) call abort
+    if (abs(a - b) > 10 * spacing(a)) STOP 1
   end subroutine
 
   subroutine check_r8 (a, b)
     real(kind=8), intent(in) :: a, b
-    if (abs(a - b) > 10 * spacing(a)) call abort
+    if (abs(a - b) > 10 * spacing(a)) STOP 2
   end subroutine
 
 end program test

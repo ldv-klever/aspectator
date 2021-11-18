@@ -1,5 +1,5 @@
 ;; Faraday FA626TE Pipeline Description
-;; Copyright (C) 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2021 Free Software Foundation, Inc.
 ;; Written by I-Jui Sung, based on ARM926EJ-S Pipeline Description.
 ;;
 ;; This file is part of GCC.
@@ -74,13 +74,13 @@
                        adr,bfm,rev,\
                        shift_imm,shift_reg,\
                        mov_imm,mov_reg,mvn_imm,mvn_reg,\
-                       mrs,multiple,no_insn"))
+                       mrs,multiple"))
  "fa626te_core")
 
 (define_insn_reservation "626te_alu_shift_op" 2
  (and (eq_attr "tune" "fa626,fa626te")
       (eq_attr "type" "extend,\
-                       alu_shift_imm,alus_shift_imm,\
+                       alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm,\
                        logic_shift_imm,logics_shift_imm,\
                        alu_shift_reg,alus_shift_reg,\
                        logic_shift_reg,logics_shift_reg,\
@@ -123,32 +123,32 @@
 
 (define_insn_reservation "626te_load1_op" 3
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "load1,load_byte"))
+      (eq_attr "type" "load_4,load_byte"))
  "fa626te_core")
 
 (define_insn_reservation "626te_load2_op" 4
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "load2,load3"))
+      (eq_attr "type" "load_8,load_12"))
  "fa626te_core*2")
 
 (define_insn_reservation "626te_load3_op" 5
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "load4"))
+      (eq_attr "type" "load_16"))
  "fa626te_core*3")
 
 (define_insn_reservation "626te_store1_op" 0
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "store1"))
+      (eq_attr "type" "store_4"))
  "fa626te_core")
 
 (define_insn_reservation "626te_store2_op" 1
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "store2,store3"))
+      (eq_attr "type" "store_8,store_12"))
  "fa626te_core*2")
 
 (define_insn_reservation "626te_store3_op" 2
  (and (eq_attr "tune" "fa626,fa626te")
-      (eq_attr "type" "store4"))
+      (eq_attr "type" "store_16"))
  "fa626te_core*3")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

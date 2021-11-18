@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -mno-indirect-branch-register -mno-indirect-branch-register -mno-indirect-branch-register -mno-indirect-branch-register -mfunction-return=keep -mindirect-branch=keep " } */
+/* { dg-options "-O2 -mno-indirect-branch-register -mfunction-return=keep -mindirect-branch=keep " } */
 /* { dg-additional-options "-fno-pic" { target { ! *-*-darwin* } } } */
 
 extern void (*bar) (void);

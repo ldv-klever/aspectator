@@ -1,5 +1,5 @@
 // { dg-do compile }
-// { dg-options "-fpermissive" }
+// { dg-options "-fpermissive -Wno-return-type" }
 typedef long unsigned int size_t;
        typedef bool _CORBA_Boolean;
          typedef unsigned int _CORBA_ULong;

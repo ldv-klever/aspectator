@@ -2,9 +2,9 @@
 
 void foo()
 {
+  extern void bar (int); // not the bar we are looking for
   struct A
   {
-    friend void bar();		// { dg-error "without prior declaration" }
+    friend void bar();	// { dg-error "17:friend declaration .void bar\\(\\). in local class without prior local declaration" }
   };
-  bar();			// { dg-error "3:'bar' was not declared" }
 }

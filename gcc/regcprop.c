@@ -1,5 +1,5 @@
 /* Copy propagation on hard registers for the GNU compiler.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -34,6 +34,8 @@
 #include "tree-pass.h"
 #include "rtl-iter.h"
 #include "cfgrtl.h"
+#include "target.h"
+#include "function-abi.h"
 
 /* The following code does forward propagation of hard register copies.
    The object is to eliminate as many dependencies as possible, so that
@@ -175,7 +177,7 @@ kill_value_regno (unsigned int regno, unsigned int nregs,
       unsigned int i, n;
       if (vd->e[j].mode == VOIDmode)
 	continue;
-      n = hard_regno_nregs[j][vd->e[j].mode];
+      n = hard_regno_nregs (j, vd->e[j].mode);
       if (j + n > regno)
 	for (i = 0; i < n; ++i)
 	  kill_value_one_regno (j + i, vd);
@@ -208,7 +210,7 @@ set_value_regno (unsigned int regno, machine_mode mode,
 
   vd->e[regno].mode = mode;
 
-  nregs = hard_regno_nregs[regno][mode];
+  nregs = hard_regno_nregs (regno, mode);
   if (nregs > vd->max_value_regs)
     vd->max_value_regs = nregs;
 }
@@ -236,6 +238,7 @@ static void
 kill_clobbered_value (rtx x, const_rtx set, void *data)
 {
   struct value_data *const vd = (struct value_data *) data;
+
   if (GET_CODE (set) == CLOBBER)
     kill_value (x, vd);
 }
@@ -256,6 +259,7 @@ kill_set_value (rtx x, const_rtx set, void *data)
   struct kill_set_value_data *ksvd = (struct kill_set_value_data *) data;
   if (rtx_equal_p (x, ksvd->ignore_set_reg))
     return;
+
   if (GET_CODE (set) != CLOBBER)
     {
       kill_value (x, ksvd->vd);
@@ -343,16 +347,37 @@ copy_value (rtx dest, rtx src, struct value_data *vd)
 
      We can't properly represent the latter case in our tables, so don't
      record anything then.  */
-  else if (sn < (unsigned int) hard_regno_nregs[sr][vd->e[sr].mode]
-	   && (GET_MODE_SIZE (vd->e[sr].mode) > UNITS_PER_WORD
-	       ? WORDS_BIG_ENDIAN : BYTES_BIG_ENDIAN))
+  else if (sn < hard_regno_nregs (sr, vd->e[sr].mode)
+	   && maybe_ne (subreg_lowpart_offset (GET_MODE (dest),
+					       vd->e[sr].mode), 0U))
     return;
 
   /* If SRC had been assigned a mode narrower than the copy, we can't
      link DEST into the chain, because not all of the pieces of the
      copy came from oldest_regno.  */
-  else if (sn > (unsigned int) hard_regno_nregs[sr][vd->e[sr].mode])
+  else if (sn > hard_regno_nregs (sr, vd->e[sr].mode))
     return;
+
+  /* If a narrower value is copied using wider mode, the upper bits
+     are undefined (could be e.g. a former paradoxical subreg).  Signal
+     in that case we've only copied value using the narrower mode.
+     Consider:
+     (set (reg:DI r14) (mem:DI ...))
+     (set (reg:QI si) (reg:QI r14))
+     (set (reg:DI bp) (reg:DI r14))
+     (set (reg:DI r14) (const_int ...))
+     (set (reg:DI dx) (reg:DI si))
+     (set (reg:DI si) (const_int ...))
+     (set (reg:DI dx) (reg:DI bp))
+     The last set is not redundant, while the low 8 bits of dx are already
+     equal to low 8 bits of bp, the other bits are undefined.  */
+  else if (partial_subreg_p (vd->e[sr].mode, GET_MODE (src)))
+    {
+      if (!REG_CAN_CHANGE_MODE_P (sr, GET_MODE (src), vd->e[sr].mode)
+	  || !REG_CAN_CHANGE_MODE_P (dr, vd->e[sr].mode, GET_MODE (dest)))
+	return;
+      set_value_regno (dr, vd->e[sr].mode, vd);
+    }
 
   /* Link DR at the end of the value chain used by SR.  */
 
@@ -372,14 +397,10 @@ static bool
 mode_change_ok (machine_mode orig_mode, machine_mode new_mode,
 		unsigned int regno ATTRIBUTE_UNUSED)
 {
-  if (GET_MODE_SIZE (orig_mode) < GET_MODE_SIZE (new_mode))
+  if (partial_subreg_p (orig_mode, new_mode))
     return false;
 
-#ifdef CANNOT_CHANGE_MODE_CLASS
-  return !REG_CANNOT_CHANGE_MODE_P (regno, orig_mode, new_mode);
-#endif
-
-  return true;
+  return REG_CAN_CHANGE_MODE_P (regno, orig_mode, new_mode);
 }
 
 /* Register REGNO was originally set in ORIG_MODE.  It - or a copy of it -
@@ -392,8 +413,8 @@ maybe_mode_change (machine_mode orig_mode, machine_mode copy_mode,
 		   machine_mode new_mode, unsigned int regno,
 		   unsigned int copy_regno ATTRIBUTE_UNUSED)
 {
-  if (GET_MODE_SIZE (copy_mode) < GET_MODE_SIZE (orig_mode)
-      && GET_MODE_SIZE (copy_mode) < GET_MODE_SIZE (new_mode))
+  if (partial_subreg_p (copy_mode, orig_mode)
+      && partial_subreg_p (copy_mode, new_mode))
     return NULL_RTX;
 
   /* Avoid creating multiple copies of the stack pointer.  Some ports
@@ -407,19 +428,18 @@ maybe_mode_change (machine_mode orig_mode, machine_mode copy_mode,
     return gen_raw_REG (new_mode, regno);
   else if (mode_change_ok (orig_mode, new_mode, regno))
     {
-      int copy_nregs = hard_regno_nregs[copy_regno][copy_mode];
-      int use_nregs = hard_regno_nregs[copy_regno][new_mode];
-      int copy_offset
-	= GET_MODE_SIZE (copy_mode) / copy_nregs * (copy_nregs - use_nregs);
-      int offset
-	= GET_MODE_SIZE (orig_mode) - GET_MODE_SIZE (new_mode) - copy_offset;
-      int byteoffset = offset % UNITS_PER_WORD;
-      int wordoffset = offset - byteoffset;
-
-      offset = ((WORDS_BIG_ENDIAN ? wordoffset : 0)
-		+ (BYTES_BIG_ENDIAN ? byteoffset : 0));
+      int copy_nregs = hard_regno_nregs (copy_regno, copy_mode);
+      int use_nregs = hard_regno_nregs (copy_regno, new_mode);
+      poly_uint64 bytes_per_reg;
+      if (!can_div_trunc_p (GET_MODE_SIZE (copy_mode),
+			    copy_nregs, &bytes_per_reg))
+	return NULL_RTX;
+      poly_uint64 copy_offset = bytes_per_reg * (copy_nregs - use_nregs);
+      poly_uint64 offset
+	= subreg_size_lowpart_offset (GET_MODE_SIZE (new_mode) + copy_offset,
+				      GET_MODE_SIZE (orig_mode));
       regno += subreg_regno_offset (regno, orig_mode, offset, new_mode);
-      if (HARD_REGNO_MODE_OK (regno, new_mode))
+      if (targetm.hard_regno_mode_ok (regno, new_mode))
 	return gen_raw_REG (new_mode, regno);
     }
   return NULL_RTX;
@@ -436,6 +456,8 @@ find_oldest_value_reg (enum reg_class cl, rtx reg, struct value_data *vd)
   machine_mode mode = GET_MODE (reg);
   unsigned int i;
 
+  gcc_assert (regno < FIRST_PSEUDO_REGISTER);
+
   /* If we are accessing REG in some mode other that what we set it in,
      make sure that the replacement is valid.  In particular, consider
 	(set (reg:DI r11) (...))
@@ -443,12 +465,10 @@ find_oldest_value_reg (enum reg_class cl, rtx reg, struct value_data *vd)
 	(set (reg:SI r10) (...))
 	(set (...) (reg:DI r9))
      Replacing r9 with r11 is invalid.  */
-  if (mode != vd->e[regno].mode)
-    {
-      if (hard_regno_nregs[regno][mode]
-	  > hard_regno_nregs[regno][vd->e[regno].mode])
-	return NULL_RTX;
-    }
+  if (mode != vd->e[regno].mode
+      && (REG_NREGS (reg) > hard_regno_nregs (regno, vd->e[regno].mode)
+	  || !REG_CAN_CHANGE_MODE_P (regno, mode, vd->e[regno].mode)))
+    return NULL_RTX;
 
   for (i = vd->e[regno].oldest_regno; i != regno; i = vd->e[i].next_regno)
     {
@@ -727,19 +747,7 @@ cprop_find_used_regs (rtx *loc, void *data)
 static void
 kill_clobbered_values (rtx_insn *insn, struct value_data *vd)
 {
-  note_stores (PATTERN (insn), kill_clobbered_value, vd);
-
-  if (CALL_P (insn))
-    {
-      rtx exp;
-
-      for (exp = CALL_INSN_FUNCTION_USAGE (insn); exp; exp = XEXP (exp, 1))
-	{
-	  rtx x = XEXP (exp, 0);
-	  if (GET_CODE (x) == CLOBBER)
-	    kill_value (SET_DEST (x), vd);
-	}
-    }
+  note_stores (insn, kill_clobbered_value, vd);
 }
 
 /* Perform the forward copy propagation on basic block BB.  */
@@ -756,14 +764,13 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
       bool is_asm, any_replacements;
       rtx set;
       rtx link;
-      bool replaced[MAX_RECOG_OPERANDS];
       bool changed = false;
       struct kill_set_value_data ksvd;
 
       next = NEXT_INSN (insn);
       if (!NONDEBUG_INSN_P (insn))
 	{
-	  if (DEBUG_INSN_P (insn))
+	  if (DEBUG_BIND_INSN_P (insn))
 	    {
 	      rtx loc = INSN_VAR_LOCATION_LOC (insn);
 	      if (!VAR_LOC_UNKNOWN_P (loc))
@@ -797,6 +804,23 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	      continue;
 	    }
 	}
+
+      /* Detect obviously dead sets (via REG_UNUSED notes) and remove them.  */
+      if (set
+	  && !RTX_FRAME_RELATED_P (insn)
+	  && NONJUMP_INSN_P (insn)
+	  && !may_trap_p (set)
+	  && find_reg_note (insn, REG_UNUSED, SET_DEST (set))
+	  && !side_effects_p (SET_SRC (set))
+	  && !side_effects_p (SET_DEST (set)))
+	{
+	  bool last = insn == BB_END (bb);
+	  delete_insn (insn);
+	  if (last)
+	    break;
+	  continue;
+	}
+	 
 
       extract_constrain_insn (insn);
       preprocess_constraints (insn);
@@ -876,16 +900,15 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	     set it in, make sure that the replacement is valid.  */
 	  if (mode != vd->e[regno].mode)
 	    {
-	      if (hard_regno_nregs[regno][mode]
-		  > hard_regno_nregs[regno][vd->e[regno].mode])
+	      if (REG_NREGS (src)
+		  > hard_regno_nregs (regno, vd->e[regno].mode))
 		goto no_move_special_case;
 
 	      /* And likewise, if we are narrowing on big endian the transformation
 		 is also invalid.  */
-	      if (hard_regno_nregs[regno][mode]
-		  < hard_regno_nregs[regno][vd->e[regno].mode]
-		  && (GET_MODE_SIZE (vd->e[regno].mode) > UNITS_PER_WORD
-		      ? WORDS_BIG_ENDIAN : BYTES_BIG_ENDIAN))
+	      if (REG_NREGS (src) < hard_regno_nregs (regno, vd->e[regno].mode)
+		  && maybe_ne (subreg_lowpart_offset (mode,
+						      vd->e[regno].mode), 0U))
 		goto no_move_special_case;
 	    }
 
@@ -946,7 +969,7 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	 eldest live copy that's in an appropriate register class.  */
       for (i = 0; i < n_ops; i++)
 	{
-	  replaced[i] = false;
+	  bool replaced = false;
 
 	  /* Don't scan match_operand here, since we've no reg class
 	     information to pass down.  Any operands that we could
@@ -963,26 +986,26 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	  if (recog_data.operand_type[i] == OP_IN)
 	    {
 	      if (op_alt[i].is_address)
-		replaced[i]
+		replaced
 		  = replace_oldest_value_addr (recog_data.operand_loc[i],
 					       alternative_class (op_alt, i),
 					       VOIDmode, ADDR_SPACE_GENERIC,
 					       insn, vd);
 	      else if (REG_P (recog_data.operand[i]))
-		replaced[i]
+		replaced
 		  = replace_oldest_value_reg (recog_data.operand_loc[i],
 					      alternative_class (op_alt, i),
 					      insn, vd);
 	      else if (MEM_P (recog_data.operand[i]))
-		replaced[i] = replace_oldest_value_mem (recog_data.operand[i],
-							insn, vd);
+		replaced = replace_oldest_value_mem (recog_data.operand[i],
+						     insn, vd);
 	    }
 	  else if (MEM_P (recog_data.operand[i]))
-	    replaced[i] = replace_oldest_value_mem (recog_data.operand[i],
-						    insn, vd);
+	    replaced = replace_oldest_value_mem (recog_data.operand[i],
+						 insn, vd);
 
 	  /* If we performed any replacement, update match_dups.  */
-	  if (replaced[i])
+	  if (replaced)
 	    {
 	      int j;
 	      rtx new_rtx;
@@ -1001,13 +1024,6 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	{
 	  if (! apply_change_group ())
 	    {
-	      for (i = 0; i < n_ops; i++)
-		if (replaced[i])
-		  {
-		    rtx old = *recog_data.operand_loc[i];
-		    recog_data.operand[i] = old;
-		  }
-
 	      if (dump_file)
 		fprintf (dump_file,
 			 "insn %u: reg replacements not verified\n",
@@ -1026,6 +1042,7 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	     DEBUG_INSNs can be applied.  */
 	  if (vd->n_debug_insn_changes)
 	    note_uses (&PATTERN (insn), cprop_find_used_regs, vd);
+	  df_insn_rescan (insn);
 	}
 
       ksvd.vd = vd;
@@ -1038,7 +1055,6 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 	  unsigned int set_nregs = 0;
 	  unsigned int regno;
 	  rtx exp;
-	  HARD_REG_SET regs_invalidated_by_this_call;
 
 	  for (exp = CALL_INSN_FUNCTION_USAGE (insn); exp; exp = XEXP (exp, 1))
 	    {
@@ -1056,19 +1072,17 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
 		}
 	    }
 
-	  get_call_reg_set_usage (insn,
-				  &regs_invalidated_by_this_call,
-				  regs_invalidated_by_call);
+	  function_abi callee_abi = insn_callee_abi (insn);
 	  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
-	    if ((TEST_HARD_REG_BIT (regs_invalidated_by_this_call, regno)
-		 || HARD_REGNO_CALL_PART_CLOBBERED (regno, vd->e[regno].mode))
+	    if (vd->e[regno].mode != VOIDmode
+		&& callee_abi.clobbers_reg_p (vd->e[regno].mode, regno)
 		&& (regno < set_regno || regno >= set_regno + set_nregs))
 	      kill_value_regno (regno, 1, vd);
 
 	  /* If SET was seen in CALL_INSN_FUNCTION_USAGE, and SET_SRC
-	     of the SET isn't in regs_invalidated_by_call hard reg set,
-	     but instead among CLOBBERs on the CALL_INSN, we could wrongly
-	     assume the value in it is still live.  */
+	     of the SET isn't clobbered by CALLEE_ABI, but instead among
+	     CLOBBERs on the CALL_INSN, we could wrongly assume the
+	     value in it is still live.  */
 	  if (ksvd.ignore_set_reg)
 	    kill_clobbered_values (insn, vd);
 	}
@@ -1082,8 +1096,8 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
       /* If a noop move is using narrower mode than we have recorded,
 	 we need to either remove the noop move, or kill_set_value.  */
       if (noop_p
-	  && (GET_MODE_BITSIZE (GET_MODE (SET_DEST (set)))
-	      < GET_MODE_BITSIZE (vd->e[REGNO (SET_DEST (set))].mode)))
+	  && partial_subreg_p (GET_MODE (SET_DEST (set)),
+			       vd->e[REGNO (SET_DEST (set))].mode))
 	{
 	  if (noop_move_p (insn))
 	    {
@@ -1099,11 +1113,14 @@ copyprop_hardreg_forward_1 (basic_block bb, struct value_data *vd)
       if (!noop_p)
 	{
 	  /* Notice stores.  */
-	  note_stores (PATTERN (insn), kill_set_value, &ksvd);
+	  note_stores (insn, kill_set_value, &ksvd);
 
 	  /* Notice copies.  */
 	  if (copy_p)
-	    copy_value (SET_DEST (set), SET_SRC (set), vd);
+	    {
+	      df_insn_rescan (insn);
+	      copy_value (SET_DEST (set), SET_SRC (set), vd);
+	    }
 	}
 
       if (insn == BB_END (bb))
@@ -1203,8 +1220,8 @@ validate_value_data (struct value_data *vd)
 	if (vd->e[i].mode == VOIDmode)
 	  {
 	    if (vd->e[i].next_regno != INVALID_REGNUM)
-	      internal_error ("validate_value_data: [%u] Bad next_regno for empty chain (%u)",
-			      i, vd->e[i].next_regno);
+	      internal_error ("%qs: [%u] bad %<next_regno%> for empty chain (%u)",
+			      __func__, i, vd->e[i].next_regno);
 	    continue;
 	  }
 
@@ -1215,11 +1232,11 @@ validate_value_data (struct value_data *vd)
 	     j = vd->e[j].next_regno)
 	  {
 	    if (TEST_HARD_REG_BIT (set, j))
-	      internal_error ("validate_value_data: Loop in regno chain (%u)",
-			      j);
+	      internal_error ("%qs: loop in %<next_regno%> chain (%u)",
+			      __func__, j);
 	    if (vd->e[j].oldest_regno != i)
-	      internal_error ("validate_value_data: [%u] Bad oldest_regno (%u)",
-			      j, vd->e[j].oldest_regno);
+	      internal_error ("%qs: [%u] bad %<oldest_regno%> (%u)",
+			      __func__, j, vd->e[j].oldest_regno);
 
 	    SET_HARD_REG_BIT (set, j);
 	  }
@@ -1230,8 +1247,9 @@ validate_value_data (struct value_data *vd)
 	&& (vd->e[i].mode != VOIDmode
 	    || vd->e[i].oldest_regno != i
 	    || vd->e[i].next_regno != INVALID_REGNUM))
-      internal_error ("validate_value_data: [%u] Non-empty reg in chain (%s %u %i)",
-		      i, GET_MODE_NAME (vd->e[i].mode), vd->e[i].oldest_regno,
+      internal_error ("%qs: [%u] non-empty register in chain (%s %u %i)",
+		      __func__, i,
+		      GET_MODE_NAME (vd->e[i].mode), vd->e[i].oldest_regno,
 		      vd->e[i].next_regno);
 }
 
@@ -1268,78 +1286,140 @@ public:
 
 }; // class pass_cprop_hardreg
 
+static bool
+cprop_hardreg_bb (basic_block bb, struct value_data *all_vd, sbitmap visited)
+{
+  bitmap_set_bit (visited, bb->index);
+
+  /* If a block has a single predecessor, that we've already
+     processed, begin with the value data that was live at
+     the end of the predecessor block.  */
+  /* ??? Ought to use more intelligent queuing of blocks.  */
+  if (single_pred_p (bb)
+      && bitmap_bit_p (visited, single_pred (bb)->index)
+      && ! (single_pred_edge (bb)->flags & (EDGE_ABNORMAL_CALL | EDGE_EH)))
+    {
+      all_vd[bb->index] = all_vd[single_pred (bb)->index];
+      if (all_vd[bb->index].n_debug_insn_changes)
+	{
+	  unsigned int regno;
+
+	  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+	    {
+	      if (all_vd[bb->index].e[regno].debug_insn_changes)
+		{
+		  struct queued_debug_insn_change *cur;
+		  for (cur = all_vd[bb->index].e[regno].debug_insn_changes;
+		       cur; cur = cur->next)
+		    --all_vd[bb->index].n_debug_insn_changes;
+		  all_vd[bb->index].e[regno].debug_insn_changes = NULL;
+		  if (all_vd[bb->index].n_debug_insn_changes == 0)
+		    break;
+		}
+	    }
+	}
+    }
+  else
+    init_value_data (all_vd + bb->index);
+
+  return copyprop_hardreg_forward_1 (bb, all_vd + bb->index);
+}
+
+static void
+cprop_hardreg_debug (function *fun, struct value_data *all_vd)
+{
+  basic_block bb;
+
+  FOR_EACH_BB_FN (bb, fun)
+    if (all_vd[bb->index].n_debug_insn_changes)
+      {
+	unsigned int regno;
+	bitmap live;
+
+	live = df_get_live_out (bb);
+	for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+	  if (all_vd[bb->index].e[regno].debug_insn_changes)
+	    {
+	      if (REGNO_REG_SET_P (live, regno))
+		apply_debug_insn_changes (all_vd + bb->index, regno);
+
+	      struct queued_debug_insn_change *cur;
+	      for (cur = all_vd[bb->index].e[regno].debug_insn_changes;
+		   cur; cur = cur->next)
+		--all_vd[bb->index].n_debug_insn_changes;
+	      all_vd[bb->index].e[regno].debug_insn_changes = NULL;
+	      if (all_vd[bb->index].n_debug_insn_changes == 0)
+		break;
+	    }
+      }
+
+  queued_debug_insn_change_pool.release ();
+}
+
 unsigned int
 pass_cprop_hardreg::execute (function *fun)
 {
   struct value_data *all_vd;
   basic_block bb;
-  bool analyze_called = false;
 
   all_vd = XNEWVEC (struct value_data, last_basic_block_for_fn (fun));
 
   auto_sbitmap visited (last_basic_block_for_fn (fun));
   bitmap_clear (visited);
 
+  auto_vec<int> worklist;
+  bool any_debug_changes = false;
+
+  /* We need accurate notes.  Earlier passes such as if-conversion may
+     leave notes in an inconsistent state.  */
+  df_note_add_problem ();
+  df_analyze ();
+
+  /* It is tempting to set DF_LR_RUN_DCE, but DCE may choose to delete
+     an insn and this pass would not have visibility into the removal.
+     This pass would then potentially use the source of that
+     INSN for propagation purposes, generating invalid code.
+
+     So we just ask for updated notes and handle trivial deletions
+     within this pass where we can update this passes internal
+     data structures appropriately.  */
+  df_set_flags (DF_DEFER_INSN_RESCAN);
+
   FOR_EACH_BB_FN (bb, fun)
     {
-      bitmap_set_bit (visited, bb->index);
-
-      /* If a block has a single predecessor, that we've already
-	 processed, begin with the value data that was live at
-	 the end of the predecessor block.  */
-      /* ??? Ought to use more intelligent queuing of blocks.  */
-      if (single_pred_p (bb)
-	  && bitmap_bit_p (visited, single_pred (bb)->index)
-	  && ! (single_pred_edge (bb)->flags & (EDGE_ABNORMAL_CALL | EDGE_EH)))
-	{
-	  all_vd[bb->index] = all_vd[single_pred (bb)->index];
-	  if (all_vd[bb->index].n_debug_insn_changes)
-	    {
-	      unsigned int regno;
-
-	      for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
-		{
-		  if (all_vd[bb->index].e[regno].debug_insn_changes)
-		    {
-		      all_vd[bb->index].e[regno].debug_insn_changes = NULL;
-		      if (--all_vd[bb->index].n_debug_insn_changes == 0)
-			break;
-		    }
-		}
-	    }
-	}
-      else
-	init_value_data (all_vd + bb->index);
-
-      copyprop_hardreg_forward_1 (bb, all_vd + bb->index);
+      if (cprop_hardreg_bb (bb, all_vd, visited))
+	worklist.safe_push (bb->index);
+      if (all_vd[bb->index].n_debug_insn_changes)
+	any_debug_changes = true;
     }
 
-  if (MAY_HAVE_DEBUG_INSNS)
+  /* We must call df_analyze here unconditionally to ensure that the
+     REG_UNUSED and REG_DEAD notes are consistent with and without -g.  */
+  df_analyze ();
+
+  if (MAY_HAVE_DEBUG_BIND_INSNS && any_debug_changes)
+    cprop_hardreg_debug (fun, all_vd);
+
+  /* Second pass if we've changed anything, only for the bbs where we have
+     changed anything though.  */
+  if (!worklist.is_empty ())
     {
-      FOR_EACH_BB_FN (bb, fun)
-	if (bitmap_bit_p (visited, bb->index)
-	    && all_vd[bb->index].n_debug_insn_changes)
-	  {
-	    unsigned int regno;
-	    bitmap live;
+      unsigned int i;
+      int index;
 
-	    if (!analyze_called)
-	      {
-		df_analyze ();
-		analyze_called = true;
-	      }
-	    live = df_get_live_out (bb);
-	    for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
-	      if (all_vd[bb->index].e[regno].debug_insn_changes)
-		{
-		  if (REGNO_REG_SET_P (live, regno))
-		    apply_debug_insn_changes (all_vd + bb->index, regno);
-		  if (all_vd[bb->index].n_debug_insn_changes == 0)
-		    break;
-		}
-	  }
+      any_debug_changes = false;
+      bitmap_clear (visited);
+      FOR_EACH_VEC_ELT (worklist, i, index)
+	{
+	  bb = BASIC_BLOCK_FOR_FN (fun, index);
+	  cprop_hardreg_bb (bb, all_vd, visited);
+	  if (all_vd[bb->index].n_debug_insn_changes)
+	    any_debug_changes = true;
+	}
 
-      queued_debug_insn_change_pool.release ();
+      df_analyze ();
+      if (MAY_HAVE_DEBUG_BIND_INSNS && any_debug_changes)
+	cprop_hardreg_debug (fun, all_vd);
     }
 
   free (all_vd);

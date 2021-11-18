@@ -1,5 +1,6 @@
 // PR c++/67161
 // { dg-do compile { target c++14 } }
+// { dg-additional-options "-Wno-return-type" }
 
 template <typename _Tp> struct integral_constant {
   static constexpr _Tp value = 0;
@@ -25,5 +26,6 @@ constexpr auto make_array()
     -> array<conditional_t<is_void_v<_Dest>, common_type_t<>, _Dest>,
              sizeof...(_Types)> {
   static_assert(__or_<__not_<is_void<_Dest>>, __and_<>>::value, ""); // { dg-error "static assert" }
+  throw 1;
 }
 auto d = make_array();

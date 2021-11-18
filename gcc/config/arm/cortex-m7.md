@@ -1,5 +1,5 @@
 ;; ARM Cortex-M7 pipeline description
-;; Copyright (C) 2014-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2021 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -48,13 +48,13 @@
                         logic_shift_imm,logics_shift_imm,\
                         alu_shift_reg,alus_shift_reg,\
                         logic_shift_reg,logics_shift_reg,\
-                        mrs,clz,f_mcr,f_mrc,multiple,no_insn"))
+                        mrs,clz,f_mcr,f_mrc,multiple"))
   "cm7_i0|cm7_i1,cm7_a0|cm7_a1")
 
 ;; Simple alu with inline shift operation.
 (define_insn_reservation "cortex_m7_alu_shift" 2
    (and (eq_attr "tune" "cortexm7")
-	(eq_attr "type" "alu_shift_imm,alus_shift_imm"))
+	(eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm"))
    "cm7_i0|cm7_i1,(cm7_a0|cm7_a1)+cm7_shf+cm7_branch")
 
 ;; Only one ALU can be used for DSP instructions.
@@ -93,33 +93,33 @@
 ;; The load instructions.
 (define_insn_reservation "cortex_m7_load1" 2
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "load_byte, load1"))
+        (eq_attr "type" "load_byte, load_4"))
    "cm7_i0|cm7_i1,cm7_lsu")
 
 (define_insn_reservation "cortex_m7_load2" 2
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "load2"))
+        (eq_attr "type" "load_8"))
    "cm7_all_units")
 
 (define_insn_reservation "cortex_m7_loadm" 2
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "load3,load4"))
+        (eq_attr "type" "load_12,load_16"))
    "cm7_all_units*2")
 
 ;; The store instructions.
 (define_insn_reservation "cortex_m7_store1" 0
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "store1"))
+        (eq_attr "type" "store_4"))
    "cm7_i0|cm7_i1,cm7_lsu+cm7_wb")
 
 (define_insn_reservation "cortex_m7_store2" 0
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "store2"))
+        (eq_attr "type" "store_8"))
    "cm7_all_units")
 
 (define_insn_reservation "cortex_m7_storem" 0
    (and (eq_attr "tune" "cortexm7")
-        (eq_attr "type" "store3,store4"))
+        (eq_attr "type" "store_12,store_16"))
    "cm7_all_units*2")
 
 ;; The FPU instructions.

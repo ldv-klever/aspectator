@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin dragonfly freebsd linux netbsd openbsd solaris
+// +build aix darwin dragonfly freebsd hurd linux netbsd openbsd solaris
 
 // Fork, exec, wait, etc.
 
 package syscall
 
 import (
+	errorspkg "errors"
+	"internal/bytealg"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -50,7 +52,10 @@ import (
 //sysnb	raw_execve(argv0 *byte, argv **byte, envv **byte) (err Errno)
 //execve(argv0 *byte, argv **byte, envv **byte) _C_int
 
-//sysnb	raw_write(fd int, buf *byte, count int) (err Errno)
+//sysnb raw_read(fd int, buf *byte, count int) (c int, err Errno)
+//read(fd _C_int, buf *byte, count Size_t) Ssize_t
+
+//sysnb	raw_write(fd int, buf *byte, count int) (c int, err Errno)
 //write(fd _C_int, buf *byte, count Size_t) Ssize_t
 
 //sysnb	raw_exit(status int)
@@ -58,6 +63,9 @@ import (
 
 //sysnb raw_dup2(oldfd int, newfd int) (err Errno)
 //dup2(oldfd _C_int, newfd _C_int) _C_int
+
+//sysnb raw_dup3(oldfd int, newfd int, flags int) (err Errno)
+//dup3(oldfd _C_int, newfd _C_int, flags _C_int) _C_int
 
 //sysnb raw_kill(pid Pid_t, sig Signal) (err Errno)
 //kill(pid Pid_t, sig _C_int) _C_int
@@ -132,15 +140,21 @@ func StringSlicePtr(ss []string) []*byte {
 // pointers to NUL-terminated byte arrays. If any string contains
 // a NUL byte, it returns (nil, EINVAL).
 func SlicePtrFromStrings(ss []string) ([]*byte, error) {
-	var err error
-	bb := make([]*byte, len(ss)+1)
-	for i := 0; i < len(ss); i++ {
-		bb[i], err = BytePtrFromString(ss[i])
-		if err != nil {
-			return nil, err
+	n := 0
+	for _, s := range ss {
+		if bytealg.IndexByteString(s, 0) != -1 {
+			return nil, EINVAL
 		}
+		n += len(s) + 1 // +1 for NUL
 	}
-	bb[len(ss)] = nil
+	bb := make([]*byte, len(ss)+1)
+	b := make([]byte, n)
+	n = 0
+	for i, s := range ss {
+		bb[i] = &b[n]
+		copy(b[n:], s)
+		n += len(s) + 1
+	}
 	return bb, nil
 }
 
@@ -163,9 +177,10 @@ func SetNonblock(fd int, nonblocking bool) (err error) {
 // Credential holds user and group identities to be assumed
 // by a child process started by StartProcess.
 type Credential struct {
-	Uid    uint32   // User ID.
-	Gid    uint32   // Group ID.
-	Groups []uint32 // Supplementary group IDs.
+	Uid         uint32   // User ID.
+	Gid         uint32   // Group ID.
+	Groups      []uint32 // Supplementary group IDs.
+	NoSetGroups bool     // If true, don't set supplementary groups
 }
 
 // ProcAttr holds attributes that will be applied to a new process started
@@ -230,6 +245,15 @@ func forkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error) 
 		}
 	}
 
+	// Both Setctty and Foreground use the Ctty field,
+	// but they give it slightly different meanings.
+	if sys.Setctty && sys.Foreground {
+		return 0, errorspkg.New("both Setctty and Foreground set in SysProcAttr")
+	}
+	if sys.Setctty && sys.Ctty >= len(attr.Files) {
+		return 0, errorspkg.New("Setctty set but Ctty not valid in child")
+	}
+
 	// Acquire the fork lock so that no other threads
 	// create new fds that are not yet close-on-exec
 	// before we fork.
@@ -250,7 +274,12 @@ func forkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error) 
 
 	// Read child error status from pipe.
 	Close(p[1])
-	n, err = readlen(p[0], (*byte)(unsafe.Pointer(&err1)), int(unsafe.Sizeof(err1)))
+	for {
+		n, err = readlen(p[0], (*byte)(unsafe.Pointer(&err1)), int(unsafe.Sizeof(err1)))
+		if err != EINTR {
+			break
+		}
+	}
 	Close(p[0])
 	if err != nil || n != 0 {
 		if n == int(unsafe.Sizeof(err1)) {
@@ -292,6 +321,15 @@ func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid int, handle 
 	return pid, 0, err
 }
 
+// Implemented in runtime package.
+func runtime_BeforeExec()
+func runtime_AfterExec()
+
+// execveLibc is non-nil on OS using libc syscall, set to execve in exec_libc.go; this
+// avoids a build dependency for other platforms.
+var execveDarwin func(path *byte, argv **byte, envp **byte) error
+var execveOpenBSD func(path *byte, argv **byte, envp **byte) error
+
 // Exec invokes the execve(2) system call.
 func Exec(argv0 string, argv []string, envv []string) (err error) {
 	argv0p, err := BytePtrFromString(argv0)
@@ -306,6 +344,24 @@ func Exec(argv0 string, argv []string, envv []string) (err error) {
 	if err != nil {
 		return err
 	}
-	err1 := raw_execve(argv0p, &argvp[0], &envvp[0])
-	return Errno(err1)
+	runtime_BeforeExec()
+
+	var err1 error
+	if runtime.GOOS == "solaris" || runtime.GOOS == "illumos" || runtime.GOOS == "aix" || runtime.GOOS == "hurd" {
+		// RawSyscall should never be used on Solaris, illumos, or AIX.
+		err1 = raw_execve(argv0p, &argvp[0], &envvp[0])
+	} else if runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
+		// Similarly on Darwin.
+		err1 = execveDarwin(argv0p, &argvp[0], &envvp[0])
+	} else if runtime.GOOS == "openbsd" && runtime.GOARCH == "amd64" {
+		// Similarly on OpenBSD.
+		err1 = execveOpenBSD(argv0p, &argvp[0], &envvp[0])
+	} else {
+		_, _, err1 = RawSyscall(SYS_EXECVE,
+			uintptr(unsafe.Pointer(argv0p)),
+			uintptr(unsafe.Pointer(&argvp[0])),
+			uintptr(unsafe.Pointer(&envvp[0])))
+	}
+	runtime_AfterExec()
+	return err1
 }

@@ -15,8 +15,9 @@ var itemName = map[itemType]string{
 	itemBool:         "bool",
 	itemChar:         "char",
 	itemCharConstant: "charconst",
+	itemComment:      "comment",
 	itemComplex:      "complex",
-	itemColonEquals:  ":=",
+	itemDeclare:      ":=",
 	itemEOF:          "EOF",
 	itemField:        "field",
 	itemIdentifier:   "identifier",
@@ -90,6 +91,7 @@ var lexTests = []lexTest{
 	{"text", `now is the time`, []item{mkItem(itemText, "now is the time"), tEOF}},
 	{"text with comment", "hello-{{/* this is a comment */}}-world", []item{
 		mkItem(itemText, "hello-"),
+		mkItem(itemComment, "/* this is a comment */"),
 		mkItem(itemText, "-world"),
 		tEOF,
 	}},
@@ -120,7 +122,7 @@ var lexTests = []lexTest{
 	{"quote", `{{"abc \n\t\" "}}`, []item{tLeft, tQuote, tRight, tEOF}},
 	{"raw quote", "{{" + raw + "}}", []item{tLeft, tRawQuote, tRight, tEOF}},
 	{"raw quote with newline", "{{" + rawNL + "}}", []item{tLeft, tRawQuoteNL, tRight, tEOF}},
-	{"numbers", "{{1 02 0x14 -7.2i 1e3 +1.2e-4 4.2i 1+2i}}", []item{
+	{"numbers", "{{1 02 0x14 0X14 -7.2i 1e3 1E3 +1.2e-4 4.2i 1+2i 1_2 0x1.e_fp4 0X1.E_FP4}}", []item{
 		tLeft,
 		mkItem(itemNumber, "1"),
 		tSpace,
@@ -128,15 +130,25 @@ var lexTests = []lexTest{
 		tSpace,
 		mkItem(itemNumber, "0x14"),
 		tSpace,
+		mkItem(itemNumber, "0X14"),
+		tSpace,
 		mkItem(itemNumber, "-7.2i"),
 		tSpace,
 		mkItem(itemNumber, "1e3"),
+		tSpace,
+		mkItem(itemNumber, "1E3"),
 		tSpace,
 		mkItem(itemNumber, "+1.2e-4"),
 		tSpace,
 		mkItem(itemNumber, "4.2i"),
 		tSpace,
 		mkItem(itemComplex, "1+2i"),
+		tSpace,
+		mkItem(itemNumber, "1_2"),
+		tSpace,
+		mkItem(itemNumber, "0x1.e_fp4"),
+		tSpace,
+		mkItem(itemNumber, "0X1.E_FP4"),
 		tRight,
 		tEOF,
 	}},
@@ -210,7 +222,7 @@ var lexTests = []lexTest{
 		tLeft,
 		mkItem(itemVariable, "$c"),
 		tSpace,
-		mkItem(itemColonEquals, ":="),
+		mkItem(itemDeclare, ":="),
 		tSpace,
 		mkItem(itemIdentifier, "printf"),
 		tSpace,
@@ -262,7 +274,7 @@ var lexTests = []lexTest{
 		tLeft,
 		mkItem(itemVariable, "$v"),
 		tSpace,
-		mkItem(itemColonEquals, ":="),
+		mkItem(itemDeclare, ":="),
 		tSpace,
 		mkItem(itemNumber, "3"),
 		tRight,
@@ -276,7 +288,7 @@ var lexTests = []lexTest{
 		tSpace,
 		mkItem(itemVariable, "$w"),
 		tSpace,
-		mkItem(itemColonEquals, ":="),
+		mkItem(itemDeclare, ":="),
 		tSpace,
 		mkItem(itemNumber, "3"),
 		tRight,
@@ -301,6 +313,7 @@ var lexTests = []lexTest{
 	}},
 	{"trimming spaces before and after comment", "hello- {{- /* hello */ -}} -world", []item{
 		mkItem(itemText, "hello-"),
+		mkItem(itemComment, "/* hello */"),
 		mkItem(itemText, "-world"),
 		tEOF,
 	}},
@@ -310,7 +323,7 @@ var lexTests = []lexTest{
 		tLeft,
 		mkItem(itemError, "unrecognized character in action: U+0001"),
 	}},
-	{"unclosed action", "{{\n}}", []item{
+	{"unclosed action", "{{", []item{
 		tLeft,
 		mkItem(itemError, "unclosed action"),
 	}},
@@ -379,7 +392,7 @@ var lexTests = []lexTest{
 
 // collect gathers the emitted items into a slice.
 func collect(t *lexTest, left, right string) (items []item) {
-	l := lex(t.name, t.input, left, right)
+	l := lex(t.name, t.input, left, right, true)
 	for {
 		item := l.nextItem()
 		items = append(items, item)
@@ -402,6 +415,9 @@ func equal(i1, i2 []item, checkPos bool) bool {
 			return false
 		}
 		if checkPos && i1[k].pos != i2[k].pos {
+			return false
+		}
+		if checkPos && i1[k].line != i2[k].line {
 			return false
 		}
 	}
@@ -452,7 +468,7 @@ func TestDelims(t *testing.T) {
 }
 
 var lexPosTests = []lexTest{
-	{"empty", "", []item{tEOF}},
+	{"empty", "", []item{{itemEOF, 0, "", 1}}},
 	{"punctuation", "{{,@%#}}", []item{
 		{itemLeftDelim, 0, "{{", 1},
 		{itemChar, 2, ",", 1},
@@ -470,6 +486,24 @@ var lexPosTests = []lexTest{
 		{itemText, 13, "xyz", 1},
 		{itemEOF, 16, "", 1},
 	}},
+	{"trimafter", "{{x -}}\n{{y}}", []item{
+		{itemLeftDelim, 0, "{{", 1},
+		{itemIdentifier, 2, "x", 1},
+		{itemRightDelim, 5, "}}", 1},
+		{itemLeftDelim, 8, "{{", 2},
+		{itemIdentifier, 10, "y", 2},
+		{itemRightDelim, 11, "}}", 2},
+		{itemEOF, 13, "", 2},
+	}},
+	{"trimbefore", "{{x}}\n{{- y}}", []item{
+		{itemLeftDelim, 0, "{{", 1},
+		{itemIdentifier, 2, "x", 1},
+		{itemRightDelim, 3, "}}", 1},
+		{itemLeftDelim, 6, "{{", 2},
+		{itemIdentifier, 10, "y", 2},
+		{itemRightDelim, 11, "}}", 2},
+		{itemEOF, 13, "", 2},
+	}},
 }
 
 // The other tests don't check position, to make the test cases easier to construct.
@@ -485,7 +519,8 @@ func TestPos(t *testing.T) {
 					if !equal(items[i:i+1], test.items[i:i+1], true) {
 						i1 := items[i]
 						i2 := test.items[i]
-						t.Errorf("\t#%d: got {%v %d %q} expected  {%v %d %q}", i, i1.typ, i1.pos, i1.val, i2.typ, i2.pos, i2.val)
+						t.Errorf("\t#%d: got {%v %d %q %d} expected {%v %d %q %d}",
+							i, i1.typ, i1.pos, i1.val, i1.line, i2.typ, i2.pos, i2.val, i2.line)
 					}
 				}
 			}
@@ -497,8 +532,8 @@ func TestPos(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	// We need to duplicate template.Parse here to hold on to the lexer.
 	const text = "erroneous{{define}}{{else}}1234"
-	lexer := lex("foo", text, "{{", "}}")
-	_, err := New("root").parseLexer(lexer, text)
+	lexer := lex("foo", text, "{{", "}}", false)
+	_, err := New("root").parseLexer(lexer)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -511,7 +546,7 @@ func TestShutdown(t *testing.T) {
 
 // parseLexer is a local version of parse that lets us pass in the lexer instead of building it.
 // We expect an error, so the tree set and funcs list are explicitly nil.
-func (t *Tree) parseLexer(lex *lexer, text string) (tree *Tree, err error) {
+func (t *Tree) parseLexer(lex *lexer) (tree *Tree, err error) {
 	defer t.recover(&err)
 	t.ParseName = t.Name
 	t.startParse(nil, lex, map[string]*Tree{})

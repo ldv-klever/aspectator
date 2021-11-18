@@ -1,5 +1,5 @@
 /* GCC backend definitions for the Renesas RX processor.
-   Copyright (C) 2008-2017 Free Software Foundation, Inc.
+   Copyright (C) 2008-2021 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -169,9 +169,6 @@
 #define HAS_LONG_UNCOND_BRANCH		0
 
 #define MOVE_MAX 			4
-#define STARTING_FRAME_OFFSET		0
-
-#define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC)   1
 
 #define HAVE_PRE_DECREMENT		1
 #define HAVE_POST_INCREMENT		1
@@ -331,18 +328,6 @@ typedef unsigned int CUMULATIVE_ARGS;
     fprintf (FILE, "\tbsr\t__mcount\n");
 
 
-#define HARD_REGNO_NREGS(REGNO, MODE)   CLASS_MAX_NREGS (0, MODE)
-
-#define HARD_REGNO_MODE_OK(REGNO, MODE)				\
-  (REGNO_REG_CLASS (REGNO) == GR_REGS)
-
-#define MODES_TIEABLE_P(MODE1, MODE2)				\
-  (   (   GET_MODE_CLASS (MODE1) == MODE_FLOAT			\
-       || GET_MODE_CLASS (MODE1) == MODE_COMPLEX_FLOAT)		\
-   == (   GET_MODE_CLASS (MODE2) == MODE_FLOAT			\
-       || GET_MODE_CLASS (MODE2) == MODE_COMPLEX_FLOAT))
-
-
 #define REGISTER_NAMES						\
   {								\
     "r0",  "r1",  "r2",   "r3",   "r4",   "r5",   "r6",   "r7",	\
@@ -423,7 +408,9 @@ typedef unsigned int CUMULATIVE_ARGS;
 #define GLOBAL_ASM_OP 		\
   (TARGET_AS100_SYNTAX ? "\t.GLB\t" : "\t.global\t")
 #define ASM_COMMENT_START	" ;"
+#undef ASM_APP_ON
 #define ASM_APP_ON		""
+#undef ASM_APP_OFF
 #define ASM_APP_OFF 		""
 #define LOCAL_LABEL_PREFIX	"L"
 #undef  USER_LABEL_PREFIX
@@ -432,9 +419,9 @@ typedef unsigned int CUMULATIVE_ARGS;
 /* Compute the alignment needed for label X in various situations.
    If the user has specified an alignment then honour that, otherwise
    use rx_align_for_label.  */
-#define JUMP_ALIGN(x)				(align_jumps > 1 ? align_jumps_log : rx_align_for_label (x, 0))
-#define LABEL_ALIGN(x)				(align_labels > 1 ? align_labels_log : rx_align_for_label (x, 3))
-#define LOOP_ALIGN(x)				(align_loops > 1 ? align_loops_log : rx_align_for_label (x, 2))
+#define JUMP_ALIGN(x)				(align_jumps.levels[0].log > 0 ? align_jumps : align_flags (rx_align_for_label (x, 0)))
+#define LABEL_ALIGN(x)				(align_labels.levels[0].log > 0 ? align_labels : align_flags (rx_align_for_label (x, 3)))
+#define LOOP_ALIGN(x)				(align_loops.levels[0].log > 0 ? align_loops : align_flags (rx_align_for_label (x, 2)))
 #define LABEL_ALIGN_AFTER_BARRIER(x)		rx_align_for_label (x, 0)
 
 #define ASM_OUTPUT_MAX_SKIP_ALIGN(STREAM, LOG, MAX_SKIP)	\
@@ -641,6 +628,9 @@ typedef unsigned int CUMULATIVE_ARGS;
 #undef  PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE (TARGET_AS100_SYNTAX \
 				  ? DBX_DEBUG : DWARF2_DEBUG)
+
+#define DBX_DEBUGGING_INFO 1
+#define DWARF2_DEBUGGING_INFO 1
 
 #define INCOMING_FRAME_SP_OFFSET		4
 #define ARG_POINTER_CFA_OFFSET(FNDECL)		4

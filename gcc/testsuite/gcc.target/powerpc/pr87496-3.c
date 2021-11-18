@@ -6,4 +6,3 @@
 int i;
 
 /* { dg-error "'-mabi=ibmlongdouble' requires '-mlong-double-128'" "PR87496" { target *-*-* } 0 } */
-/* { dg-warning "using IBM extended precision long double" "" { target *-*-* } 0 } */

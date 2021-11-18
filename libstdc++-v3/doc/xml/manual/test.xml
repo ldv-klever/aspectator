@@ -1,4 +1,4 @@
-<section xmlns="http://docbook.org/ns/docbook" version="5.0" 
+<section xmlns="http://docbook.org/ns/docbook" version="5.0"
 	 xml:id="manual.intro.setup.test" xreflabel="Testing">
 <?dbhtml filename="test.html"?>
 
@@ -235,7 +235,7 @@ cat 27_io/objects/char/3_xin.in | a.out</programlisting>
 
 
   <section xml:id="test.run.basic"><info><title>Basic</title></info>
-    
+
 
     <para>
       You can check the status of the build without installing it
@@ -275,7 +275,7 @@ cat 27_io/objects/char/3_xin.in | a.out</programlisting>
   </section>
 
   <section xml:id="test.run.variations"><info><title>Variations</title></info>
-    
+
     <para>
       There are several options for running tests, including testing
       the regression tests, testing a subset of the regression tests,
@@ -552,7 +552,7 @@ cat 27_io/objects/char/3_xin.in | a.out</programlisting>
   </section>
 
   <section xml:id="test.run.permutations"><info><title>Permutations</title></info>
-    
+
     <para>
       The tests will be compiled with a set of default compiler flags defined
       by the
@@ -657,15 +657,25 @@ cat 27_io/objects/char/3_xin.in | a.out</programlisting>
     Tests that need to perform runtime checks should use the
     <literal>VERIFY</literal> macro, defined in the
     <filename class="headerfile">&lt;testsuite_hooks.h&gt;</filename> header.
-    This usually expands to the standard <literal>assert</literal> macro, but
-    allows targets to define it to something different. In order to support
-    the alternative expansions of <literal>VERIFY</literal>, before any
-    use of the macro there must be a variable called <varname>test</varname>
-    in scope, which is usually defined like so (the attribute avoids
+    This expands to a custom assertion using
+    <function>__builtin_printf</function> and
+    <function>__builtin_abort</function>
+    (to avoid using <literal>assert</literal> and being affected by
+    <literal>NDEBUG</literal>).
+   </para>
+
+   <para>
+    Prior to GCC 7.1, <literal>VERIFY</literal> was defined differently.
+    It usually expanded to the standard <literal>assert</literal> macro, but
+    allowed targets to define it to something different. In order to support
+    the alternative expansions of <literal>VERIFY</literal>, before any use
+    of the macro there needed to be a variable called <varname>test</varname>
+    in scope, which was usually defined like so (the attribute avoids
     warnings about an unused variable):
     <programlisting>
     bool test __attribute__((unused)) = true;
     </programlisting>
+    This is no longer needed, and should not be added to new tests.
    </para>
 
    <para>
@@ -847,14 +857,8 @@ with specific options, and additional options for 32-bit x86:
 	(as determined by the <literal>_GLIBCXX_PARALLEL</literal> macro).
       </para></listitem>
     </varlistentry>
-    <varlistentry><term><literal>dg-require-profile-mode ""</literal></term>
-      <listitem><para>Skip the test if the Profile Mode is not active
-	(as determined by the <literal>_GLIBCXX_PROFILE</literal> macro).
-      </para></listitem>
-    </varlistentry>
     <varlistentry><term><literal>dg-require-normal-mode ""</literal></term>
-      <listitem><para>Skip the test if any of Debug, Parallel or Profile
-	Mode is active.
+      <listitem><para>Skip the test if Debug or Parallel Mode is active.
       </para></listitem>
     </varlistentry>
     <varlistentry><term><literal>dg-require-atomic-builtins ""</literal></term>

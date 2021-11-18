@@ -1,5 +1,5 @@
 /* General-purpose hooks.
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -82,6 +82,13 @@ hook_bool_mode_true (machine_mode)
   return true;
 }
 
+/* Generic hook that takes (machine_mode, machine_mode) and returns true.  */
+bool
+hook_bool_mode_mode_true (machine_mode, machine_mode)
+{
+  return true;
+}
+
 /* Generic hook that takes (machine_mode, const_rtx) and returns false.  */
 bool
 hook_bool_mode_const_rtx_false (machine_mode, const_rtx)
@@ -124,6 +131,26 @@ bool
 hook_bool_mode_uhwi_false (machine_mode, unsigned HOST_WIDE_INT)
 {
   return false;
+}
+
+/* Generic hook that takes (poly_uint64, poly_uint64) and returns true.  */
+bool
+hook_bool_puint64_puint64_true (poly_uint64, poly_uint64)
+{
+  return true;
+}
+
+bool
+hook_bool_uint_uint_mode_false (unsigned int, unsigned int, machine_mode)
+{
+  return false;
+}
+
+/* Generic hook that takes (unsigned int, machine_mode) and returns true.  */
+bool
+hook_bool_uint_mode_true (unsigned int, machine_mode)
+{
+  return true;
 }
 
 /* Generic hook that takes (FILE *, const char *) and does nothing.  */
@@ -208,6 +235,12 @@ hook_int_rtx_1 (rtx)
 }
 
 int
+hook_int_rtx_insn_0 (rtx_insn *)
+{
+  return 0;
+}
+
+int
 hook_int_rtx_insn_unreachable (rtx_insn *)
 {
   gcc_unreachable ();
@@ -231,8 +264,19 @@ hook_uint_void_0 (void)
   return 0;
 }
 
+HOST_WIDE_INT
+hook_hwi_void_0 (void)
+{
+  return 0;
+}
+
 void
 hook_void_tree (tree)
+{
+}
+
+void
+hook_void_FILEptr_tree (FILE *, tree)
 {
 }
 
@@ -266,6 +310,12 @@ bool
 hook_bool_const_tree_false (const_tree)
 {
   return false;
+}
+
+bool
+hook_bool_const_tree_const_tree_true (const_tree, const_tree)
+{
+  return true;
 }
 
 bool
@@ -386,6 +436,12 @@ hook_tree_tree_int_treep_bool_null (tree, int, tree *, bool)
 }
 
 tree
+hook_tree_tree_bool_null (tree, bool)
+{
+  return NULL;
+}
+
+tree
 hook_tree_tree_tree_null (tree, tree)
 {
   return NULL;
@@ -393,6 +449,12 @@ hook_tree_tree_tree_null (tree, tree)
 
 tree
 hook_tree_tree_tree_tree_null (tree, tree, tree)
+{
+  return NULL;
+}
+
+tree
+hook_tree_treeptr_tree_tree_int_boolptr_null (tree *, tree, tree, int, bool *)
 {
   return NULL;
 }
@@ -474,3 +536,28 @@ hook_bool_reg_class_t_false (reg_class_t regclass ATTRIBUTE_UNUSED)
   return false;
 }
 
+/* Generic hook that takes 2 machine_modes and a register class and
+   returns true.  */
+bool
+hook_bool_mode_mode_reg_class_t_true (machine_mode, machine_mode, reg_class_t)
+{
+  return true;
+}
+
+/* Generic hook that takes a machine_mode and 2 register classes
+   and returns false.  */
+bool
+hook_bool_mode_reg_class_t_reg_class_t_false (machine_mode, reg_class_t,
+					      reg_class_t)
+{
+  return false;
+}
+
+/* Generic hook that takes a mode and an unsigned HOST_WIDE_INT and
+   returns no mode.  */
+
+opt_machine_mode
+hook_optmode_mode_uhwi_none (machine_mode, unsigned HOST_WIDE_INT)
+{
+  return opt_machine_mode ();
+}

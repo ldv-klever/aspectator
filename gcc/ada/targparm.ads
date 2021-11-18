@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -101,9 +101,6 @@ package Targparm is
    --  policy name, and Opt.Task_Dispatching_Policy_Sloc is set to
    --  System_Location.
 
-   --  If a pragma Polling (On) appears, then the flag Opt.Polling_Required
-   --  is set to True.
-
    --  If a pragma Detect_Blocking appears, then the flag Opt.Detect_Blocking
    --  is set to True.
 
@@ -191,17 +188,6 @@ package Targparm is
    --  of the package. The only way they get modified is by calling the
    --  Get_Target_Parameters routine which reads the values from a provided
    --  text buffer containing the source of the system package.
-
-   ----------------------------
-   -- Special Target Control --
-   ----------------------------
-
-   --  The great majority of GNAT ports are based on GCC. The switches in
-   --  this section indicate the use of some non-standard target back end
-   --  or other special targetting requirements.
-
-   AAMP_On_Target : Boolean := False;
-   --  Set to True if target is AAMP
 
    -------------------------------
    -- Backend Arithmetic Checks --
@@ -466,11 +452,15 @@ package Targparm is
    Stack_Check_Probes_On_Target : Boolean := False;
    --  Indicates if the GCC probing mechanism is used
 
+   --  WARNING: There is a matching C declaration of this variable in fe.h
+
    Stack_Check_Limits_On_Target : Boolean := False;
    --  Indicates if the GCC stack-limit mechanism is used
 
    --  Both flags cannot be simultaneously set to True. If neither
    --  is, the target independent fallback method is used.
+
+   --  WARNING: There is a matching C declaration of this variable in fe.h
 
    Stack_Check_Default_On_Target : Boolean := False;
    --  Indicates if stack checking is on by default
@@ -547,30 +537,12 @@ package Targparm is
    Machine_Overflows_On_Target : Boolean := False;
    --  Set to True for targets where S'Machine_Overflows is True
 
+   --  WARNING: There is a matching C declaration of this variable in fe.h
+
    Signed_Zeros_On_Target : Boolean := True;
    --  Set to False on targets that do not reliably support signed zeros
 
-   -------------------------------------------
-   -- Boolean-Valued Fixed-Point Attributes --
-   -------------------------------------------
-
-   Fractional_Fixed_Ops_On_Target : Boolean := False;
-   --  Set to True for targets that support fixed-by-fixed multiplication
-   --  and division for fixed-point types with a small value equal to
-   --  2 ** (-(T'Object_Size - 1)) and whose values have an absolute
-   --  value less than 1.0.
-
-   -----------------
-   -- Data Layout --
-   -----------------
-
-   --  Normally when using the GCC backend, Gigi and GCC perform much of the
-   --  data layout using the standard layout capabilities of GCC. If the
-   --  parameter Backend_Layout is set to False, then the front end must
-   --  perform all data layout. For further details see the package Layout.
-
-   Frontend_Layout_On_Target : Boolean := False;
-   --  Set True if front end does layout
+   --  WARNING: There is a matching C declaration of this variable in fe.h
 
    -----------------
    -- Subprograms --

@@ -1,7 +1,6 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.64])
 AC_INIT([GNU Vtable Verification Runtime Library], 1.0,,[libvtv])
 #AC_INIT(package-unused, version-unused, libvtv)
 AC_CONFIG_SRCDIR([vtv_rts.h])
@@ -79,6 +78,8 @@ AM_MAINTAINER_MODE
 
 LIBVTV_CONFIGURE
 
+GCC_WITH_TOOLEXECLIBDIR
+
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
 case ${version_specific_libs} in
@@ -94,7 +95,14 @@ case ${version_specific_libs} in
        test x"$with_cross_host" != x"no"; then
       # Install a library built with a cross compiler in tooldir, not libdir.
       toolexecdir='$(exec_prefix)/$(target_alias)'
-      toolexeclibdir='$(toolexecdir)/lib'
+      case ${with_toolexeclibdir} in
+	no)
+	  toolexeclibdir='$(toolexecdir)/lib'
+	  ;;
+	*)
+	  toolexeclibdir=${with_toolexeclibdir}
+	  ;;
+      esac
     else
       toolexecdir='$(libdir)/gcc-lib/$(target_alias)'
       toolexeclibdir='$(libdir)'
@@ -151,6 +159,11 @@ libtool_VERSION=1:0:0
 AC_SUBST(libtool_VERSION)
 
 XCFLAGS="-D_GNU_SOURCE -Wall -Wextra -fno-exceptions"
+
+# Add CET specific flags if Intel CET is enabled.
+GCC_CET_FLAGS(CET_FLAGS)
+XCFLAGS="$XCFLAGS $CET_FLAGS"
+
 AC_SUBST(XCFLAGS)
 
 if test "${multilib}" = "yes"; then

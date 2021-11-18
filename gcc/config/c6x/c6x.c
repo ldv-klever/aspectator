@@ -1,5 +1,5 @@
 /* Target Code for TI C6X
-   Copyright (C) 2010-2017 Free Software Foundation, Inc.
+   Copyright (C) 2010-2021 Free Software Foundation, Inc.
    Contributed by Andrew Jenner <andrew@codesourcery.com>
    Contributed by Bernd Schmidt <bernds@codesourcery.com>
 
@@ -19,6 +19,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -32,6 +34,7 @@
 #include "memmodel.h"
 #include "tm_p.h"
 #include "stringpool.h"
+#include "attribs.h"
 #include "optabs.h"
 #include "regs.h"
 #include "emit-rtl.h"
@@ -52,6 +55,7 @@
 #include "sel-sched.h"
 #include "debug.h"
 #include "hw-doloop.h"
+#include "function-abi.h"
 #include "regrename.h"
 #include "dumpfile.h"
 #include "builtins.h"
@@ -236,7 +240,8 @@ c6x_option_override (void)
 
   if (flag_pic && !TARGET_DSBT)
     {
-      error ("-fpic and -fPIC not supported without -mdsbt on this target");
+      error ("%<-fpic%> and %<-fPIC%> not supported without %<-mdsbt%> "
+	     "on this target");
       flag_pic = 0;
     }
   c6x_initial_flag_pic = flag_pic;
@@ -495,16 +500,15 @@ c6x_init_cumulative_args (CUMULATIVE_ARGS *cum, const_tree fntype, rtx libname,
     }
 }
 
-/* Implements the macro FUNCTION_ARG defined in c6x.h.  */
+/* Implement TARGET_FUNCTION_ARG.  */
 
 static rtx
-c6x_function_arg (cumulative_args_t cum_v, machine_mode mode,
-		  const_tree type, bool named ATTRIBUTE_UNUSED)
+c6x_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   if (cum->count >= cum->nregs)
     return NULL_RTX;
-  if (type)
+  if (tree type = arg.type)
     {
       HOST_WIDE_INT size = int_size_in_bytes (type);
       if (TARGET_BIG_ENDIAN && AGGREGATE_TYPE_P (type))
@@ -515,18 +519,15 @@ c6x_function_arg (cumulative_args_t cum_v, machine_mode mode,
 	      rtx reg2 = gen_rtx_REG (SImode, argument_registers[cum->count]);
 	      rtvec vec = gen_rtvec (2, gen_rtx_EXPR_LIST (VOIDmode, reg1, const0_rtx),
 				     gen_rtx_EXPR_LIST (VOIDmode, reg2, GEN_INT (4)));
-	      return gen_rtx_PARALLEL (mode, vec);
+	      return gen_rtx_PARALLEL (arg.mode, vec);
 	    }
 	}
     }
-  return gen_rtx_REG (mode, argument_registers[cum->count]);
+  return gen_rtx_REG (arg.mode, argument_registers[cum->count]);
 }
 
 static void
-c6x_function_arg_advance (cumulative_args_t cum_v,
-			  machine_mode mode ATTRIBUTE_UNUSED,
-			  const_tree type ATTRIBUTE_UNUSED,
-			  bool named ATTRIBUTE_UNUSED)
+c6x_function_arg_advance (cumulative_args_t cum_v, const function_arg_info &)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   cum->count++;
@@ -635,18 +636,16 @@ c6x_function_value_regno_p (const unsigned int regno)
 }
 
 /* Types larger than 64 bit, and variable sized types, are passed by
-   reference.  The callee must copy them; see c6x_callee_copies.  */
+   reference.  The callee must copy them; see TARGET_CALLEE_COPIES.  */
 
 static bool
-c6x_pass_by_reference (cumulative_args_t cum_v ATTRIBUTE_UNUSED,
-		       machine_mode mode, const_tree type,
-		       bool named ATTRIBUTE_UNUSED)
+c6x_pass_by_reference (cumulative_args_t, const function_arg_info &arg)
 {
   int size = -1;
-  if (type)
-    size = int_size_in_bytes (type);
-  else if (mode != VOIDmode)
-    size = GET_MODE_SIZE (mode);
+  if (arg.type)
+    size = int_size_in_bytes (arg.type);
+  else if (arg.mode != VOIDmode)
+    size = GET_MODE_SIZE (arg.mode);
   return size > 2 * UNITS_PER_WORD || size == -1;
 }
 
@@ -669,17 +668,6 @@ c6x_return_in_msb (const_tree valtype)
 {
   HOST_WIDE_INT size = int_size_in_bytes (valtype);
   return TARGET_BIG_ENDIAN && AGGREGATE_TYPE_P (valtype) && size == 3;
-}
-
-/* Implement TARGET_CALLEE_COPIES.  */
-
-static bool
-c6x_callee_copies (cumulative_args_t cum_v ATTRIBUTE_UNUSED,
-		   machine_mode mode ATTRIBUTE_UNUSED,
-		   const_tree type ATTRIBUTE_UNUSED,
-		   bool named ATTRIBUTE_UNUSED)
-{
-  return true;
 }
 
 /* Return the type to use as __builtin_va_list.  */
@@ -737,10 +725,10 @@ c6x_initialize_trampoline (rtx tramp, tree fndecl, rtx cxt)
     }
 #ifdef CLEAR_INSN_CACHE
   tramp = XEXP (tramp, 0);
-  emit_library_call (gen_rtx_SYMBOL_REF (Pmode, "__gnu_clear_cache"),
-		     LCT_NORMAL, VOIDmode, 2, tramp, Pmode,
-		     plus_constant (Pmode, tramp, TRAMPOLINE_SIZE),
-		     Pmode);
+  maybe_emit_call_builtin___clear_cache (tramp,
+					 plus_constant (Pmode,
+							tramp,
+							TRAMPOLINE_SIZE));
 #endif
 }
 
@@ -766,10 +754,12 @@ c6x_output_mi_thunk (FILE *file ATTRIBUTE_UNUSED,
 		     tree thunk ATTRIBUTE_UNUSED, HOST_WIDE_INT delta,
 		     HOST_WIDE_INT vcall_offset, tree function)
 {
+  const char *fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk));
   rtx xops[5];
   /* The this parameter is passed as the first argument.  */
   rtx this_rtx = gen_rtx_REG (Pmode, REG_A4);
 
+  assemble_start_function (thunk, fnname);
   c6x_current_insn = NULL;
 
   xops[4] = XEXP (DECL_RTL (function), 0);
@@ -848,6 +838,7 @@ c6x_output_mi_thunk (FILE *file ATTRIBUTE_UNUSED,
       output_asm_insn ("nop 4", xops);
       output_asm_insn ("add .d1 %2, %1, %2", xops);
     }
+  assemble_end_function (thunk, fnname);
 }
 
 /* Return true if EXP goes in small data/bss.  */
@@ -1077,6 +1068,14 @@ c6x_section_type_flags (tree decl, const char *name, int reloc)
 
   flags |= default_section_type_flags (decl, name, reloc);
 
+  /* The ".far" section will be declared with @nobits elsewhere.
+     But when declared via this path it will not have the @nobits
+     flag because of SECTION_NOTYPE.  This causes linker warnings
+     due to the mismatched attribute.  Clearing SECTION_NOTYPE
+     for the ".far" section is sufficient to fix this problem.  */
+  if (strcmp (name, ".far") == 0)
+    flags &= ~SECTION_NOTYPE;
+
   return flags;
 }
 
@@ -1091,15 +1090,13 @@ c6x_call_saved_register_used (tree call_expr)
   cumulative_args_t cum;
   HARD_REG_SET call_saved_regset;
   tree parameter;
-  machine_mode mode;
-  tree type;
   rtx parm_rtx;
   int i;
 
   INIT_CUMULATIVE_ARGS (cum_v, NULL, NULL, 0, 0);
   cum = pack_cumulative_args (&cum_v);
 
-  COMPL_HARD_REG_SET (call_saved_regset, call_used_reg_set);
+  call_saved_regset = ~call_used_or_fixed_regs;
   for (i = 0; i < call_expr_nargs (call_expr); i++)
     {
       parameter = CALL_EXPR_ARG (call_expr, i);
@@ -1110,21 +1107,12 @@ c6x_call_saved_register_used (tree call_expr)
       if (TREE_CODE (parameter) == ERROR_MARK)
 	return true;
 
-      type = TREE_TYPE (parameter);
-      gcc_assert (type);
+      function_arg_info arg (TREE_TYPE (parameter), /*named=*/true);
+      apply_pass_by_reference_rules (&cum_v, arg);
 
-      mode = TYPE_MODE (type);
-      gcc_assert (mode);
+       parm_rtx = c6x_function_arg (cum, arg);
 
-      if (pass_by_reference (&cum_v, mode, type, true))
- 	{
- 	  mode = Pmode;
- 	  type = build_pointer_type (type);
- 	}
-
-       parm_rtx = c6x_function_arg (cum, mode, type, 0);
-
-       c6x_function_arg_advance (cum, mode, type, 0);
+       c6x_function_arg_advance (cum, arg);
 
        if (!parm_rtx)
 	 continue;
@@ -1171,13 +1159,13 @@ c6x_function_ok_for_sibcall (tree decl, tree exp)
       /* When compiling for DSBT, the calling function must be local,
 	 so that when we reload B14 in the sibcall epilogue, it will
 	 not change its value.  */
-      struct cgraph_local_info *this_func;
 
       if (!decl)
 	/* Not enough information.  */
 	return false;
 
-      this_func = cgraph_node::local_info (current_function_decl);
+      cgraph_node *this_func
+	= cgraph_node::local_info_node (current_function_decl);
       return this_func->local;
     }
 
@@ -1591,7 +1579,7 @@ c6x_expand_compare (rtx comparison, machine_mode mode)
 	    }
 	  start_sequence ();
 
-	  cmp = emit_library_call_value (libfunc, 0, LCT_CONST, SImode, 2,
+	  cmp = emit_library_call_value (libfunc, 0, LCT_CONST, SImode,
 					 op0, op_mode, op1, op_mode);
 	  insns = get_insns ();
 	  end_sequence ();
@@ -1680,10 +1668,10 @@ c6x_valid_mask_p (HOST_WIDE_INT val)
   return true;
 }
 
-/* Expand a block move for a movmemM pattern.  */
+/* Expand a block move for a cpymemM pattern.  */
 
 bool
-c6x_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp,
+c6x_expand_cpymem (rtx dst, rtx src, rtx count_exp, rtx align_exp,
 		   rtx expected_align_exp ATTRIBUTE_UNUSED,
 		   rtx expected_size_exp ATTRIBUTE_UNUSED)
 {
@@ -1727,7 +1715,7 @@ c6x_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp,
 	mark_addressable (src_expr);
       if (dst_expr)
 	mark_addressable (dst_expr);
-      emit_library_call (fn, LCT_NORMAL, VOIDmode, 3,
+      emit_library_call (fn, LCT_NORMAL, VOIDmode,
 			 dstreg, Pmode, srcreg, Pmode, count_exp, SImode);
       return true;
     }
@@ -1758,8 +1746,8 @@ c6x_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp,
       if (dst_size > src_size)
 	dst_size = src_size;
 
-      srcmode = mode_for_size (src_size * BITS_PER_UNIT, MODE_INT, 0);
-      dstmode = mode_for_size (dst_size * BITS_PER_UNIT, MODE_INT, 0);
+      srcmode = int_mode_for_size (src_size * BITS_PER_UNIT, 0).require ();
+      dstmode = int_mode_for_size (dst_size * BITS_PER_UNIT, 0).require ();
       if (src_size >= 4)
 	reg_lowpart = reg = gen_reg_rtx (srcmode);
       else
@@ -2529,14 +2517,13 @@ struct c6x_frame
 static bool
 must_reload_pic_reg_p (void)
 {
-  struct cgraph_local_info *i = NULL;
-
   if (!TARGET_DSBT)
     return false;
 
-  i = cgraph_node::local_info (current_function_decl);
-
-  if ((crtl->uses_pic_offset_table || !crtl->is_leaf) && !i->local)
+  cgraph_node *local_info_node
+    = cgraph_node::local_info_node (current_function_decl);
+  if ((crtl->uses_pic_offset_table || !crtl->is_leaf)
+      && !local_info_node->local)
     return true;
   return false;
 }
@@ -2546,8 +2533,7 @@ static int
 c6x_save_reg (unsigned int regno)
 {
   return ((df_regs_ever_live_p (regno)
-	   && !call_used_regs[regno]
-	   && !fixed_regs[regno])
+	   && !call_used_or_fixed_reg_p (regno))
 	  || (regno == RETURN_ADDR_REGNO
 	      && (df_regs_ever_live_p (regno)
 		  || !crtl->is_leaf))
@@ -2834,7 +2820,7 @@ c6x_expand_prologue (void)
 				 reg);
 	  RTX_FRAME_RELATED_P (insn) = 1;
 
-	  nsaved += HARD_REGNO_NREGS (regno, save_mode);
+	  nsaved += hard_regno_nregs (regno, save_mode);
 	}
     }
   gcc_assert (nsaved == frame.nregs);
@@ -2922,7 +2908,7 @@ c6x_expand_epilogue (bool sibcall)
 	  emit_move_insn (reg, adjust_address (mem, save_mode, off));
 
 	  off += GET_MODE_SIZE (save_mode);
-	  nsaved += HARD_REGNO_NREGS (regno, save_mode);
+	  nsaved += hard_regno_nregs (regno, save_mode);
 	}
     }
   if (!frame_pointer_needed)
@@ -3486,7 +3472,7 @@ try_rename_operands (rtx_insn *head, rtx_insn *tail, unit_req_table reqs,
     }
 
   /* If we get here, we can do the renaming.  */
-  COMPL_HARD_REG_SET (unavailable, reg_class_contents[(int) super_class]);
+  unavailable = ~reg_class_contents[super_class];
 
   old_reg = this_head->regno;
   best_reg =
@@ -3713,7 +3699,7 @@ insn_set_clock (rtx insn, int cycle)
   unsigned uid = INSN_UID (insn);
 
   if (uid >= INSN_INFO_LENGTH)
-    insn_info.safe_grow (uid * 5 / 4 + 10);
+    insn_info.safe_grow (uid * 5 / 4 + 10, true);
 
   INSN_INFO_ENTRY (uid).clock = cycle;
   INSN_INFO_ENTRY (uid).new_cond = NULL;
@@ -4025,7 +4011,7 @@ static void
 c6x_mark_reg_read (rtx reg, bool cross)
 {
   unsigned regno = REGNO (reg);
-  unsigned nregs = hard_regno_nregs[regno][GET_MODE (reg)];
+  unsigned nregs = REG_NREGS (reg);
 
   while (nregs-- > 0)
     c6x_mark_regno_read (regno + nregs, cross);
@@ -4037,7 +4023,7 @@ static void
 c6x_mark_reg_written (rtx reg, int cycles)
 {
   unsigned regno = REGNO (reg);
-  unsigned nregs = hard_regno_nregs[regno][GET_MODE (reg)];
+  unsigned nregs = REG_NREGS (reg);
 
   while (nregs-- > 0)
     ss.reg_set_in_cycle[regno + nregs] = cycles;
@@ -4322,7 +4308,7 @@ clobber_cond_1 (rtx x, const_rtx pat ATTRIBUTE_UNUSED, void *data1)
    only those jumps which are still in flight.  */
 
 static void
-maybe_clobber_cond (rtx insn, int clock_var)
+maybe_clobber_cond (rtx_insn *insn, int clock_var)
 {
   int n, idx;
   idx = ss.jump_cycle_index;
@@ -4347,7 +4333,7 @@ maybe_clobber_cond (rtx insn, int clock_var)
 	  continue;
 	}
 
-      note_stores (PATTERN (insn), clobber_cond_1, ss.jump_cond + idx);
+      note_stores (insn, clobber_cond_1, ss.jump_cond + idx);
       for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
 	if (REG_NOTE_KIND (link) == REG_INC)
 	  clobber_cond_1 (XEXP (link, 0), NULL_RTX, ss.jump_cond + idx);
@@ -4635,7 +4621,6 @@ static void
 c6x_gen_bundles (void)
 {
   basic_block bb;
-  rtx_insn *insn, *next, *last_call;
 
   FOR_EACH_BB_FN (bb, cfun)
     {
@@ -4701,29 +4686,6 @@ c6x_gen_bundles (void)
 	  if (at_end)
 	    break;
 	}
-    }
-  /* Bundling, and emitting nops, can separate
-     NOTE_INSN_CALL_ARG_LOCATION from the corresponding calls.  Fix
-     that up here.  */
-  last_call = NULL;
-  for (insn = get_insns (); insn; insn = next)
-    {
-      next = NEXT_INSN (insn);
-      if (CALL_P (insn)
-	  || (INSN_P (insn) && GET_CODE (PATTERN (insn)) == SEQUENCE
-	      && CALL_P (XVECEXP (PATTERN (insn), 0, 0))))
-	last_call = insn;
-      if (!NOTE_P (insn) || NOTE_KIND (insn) != NOTE_INSN_CALL_ARG_LOCATION)
-	continue;
-      if (NEXT_INSN (last_call) == insn)
-	continue;
-      SET_NEXT_INSN (PREV_INSN (insn)) = NEXT_INSN (insn);
-      SET_PREV_INSN (NEXT_INSN (insn)) = PREV_INSN (insn);
-      SET_PREV_INSN (insn) = last_call;
-      SET_NEXT_INSN (insn) = NEXT_INSN (last_call);
-      SET_PREV_INSN (NEXT_INSN (insn)) = insn;
-      SET_NEXT_INSN (PREV_INSN (insn)) = insn;
-      last_call = insn;
     }
 }
 
@@ -4857,7 +4819,7 @@ find_last_same_clock (rtx_insn *insn)
    the SEQUENCEs that represent execute packets.  */
 
 static void
-reorg_split_calls (rtx_insn **call_labels)
+reorg_split_calls (rtx_code_label **call_labels)
 {
   unsigned int reservation_mask = 0;
   rtx_insn *insn = get_insns ();
@@ -5031,7 +4993,7 @@ reorg_split_calls (rtx_insn **call_labels)
    scheduling was run earlier.  */
 
 static void
-reorg_emit_nops (rtx_insn **call_labels)
+reorg_emit_nops (rtx_code_label **call_labels)
 {
   bool first;
   rtx last_call;
@@ -5639,7 +5601,8 @@ hwloop_optimize (hwloop_info loop)
       int j;
       rtx_insn *this_iter;
 
-      this_iter = duplicate_insn_chain (head_insn, tail_insn);
+      copy_bb_data id;
+      this_iter = duplicate_insn_chain (head_insn, tail_insn, NULL, &id);
       j = 0;
       while (this_iter)
 	{
@@ -5969,7 +5932,7 @@ c6x_reorg (void)
     }
   sched_no_dce = false;
 
-  rtx_insn **call_labels = XCNEWVEC (rtx_insn *, get_max_uid () + 1);
+  rtx_code_label **call_labels = XCNEWVEC (rtx_code_label *, get_max_uid () + 1);
 
   reorg_split_calls (call_labels);
 
@@ -6065,7 +6028,7 @@ c6x_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno, int *total,
       /* Recognize a mult_highpart operation.  */
       if ((mode == HImode || mode == SImode)
 	  && GET_CODE (XEXP (x, 0)) == LSHIFTRT
-	  && GET_MODE (XEXP (x, 0)) == GET_MODE_2XWIDER_MODE (mode)
+	  && GET_MODE (XEXP (x, 0)) == GET_MODE_2XWIDER_MODE (mode).require ()
 	  && GET_CODE (XEXP (XEXP (x, 0), 0)) == MULT
 	  && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT
 	  && INTVAL (XEXP (XEXP (x, 0), 1)) == GET_MODE_BITSIZE (mode))
@@ -6225,11 +6188,11 @@ c6x_vector_mode_supported_p (machine_mode mode)
 {
   switch (mode)
     {
-    case V2HImode:
-    case V4QImode:
-    case V2SImode:
-    case V4HImode:
-    case V8QImode:
+    case E_V2HImode:
+    case E_V4QImode:
+    case E_V2SImode:
+    case E_V4HImode:
+    case E_V8QImode:
       return true;
     default:
       return false;
@@ -6238,13 +6201,13 @@ c6x_vector_mode_supported_p (machine_mode mode)
 
 /* Implements TARGET_VECTORIZE_PREFERRED_SIMD_MODE.  */
 static machine_mode
-c6x_preferred_simd_mode (machine_mode mode)
+c6x_preferred_simd_mode (scalar_mode mode)
 {
   switch (mode)
     {
-    case HImode:
+    case E_HImode:
       return V2HImode;
-    case QImode:
+    case E_QImode:
       return V4QImode;
 
     default:
@@ -6255,7 +6218,7 @@ c6x_preferred_simd_mode (machine_mode mode)
 /* Implement TARGET_SCALAR_MODE_SUPPORTED_P.  */
 
 static bool
-c6x_scalar_mode_supported_p (machine_mode mode)
+c6x_scalar_mode_supported_p (scalar_mode mode)
 {
   if (ALL_FIXED_POINT_MODE_P (mode)
       && GET_MODE_PRECISION (mode) <= 2 * BITS_PER_WORD)
@@ -6336,7 +6299,7 @@ c6x_dwarf_register_span (rtx rtl)
     rtx p;
 
     regno = REGNO (rtl);
-    nregs = HARD_REGNO_NREGS (regno, GET_MODE (rtl));
+    nregs = REG_NREGS (rtl);
     if (nregs == 1)
       return  NULL_RTX;
 
@@ -6671,7 +6634,7 @@ c6x_expand_builtin (tree exp, rtx target ATTRIBUTE_UNUSED,
   size_t i;
   const struct builtin_description *d;
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
-  unsigned int fcode = DECL_FUNCTION_CODE (fndecl);
+  unsigned int fcode = DECL_MD_FUNCTION_CODE (fndecl);
 
   for (i = 0, d = bdesc_2arg; i < ARRAY_SIZE (bdesc_2arg); i++, d++)
     if (d->code == fcode)
@@ -6695,6 +6658,47 @@ c6x_debug_unwind_info (void)
     return UI_DWARF2;
 
   return default_debug_unwind_info ();
+}
+
+/* Implement TARGET_HARD_REGNO_MODE_OK.  */
+
+static bool
+c6x_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
+{
+  return GET_MODE_SIZE (mode) <= UNITS_PER_WORD || (regno & 1) == 0;
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+c6x_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return (mode1 == mode2
+	  || (GET_MODE_SIZE (mode1) <= UNITS_PER_WORD
+	      && GET_MODE_SIZE (mode2) <= UNITS_PER_WORD));
+}
+
+/* Implement REGNO_REG_CLASS.  */
+
+enum reg_class
+c6x_regno_reg_class (int reg)
+{
+  if (reg >= REG_A1 && reg <= REG_A2)
+    return PREDICATE_A_REGS;
+
+  if (reg == REG_A0 && TARGET_INSNS_64)
+    return PREDICATE_A_REGS;
+
+  if (reg >= REG_B0 && reg <= REG_B2)
+    return PREDICATE_B_REGS;
+
+  if (A_REGNO_P (reg))
+    return NONPREDICATE_A_REGS;
+
+  if (call_used_or_fixed_reg_p (reg))
+    return CALL_USED_B_REGS;
+
+  return B_REGS;
 }
 
 /* Target Structure.  */
@@ -6722,7 +6726,7 @@ c6x_debug_unwind_info (void)
 #undef TARGET_PASS_BY_REFERENCE
 #define TARGET_PASS_BY_REFERENCE c6x_pass_by_reference
 #undef TARGET_CALLEE_COPIES
-#define TARGET_CALLEE_COPIES c6x_callee_copies
+#define TARGET_CALLEE_COPIES hook_bool_CUMULATIVE_ARGS_arg_info_true
 #undef TARGET_STRUCT_VALUE_RTX
 #define TARGET_STRUCT_VALUE_RTX c6x_struct_value_rtx
 #undef TARGET_FUNCTION_OK_FOR_SIBCALL
@@ -6861,6 +6865,11 @@ c6x_debug_unwind_info (void)
 #define TARGET_EXPAND_BUILTIN c6x_expand_builtin
 #undef  TARGET_BUILTIN_DECL
 #define TARGET_BUILTIN_DECL c6x_builtin_decl
+
+#undef TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK c6x_hard_regno_mode_ok
+#undef TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P c6x_modes_tieable_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

@@ -1,5 +1,5 @@
 /* Header file for Induction variable optimizations.
-   Copyright (C) 2013-2017 Free Software Foundation, Inc.
+   Copyright (C) 2013-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,17 +20,18 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_TREE_SSA_LOOP_IVOPTS_H
 #define GCC_TREE_SSA_LOOP_IVOPTS_H
 
-extern edge single_dom_exit (struct loop *);
+extern edge single_dom_exit (class loop *);
 extern void dump_iv (FILE *, struct iv *);
 extern void dump_use (FILE *, struct iv_use *);
 extern void dump_uses (FILE *, struct ivopts_data *);
 extern void dump_cand (FILE *, struct iv_cand *);
 extern bool contains_abnormal_ssa_name_p (tree);
-extern struct loop *outermost_invariant_loop_for_expr (struct loop *, tree);
-extern bool expr_invariant_in_loop_p (struct loop *, tree);
+extern class loop *outermost_invariant_loop_for_expr (class loop *, tree);
+extern bool expr_invariant_in_loop_p (class loop *, tree);
+extern tree strip_offset (tree, poly_uint64_pod *);
 bool may_be_nonaddressable_p (tree expr);
-bool multiplier_allowed_in_address_p (HOST_WIDE_INT, machine_mode,
-				      addr_space_t);
 void tree_ssa_iv_optimize (void);
 
+void create_canonical_iv (class loop *, edge, tree,
+			  tree * = NULL, tree * = NULL);
 #endif /* GCC_TREE_SSA_LOOP_IVOPTS_H */

@@ -12,9 +12,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"internal/poll"
 	"internal/testenv"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -29,6 +29,45 @@ import (
 	"time"
 )
 
+// haveUnexpectedFDs is set at init time to report whether any
+// file descriptors were open at program start.
+var haveUnexpectedFDs bool
+
+// unfinalizedFiles holds files that should not be finalized,
+// because that would close the associated file descriptor,
+// which we don't want to do.
+var unfinalizedFiles []*os.File
+
+func init() {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	for fd := uintptr(3); fd <= 100; fd++ {
+		if poll.IsPollDescriptor(fd) {
+			continue
+		}
+		// We have no good portable way to check whether an FD is open.
+		// We use NewFile to create a *os.File, which lets us
+		// know whether it is open, but then we have to cope with
+		// the finalizer on the *os.File.
+		f := os.NewFile(fd, "")
+		if _, err := f.Stat(); err != nil {
+			// Close the file to clear the finalizer.
+			// We expect the Close to fail.
+			f.Close()
+		} else {
+			fmt.Printf("fd %d open at test start\n", fd)
+			haveUnexpectedFDs = true
+			// Use a global variable to avoid running
+			// the finalizer, which would close the FD.
+			unfinalizedFiles = append(unfinalizedFiles, f)
+		}
+	}
+}
+
 func helperCommandContext(t *testing.T, ctx context.Context, s ...string) (cmd *exec.Cmd) {
 	testenv.MustHaveExec(t)
 
@@ -39,11 +78,7 @@ func helperCommandContext(t *testing.T, ctx context.Context, s ...string) (cmd *
 	} else {
 		cmd = exec.Command(os.Args[0], cs...)
 	}
-	cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
-	path := os.Getenv("LD_LIBRARY_PATH")
-	if path != "" {
-		cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+path)
-	}
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 	return cmd
 }
 
@@ -145,11 +180,11 @@ func TestCatGoodAndBadFile(t *testing.T) {
 	}
 }
 
-func TestNoExistBinary(t *testing.T) {
-	// Can't run a non-existent binary
-	err := exec.Command("/no-exist-binary").Run()
+func TestNoExistExecutable(t *testing.T) {
+	// Can't run a non-existent executable
+	err := exec.Command("/no-exist-executable").Run()
 	if err == nil {
-		t.Error("expected error from /no-exist-binary")
+		t.Error("expected error from /no-exist-executable")
 	}
 }
 
@@ -168,6 +203,58 @@ func TestExitStatus(t *testing.T) {
 		}
 	} else {
 		t.Fatalf("expected *exec.ExitError from exit 42; got %T: %v", err, err)
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	// Test that exit code are returned correctly
+	cmd := helperCommand(t, "exit", "42")
+	cmd.Run()
+	want := 42
+	if runtime.GOOS == "plan9" {
+		want = 1
+	}
+	got := cmd.ProcessState.ExitCode()
+	if want != got {
+		t.Errorf("ExitCode got %d, want %d", got, want)
+	}
+
+	cmd = helperCommand(t, "/no-exist-executable")
+	cmd.Run()
+	want = 2
+	if runtime.GOOS == "plan9" {
+		want = 1
+	}
+	got = cmd.ProcessState.ExitCode()
+	if want != got {
+		t.Errorf("ExitCode got %d, want %d", got, want)
+	}
+
+	cmd = helperCommand(t, "exit", "255")
+	cmd.Run()
+	want = 255
+	if runtime.GOOS == "plan9" {
+		want = 1
+	}
+	got = cmd.ProcessState.ExitCode()
+	if want != got {
+		t.Errorf("ExitCode got %d, want %d", got, want)
+	}
+
+	cmd = helperCommand(t, "cat")
+	cmd.Run()
+	want = 0
+	got = cmd.ProcessState.ExitCode()
+	if want != got {
+		t.Errorf("ExitCode got %d, want %d", got, want)
+	}
+
+	// Test when command does not call Run().
+	cmd = helperCommand(t, "cat")
+	want = -1
+	got = cmd.ProcessState.ExitCode()
+	if want != got {
+		t.Errorf("ExitCode got %d, want %d", got, want)
 	}
 }
 
@@ -292,9 +379,52 @@ func TestStdinCloseRace(t *testing.T) {
 
 // Issue 5071
 func TestPipeLookPathLeak(t *testing.T) {
-	fd0, lsof0 := numOpenFDS(t)
-	for i := 0; i < 4; i++ {
-		cmd := exec.Command("something-that-does-not-exist-binary")
+	// If we are reading from /proc/self/fd we (should) get an exact result.
+	tolerance := 0
+
+	// Reading /proc/self/fd is more reliable than calling lsof, so try that
+	// first.
+	numOpenFDs := func() (int, []byte, error) {
+		fds, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			return 0, nil, err
+		}
+		return len(fds), nil, nil
+	}
+	want, before, err := numOpenFDs()
+	if err != nil {
+		// We encountered a problem reading /proc/self/fd (we might be on
+		// a platform that doesn't have it). Fall back onto lsof.
+		t.Logf("using lsof because: %v", err)
+		numOpenFDs = func() (int, []byte, error) {
+			// Android's stock lsof does not obey the -p option,
+			// so extra filtering is needed.
+			// https://golang.org/issue/10206
+			if runtime.GOOS == "android" {
+				// numOpenFDsAndroid handles errors itself and
+				// might skip or fail the test.
+				n, lsof := numOpenFDsAndroid(t)
+				return n, lsof, nil
+			}
+			lsof, err := exec.Command("lsof", "-b", "-n", "-p", strconv.Itoa(os.Getpid())).Output()
+			return bytes.Count(lsof, []byte("\n")), lsof, err
+		}
+
+		// lsof may see file descriptors associated with the fork itself,
+		// so we allow some extra margin if we have to use it.
+		// https://golang.org/issue/19243
+		tolerance = 5
+
+		// Retry reading the number of open file descriptors.
+		want, before, err = numOpenFDs()
+		if err != nil {
+			t.Log(err)
+			t.Skipf("skipping test; error finding or running lsof")
+		}
+	}
+
+	for i := 0; i < 6; i++ {
+		cmd := exec.Command("something-that-does-not-exist-executable")
 		cmd.StdoutPipe()
 		cmd.StderrPipe()
 		cmd.StdinPipe()
@@ -302,36 +432,20 @@ func TestPipeLookPathLeak(t *testing.T) {
 			t.Fatal("unexpected success")
 		}
 	}
-	for triesLeft := 3; triesLeft >= 0; triesLeft-- {
-		open, lsof := numOpenFDS(t)
-		fdGrowth := open - fd0
-		if fdGrowth > 2 {
-			if triesLeft > 0 {
-				// Work around what appears to be a race with Linux's
-				// proc filesystem (as used by lsof). It seems to only
-				// be eventually consistent. Give it awhile to settle.
-				// See golang.org/issue/7808
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			t.Errorf("leaked %d fds; want ~0; have:\n%s\noriginally:\n%s", fdGrowth, lsof, lsof0)
-		}
-		break
-	}
-}
-
-func numOpenFDS(t *testing.T) (n int, lsof []byte) {
-	if runtime.GOOS == "android" {
-		// Android's stock lsof does not obey the -p option,
-		// so extra filtering is needed. (golang.org/issue/10206)
-		return numOpenFDsAndroid(t)
-	}
-
-	lsof, err := exec.Command("lsof", "-b", "-n", "-p", strconv.Itoa(os.Getpid())).Output()
+	got, after, err := numOpenFDs()
 	if err != nil {
-		t.Skip("skipping test; error finding or running lsof")
+		// numOpenFDs has already succeeded once, it should work here.
+		t.Errorf("unexpected failure: %v", err)
 	}
-	return bytes.Count(lsof, []byte("\n")), lsof
+	if got-want > tolerance {
+		t.Errorf("number of open file descriptors changed: got %v, want %v", got, want)
+		if before != nil {
+			t.Errorf("before:\n%v\n", before)
+		}
+		if after != nil {
+			t.Errorf("after:\n%v\n", after)
+		}
+	}
 }
 
 func numOpenFDsAndroid(t *testing.T) (n int, lsof []byte) {
@@ -373,34 +487,9 @@ func numOpenFDsAndroid(t *testing.T) (n int, lsof []byte) {
 	return bytes.Count(lsof, []byte("\n")), lsof
 }
 
-var testedAlreadyLeaked = false
-
-// basefds returns the number of expected file descriptors
-// to be present in a process at start.
-func basefds() uintptr {
-	return os.Stderr.Fd() + 1
-}
-
-func closeUnexpectedFds(t *testing.T, m string) {
-	for fd := basefds(); fd <= 101; fd++ {
-		err := os.NewFile(fd, "").Close()
-		if err == nil {
-			t.Logf("%s: Something already leaked - closed fd %d", m, fd)
-		}
-	}
-}
-
 func TestExtraFilesFDShuffle(t *testing.T) {
 	t.Skip("flaky test; see https://golang.org/issue/5780")
 	switch runtime.GOOS {
-	case "darwin":
-		// TODO(cnicolaou): https://golang.org/issue/2603
-		// leads to leaked file descriptors in this test when it's
-		// run from a builder.
-		closeUnexpectedFds(t, "TestExtraFilesFDShuffle")
-	case "netbsd":
-		// https://golang.org/issue/3955
-		closeUnexpectedFds(t, "TestExtraFilesFDShuffle")
 	case "windows":
 		t.Skip("no operating system support; skipping")
 	}
@@ -495,17 +584,32 @@ func TestExtraFilesFDShuffle(t *testing.T) {
 }
 
 func TestExtraFiles(t *testing.T) {
+	if haveUnexpectedFDs {
+		// The point of this test is to make sure that any
+		// descriptors we open are marked close-on-exec.
+		// If haveUnexpectedFDs is true then there were other
+		// descriptors open when we started the test,
+		// so those descriptors are clearly not close-on-exec,
+		// and they will confuse the test. We could modify
+		// the test to expect those descriptors to remain open,
+		// but since we don't know where they came from or what
+		// they are doing, that seems fragile. For example,
+		// perhaps they are from the startup code on this
+		// system for some reason. Also, this test is not
+		// system-specific; as long as most systems do not skip
+		// the test, we will still be testing what we care about.
+		t.Skip("skipping test because test was run with FDs open")
+	}
+
 	testenv.MustHaveExec(t)
+	testenv.MustHaveGoBuild(t)
+
+	// This test runs with cgo disabled. External linking needs cgo, so
+	// it doesn't work if external linking is required.
+	testenv.MustInternalLink(t)
 
 	if runtime.GOOS == "windows" {
 		t.Skipf("skipping test on %q", runtime.GOOS)
-	}
-
-	// Ensure that file descriptors have not already been leaked into
-	// our environment.
-	if !testedAlreadyLeaked {
-		testedAlreadyLeaked = true
-		closeUnexpectedFds(t, "TestExtraFiles")
 	}
 
 	// Force network usage, to verify the epoll (or whatever) fd
@@ -532,7 +636,7 @@ func TestExtraFiles(t *testing.T) {
 	// cgo), to make sure none of that potential C code leaks fds.
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	// quiet expected TLS handshake error "remote error: bad certificate"
-	ts.Config.ErrorLog = log.New(ioutil.Discard, "", 0)
+	ts.Config.ErrorLog = log.New(io.Discard, "", 0)
 	ts.StartTLS()
 	defer ts.Close()
 	_, err = http.Get(ts.URL)
@@ -540,7 +644,7 @@ func TestExtraFiles(t *testing.T) {
 		t.Errorf("success trying to fetch %s; want an error", ts.URL)
 	}
 
-	tf, err := ioutil.TempFile("", "")
+	tf, err := os.CreateTemp("", "")
 	if err != nil {
 		t.Fatalf("TempFile: %v", err)
 	}
@@ -557,14 +661,50 @@ func TestExtraFiles(t *testing.T) {
 		t.Fatalf("Seek: %v", err)
 	}
 
-	c := helperCommand(t, "read3")
+	tempdir := t.TempDir()
+	exe := filepath.Join(tempdir, "read3.exe")
+
+	c := exec.Command(testenv.GoToolPath(t), "build", "-o", exe, "read3.go")
+	// Build the test without cgo, so that C library functions don't
+	// open descriptors unexpectedly. See issue 25628.
+	c.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := c.CombinedOutput(); err != nil {
+		t.Logf("go build -o %s read3.go\n%s", exe, output)
+		t.Fatalf("go build failed: %v", err)
+	}
+
+	// Use a deadline to try to get some output even if the program hangs.
+	ctx := context.Background()
+	if deadline, ok := t.Deadline(); ok {
+		// Leave a 20% grace period to flush output, which may be large on the
+		// linux/386 builders because we're running the subprocess under strace.
+		deadline = deadline.Add(-time.Until(deadline) / 5)
+
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+
+	c = exec.CommandContext(ctx, exe)
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout
 	c.Stderr = &stderr
 	c.ExtraFiles = []*os.File{tf}
+	if runtime.GOOS == "illumos" {
+		// Some facilities in illumos are implemented via access
+		// to /proc by libc; such accesses can briefly occupy a
+		// low-numbered fd.  If this occurs concurrently with the
+		// test that checks for leaked descriptors, the check can
+		// become confused and report a spurious leaked descriptor.
+		// (See issue #42431 for more detailed analysis.)
+		//
+		// Attempt to constrain the use of additional threads in the
+		// child process to make this test less flaky:
+		c.Env = append(os.Environ(), "GOMAXPROCS=1")
+	}
 	err = c.Run()
 	if err != nil {
-		t.Fatalf("Run: %v; stdout %q, stderr %q", err, stdout.Bytes(), stderr.Bytes())
+		t.Fatalf("Run: %v\n--- stdout:\n%s--- stderr:\n%s", err, stdout.Bytes(), stderr.Bytes())
 	}
 	if stdout.String() != text {
 		t.Errorf("got stdout %q, stderr %q; want %q on stdout", stdout.String(), stderr.String(), text)
@@ -599,6 +739,9 @@ func TestExtraFilesRace(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
+		if testing.Short() && i >= 3 {
+			break
+		}
 		la := listen()
 		ca := helperCommand(t, "describefiles")
 		ca.ExtraFiles = []*os.File{listenerFile(la)}
@@ -635,15 +778,6 @@ func TestHelperProcess(*testing.T) {
 	}
 	defer os.Exit(0)
 
-	// Determine which command to use to display open files.
-	ofcmd := "lsof"
-	switch runtime.GOOS {
-	case "dragonfly", "freebsd", "netbsd", "openbsd":
-		ofcmd = "fstat"
-	case "plan9":
-		ofcmd = "/bin/cat"
-	}
-
 	args := os.Args
 	for len(args) > 0 {
 		if args[0] == "--" {
@@ -665,6 +799,11 @@ func TestHelperProcess(*testing.T) {
 			iargs = append(iargs, s)
 		}
 		fmt.Println(iargs...)
+	case "echoenv":
+		for _, s := range args {
+			fmt.Println(os.Getenv(s))
+		}
+		os.Exit(0)
 	case "cat":
 		if len(args) == 0 {
 			io.Copy(os.Stdout, os.Stdin)
@@ -702,7 +841,7 @@ func TestHelperProcess(*testing.T) {
 			}
 		}
 	case "stdinClose":
-		b, err := ioutil.ReadAll(os.Stdin)
+		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -712,65 +851,6 @@ func TestHelperProcess(*testing.T) {
 			os.Exit(1)
 		}
 		os.Exit(0)
-	case "read3": // read fd 3
-		fd3 := os.NewFile(3, "fd3")
-		bs, err := ioutil.ReadAll(fd3)
-		if err != nil {
-			fmt.Printf("ReadAll from fd 3: %v", err)
-			os.Exit(1)
-		}
-		switch runtime.GOOS {
-		case "dragonfly":
-			// TODO(jsing): Determine why DragonFly is leaking
-			// file descriptors...
-		case "darwin":
-			// TODO(bradfitz): broken? Sometimes.
-			// https://golang.org/issue/2603
-			// Skip this additional part of the test for now.
-		case "netbsd":
-			// TODO(jsing): This currently fails on NetBSD due to
-			// the cloned file descriptors that result from opening
-			// /dev/urandom.
-			// https://golang.org/issue/3955
-		case "solaris":
-			// TODO(aram): This fails on Solaris because libc opens
-			// its own files, as it sees fit. Darwin does the same,
-			// see: https://golang.org/issue/2603
-		default:
-			// Now verify that there are no other open fds.
-			var files []*os.File
-			for wantfd := basefds() + 1; wantfd <= 100; wantfd++ {
-				f, err := os.Open(os.Args[0])
-				if err != nil {
-					fmt.Printf("error opening file with expected fd %d: %v", wantfd, err)
-					os.Exit(1)
-				}
-				if got := f.Fd(); got != wantfd {
-					fmt.Printf("leaked parent file. fd = %d; want %d\n", got, wantfd)
-					var args []string
-					switch runtime.GOOS {
-					case "plan9":
-						args = []string{fmt.Sprintf("/proc/%d/fd", os.Getpid())}
-					default:
-						args = []string{"-p", fmt.Sprint(os.Getpid())}
-					}
-					out, _ := exec.Command(ofcmd, args...).CombinedOutput()
-					fmt.Print(string(out))
-					os.Exit(1)
-				}
-				files = append(files, f)
-			}
-			for _, f := range files {
-				f.Close()
-			}
-		}
-		// Referring to fd3 here ensures that it is not
-		// garbage collected, and therefore closed, while
-		// executing the wantfd loop above. It doesn't matter
-		// what we do with fd3 as long as we refer to it;
-		// closing it is the easy choice.
-		fd3.Close()
-		os.Stdout.Write(bs)
 	case "exit":
 		n, _ := strconv.Atoi(args[0])
 		os.Exit(n)
@@ -832,31 +912,45 @@ func TestHelperProcess(*testing.T) {
 	case "stderrfail":
 		fmt.Fprintf(os.Stderr, "some stderr text\n")
 		os.Exit(1)
+	case "sleep":
+		time.Sleep(3 * time.Second)
+		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n", cmd)
 		os.Exit(2)
 	}
 }
 
+type delayedInfiniteReader struct{}
+
+func (delayedInfiniteReader) Read(b []byte) (int, error) {
+	time.Sleep(100 * time.Millisecond)
+	for i := range b {
+		b[i] = 'x'
+	}
+	return len(b), nil
+}
+
 // Issue 9173: ignore stdin pipe writes if the program completes successfully.
 func TestIgnorePipeErrorOnSuccess(t *testing.T) {
 	testenv.MustHaveExec(t)
 
-	// We really only care about testing this on Unixy things.
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skipf("skipping test on %q", runtime.GOOS)
+	testWith := func(r io.Reader) func(*testing.T) {
+		return func(t *testing.T) {
+			cmd := helperCommand(t, "echo", "foo")
+			var out bytes.Buffer
+			cmd.Stdin = r
+			cmd.Stdout = &out
+			if err := cmd.Run(); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := out.String(), "foo\n"; got != want {
+				t.Errorf("output = %q; want %q", got, want)
+			}
+		}
 	}
-
-	cmd := helperCommand(t, "echo", "foo")
-	var out bytes.Buffer
-	cmd.Stdin = strings.NewReader(strings.Repeat("x", 10<<20))
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := out.String(), "foo\n"; got != want {
-		t.Errorf("output = %q; want %q", got, want)
-	}
+	t.Run("10MB", testWith(strings.NewReader(strings.Repeat("x", 10<<20))))
+	t.Run("Infinite", testWith(delayedInfiniteReader{}))
 }
 
 type badWriter struct{}
@@ -1010,5 +1104,73 @@ func TestContextCancel(t *testing.T) {
 		t.Error("program unexpectedly exited successfully")
 	} else {
 		t.Logf("exit status: %v", err)
+	}
+}
+
+// test that environment variables are de-duped.
+func TestDedupEnvEcho(t *testing.T) {
+	testenv.MustHaveExec(t)
+
+	cmd := helperCommand(t, "echoenv", "FOO")
+	cmd.Env = append(cmd.Env, "FOO=bad", "FOO=good")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(out)), "good"; got != want {
+		t.Errorf("output = %q; want %q", got, want)
+	}
+}
+
+func TestString(t *testing.T) {
+	echoPath, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skip(err)
+	}
+	tests := [...]struct {
+		path string
+		args []string
+		want string
+	}{
+		{"echo", nil, echoPath},
+		{"echo", []string{"a"}, echoPath + " a"},
+		{"echo", []string{"a", "b"}, echoPath + " a b"},
+	}
+	for _, test := range tests {
+		cmd := exec.Command(test.path, test.args...)
+		if got := cmd.String(); got != test.want {
+			t.Errorf("String(%q, %q) = %q, want %q", test.path, test.args, got, test.want)
+		}
+	}
+}
+
+func TestStringPathNotResolved(t *testing.T) {
+	_, err := exec.LookPath("makemeasandwich")
+	if err == nil {
+		t.Skip("wow, thanks")
+	}
+	cmd := exec.Command("makemeasandwich", "-lettuce")
+	want := "makemeasandwich -lettuce"
+	if got := cmd.String(); got != want {
+		t.Errorf("String(%q, %q) = %q, want %q", "makemeasandwich", "-lettuce", got, want)
+	}
+}
+
+// start a child process without the user code explicitly starting
+// with a copy of the parent's. (The Windows SYSTEMROOT issue: Issue
+// 25210)
+func TestChildCriticalEnv(t *testing.T) {
+	testenv.MustHaveExec(t)
+	if runtime.GOOS != "windows" {
+		t.Skip("only testing on Windows")
+	}
+	cmd := helperCommand(t, "echoenv", "SYSTEMROOT")
+	cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		t.Error("no SYSTEMROOT found")
 	}
 }

@@ -112,17 +112,21 @@ void test_sprintf_c_const (void)
   T ( 3, "%1$c%2$c", '1', '2');
 
   /* Verify that a warning is issued for exceeding INT_MAX bytes and
-     not otherwise.  */
+     not otherwise.  In ILP32 the maximum object size is INT_MAX - 1
+     bytes so the calls are diagnosed due to the overflow.  */
   T (-1, "%*c",  INT_MAX - 1, '1');
-  T (-1, "%*c",  INT_MAX,     '1');
-  T (-1, "X%*c", INT_MAX - 1, '1');
-  T (-1, "X%*c", INT_MAX,     '1'); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." } */
+  T (-1, "%*c",  INT_MAX,     '1'); /* { dg-warning "writing a terminating nul past the end " "ilp32" { target ilp32 } } */
+  T (-1, "X%*c", INT_MAX - 1, '1'); /* { dg-warning "writing a terminating nul past the end " "ilp32" { target ilp32 } } */
+  T (-1, "X%*c", INT_MAX,     '1'); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." "lp64" { target lp64 } } */
+  /* { dg-warning "directive writing 2147483647 bytes into a region of size 2147483646" "ilp32" { target ilp32 } .-1 } */
 
-  T (-1, "%*c%*c", INT_MAX - 1, '1', INT_MAX - 1, '2'); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." } */
+  T (-1, "%*c%*c", INT_MAX - 1, '1', INT_MAX - 1, '2'); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." "lp64" { target lp64 } } */
+  /* { dg-warning "directive writing 2147483646 bytes into a region of size 1" "ilp32" { target ilp32 } .-1 } */
 
   T (-1, "%*cX", INT_MAX - 2, '1');
-  T (-1, "%*cX", INT_MAX - 1, '1');
-  T (-1, "%*cX", INT_MAX,     '1'); /* { dg-warning "output of \[0-9\]+ bytes causes result to exceed .INT_MAX." } */
+  T (-1, "%*cX", INT_MAX - 1, '1'); /* { dg-warning "writing a terminating nul past the end of the destination" "ilp32" { target ilp32 } } */
+  T (-1, "%*cX", INT_MAX,     '1'); /* { dg-warning "output of \[0-9\]+ bytes causes result to exceed .INT_MAX." "lp64" { target lp64 } } */
+  /* { dg-warning "directive writing 1 byte into a region of size 0" "ilp32" { target ilp32 } .-1 } */
 }
 
 /* Verify that no warning is issued for calls that write into a flexible
@@ -288,8 +292,9 @@ void test_sprintf_chk_s_const (void)
   /* Verify that output in excess of INT_MAX bytes is diagnosed even
      when the size of the destination object is unknown.  */
   T (-1, "%*s",  INT_MAX - 1, "");
-  T (-1, "%*s",  INT_MAX,     "");
-  T (-1, "X%*s", INT_MAX,     ""); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." } */
+  T (-1, "%*s",  INT_MAX,     ""); /* { dg-warning "writing a terminating nul past the end" "ilp32" { target ilp32 } } */
+  T (-1, "X%*s", INT_MAX,     ""); /* { dg-warning "directive output of \[0-9\]+ bytes causes result to exceed .INT_MAX." "lp64" { target lp64 } } */
+  /* { dg-warning "directive writing 2147483647 bytes into a region of size 2147483646" "ilp32" { target ilp32 } .-1 } */
 
   /* Multiple directives.  */
 
@@ -1068,7 +1073,7 @@ void test_sprintf_chk_e_const (void)
 void test_sprintf_chk_s_nonconst (int w, int p, const char *s)
 {
   T (-1, "%s",   s);
-  T ( 0, "%s",   s);            /* { dg-warning "writing a terminating nul" } */
+  T ( 0, "%-s",  s);            /* { dg-warning "writing a terminating nul" } */
   T ( 1, "%s",   s);
   T (-1, "%.0s", s);
   T ( 1, "%.0s", s);
@@ -1377,7 +1382,8 @@ void test_sprintf_chk_e_nonconst (int w, int p, double d)
   T (-1, "%*.*E",  w, p, d);
   T (-1, "%*.*lE", w, p, d);
 
-  T ( 0, "%E",          d);           /* { dg-warning "writing between 12 and 14 bytes into a region of size 0" } */
+  /* The least number of bytes %E can produce is 3 for "inf" and "nan".  */
+  T ( 0, "%E",          d);           /* { dg-warning "writing between 3 and 14 bytes into a region of size 0" } */
   T ( 0, "%e",          d);           /* { dg-warning "into a region" } */
   T ( 1, "%E",          d);           /* { dg-warning "into a region" } */
   T ( 1, "%e",          d);           /* { dg-warning "into a region" } */
@@ -1389,22 +1395,22 @@ void test_sprintf_chk_e_nonconst (int w, int p, double d)
   T (14, "%E",          d);
   T (14, "%e",          d);
 
-  T ( 0, "%+E",         d);           /* { dg-warning "writing between 13 and 14 bytes into a region of size 0" } */
-  T ( 0, "%-e",         d);           /* { dg-warning "writing between 12 and 14 bytes into a region of size 0" } */
-  T ( 0, "% E",         d);           /* { dg-warning "writing between 13 and 14 bytes into a region of size 0" } */
+  T ( 0, "%+E",         d);           /* { dg-warning "writing between 4 and 14 bytes into a region of size 0" } */
+  T ( 0, "%-e",         d);           /* { dg-warning "writing between 3 and 14 bytes into a region of size 0" } */
+  T ( 0, "% E",         d);           /* { dg-warning "writing between 4 and 14 bytes into a region of size 0" } */
 
-  /* The range of output of "%.0e" is between 5 and 7 bytes (not counting
+  /* The range of output of "%.0e" is between 3 and 7 bytes (not counting
      the terminating NUL.  */
-  T ( 5, "%.0e",        d);           /* { dg-warning "writing a terminating nul past the end" } */
+  T ( 5, "%.0e",        d);           /* { dg-warning "may write a terminating nul past the end" } */
   T ( 6, "%.0e",        d);           /* 1e+00 */
 
-  /* The range of output of "%.1e" is between 7 and 9 bytes (not counting
+  /* The range of output of "%.1e" is between 3 and 9 bytes (not counting
      the terminating NUL.  */
-  T ( 7, "%.1e",        d);           /* { dg-warning "writing a terminating nul past the end" } */
+  T ( 7, "%.1e",        d);           /* { dg-warning "may write a terminating nul past the end" } */
   T ( 8, "%.1e",        d);
 
-  T ( 0, "%*e",      0, d);           /* { dg-warning "writing between 12 and 14 bytes into a region of size 0" } */
-  T ( 0, "%*e",      w, d);           /* { dg-warning "writing 12 or more bytes into a region of size 0|writing between 12 and \[0-9\]+ bytes into a region of size 0" } */
+  T ( 0, "%*e",      0, d);           /* { dg-warning "writing between 3 and 14 bytes into a region of size 0" } */
+  T ( 0, "%*e",      w, d);           /* { dg-warning "writing 3 or more bytes into a region of size 0|writing between 3 and \[0-9\]+ bytes into a region of size 0" } */
 }
 
 void test_sprintf_chk_f_nonconst (double d)
@@ -1557,9 +1563,10 @@ void test_snprintf_c_const (char *d)
 
   T (3, "%lc%c",   (wint_t)'1', '2');
   /* Here %lc may result in anywhere between 0 and MB_CUR_MAX characters
-     so the minimum number of bytes on output is 2 (plus the terminating
-     nul), but the likely number is 3 (plus the nul).  */
-  T (3, "%lc%c%c", (wint_t)'\x80', '2', '3');  /* { dg-warning ".%c. directive output may be truncated writing 1 byte into a region of size between 0 and 2" } */
+     so the output range is [0, 2, 6, 6] with the middle being used for
+     the diagnostic (and the extremes for optimization).  The cast is
+     to prevent sign extension.  */
+  T (3, "%lc%c%c", (wint_t)(unsigned char)'\x80', '2', '3');  /* { dg-warning ".%c. directive output may be truncated writing 1 byte into a region of size between 0 and 2" } */
   /* It's reasonably safe that L'1' converts into the single byte '1'.  */
   T (3, "%lc%c%c", (wint_t)'1', '2', '3');   /* { dg-warning "output may be truncated" } */
   T (3, "%lc%lc%c", (wint_t)'1', (wint_t)'2', '3'); /* { dg-warning "output may be truncated" } */
@@ -1576,7 +1583,7 @@ void test_snprintf_chk_c_const (void)
   /* Verify that specifying a size of the destination buffer that's
      bigger than its actual size (normally determined and passed to
      the function by __builtin_object_size) is diagnosed.  */
-  FUNC (__snprintf_chk)(buffer, 3, 0, 2, " ");   /* { dg-warning "specified bound 3 exceeds the size 2 of the destination" } */
+  FUNC (__snprintf_chk)(buffer, 3, 0, 2, " ");   /* { dg-warning "specified bound 3 exceeds destination size 2" } */
 
   T (-1, "%c",    0);           /* { dg-warning "specified bound \[0-9\]+ exceeds maximum object size \[0-9\]+" } */
 
@@ -1717,7 +1724,7 @@ void test_vsnprintf_chk_s (va_list va)
   /* Verify that specifying a size of the destination buffer that's
      bigger than its actual size (normally determined and passed to
      the function by __builtin_object_size) is diagnosed.  */
-  FUNC (__vsnprintf_chk)(buffer, 123, 0, 122, "%-s", va);   /* { dg-warning "specified bound 123 exceeds the size 122 of the destination" } */
+  FUNC (__vsnprintf_chk)(buffer, 123, 0, 122, "%-s", va);   /* { dg-warning "specified bound 123 exceeds destination size 122" } */
 
   FUNC (__vsnprintf_chk)(buffer, __SIZE_MAX__, 0, 2, "%-s", va);   /* { dg-warning "specified bound \[0-9\]+ exceeds maximum object size \[0-9\]+" } */
 

@@ -2,16 +2,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// +build !js
+
 package net
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"internal/poll"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"net/internal/socktest"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,17 +92,17 @@ second:
 		return nil
 	}
 	switch err := nestedErr.(type) {
-	case *AddrError, addrinfoErrno, *DNSError, InvalidAddrError, *ParseError, *timeoutError, UnknownNetworkError:
+	case *AddrError, addrinfoErrno, *timeoutError, *DNSError, InvalidAddrError, *ParseError, *poll.DeadlineExceededError, UnknownNetworkError:
 		return nil
 	case *os.SyscallError:
 		nestedErr = err.Err
 		goto third
-	case *os.PathError: // for Plan 9
+	case *fs.PathError: // for Plan 9
 		nestedErr = err.Err
 		goto third
 	}
 	switch nestedErr {
-	case errCanceled, errClosing, errMissingAddress, errNoSuitableAddress,
+	case errCanceled, ErrClosed, errMissingAddress, errNoSuitableAddress,
 		context.DeadlineExceeded, context.Canceled:
 		return nil
 	}
@@ -140,7 +145,7 @@ func TestDialError(t *testing.T) {
 
 	origTestHookLookupIP := testHookLookupIP
 	defer func() { testHookLookupIP = origTestHookLookupIP }()
-	testHookLookupIP = func(ctx context.Context, fn func(context.Context, string) ([]IPAddr, error), host string) ([]IPAddr, error) {
+	testHookLookupIP = func(ctx context.Context, fn func(context.Context, string, string) ([]IPAddr, error), network, host string) ([]IPAddr, error) {
 		return nil, &DNSError{Err: "dial error test", Name: "name", Server: "server", IsTimeout: true}
 	}
 	sw.Set(socktest.FilterConnect, func(so *socktest.Status) (socktest.AfterFilter, error) {
@@ -181,7 +186,7 @@ func TestDialError(t *testing.T) {
 
 func TestProtocolDialError(t *testing.T) {
 	switch runtime.GOOS {
-	case "nacl", "solaris":
+	case "solaris", "illumos":
 		t.Skipf("not supported on %s", runtime.GOOS)
 	}
 
@@ -210,10 +215,10 @@ func TestProtocolDialError(t *testing.T) {
 
 func TestDialAddrError(t *testing.T) {
 	switch runtime.GOOS {
-	case "nacl", "plan9":
+	case "plan9":
 		t.Skipf("not supported on %s", runtime.GOOS)
 	}
-	if !supportsIPv4 || !supportsIPv6 {
+	if !supportsIPv4() || !supportsIPv6() {
 		t.Skip("both IPv4 and IPv6 are required")
 	}
 
@@ -289,7 +294,7 @@ func TestListenError(t *testing.T) {
 
 	origTestHookLookupIP := testHookLookupIP
 	defer func() { testHookLookupIP = origTestHookLookupIP }()
-	testHookLookupIP = func(_ context.Context, fn func(context.Context, string) ([]IPAddr, error), host string) ([]IPAddr, error) {
+	testHookLookupIP = func(_ context.Context, fn func(context.Context, string, string) ([]IPAddr, error), network, host string) ([]IPAddr, error) {
 		return nil, &DNSError{Err: "listen error test", Name: "name", Server: "server", IsTimeout: true}
 	}
 	sw.Set(socktest.FilterListen, func(so *socktest.Status) (socktest.AfterFilter, error) {
@@ -349,7 +354,7 @@ func TestListenPacketError(t *testing.T) {
 
 	origTestHookLookupIP := testHookLookupIP
 	defer func() { testHookLookupIP = origTestHookLookupIP }()
-	testHookLookupIP = func(_ context.Context, fn func(context.Context, string) ([]IPAddr, error), host string) ([]IPAddr, error) {
+	testHookLookupIP = func(_ context.Context, fn func(context.Context, string, string) ([]IPAddr, error), network, host string) ([]IPAddr, error) {
 		return nil, &DNSError{Err: "listen error test", Name: "name", Server: "server", IsTimeout: true}
 	}
 
@@ -372,7 +377,7 @@ func TestListenPacketError(t *testing.T) {
 
 func TestProtocolListenError(t *testing.T) {
 	switch runtime.GOOS {
-	case "nacl", "plan9":
+	case "plan9":
 		t.Skipf("not supported on %s", runtime.GOOS)
 	}
 
@@ -432,7 +437,7 @@ second:
 		goto third
 	}
 	switch nestedErr {
-	case errClosing, errTimeout:
+	case ErrClosed, errTimeout, poll.ErrNotPollable, os.ErrDeadlineExceeded:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
@@ -467,14 +472,14 @@ second:
 		return nil
 	}
 	switch err := nestedErr.(type) {
-	case *AddrError, addrinfoErrno, *DNSError, InvalidAddrError, *ParseError, *timeoutError, UnknownNetworkError:
+	case *AddrError, addrinfoErrno, *timeoutError, *DNSError, InvalidAddrError, *ParseError, *poll.DeadlineExceededError, UnknownNetworkError:
 		return nil
 	case *os.SyscallError:
 		nestedErr = err.Err
 		goto third
 	}
 	switch nestedErr {
-	case errCanceled, errClosing, errMissingAddress, errTimeout, ErrWriteToConnected, io.ErrUnexpectedEOF:
+	case errCanceled, ErrClosed, errMissingAddress, errTimeout, os.ErrDeadlineExceeded, ErrWriteToConnected, io.ErrUnexpectedEOF:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
@@ -489,9 +494,23 @@ third:
 // parseCloseError parses nestedErr and reports whether it is a valid
 // error value from Close functions.
 // It returns nil when nestedErr is valid.
-func parseCloseError(nestedErr error) error {
+func parseCloseError(nestedErr error, isShutdown bool) error {
 	if nestedErr == nil {
 		return nil
+	}
+
+	// Because historically we have not exported the error that we
+	// return for an operation on a closed network connection,
+	// there are programs that test for the exact error string.
+	// Verify that string here so that we don't break those
+	// programs unexpectedly. See issues #4373 and #19252.
+	want := "use of closed network connection"
+	if !isShutdown && !strings.Contains(nestedErr.Error(), want) {
+		return fmt.Errorf("error string %q does not contain expected string %q", nestedErr, want)
+	}
+
+	if !isShutdown && !errors.Is(nestedErr, ErrClosed) {
+		return fmt.Errorf("errors.Is(%v, errClosed) returns false, want true", nestedErr)
 	}
 
 	switch err := nestedErr.(type) {
@@ -512,12 +531,12 @@ second:
 	case *os.SyscallError:
 		nestedErr = err.Err
 		goto third
-	case *os.PathError: // for Plan 9
+	case *fs.PathError: // for Plan 9
 		nestedErr = err.Err
 		goto third
 	}
 	switch nestedErr {
-	case errClosing:
+	case ErrClosed:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
@@ -527,7 +546,7 @@ third:
 		return nil
 	}
 	switch nestedErr {
-	case os.ErrClosed: // for Plan 9
+	case fs.ErrClosed: // for Plan 9
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 3rd nested level: %T", nestedErr)
@@ -547,23 +566,23 @@ func TestCloseError(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		err = c.(*TCPConn).CloseRead()
-		if perr := parseCloseError(err); perr != nil {
+		if perr := parseCloseError(err, true); perr != nil {
 			t.Errorf("#%d: %v", i, perr)
 		}
 	}
 	for i := 0; i < 3; i++ {
 		err = c.(*TCPConn).CloseWrite()
-		if perr := parseCloseError(err); perr != nil {
+		if perr := parseCloseError(err, true); perr != nil {
 			t.Errorf("#%d: %v", i, perr)
 		}
 	}
 	for i := 0; i < 3; i++ {
 		err = c.Close()
-		if perr := parseCloseError(err); perr != nil {
+		if perr := parseCloseError(err, false); perr != nil {
 			t.Errorf("#%d: %v", i, perr)
 		}
 		err = ln.Close()
-		if perr := parseCloseError(err); perr != nil {
+		if perr := parseCloseError(err, false); perr != nil {
 			t.Errorf("#%d: %v", i, perr)
 		}
 	}
@@ -576,7 +595,7 @@ func TestCloseError(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		err = pc.Close()
-		if perr := parseCloseError(err); perr != nil {
+		if perr := parseCloseError(err, false); perr != nil {
 			t.Errorf("#%d: %v", i, perr)
 		}
 	}
@@ -608,12 +627,12 @@ second:
 	case *os.SyscallError:
 		nestedErr = err.Err
 		goto third
-	case *os.PathError: // for Plan 9
+	case *fs.PathError: // for Plan 9
 		nestedErr = err.Err
 		goto third
 	}
 	switch nestedErr {
-	case errClosing, errTimeout:
+	case ErrClosed, errTimeout, poll.ErrNotPollable, os.ErrDeadlineExceeded:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
@@ -687,12 +706,12 @@ second:
 	case *os.LinkError:
 		nestedErr = err.Err
 		goto third
-	case *os.PathError:
+	case *fs.PathError:
 		nestedErr = err.Err
 		goto third
 	}
 	switch nestedErr {
-	case errClosing:
+	case ErrClosed:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
@@ -710,7 +729,7 @@ func TestFileError(t *testing.T) {
 		t.Skipf("not supported on %s", runtime.GOOS)
 	}
 
-	f, err := ioutil.TempFile("", "go-nettest")
+	f, err := os.CreateTemp("", "go-nettest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,7 +799,7 @@ func parseLookupPortError(nestedErr error) error {
 	switch nestedErr.(type) {
 	case *AddrError, *DNSError:
 		return nil
-	case *os.PathError: // for Plan 9
+	case *fs.PathError: // for Plan 9
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 1st nested level: %T", nestedErr)

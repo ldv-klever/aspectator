@@ -1,5 +1,5 @@
-/* Declarations for C++ name lookup routines.
-   Copyright (C) 2003-2017 Free Software Foundation, Inc.
+/* Declarations for -*- C++ -*- name lookup routines.
+   Copyright (C) 2003-2021 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -23,36 +23,9 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "c-family/c-common.h"
 
-/* The type of dictionary used to map names to types declared at
-   a given scope.  */
-typedef struct binding_table_s *binding_table;
-typedef struct binding_entry_s *binding_entry;
-
-/* The type of a routine repeatedly called by binding_table_foreach.  */
-typedef void (*bt_foreach_proc) (binding_entry, void *);
-
-struct GTY(()) binding_entry_s {
-  binding_entry chain;
-  tree name;
-  tree type;
-};
-
-/* These macros indicate the initial chains count for binding_table.  */
-#define SCOPE_DEFAULT_HT_SIZE		(1 << 3)
-#define CLASS_SCOPE_HT_SIZE		(1 << 3)
-#define NAMESPACE_ORDINARY_HT_SIZE	(1 << 5)
-#define NAMESPACE_STD_HT_SIZE		(1 << 8)
-#define GLOBAL_SCOPE_HT_SIZE		(1 << 8)
-
-extern void binding_table_foreach (binding_table, bt_foreach_proc, void *);
-extern binding_entry binding_table_find (binding_table, tree);
 
-/* Datatype that represents binding established by a declaration between
-   a name and a C++ entity.  */
-typedef struct cxx_binding cxx_binding;
-
 /* The datatype used to implement C++ scope.  */
-typedef struct cp_binding_level cp_binding_level;
+struct cp_binding_level;
 
 /* Nonzero if this binding is for a local scope, as opposed to a class
    or namespace scope.  */
@@ -62,6 +35,14 @@ typedef struct cp_binding_level cp_binding_level;
    currently being defined.  */
 #define INHERITED_VALUE_BINDING_P(NODE) ((NODE)->value_is_inherited)
 
+/* The IMPLICIT_TYPEDEF is hidden from ordinary name lookup (it was
+   injected via a local class's friend decl). The typdef may be in the
+   VALUE or the TYPE slot.  We do not get the situation where the
+   value and type slots are both filled and both hidden.  */
+#define HIDDEN_TYPE_BINDING_P(NODE) ((NODE)->type_is_hidden)
+
+/* Datatype that represents binding established by a declaration between
+   a name and a C++ entity.  */
 struct GTY(()) cxx_binding {
   /* Link to chain together various bindings for this name.  */
   cxx_binding *previous;
@@ -71,8 +52,10 @@ struct GTY(()) cxx_binding {
   tree type;
   /* The scope at which this binding was made.  */
   cp_binding_level *scope;
-  unsigned value_is_inherited : 1;
-  unsigned is_local : 1;
+
+  bool value_is_inherited : 1;
+  bool is_local : 1;
+  bool type_is_hidden : 1;
 };
 
 /* Datatype used to temporarily save C++ bindings (for implicit
@@ -85,11 +68,118 @@ struct GTY(()) cxx_saved_binding {
   tree real_type_value;
 };
 
+/* To support lazy module loading, we squirrel away a section number
+   (and a couple of flags) in the binding slot of unloaded bindings.
+   We rely on pointers being aligned and setting the bottom bit to
+   mark a lazy value.  GTY doesn't like an array of union, so we have
+   a containing struct.  */
 
-extern tree identifier_type_value (tree);
+struct GTY(()) binding_slot {
+  union GTY((desc ("%1.is_lazy ()"))) binding_slot_lazy {
+    tree GTY((tag ("false"))) binding;
+  } u;
+
+  operator tree & ()
+  {
+    gcc_checking_assert (!is_lazy ());
+    return u.binding;
+  }
+  binding_slot &operator= (tree t)
+  {
+    u.binding = t;
+    return *this;
+  }
+  bool is_lazy () const
+  {
+    return bool (uintptr_t (u.binding) & 1);
+  }
+  void set_lazy (unsigned snum)
+  {
+    gcc_checking_assert (!u.binding);
+    u.binding = tree (uintptr_t ((snum << 1) | 1));
+  }
+  void or_lazy (unsigned snum)
+  {
+    gcc_checking_assert (is_lazy ());
+    u.binding = tree (uintptr_t (u.binding) | (snum << 1));
+  }
+  unsigned get_lazy () const
+  {
+    gcc_checking_assert (is_lazy ());
+    return unsigned (uintptr_t (u.binding) >> 1);
+  }
+};
+
+/* Bindings for modules are held in a sparse array.  There is always a
+   current TU slot, others are allocated as needed.  By construction
+   of the importing mechanism we only ever need to append to the
+   array.  Rather than have straight index/slot tuples, we bunch them
+   up for greater packing.
+
+   The cluster representation packs well on a 64-bit system.  */
+
+#define BINDING_VECTOR_SLOTS_PER_CLUSTER 2
+struct binding_index {
+  unsigned short base;
+  unsigned short span;
+};
+
+struct GTY(()) binding_cluster
+{
+  binding_index GTY((skip)) indices[BINDING_VECTOR_SLOTS_PER_CLUSTER];
+  binding_slot slots[BINDING_VECTOR_SLOTS_PER_CLUSTER];
+};
+
+/* These two fields overlay lang flags.  So don't use those.  */
+#define BINDING_VECTOR_ALLOC_CLUSTERS(NODE) \
+  (BINDING_VECTOR_CHECK (NODE)->base.u.dependence_info.clique)
+#define BINDING_VECTOR_NUM_CLUSTERS(NODE) \
+  (BINDING_VECTOR_CHECK (NODE)->base.u.dependence_info.base)
+#define BINDING_VECTOR_CLUSTER_BASE(NODE) \
+  (((tree_binding_vec *)BINDING_VECTOR_CHECK (NODE))->vec)
+#define BINDING_VECTOR_CLUSTER_LAST(NODE) \
+  (&BINDING_VECTOR_CLUSTER (NODE, BINDING_VECTOR_NUM_CLUSTERS (NODE) - 1))
+#define BINDING_VECTOR_CLUSTER(NODE,IX) \
+  (((tree_binding_vec *)BINDING_VECTOR_CHECK (NODE))->vec[IX])
+
+struct GTY(()) tree_binding_vec {
+  struct tree_base base;
+  tree name;
+  binding_cluster GTY((length ("%h.base.u.dependence_info.base"))) vec[1];
+};
+
+/* The name of a module vector.  */
+#define BINDING_VECTOR_NAME(NODE) \
+  (((tree_binding_vec *)BINDING_VECTOR_CHECK (NODE))->name)
+
+/* tree_binding_vec does uses  base.u.dependence_info.base field for
+   length.  It does not have lang_flag etc available!  */
+
+/* These two flags note if a module-vector contains deduplicated
+   bindings (i.e. multiple declarations in different imports).  */
+/* This binding contains duplicate references to a global module
+   entity.  */
+#define BINDING_VECTOR_GLOBAL_DUPS_P(NODE) \
+  (BINDING_VECTOR_CHECK (NODE)->base.static_flag)
+/* This binding contains duplicate references to a partioned module
+   entity.  */
+#define BINDING_VECTOR_PARTITION_DUPS_P(NODE) \
+  (BINDING_VECTOR_CHECK (NODE)->base.volatile_flag)
+
+/* These two flags indicate the provenence of the bindings on this
+   particular vector slot.  We can of course determine this from slot
+   number, but that's a relatively expensive lookup.  This avoids
+   that when iterating.  */
+/* This slot is part of the global module (a header unit).  */
+#define MODULE_BINDING_GLOBAL_P(NODE) \
+  (OVERLOAD_CHECK (NODE)->base.static_flag)
+/* This slot is part of the current module (a partition or primary).  */
+#define MODULE_BINDING_PARTITION_P(NODE)		\
+  (OVERLOAD_CHECK (NODE)->base.volatile_flag)
+
 extern void set_identifier_type_value (tree, tree);
 extern void push_binding (tree, tree, cp_binding_level*);
-extern void pop_binding (tree, tree);
+extern void pop_local_binding (tree, tree);
 extern void pop_bindings_and_leave_scope (void);
 extern tree constructor_name (tree);
 extern bool constructor_name_p (tree, tree);
@@ -112,7 +202,7 @@ enum scope_kind {
 			of an if or switch statement.  */
   sk_function_parms, /* The scope containing function parameters.  */
   sk_class,	     /* The scope containing the members of a class.  */
-  sk_scoped_enum,    /* The scope containing the enumertors of a C++0x
+  sk_scoped_enum,    /* The scope containing the enumerators of a C++11
                         scoped enumeration.  */
   sk_namespace,	     /* The scope containing the members of a
 			namespace, including the global scope.  */
@@ -125,37 +215,11 @@ enum scope_kind {
   sk_omp	     /* An OpenMP structured block.  */
 };
 
-/* The scope where the class/struct/union/enum tag applies.  */
-enum tag_scope {
-  ts_current = 0,	/* Current scope only.  This is for the
-			     class-key identifier;
-			   case mentioned in [basic.lookup.elab]/2,
-			   or the class/enum definition
-			     class-key identifier { ... };  */
-  ts_global = 1,	/* All scopes.  This is the 3.4.1
-			   [basic.lookup.unqual] lookup mentioned
-			   in [basic.lookup.elab]/2.  */
-  ts_within_enclosing_non_class = 2,	/* Search within enclosing non-class
-					   only, for friend class lookup
-					   according to [namespace.memdef]/3
-					   and [class.friend]/9.  */
-  ts_lambda = 3			/* Declaring a lambda closure.  */
-};
-
 struct GTY(()) cp_class_binding {
   cxx_binding *base;
   /* The bound name.  */
   tree identifier;
 };
-
-
-struct GTY(()) cp_label_binding {
-  /* The bound LABEL_DECL.  */
-  tree label;
-  /* The previous IDENTIFIER_LABEL_VALUE.  */
-  tree prev_value;
-};
-
 
 /* For each binding contour we allocate a binding_level structure
    which records the names defined in that contour.
@@ -178,9 +242,6 @@ struct GTY(()) cp_label_binding {
    CURRENT_BINDING_LEVEL.  You should use lookup_name_current_level
    instead.  */
 
-/* Note that the information in the `names' component of the global contour
-   is duplicated in the IDENTIFIER_GLOBAL_VALUEs of all identifiers.  */
-
 struct GTY(()) cp_binding_level {
   /* A chain of _DECL nodes for all variables, constants, functions,
       and typedef types.  These are in the reverse of the order
@@ -188,18 +249,8 @@ struct GTY(()) cp_binding_level {
       are wrapped in TREE_LISTs; the TREE_VALUE is the OVERLOAD.  */
   tree names;
 
-  /* A chain of NAMESPACE_DECL nodes.  */
-  tree namespaces;
-
-  /* An array of static functions and variables (for namespaces only) */
-  vec<tree, va_gc> *static_decls;
-
-  /* A list of USING_DECL nodes.  */
-  tree usings;
-
-  /* A list of used namespaces. PURPOSE is the namespace,
-      VALUE the common ancestor with this binding_level's namespace.  */
-  tree using_directives;
+  /* Using directives.  */
+  vec<tree, va_gc> *using_directives;
 
   /* For the binding level corresponding to a class, the entities
       declared in the class or its base classes.  */
@@ -212,10 +263,6 @@ struct GTY(()) cp_binding_level {
       the class.  */
   tree type_shadowed;
 
-  /* Similar to class_shadowed, but for IDENTIFIER_LABEL_VALUE, and
-      used for all binding levels.  */
-  vec<cp_label_binding, va_gc> *shadowed_labels;
-
   /* For each level (except not the global one),
       a chain of BLOCK nodes for all the levels
       that were entered and exited one level down.  */
@@ -227,11 +274,6 @@ struct GTY(()) cp_binding_level {
 
   /* The binding level which this one is contained in (inherits from).  */
   cp_binding_level *level_chain;
-
-  /* List of VAR_DECLS saved from a previous for statement.
-      These would be dead in ISO-conforming code, but might
-      be referenced in ARM-era code.  */
-  vec<tree, va_gc> *dead_vars_from_for;
 
   /* STATEMENT_LIST for statements in this binding contour.
       Only used at present for SK_CLEANUP temporary bindings.  */
@@ -264,7 +306,10 @@ struct GTY(()) cp_binding_level {
      'this_entity'.  */
   unsigned defining_class_p : 1;
 
-  /* 23 bits left to fill a 32-bit word.  */
+  /* true for SK_FUNCTION_PARMS of immediate functions.  */
+  unsigned immediate_fn_ctx_p : 1;
+
+  /* 22 bits left to fill a 32-bit word.  */
 };
 
 /* The binding level currently in effect.  */
@@ -278,15 +323,6 @@ struct GTY(()) cp_binding_level {
 
 #define class_binding_level scope_chain->class_bindings
 
-/* The tree node representing the global scope.  */
-extern GTY(()) tree global_namespace;
-extern GTY(()) tree global_scope_name;
-
-/* Indicates that there is a type value in some namespace, although
-   that is not necessarily in scope at the moment.  */
-
-extern GTY(()) tree global_type_node;
-
 /* True if SCOPE designates the global scope binding contour.  */
 #define global_scope_p(SCOPE) \
   ((SCOPE) == NAMESPACE_LEVEL (global_namespace))
@@ -294,86 +330,173 @@ extern GTY(()) tree global_type_node;
 extern cp_binding_level *leave_scope (void);
 extern bool kept_level_p (void);
 extern bool global_bindings_p (void);
-extern bool toplevel_bindings_p	(void);
+extern bool toplevel_bindings_p (void);
 extern bool namespace_bindings_p (void);
 extern bool local_bindings_p (void);
 extern bool template_parm_scope_p (void);
 extern scope_kind innermost_scope_kind (void);
 extern cp_binding_level *begin_scope (scope_kind, tree);
 extern void print_binding_stack	(void);
-extern void push_to_top_level (void);
-extern void pop_from_top_level (void);
 extern void pop_everything (void);
 extern void keep_next_level (bool);
-extern bool is_ancestor (tree, tree);
+extern bool is_ancestor (tree ancestor, tree descendant);
+extern bool is_nested_namespace (tree parent, tree descendant,
+				 bool inline_only = false);
 extern tree push_scope (tree);
 extern void pop_scope (tree);
 extern tree push_inner_scope (tree);
 extern void pop_inner_scope (tree, tree);
 extern void push_binding_level (cp_binding_level *);
 
-extern bool push_namespace (tree);
-extern void pop_namespace (void);
-extern void push_nested_namespace (tree);
-extern void pop_nested_namespace (tree);
 extern bool handle_namespace_attrs (tree, tree);
 extern void pushlevel_class (void);
 extern void poplevel_class (void);
-extern tree pushdecl_with_scope (tree, cp_binding_level *, bool);
-extern tree lookup_name_prefer_type (tree, int);
-extern tree lookup_name_real (tree, int, int, bool, int, int);
-extern tree lookup_type_scope (tree, tag_scope);
-extern tree namespace_binding (tree, tree);
-extern void set_namespace_binding (tree, tree, tree);
-extern bool hidden_name_p (tree);
-extern tree remove_hidden_names (tree);
-extern tree lookup_qualified_name (tree, tree, int, bool, /*hidden*/bool = false);
-extern tree lookup_name_nonclass (tree);
-extern tree lookup_name_innermost_nonclass_level (tree);
-extern bool is_local_extern (tree);
-extern tree lookup_function_nonclass (tree, vec<tree, va_gc> *, bool);
-extern void push_local_binding (tree, tree, int);
+
+/* What kind of scopes name lookup looks in.  An enum class so we
+   don't accidentally mix integers.  */
+enum class LOOK_where
+{
+  BLOCK = 1 << 0,  /* Consider block scopes.  */ 
+  CLASS = 1 << 1,  /* Consider class scopes.  */ 
+  NAMESPACE = 1 << 2,  /* Consider namespace scopes.  */ 
+
+  ALL = BLOCK | CLASS | NAMESPACE,
+  BLOCK_NAMESPACE = BLOCK | NAMESPACE,
+  CLASS_NAMESPACE = CLASS | NAMESPACE,
+};
+constexpr LOOK_where operator| (LOOK_where a, LOOK_where b)
+{
+  return LOOK_where (unsigned (a) | unsigned (b));
+}
+constexpr LOOK_where operator& (LOOK_where a, LOOK_where b)
+{
+  return LOOK_where (unsigned (a) & unsigned (b));
+}
+
+enum class LOOK_want
+{
+  NORMAL = 0,  /* Normal lookup -- non-types can hide implicit types.  */
+  TYPE = 1 << 1,  /* We only want TYPE_DECLS.  */
+  NAMESPACE = 1 << 2,  /* We only want NAMESPACE_DECLS.  */
+
+  HIDDEN_FRIEND = 1 << 3, /* See hidden friends.  */
+  HIDDEN_LAMBDA = 1 << 4,  /* See lambda-ignored entities.  */
+
+  TYPE_NAMESPACE = TYPE | NAMESPACE,  /* Either NAMESPACE or TYPE.  */
+};
+constexpr LOOK_want operator| (LOOK_want a, LOOK_want b)
+{
+  return LOOK_want (unsigned (a) | unsigned (b));
+}
+constexpr LOOK_want operator& (LOOK_want a, LOOK_want b)
+{
+  return LOOK_want (unsigned (a) & unsigned (b));
+}
+
+extern tree lookup_name (tree, LOOK_where, LOOK_want = LOOK_want::NORMAL);
+/* Also declared in c-family/c-common.h.  */
+extern tree lookup_name (tree name);
+inline tree lookup_name (tree name, LOOK_want want)
+{
+  return lookup_name (name, LOOK_where::ALL, want);
+}
+
+enum class TAG_how
+{
+  CURRENT_ONLY = 0, // Look and insert only in current scope
+
+  GLOBAL = 1, // Unqualified lookup, innermost-non-class insertion
+
+  INNERMOST_NON_CLASS = 2, // Look and insert only into
+			   // innermost-non-class
+
+  HIDDEN_FRIEND = 3, // As INNERMOST_NON_CLASS, but hide it
+};
+
+extern tree lookup_elaborated_type (tree, TAG_how);
+extern tree get_namespace_binding (tree ns, tree id);
+extern void set_global_binding (tree decl);
+inline tree get_global_binding (tree id)
+{
+  return get_namespace_binding (NULL_TREE, id);
+}
+extern tree lookup_qualified_name (tree scope, tree name,
+				   LOOK_want = LOOK_want::NORMAL,
+				   bool = true);
+extern tree lookup_qualified_name (tree scope, const char *name,
+				   LOOK_want = LOOK_want::NORMAL,
+				   bool = true);
 extern bool pushdecl_class_level (tree);
-extern tree pushdecl_namespace_level (tree, bool);
+extern tree pushdecl_namespace_level (tree, bool hiding = false);
 extern bool push_class_level_binding (tree, tree);
-extern tree getdecls (void);
+extern tree get_local_decls ();
 extern int function_parm_depth (void);
 extern tree cp_namespace_decls (tree);
 extern void set_decl_namespace (tree, tree, bool);
 extern void push_decl_namespace (tree);
 extern void pop_decl_namespace (void);
 extern void do_namespace_alias (tree, tree);
-extern void do_toplevel_using_decl (tree, tree, tree);
-extern void do_local_using_decl (tree, tree, tree);
 extern tree do_class_using_decl (tree, tree);
-extern void do_using_directive (tree);
-extern cp_expr lookup_arg_dependent (tree, tree, vec<tree, va_gc> *);
-extern bool is_associated_namespace (tree, tree);
-extern void parse_using_directive (tree, tree);
+extern tree lookup_arg_dependent (tree, tree, vec<tree, va_gc> *);
+extern tree search_anon_aggr (tree, tree, bool = false);
+extern tree get_class_binding_direct (tree, tree, bool want_type = false);
+extern tree get_class_binding (tree, tree, bool want_type = false);
+extern tree *find_member_slot (tree klass, tree name);
+extern tree *add_member_slot (tree klass, tree name);
+extern void resort_type_member_vec (void *, void *,
+				    gt_pointer_operator, void *);
+extern vec<tree, va_gc> *set_class_bindings (tree, int extra = 0);
+extern void insert_late_enum_def_bindings (tree, tree);
 extern tree innermost_non_namespace_value (tree);
 extern cxx_binding *outer_binding (tree, cxx_binding *, bool);
 extern void cp_emit_debug_info_for_using (tree, tree);
 
-/* Set *DECL to the (non-hidden) declaration for ID at global scope,
-   if present and return true; otherwise return false.  */
+extern void finish_nonmember_using_decl (tree scope, tree name);
+extern void finish_using_directive (tree target, tree attribs);
+void push_local_extern_decl_alias (tree decl);
+extern tree pushdecl (tree, bool hiding = false);
+extern tree pushdecl_outermost_localscope (tree);
+extern tree pushdecl_top_level (tree);
+extern tree pushdecl_top_level_and_finish (tree, tree);
+extern tree pushtag (tree, tree, TAG_how = TAG_how::CURRENT_ONLY);
+extern int push_namespace (tree, bool make_inline = false);
+extern void pop_namespace (void);
+extern void push_nested_namespace (tree);
+extern void pop_nested_namespace (tree);
+extern void push_to_top_level (void);
+extern void pop_from_top_level (void);
+extern void maybe_save_operator_binding (tree);
+extern void push_operator_bindings (void);
+extern void push_using_decl_bindings (tree, tree);
+extern void discard_operator_bindings (tree);
 
-inline bool
-get_global_value_if_present (tree id, tree *decl)
+/* Lower level interface for modules. */
+extern tree *mergeable_namespace_slots (tree ns, tree name, bool is_global,
+					tree *mvec);
+extern void add_mergeable_namespace_entity (tree *slot, tree decl);
+extern tree lookup_class_binding (tree ctx, tree name);
+extern bool import_module_binding (tree ctx, tree name, unsigned mod,
+				   unsigned snum);
+extern bool set_module_binding (tree ctx, tree name, unsigned mod,
+				int mod_glob_flag,
+				tree value, tree type, tree visible);
+extern void add_module_namespace_decl (tree ns, tree decl);
+
+enum WMB_Flags
 {
-  tree global_value = namespace_binding (id, global_namespace);
-  if (global_value)
-    *decl = global_value;
-  return global_value != NULL;
-}
+  WMB_None = 0,
+  WMB_Dups = 1 << 0,
+  WMB_Export = 1 << 1,
+  WMB_Using = 1 << 2,
+  WMB_Hidden = 1 << 3,
+};
 
-/* True is the binding of IDENTIFIER at global scope names a type.  */
-
-inline bool
-is_typename_at_global_scope (tree id)
-{
-  tree global_value = namespace_binding (id, global_namespace);
-
-  return global_value && TREE_CODE (global_value) == TYPE_DECL;
-}
+extern unsigned walk_module_binding (tree binding, bitmap partitions,
+				     bool (*)(tree decl, WMB_Flags, void *data),
+				     void *data);
+extern tree add_imported_namespace (tree ctx, tree name, location_t,
+				    unsigned module,
+				    bool inline_p, bool visible_p);
+extern const char *get_cxx_dialect_name (enum cxx_dialect dialect);
 
 #endif /* GCC_CP_NAME_LOOKUP_H */

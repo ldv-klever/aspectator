@@ -1,5 +1,5 @@
 /* Global, SSA-based optimizations using mathematical identities.
-   Copyright (C) 2005-2017 Free Software Foundation, Inc.
+   Copyright (C) 2005-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -109,45 +109,70 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-dfa.h"
 #include "tree-ssa.h"
 #include "builtins.h"
-#include "params.h"
 #include "internal-fn.h"
 #include "case-cfn-macros.h"
 #include "optabs-libfuncs.h"
 #include "tree-eh.h"
 #include "targhooks.h"
+#include "domwalk.h"
+#include "tree-ssa-math-opts.h"
 
 /* This structure represents one basic block that either computes a
    division, or is a common dominator for basic block that compute a
    division.  */
 struct occurrence {
   /* The basic block represented by this structure.  */
-  basic_block bb;
+  basic_block bb = basic_block();
 
   /* If non-NULL, the SSA_NAME holding the definition for a reciprocal
      inserted in BB.  */
-  tree recip_def;
+  tree recip_def = tree();
+
+  /* If non-NULL, the SSA_NAME holding the definition for a squared
+     reciprocal inserted in BB.  */
+  tree square_recip_def = tree();
 
   /* If non-NULL, the GIMPLE_ASSIGN for a reciprocal computation that
      was inserted in BB.  */
-  gimple *recip_def_stmt;
+  gimple *recip_def_stmt = nullptr;
 
   /* Pointer to a list of "struct occurrence"s for blocks dominated
      by BB.  */
-  struct occurrence *children;
+  struct occurrence *children = nullptr;
 
   /* Pointer to the next "struct occurrence"s in the list of blocks
      sharing a common dominator.  */
-  struct occurrence *next;
+  struct occurrence *next = nullptr;
 
   /* The number of divisions that are in BB before compute_merit.  The
      number of divisions that are in BB or post-dominate it after
      compute_merit.  */
-  int num_divisions;
+  int num_divisions = 0;
 
   /* True if the basic block has a division, false if it is a common
      dominator for basic blocks that do.  If it is false and trapping
      math is active, BB is not a candidate for inserting a reciprocal.  */
-  bool bb_has_division;
+  bool bb_has_division = false;
+
+  /* Construct a struct occurrence for basic block BB, and whose
+     children list is headed by CHILDREN.  */
+  occurrence (basic_block bb, struct occurrence *children)
+  : bb (bb), children (children)
+  {
+    bb->aux = this;
+  }
+
+  /* Destroy a struct occurrence and remove it from its basic block.  */
+  ~occurrence ()
+  {
+    bb->aux = nullptr;
+  }
+
+  /* Allocate memory for a struct occurrence from OCC_POOL.  */
+  static void* operator new (size_t);
+
+  /* Return memory for a struct occurrence to OCC_POOL.  */
+  static void operator delete (void*, size_t);
 };
 
 static struct
@@ -163,19 +188,11 @@ static struct
 {
   /* Number of cexpi calls inserted.  */
   int inserted;
+
+  /* Number of conversions removed.  */
+  int conv_removed;
+
 } sincos_stats;
-
-static struct
-{
-  /* Number of hand-written 16-bit nop / bswaps found.  */
-  int found_16bit;
-
-  /* Number of hand-written 32-bit nop / bswaps found.  */
-  int found_32bit;
-
-  /* Number of hand-written 64-bit nop / bswaps found.  */
-  int found_64bit;
-} nop_stats, bswap_stats;
 
 static struct
 {
@@ -199,23 +216,17 @@ static struct occurrence *occ_head;
 /* Allocation pool for getting instances of "struct occurrence".  */
 static object_allocator<occurrence> *occ_pool;
 
-
-
-/* Allocate and return a new struct occurrence for basic block BB, and
-   whose children list is headed by CHILDREN.  */
-static struct occurrence *
-occ_new (basic_block bb, struct occurrence *children)
+void* occurrence::operator new (size_t n)
 {
-  struct occurrence *occ;
-
-  bb->aux = occ = occ_pool->allocate ();
-  memset (occ, 0, sizeof (struct occurrence));
-
-  occ->bb = bb;
-  occ->children = children;
-  return occ;
+  gcc_assert (n == sizeof(occurrence));
+  return occ_pool->allocate_raw ();
 }
 
+void occurrence::operator delete (void *occ, size_t n)
+{
+  gcc_assert (n == sizeof(occurrence));
+  occ_pool->remove_raw (occ);
+}
 
 /* Insert NEW_OCC into our subset of the dominator tree.  P_HEAD points to a
    list of "struct occurrence"s, one per basic block, having IDOM as
@@ -267,7 +278,7 @@ insert_bb (struct occurrence *new_occ, basic_block idom,
 	  /* None of the previous blocks has DOM as a dominator: if we tail
 	     recursed, we would reexamine them uselessly. Just switch BB with
 	     DOM, and go on looking for blocks dominated by DOM.  */
-          new_occ = occ_new (dom, new_occ);
+	  new_occ = new occurrence (dom, new_occ);
 	}
 
       else
@@ -282,22 +293,26 @@ insert_bb (struct occurrence *new_occ, basic_block idom,
   *p_head = new_occ;
 }
 
-/* Register that we found a division in BB.  */
+/* Register that we found a division in BB.
+   IMPORTANCE is a measure of how much weighting to give
+   that division.  Use IMPORTANCE = 2 to register a single
+   division.  If the division is going to be found multiple
+   times use 1 (as it is with squares).  */
 
 static inline void
-register_division_in (basic_block bb)
+register_division_in (basic_block bb, int importance)
 {
   struct occurrence *occ;
 
   occ = (struct occurrence *) bb->aux;
   if (!occ)
     {
-      occ = occ_new (bb, NULL);
+      occ = new occurrence (bb, NULL);
       insert_bb (occ, ENTRY_BLOCK_PTR_FOR_FN (cfun), &occ_head);
     }
 
   occ->bb_has_division = true;
-  occ->num_divisions++;
+  occ->num_divisions += importance;
 }
 
 
@@ -338,7 +353,47 @@ is_division_by (gimple *use_stmt, tree def)
 	    confused later by replacing all immediate uses x in such
 	    a stmt.  */
 	 && gimple_assign_rhs1 (use_stmt) != def
-	 && !stmt_can_throw_internal (use_stmt);
+	 && !stmt_can_throw_internal (cfun, use_stmt);
+}
+
+/* Return TRUE if USE_STMT is a multiplication of DEF by A.  */
+static inline bool
+is_mult_by (gimple *use_stmt, tree def, tree a)
+{
+  if (gimple_code (use_stmt) == GIMPLE_ASSIGN
+      && gimple_assign_rhs_code (use_stmt) == MULT_EXPR)
+    {
+      tree op0 = gimple_assign_rhs1 (use_stmt);
+      tree op1 = gimple_assign_rhs2 (use_stmt);
+
+      return (op0 == def && op1 == a)
+	      || (op0 == a && op1 == def);
+    }
+  return 0;
+}
+
+/* Return whether USE_STMT is DEF * DEF.  */
+static inline bool
+is_square_of (gimple *use_stmt, tree def)
+{
+  return is_mult_by (use_stmt, def, def);
+}
+
+/* Return whether USE_STMT is a floating-point division by
+   DEF * DEF.  */
+static inline bool
+is_division_by_square (gimple *use_stmt, tree def)
+{
+  if (gimple_code (use_stmt) == GIMPLE_ASSIGN
+      && gimple_assign_rhs_code (use_stmt) == RDIV_EXPR
+      && gimple_assign_rhs1 (use_stmt) != gimple_assign_rhs2 (use_stmt)
+      && !stmt_can_throw_internal (cfun, use_stmt))
+    {
+      tree denominator = gimple_assign_rhs2 (use_stmt);
+      if (TREE_CODE (denominator) == SSA_NAME)
+	return is_square_of (SSA_NAME_DEF_STMT (denominator), def);
+    }
+  return 0;
 }
 
 /* Walk the subset of the dominator tree rooted at OCC, setting the
@@ -348,20 +403,27 @@ is_division_by (gimple *use_stmt, tree def)
 
    DEF_BSI is an iterator pointing at the statement defining DEF.
    If RECIP_DEF is set, a dominator already has a computation that can
-   be used.  */
+   be used.
+
+   If should_insert_square_recip is set, then this also inserts
+   the square of the reciprocal immediately after the definition
+   of the reciprocal.  */
 
 static void
 insert_reciprocals (gimple_stmt_iterator *def_gsi, struct occurrence *occ,
-		    tree def, tree recip_def, int threshold)
+		    tree def, tree recip_def, tree square_recip_def,
+		    int should_insert_square_recip, int threshold)
 {
   tree type;
-  gassign *new_stmt;
+  gassign *new_stmt, *new_square_stmt;
   gimple_stmt_iterator gsi;
   struct occurrence *occ_child;
 
   if (!recip_def
       && (occ->bb_has_division || !flag_trapping_math)
-      && occ->num_divisions >= threshold)
+      /* Divide by two as all divisions are counted twice in
+	 the costing loop.  */
+      && occ->num_divisions / 2 >= threshold)
     {
       /* Make a variable with the replacement and substitute it.  */
       type = TREE_TYPE (def);
@@ -369,29 +431,44 @@ insert_reciprocals (gimple_stmt_iterator *def_gsi, struct occurrence *occ,
       new_stmt = gimple_build_assign (recip_def, RDIV_EXPR,
 				      build_one_cst (type), def);
 
+      if (should_insert_square_recip)
+	{
+	  square_recip_def = create_tmp_reg (type, "powmult_reciptmp");
+	  new_square_stmt = gimple_build_assign (square_recip_def, MULT_EXPR,
+						 recip_def, recip_def);
+	}
+
       if (occ->bb_has_division)
-        {
-          /* Case 1: insert before an existing division.  */
-          gsi = gsi_after_labels (occ->bb);
-          while (!gsi_end_p (gsi) && !is_division_by (gsi_stmt (gsi), def))
+	{
+	  /* Case 1: insert before an existing division.  */
+	  gsi = gsi_after_labels (occ->bb);
+	  while (!gsi_end_p (gsi)
+		 && (!is_division_by (gsi_stmt (gsi), def))
+		 && (!is_division_by_square (gsi_stmt (gsi), def)))
 	    gsi_next (&gsi);
 
-          gsi_insert_before (&gsi, new_stmt, GSI_SAME_STMT);
-        }
-      else if (def_gsi && occ->bb == def_gsi->bb)
-        {
-          /* Case 2: insert right after the definition.  Note that this will
+	  gsi_insert_before (&gsi, new_stmt, GSI_SAME_STMT);
+	  if (should_insert_square_recip)
+	    gsi_insert_before (&gsi, new_square_stmt, GSI_SAME_STMT);
+	}
+      else if (def_gsi && occ->bb == gsi_bb (*def_gsi))
+	{
+	  /* Case 2: insert right after the definition.  Note that this will
 	     never happen if the definition statement can throw, because in
 	     that case the sole successor of the statement's basic block will
 	     dominate all the uses as well.  */
-          gsi_insert_after (def_gsi, new_stmt, GSI_NEW_STMT);
-        }
+	  gsi_insert_after (def_gsi, new_stmt, GSI_NEW_STMT);
+	  if (should_insert_square_recip)
+	    gsi_insert_after (def_gsi, new_square_stmt, GSI_NEW_STMT);
+	}
       else
-        {
-          /* Case 3: insert in a basic block not containing defs/uses.  */
-          gsi = gsi_after_labels (occ->bb);
-          gsi_insert_before (&gsi, new_stmt, GSI_SAME_STMT);
-        }
+	{
+	  /* Case 3: insert in a basic block not containing defs/uses.  */
+	  gsi = gsi_after_labels (occ->bb);
+	  gsi_insert_before (&gsi, new_stmt, GSI_SAME_STMT);
+	  if (should_insert_square_recip)
+	    gsi_insert_before (&gsi, new_square_stmt, GSI_SAME_STMT);
+	}
 
       reciprocal_stats.rdivs_inserted++;
 
@@ -399,8 +476,32 @@ insert_reciprocals (gimple_stmt_iterator *def_gsi, struct occurrence *occ,
     }
 
   occ->recip_def = recip_def;
+  occ->square_recip_def = square_recip_def;
   for (occ_child = occ->children; occ_child; occ_child = occ_child->next)
-    insert_reciprocals (def_gsi, occ_child, def, recip_def, threshold);
+    insert_reciprocals (def_gsi, occ_child, def, recip_def,
+			square_recip_def, should_insert_square_recip,
+			threshold);
+}
+
+/* Replace occurrences of expr / (x * x) with expr * ((1 / x) * (1 / x)).
+   Take as argument the use for (x * x).  */
+static inline void
+replace_reciprocal_squares (use_operand_p use_p)
+{
+  gimple *use_stmt = USE_STMT (use_p);
+  basic_block bb = gimple_bb (use_stmt);
+  struct occurrence *occ = (struct occurrence *) bb->aux;
+
+  if (optimize_bb_for_speed_p (bb) && occ->square_recip_def
+      && occ->recip_def)
+    {
+      gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
+      gimple_assign_set_rhs_code (use_stmt, MULT_EXPR);
+      gimple_assign_set_rhs2 (use_stmt, occ->square_recip_def);
+      SET_USE (use_p, occ->square_recip_def);
+      fold_stmt_inplace (&gsi);
+      update_stmt (use_stmt);
+    }
 }
 
 
@@ -436,8 +537,7 @@ free_bb (struct occurrence *occ)
   /* First get the two pointers hanging off OCC.  */
   next = occ->next;
   child = occ->children;
-  occ->bb->aux = NULL;
-  occ_pool->remove (occ);
+  delete occ;
 
   /* Now ensure that we don't recurse unless it is necessary.  */
   if (!child)
@@ -451,6 +551,194 @@ free_bb (struct occurrence *occ)
     }
 }
 
+/* Transform sequences like
+   t = sqrt (a)
+   x = 1.0 / t;
+   r1 = x * x;
+   r2 = a * x;
+   into:
+   t = sqrt (a)
+   r1 = 1.0 / a;
+   r2 = t;
+   x = r1 * r2;
+   depending on the uses of x, r1, r2.  This removes one multiplication and
+   allows the sqrt and division operations to execute in parallel.
+   DEF_GSI is the gsi of the initial division by sqrt that defines
+   DEF (x in the example above).  */
+
+static void
+optimize_recip_sqrt (gimple_stmt_iterator *def_gsi, tree def)
+{
+  gimple *use_stmt;
+  imm_use_iterator use_iter;
+  gimple *stmt = gsi_stmt (*def_gsi);
+  tree x = def;
+  tree orig_sqrt_ssa_name = gimple_assign_rhs2 (stmt);
+  tree div_rhs1 = gimple_assign_rhs1 (stmt);
+
+  if (TREE_CODE (orig_sqrt_ssa_name) != SSA_NAME
+      || TREE_CODE (div_rhs1) != REAL_CST
+      || !real_equal (&TREE_REAL_CST (div_rhs1), &dconst1))
+    return;
+
+  gcall *sqrt_stmt
+    = dyn_cast <gcall *> (SSA_NAME_DEF_STMT (orig_sqrt_ssa_name));
+
+  if (!sqrt_stmt || !gimple_call_lhs (sqrt_stmt))
+    return;
+
+  switch (gimple_call_combined_fn (sqrt_stmt))
+    {
+    CASE_CFN_SQRT:
+    CASE_CFN_SQRT_FN:
+      break;
+
+    default:
+      return;
+    }
+  tree a = gimple_call_arg (sqrt_stmt, 0);
+
+  /* We have 'a' and 'x'.  Now analyze the uses of 'x'.  */
+
+  /* Statements that use x in x * x.  */
+  auto_vec<gimple *> sqr_stmts;
+  /* Statements that use x in a * x.  */
+  auto_vec<gimple *> mult_stmts;
+  bool has_other_use = false;
+  bool mult_on_main_path = false;
+
+  FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, x)
+    {
+      if (is_gimple_debug (use_stmt))
+	continue;
+      if (is_square_of (use_stmt, x))
+	{
+	  sqr_stmts.safe_push (use_stmt);
+	  if (gimple_bb (use_stmt) == gimple_bb (stmt))
+	    mult_on_main_path = true;
+	}
+      else if (is_mult_by (use_stmt, x, a))
+	{
+	  mult_stmts.safe_push (use_stmt);
+	  if (gimple_bb (use_stmt) == gimple_bb (stmt))
+	    mult_on_main_path = true;
+	}
+      else
+	has_other_use = true;
+    }
+
+  /* In the x * x and a * x cases we just rewire stmt operands or
+     remove multiplications.  In the has_other_use case we introduce
+     a multiplication so make sure we don't introduce a multiplication
+     on a path where there was none.  */
+  if (has_other_use && !mult_on_main_path)
+    return;
+
+  if (sqr_stmts.is_empty () && mult_stmts.is_empty ())
+    return;
+
+  /* If x = 1.0 / sqrt (a) has uses other than those optimized here we want
+     to be able to compose it from the sqr and mult cases.  */
+  if (has_other_use && (sqr_stmts.is_empty () || mult_stmts.is_empty ()))
+    return;
+
+  if (dump_file)
+    {
+      fprintf (dump_file, "Optimizing reciprocal sqrt multiplications of\n");
+      print_gimple_stmt (dump_file, sqrt_stmt, 0, TDF_NONE);
+      print_gimple_stmt (dump_file, stmt, 0, TDF_NONE);
+      fprintf (dump_file, "\n");
+    }
+
+  bool delete_div = !has_other_use;
+  tree sqr_ssa_name = NULL_TREE;
+  if (!sqr_stmts.is_empty ())
+    {
+      /* r1 = x * x.  Transform the original
+	 x = 1.0 / t
+	 into
+	 tmp1 = 1.0 / a
+	 r1 = tmp1.  */
+
+      sqr_ssa_name
+	= make_temp_ssa_name (TREE_TYPE (a), NULL, "recip_sqrt_sqr");
+
+      if (dump_file)
+	{
+	  fprintf (dump_file, "Replacing original division\n");
+	  print_gimple_stmt (dump_file, stmt, 0, TDF_NONE);
+	  fprintf (dump_file, "with new division\n");
+	}
+      stmt
+	= gimple_build_assign (sqr_ssa_name, gimple_assign_rhs_code (stmt),
+			       gimple_assign_rhs1 (stmt), a);
+      gsi_insert_before (def_gsi, stmt, GSI_SAME_STMT);
+      gsi_remove (def_gsi, true);
+      *def_gsi = gsi_for_stmt (stmt);
+      fold_stmt_inplace (def_gsi);
+      update_stmt (stmt);
+
+      if (dump_file)
+	print_gimple_stmt (dump_file, stmt, 0, TDF_NONE);
+
+      delete_div = false;
+      gimple *sqr_stmt;
+      unsigned int i;
+      FOR_EACH_VEC_ELT (sqr_stmts, i, sqr_stmt)
+	{
+	  gimple_stmt_iterator gsi2 = gsi_for_stmt (sqr_stmt);
+	  gimple_assign_set_rhs_from_tree (&gsi2, sqr_ssa_name);
+	  update_stmt (sqr_stmt);
+	}
+    }
+  if (!mult_stmts.is_empty ())
+    {
+      /* r2 = a * x.  Transform this into:
+	 r2 = t (The original sqrt (a)).  */
+      unsigned int i;
+      gimple *mult_stmt = NULL;
+      FOR_EACH_VEC_ELT (mult_stmts, i, mult_stmt)
+	{
+	  gimple_stmt_iterator gsi2 = gsi_for_stmt (mult_stmt);
+
+	  if (dump_file)
+	    {
+	      fprintf (dump_file, "Replacing squaring multiplication\n");
+	      print_gimple_stmt (dump_file, mult_stmt, 0, TDF_NONE);
+	      fprintf (dump_file, "with assignment\n");
+	    }
+	  gimple_assign_set_rhs_from_tree (&gsi2, orig_sqrt_ssa_name);
+	  fold_stmt_inplace (&gsi2);
+	  update_stmt (mult_stmt);
+	  if (dump_file)
+	    print_gimple_stmt (dump_file, mult_stmt, 0, TDF_NONE);
+      }
+    }
+
+  if (has_other_use)
+    {
+      /* Using the two temporaries tmp1, tmp2 from above
+	 the original x is now:
+	 x = tmp1 * tmp2.  */
+      gcc_assert (orig_sqrt_ssa_name);
+      gcc_assert (sqr_ssa_name);
+
+      gimple *new_stmt
+	= gimple_build_assign (x, MULT_EXPR,
+			       orig_sqrt_ssa_name, sqr_ssa_name);
+      gsi_insert_after (def_gsi, new_stmt, GSI_NEW_STMT);
+      update_stmt (stmt);
+    }
+  else if (delete_div)
+    {
+      /* Remove the original division.  */
+      gimple_stmt_iterator gsi2 = gsi_for_stmt (stmt);
+      gsi_remove (&gsi2, true);
+      release_defs (stmt);
+    }
+  else
+    release_ssa_name (x);
+}
 
 /* Look for floating-point divisions among DEF's uses, and try to
    replace them by multiplications with the reciprocal.  Add
@@ -461,32 +749,84 @@ free_bb (struct occurrence *occ)
 static void
 execute_cse_reciprocals_1 (gimple_stmt_iterator *def_gsi, tree def)
 {
-  use_operand_p use_p;
-  imm_use_iterator use_iter;
+  use_operand_p use_p, square_use_p;
+  imm_use_iterator use_iter, square_use_iter;
+  tree square_def;
   struct occurrence *occ;
-  int count = 0, threshold;
+  int count = 0;
+  int threshold;
+  int square_recip_count = 0;
+  int sqrt_recip_count = 0;
 
-  gcc_assert (FLOAT_TYPE_P (TREE_TYPE (def)) && is_gimple_reg (def));
+  gcc_assert (FLOAT_TYPE_P (TREE_TYPE (def)) && TREE_CODE (def) == SSA_NAME);
+  threshold = targetm.min_divisions_for_recip_mul (TYPE_MODE (TREE_TYPE (def)));
+
+  /* If DEF is a square (x * x), count the number of divisions by x.
+     If there are more divisions by x than by (DEF * DEF), prefer to optimize
+     the reciprocal of x instead of DEF.  This improves cases like:
+       def = x * x
+       t0 = a / def
+       t1 = b / def
+       t2 = c / x
+     Reciprocal optimization of x results in 1 division rather than 2 or 3.  */
+  gimple *def_stmt = SSA_NAME_DEF_STMT (def);
+
+  if (is_gimple_assign (def_stmt)
+      && gimple_assign_rhs_code (def_stmt) == MULT_EXPR
+      && TREE_CODE (gimple_assign_rhs1 (def_stmt)) == SSA_NAME
+      && gimple_assign_rhs1 (def_stmt) == gimple_assign_rhs2 (def_stmt))
+    {
+      tree op0 = gimple_assign_rhs1 (def_stmt);
+
+      FOR_EACH_IMM_USE_FAST (use_p, use_iter, op0)
+	{
+	  gimple *use_stmt = USE_STMT (use_p);
+	  if (is_division_by (use_stmt, op0))
+	    sqrt_recip_count++;
+	}
+    }
 
   FOR_EACH_IMM_USE_FAST (use_p, use_iter, def)
     {
       gimple *use_stmt = USE_STMT (use_p);
       if (is_division_by (use_stmt, def))
 	{
-	  register_division_in (gimple_bb (use_stmt));
+	  register_division_in (gimple_bb (use_stmt), 2);
 	  count++;
+	}
+
+      if (is_square_of (use_stmt, def))
+	{
+	  square_def = gimple_assign_lhs (use_stmt);
+	  FOR_EACH_IMM_USE_FAST (square_use_p, square_use_iter, square_def)
+	    {
+	      gimple *square_use_stmt = USE_STMT (square_use_p);
+	      if (is_division_by (square_use_stmt, square_def))
+		{
+		  /* This is executed twice for each division by a square.  */
+		  register_division_in (gimple_bb (square_use_stmt), 1);
+		  square_recip_count++;
+		}
+	    }
 	}
     }
 
+  /* Square reciprocals were counted twice above.  */
+  square_recip_count /= 2;
+
+  /* If it is more profitable to optimize 1 / x, don't optimize 1 / (x * x).  */
+  if (sqrt_recip_count > square_recip_count)
+    goto out;
+
   /* Do the expensive part only if we can hope to optimize something.  */
-  threshold = targetm.min_divisions_for_recip_mul (TYPE_MODE (TREE_TYPE (def)));
-  if (count >= threshold)
+  if (count + square_recip_count >= threshold && count >= 1)
     {
       gimple *use_stmt;
       for (occ = occ_head; occ; occ = occ->next)
 	{
 	  compute_merit (occ);
-	  insert_reciprocals (def_gsi, occ, def, NULL, threshold);
+	  insert_reciprocals (def_gsi, occ, def, NULL, NULL,
+			      square_recip_count, threshold);
 	}
 
       FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, def)
@@ -496,9 +836,30 @@ execute_cse_reciprocals_1 (gimple_stmt_iterator *def_gsi, tree def)
 	      FOR_EACH_IMM_USE_ON_STMT (use_p, use_iter)
 		replace_reciprocal (use_p);
 	    }
+	  else if (square_recip_count > 0 && is_square_of (use_stmt, def))
+	    {
+	      FOR_EACH_IMM_USE_ON_STMT (use_p, use_iter)
+		{
+		  /* Find all uses of the square that are divisions and
+		   * replace them by multiplications with the inverse.  */
+		  imm_use_iterator square_iterator;
+		  gimple *powmult_use_stmt = USE_STMT (use_p);
+		  tree powmult_def_name = gimple_assign_lhs (powmult_use_stmt);
+
+		  FOR_EACH_IMM_USE_STMT (powmult_use_stmt,
+					 square_iterator, powmult_def_name)
+		    FOR_EACH_IMM_USE_ON_STMT (square_use_p, square_iterator)
+		      {
+			gimple *powmult_use_stmt = USE_STMT (square_use_p);
+			if (is_division_by (powmult_use_stmt, powmult_def_name))
+			  replace_reciprocal_squares (square_use_p);
+		      }
+		}
+	    }
 	}
     }
 
+out:
   for (occ = occ_head; occ; )
     occ = free_bb (occ);
 
@@ -516,6 +877,7 @@ internal_fn_reciprocal (gcall *call)
   switch (gimple_call_combined_fn (call))
     {
     CASE_CFN_SQRT:
+    CASE_CFN_SQRT_FN:
       ifn = IFN_RSQRT;
       break;
 
@@ -539,7 +901,7 @@ const pass_data pass_data_cse_reciprocals =
   GIMPLE_PASS, /* type */
   "recip", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  TV_NONE, /* tv_id */
+  TV_TREE_RECIP, /* tv_id */
   PROP_ssa, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
@@ -608,7 +970,16 @@ pass_cse_reciprocals::execute (function *fun)
 	      && (def = SINGLE_SSA_TREE_OPERAND (stmt, SSA_OP_DEF)) != NULL
 	      && FLOAT_TYPE_P (TREE_TYPE (def))
 	      && TREE_CODE (def) == SSA_NAME)
-	    execute_cse_reciprocals_1 (&gsi, def);
+	    {
+	      execute_cse_reciprocals_1 (&gsi, def);
+	      stmt = gsi_stmt (gsi);
+	      if (flag_unsafe_math_optimizations
+		  && is_gimple_assign (stmt)
+		  && gimple_assign_lhs (stmt) == def
+		  && !stmt_can_throw_internal (cfun, stmt)
+		  && gimple_assign_rhs_code (stmt) == RDIV_EXPR)
+		optimize_recip_sqrt (&gsi, def);
+	    }
 	}
 
       if (optimize_bb_for_size_p (bb))
@@ -645,7 +1016,7 @@ pass_cse_reciprocals::execute (function *fun)
 		    {
 		      fndecl = gimple_call_fndecl (call);
 		      if (!fndecl
-			  || DECL_BUILT_IN_CLASS (fndecl) != BUILT_IN_MD)
+			  || !fndecl_built_in_p (fndecl, BUILT_IN_MD))
 			continue;
 		      fndecl = targetm.builtin_reciprocal (fndecl);
 		      if (!fndecl)
@@ -686,12 +1057,9 @@ pass_cse_reciprocals::execute (function *fun)
 		      else
 			stmt2 = gimple_build_call_internal_vec (ifn, args);
 		      gimple_call_set_lhs (stmt2, arg1);
-		      if (gimple_vdef (call))
-			{
-			  gimple_set_vdef (stmt2, gimple_vdef (call));
-			  SSA_NAME_DEF_STMT (gimple_vdef (stmt2)) = stmt2;
-			}
-		      gimple_set_vuse (stmt2, gimple_vuse (call));
+		      gimple_move_vops (stmt2, call);
+		      gimple_call_set_nothrow (stmt2,
+					       gimple_call_nothrow_p (call));
 		      gimple_stmt_iterator gsi2 = gsi_for_stmt (call);
 		      gsi_replace (&gsi2, stmt2, true);
 		    }
@@ -736,6 +1104,103 @@ make_pass_cse_reciprocals (gcc::context *ctxt)
   return new pass_cse_reciprocals (ctxt);
 }
 
+/* If NAME is the result of a type conversion, look for other
+   equivalent dominating or dominated conversions, and replace all
+   uses with the earliest dominating name, removing the redundant
+   conversions.  Return the prevailing name.  */
+
+static tree
+execute_cse_conv_1 (tree name)
+{
+  if (SSA_NAME_IS_DEFAULT_DEF (name)
+      || SSA_NAME_OCCURS_IN_ABNORMAL_PHI (name))
+    return name;
+
+  gimple *def_stmt = SSA_NAME_DEF_STMT (name);
+
+  if (!gimple_assign_cast_p (def_stmt))
+    return name;
+
+  tree src = gimple_assign_rhs1 (def_stmt);
+
+  if (TREE_CODE (src) != SSA_NAME)
+    return name;
+
+  imm_use_iterator use_iter;
+  gimple *use_stmt;
+
+  /* Find the earliest dominating def.    */
+  FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, src)
+    {
+      if (use_stmt == def_stmt
+	  || !gimple_assign_cast_p (use_stmt))
+	continue;
+
+      tree lhs = gimple_assign_lhs (use_stmt);
+
+      if (SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs)
+	  || (gimple_assign_rhs1 (use_stmt)
+	      != gimple_assign_rhs1 (def_stmt))
+	  || !types_compatible_p (TREE_TYPE (name), TREE_TYPE (lhs)))
+	continue;
+
+      bool use_dominates;
+      if (gimple_bb (def_stmt) == gimple_bb (use_stmt))
+	{
+	  gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
+	  while (!gsi_end_p (gsi) && gsi_stmt (gsi) != def_stmt)
+	    gsi_next (&gsi);
+	  use_dominates = !gsi_end_p (gsi);
+	}
+      else if (dominated_by_p (CDI_DOMINATORS, gimple_bb (use_stmt),
+			       gimple_bb (def_stmt)))
+	use_dominates = false;
+      else if (dominated_by_p (CDI_DOMINATORS, gimple_bb (def_stmt),
+			       gimple_bb (use_stmt)))
+	use_dominates = true;
+      else
+	continue;
+
+      if (use_dominates)
+	{
+	  std::swap (name, lhs);
+	  std::swap (def_stmt, use_stmt);
+	}
+    }
+
+  /* Now go through all uses of SRC again, replacing the equivalent
+     dominated conversions.  We may replace defs that were not
+     dominated by the then-prevailing defs when we first visited
+     them.  */
+  FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, src)
+    {
+      if (use_stmt == def_stmt
+	  || !gimple_assign_cast_p (use_stmt))
+	continue;
+
+      tree lhs = gimple_assign_lhs (use_stmt);
+
+      if (SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs)
+	  || (gimple_assign_rhs1 (use_stmt)
+	      != gimple_assign_rhs1 (def_stmt))
+	  || !types_compatible_p (TREE_TYPE (name), TREE_TYPE (lhs)))
+	continue;
+
+      if (gimple_bb (def_stmt) == gimple_bb (use_stmt)
+	  || dominated_by_p (CDI_DOMINATORS, gimple_bb (use_stmt),
+			     gimple_bb (def_stmt)))
+	{
+	  sincos_stats.conv_removed++;
+
+	  gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
+	  replace_uses_by (lhs, name);
+	  gsi_remove (&gsi, true);
+	}
+    }
+
+  return name;
+}
+
 /* Records an occurrence at statement USE_STMT in the vector of trees
    STMTS if it is dominated by *TOP_BB or dominates it or this basic block
    is not yet initialized.  Returns true if the occurrence was pushed on
@@ -776,7 +1241,7 @@ execute_cse_sincos_1 (tree name)
 {
   gimple_stmt_iterator gsi;
   imm_use_iterator use_iter;
-  tree fndecl, res, type;
+  tree fndecl, res, type = NULL_TREE;
   gimple *def_stmt, *use_stmt, *stmt;
   int seen_cos = 0, seen_sin = 0, seen_cexpi = 0;
   auto_vec<gimple *> stmts;
@@ -784,7 +1249,8 @@ execute_cse_sincos_1 (tree name)
   int i;
   bool cfg_changed = false;
 
-  type = TREE_TYPE (name);
+  name = execute_cse_conv_1 (name);
+
   FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, name)
     {
       if (gimple_code (use_stmt) != GIMPLE_CALL
@@ -806,9 +1272,21 @@ execute_cse_sincos_1 (tree name)
 	  break;
 
 	default:;
+	  continue;
 	}
-    }
 
+      tree t = mathfn_built_in_type (gimple_call_combined_fn (use_stmt));
+      if (!type)
+	{
+	  type = t;
+	  t = TREE_TYPE (name);
+	}
+      /* This checks that NAME has the right type in the first round,
+	 and, in subsequent rounds, that the built_in type is the same
+	 type, or a compatible type.  */
+      if (type != t && !types_compatible_p (type, t))
+	return false;
+    }
   if (seen_cos + seen_sin + seen_cexpi <= 1)
     return false;
 
@@ -1050,7 +1528,7 @@ powi_as_mults_1 (gimple_stmt_iterator *gsi, location_t loc, tree type,
 /* Convert ARG0**N to a tree of multiplications of ARG0 with itself.
    This function needs to be kept in sync with powi_cost above.  */
 
-static tree
+tree
 powi_as_mults (gimple_stmt_iterator *gsi, location_t loc,
 	       tree arg0, HOST_WIDE_INT n)
 {
@@ -1059,9 +1537,9 @@ powi_as_mults (gimple_stmt_iterator *gsi, location_t loc,
   tree target;
 
   if (n == 0)
-    return build_real (type, dconst1);
+    return build_one_cst (type);
 
-  memset (cache, 0,  sizeof (cache));
+  memset (cache, 0, sizeof (cache));
   cache[1] = arg0;
 
   result = powi_as_mults_1 (gsi, loc, type, (n < 0) ? -n : n, cache);
@@ -1624,7 +2102,7 @@ gimple_expand_builtin_pow (gimple_stmt_iterator *gsi, location_t loc,
       && !HONOR_SIGNED_ZEROS (mode))
     {
       unsigned int max_depth = speed_p
-				? PARAM_VALUE (PARAM_MAX_POW_SQRT_DEPTH)
+				? param_max_pow_sqrt_depth
 				: 2;
 
       tree expand_with_sqrts
@@ -1751,7 +2229,7 @@ const pass_data pass_data_cse_sincos =
   GIMPLE_PASS, /* type */
   "sincos", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  TV_NONE, /* tv_id */
+  TV_TREE_SINCOS, /* tv_id */
   PROP_ssa, /* properties_required */
   PROP_gimple_opt_math, /* properties_provided */
   0, /* properties_destroyed */
@@ -1813,12 +2291,14 @@ pass_cse_sincos::execute (function *fun)
 		CASE_CFN_COS:
 		CASE_CFN_SIN:
 		CASE_CFN_CEXPI:
+		  arg = gimple_call_arg (stmt, 0);
 		  /* Make sure we have either sincos or cexp.  */
-		  if (!targetm.libc_has_function (function_c99_math_complex)
-		      && !targetm.libc_has_function (function_sincos))
+		  if (!targetm.libc_has_function (function_c99_math_complex,
+						  TREE_TYPE (arg))
+		      && !targetm.libc_has_function (function_sincos,
+						     TREE_TYPE (arg)))
 		    break;
 
-		  arg = gimple_call_arg (stmt, 0);
 		  if (TREE_CODE (arg) == SSA_NAME)
 		    cfg_changed |= execute_cse_sincos_1 (arg);
 		  break;
@@ -1920,6 +2400,8 @@ pass_cse_sincos::execute (function *fun)
 
   statistics_counter_event (fun, "sincos statements inserted",
 			    sincos_stats.inserted);
+  statistics_counter_event (fun, "conv statements removed",
+			    sincos_stats.conv_removed);
 
   return cfg_changed ? TODO_cleanup_cfg : 0;
 }
@@ -1930,1035 +2412,6 @@ gimple_opt_pass *
 make_pass_cse_sincos (gcc::context *ctxt)
 {
   return new pass_cse_sincos (ctxt);
-}
-
-/* A symbolic number structure is used to detect byte permutation and selection
-   patterns of a source.  To achieve that, its field N contains an artificial
-   number consisting of BITS_PER_MARKER sized markers tracking where does each
-   byte come from in the source:
-
-   0	   - target byte has the value 0
-   FF	   - target byte has an unknown value (eg. due to sign extension)
-   1..size - marker value is the byte index in the source (0 for lsb).
-
-   To detect permutations on memory sources (arrays and structures), a symbolic
-   number is also associated:
-   - a base address BASE_ADDR and an OFFSET giving the address of the source;
-   - a range which gives the difference between the highest and lowest accessed
-     memory location to make such a symbolic number;
-   - the address SRC of the source element of lowest address as a convenience
-     to easily get BASE_ADDR + offset + lowest bytepos.
-
-   Note 1: the range is different from size as size reflects the size of the
-   type of the current expression.  For instance, for an array char a[],
-   (short) a[0] | (short) a[3] would have a size of 2 but a range of 4 while
-   (short) a[0] | ((short) a[0] << 1) would still have a size of 2 but this
-   time a range of 1.
-
-   Note 2: for non-memory sources, range holds the same value as size.
-
-   Note 3: SRC points to the SSA_NAME in case of non-memory source.  */
-
-struct symbolic_number {
-  uint64_t n;
-  tree type;
-  tree base_addr;
-  tree offset;
-  HOST_WIDE_INT bytepos;
-  tree src;
-  tree alias_set;
-  tree vuse;
-  unsigned HOST_WIDE_INT range;
-};
-
-#define BITS_PER_MARKER 8
-#define MARKER_MASK ((1 << BITS_PER_MARKER) - 1)
-#define MARKER_BYTE_UNKNOWN MARKER_MASK
-#define HEAD_MARKER(n, size) \
-  ((n) & ((uint64_t) MARKER_MASK << (((size) - 1) * BITS_PER_MARKER)))
-
-/* The number which the find_bswap_or_nop_1 result should match in
-   order to have a nop.  The number is masked according to the size of
-   the symbolic number before using it.  */
-#define CMPNOP (sizeof (int64_t) < 8 ? 0 : \
-  (uint64_t)0x08070605 << 32 | 0x04030201)
-
-/* The number which the find_bswap_or_nop_1 result should match in
-   order to have a byte swap.  The number is masked according to the
-   size of the symbolic number before using it.  */
-#define CMPXCHG (sizeof (int64_t) < 8 ? 0 : \
-  (uint64_t)0x01020304 << 32 | 0x05060708)
-
-/* Perform a SHIFT or ROTATE operation by COUNT bits on symbolic
-   number N.  Return false if the requested operation is not permitted
-   on a symbolic number.  */
-
-static inline bool
-do_shift_rotate (enum tree_code code,
-		 struct symbolic_number *n,
-		 int count)
-{
-  int i, size = TYPE_PRECISION (n->type) / BITS_PER_UNIT;
-  unsigned head_marker;
-
-  if (count % BITS_PER_UNIT != 0)
-    return false;
-  count = (count / BITS_PER_UNIT) * BITS_PER_MARKER;
-
-  /* Zero out the extra bits of N in order to avoid them being shifted
-     into the significant bits.  */
-  if (size < 64 / BITS_PER_MARKER)
-    n->n &= ((uint64_t) 1 << (size * BITS_PER_MARKER)) - 1;
-
-  switch (code)
-    {
-    case LSHIFT_EXPR:
-      n->n <<= count;
-      break;
-    case RSHIFT_EXPR:
-      head_marker = HEAD_MARKER (n->n, size);
-      n->n >>= count;
-      /* Arithmetic shift of signed type: result is dependent on the value.  */
-      if (!TYPE_UNSIGNED (n->type) && head_marker)
-	for (i = 0; i < count / BITS_PER_MARKER; i++)
-	  n->n |= (uint64_t) MARKER_BYTE_UNKNOWN
-		  << ((size - 1 - i) * BITS_PER_MARKER);
-      break;
-    case LROTATE_EXPR:
-      n->n = (n->n << count) | (n->n >> ((size * BITS_PER_MARKER) - count));
-      break;
-    case RROTATE_EXPR:
-      n->n = (n->n >> count) | (n->n << ((size * BITS_PER_MARKER) - count));
-      break;
-    default:
-      return false;
-    }
-  /* Zero unused bits for size.  */
-  if (size < 64 / BITS_PER_MARKER)
-    n->n &= ((uint64_t) 1 << (size * BITS_PER_MARKER)) - 1;
-  return true;
-}
-
-/* Perform sanity checking for the symbolic number N and the gimple
-   statement STMT.  */
-
-static inline bool
-verify_symbolic_number_p (struct symbolic_number *n, gimple *stmt)
-{
-  tree lhs_type;
-
-  lhs_type = gimple_expr_type (stmt);
-
-  if (TREE_CODE (lhs_type) != INTEGER_TYPE)
-    return false;
-
-  if (TYPE_PRECISION (lhs_type) != TYPE_PRECISION (n->type))
-    return false;
-
-  return true;
-}
-
-/* Initialize the symbolic number N for the bswap pass from the base element
-   SRC manipulated by the bitwise OR expression.  */
-
-static bool
-init_symbolic_number (struct symbolic_number *n, tree src)
-{
-  int size;
-
-  if (! INTEGRAL_TYPE_P (TREE_TYPE (src)))
-    return false;
-
-  n->base_addr = n->offset = n->alias_set = n->vuse = NULL_TREE;
-  n->src = src;
-
-  /* Set up the symbolic number N by setting each byte to a value between 1 and
-     the byte size of rhs1.  The highest order byte is set to n->size and the
-     lowest order byte to 1.  */
-  n->type = TREE_TYPE (src);
-  size = TYPE_PRECISION (n->type);
-  if (size % BITS_PER_UNIT != 0)
-    return false;
-  size /= BITS_PER_UNIT;
-  if (size > 64 / BITS_PER_MARKER)
-    return false;
-  n->range = size;
-  n->n = CMPNOP;
-
-  if (size < 64 / BITS_PER_MARKER)
-    n->n &= ((uint64_t) 1 << (size * BITS_PER_MARKER)) - 1;
-
-  return true;
-}
-
-/* Check if STMT might be a byte swap or a nop from a memory source and returns
-   the answer. If so, REF is that memory source and the base of the memory area
-   accessed and the offset of the access from that base are recorded in N.  */
-
-bool
-find_bswap_or_nop_load (gimple *stmt, tree ref, struct symbolic_number *n)
-{
-  /* Leaf node is an array or component ref. Memorize its base and
-     offset from base to compare to other such leaf node.  */
-  HOST_WIDE_INT bitsize, bitpos;
-  machine_mode mode;
-  int unsignedp, reversep, volatilep;
-  tree offset, base_addr;
-
-  /* Not prepared to handle PDP endian.  */
-  if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
-    return false;
-
-  if (!gimple_assign_load_p (stmt) || gimple_has_volatile_ops (stmt))
-    return false;
-
-  base_addr = get_inner_reference (ref, &bitsize, &bitpos, &offset, &mode,
-				   &unsignedp, &reversep, &volatilep);
-
-  if (TREE_CODE (base_addr) == MEM_REF)
-    {
-      offset_int bit_offset = 0;
-      tree off = TREE_OPERAND (base_addr, 1);
-
-      if (!integer_zerop (off))
-	{
-	  offset_int boff, coff = mem_ref_offset (base_addr);
-	  boff = coff << LOG2_BITS_PER_UNIT;
-	  bit_offset += boff;
-	}
-
-      base_addr = TREE_OPERAND (base_addr, 0);
-
-      /* Avoid returning a negative bitpos as this may wreak havoc later.  */
-      if (wi::neg_p (bit_offset))
-	{
-	  offset_int mask = wi::mask <offset_int> (LOG2_BITS_PER_UNIT, false);
-	  offset_int tem = bit_offset.and_not (mask);
-	  /* TEM is the bitpos rounded to BITS_PER_UNIT towards -Inf.
-	     Subtract it to BIT_OFFSET and add it (scaled) to OFFSET.  */
-	  bit_offset -= tem;
-	  tem >>= LOG2_BITS_PER_UNIT;
-	  if (offset)
-	    offset = size_binop (PLUS_EXPR, offset,
-				    wide_int_to_tree (sizetype, tem));
-	  else
-	    offset = wide_int_to_tree (sizetype, tem);
-	}
-
-      bitpos += bit_offset.to_shwi ();
-    }
-
-  if (bitpos % BITS_PER_UNIT)
-    return false;
-  if (bitsize % BITS_PER_UNIT)
-    return false;
-  if (reversep)
-    return false;
-
-  if (!init_symbolic_number (n, ref))
-    return false;
-  n->base_addr = base_addr;
-  n->offset = offset;
-  n->bytepos = bitpos / BITS_PER_UNIT;
-  n->alias_set = reference_alias_ptr_type (ref);
-  n->vuse = gimple_vuse (stmt);
-  return true;
-}
-
-/* Compute the symbolic number N representing the result of a bitwise OR on 2
-   symbolic number N1 and N2 whose source statements are respectively
-   SOURCE_STMT1 and SOURCE_STMT2.  */
-
-static gimple *
-perform_symbolic_merge (gimple *source_stmt1, struct symbolic_number *n1,
-			gimple *source_stmt2, struct symbolic_number *n2,
-			struct symbolic_number *n)
-{
-  int i, size;
-  uint64_t mask;
-  gimple *source_stmt;
-  struct symbolic_number *n_start;
-
-  tree rhs1 = gimple_assign_rhs1 (source_stmt1);
-  if (TREE_CODE (rhs1) == BIT_FIELD_REF
-      && TREE_CODE (TREE_OPERAND (rhs1, 0)) == SSA_NAME)
-    rhs1 = TREE_OPERAND (rhs1, 0);
-  tree rhs2 = gimple_assign_rhs1 (source_stmt2);
-  if (TREE_CODE (rhs2) == BIT_FIELD_REF
-      && TREE_CODE (TREE_OPERAND (rhs2, 0)) == SSA_NAME)
-    rhs2 = TREE_OPERAND (rhs2, 0);
-
-  /* Sources are different, cancel bswap if they are not memory location with
-     the same base (array, structure, ...).  */
-  if (rhs1 != rhs2)
-    {
-      uint64_t inc;
-      HOST_WIDE_INT start_sub, end_sub, end1, end2, end;
-      struct symbolic_number *toinc_n_ptr, *n_end;
-      basic_block bb1, bb2;
-
-      if (!n1->base_addr || !n2->base_addr
-	  || !operand_equal_p (n1->base_addr, n2->base_addr, 0))
-	return NULL;
-
-      if (!n1->offset != !n2->offset
-	  || (n1->offset && !operand_equal_p (n1->offset, n2->offset, 0)))
-	return NULL;
-
-      if (n1->bytepos < n2->bytepos)
-	{
-	  n_start = n1;
-	  start_sub = n2->bytepos - n1->bytepos;
-	}
-      else
-	{
-	  n_start = n2;
-	  start_sub = n1->bytepos - n2->bytepos;
-	}
-
-      bb1 = gimple_bb (source_stmt1);
-      bb2 = gimple_bb (source_stmt2);
-      if (dominated_by_p (CDI_DOMINATORS, bb1, bb2))
-	source_stmt = source_stmt1;
-      else
-	source_stmt = source_stmt2;
-
-      /* Find the highest address at which a load is performed and
-	 compute related info.  */
-      end1 = n1->bytepos + (n1->range - 1);
-      end2 = n2->bytepos + (n2->range - 1);
-      if (end1 < end2)
-	{
-	  end = end2;
-	  end_sub = end2 - end1;
-	}
-      else
-	{
-	  end = end1;
-	  end_sub = end1 - end2;
-	}
-      n_end = (end2 > end1) ? n2 : n1;
-
-      /* Find symbolic number whose lsb is the most significant.  */
-      if (BYTES_BIG_ENDIAN)
-	toinc_n_ptr = (n_end == n1) ? n2 : n1;
-      else
-	toinc_n_ptr = (n_start == n1) ? n2 : n1;
-
-      n->range = end - n_start->bytepos + 1;
-
-      /* Check that the range of memory covered can be represented by
-	 a symbolic number.  */
-      if (n->range > 64 / BITS_PER_MARKER)
-	return NULL;
-
-      /* Reinterpret byte marks in symbolic number holding the value of
-	 bigger weight according to target endianness.  */
-      inc = BYTES_BIG_ENDIAN ? end_sub : start_sub;
-      size = TYPE_PRECISION (n1->type) / BITS_PER_UNIT;
-      for (i = 0; i < size; i++, inc <<= BITS_PER_MARKER)
-	{
-	  unsigned marker
-	    = (toinc_n_ptr->n >> (i * BITS_PER_MARKER)) & MARKER_MASK;
-	  if (marker && marker != MARKER_BYTE_UNKNOWN)
-	    toinc_n_ptr->n += inc;
-	}
-    }
-  else
-    {
-      n->range = n1->range;
-      n_start = n1;
-      source_stmt = source_stmt1;
-    }
-
-  if (!n1->alias_set
-      || alias_ptr_types_compatible_p (n1->alias_set, n2->alias_set))
-    n->alias_set = n1->alias_set;
-  else
-    n->alias_set = ptr_type_node;
-  n->vuse = n_start->vuse;
-  n->base_addr = n_start->base_addr;
-  n->offset = n_start->offset;
-  n->src = n_start->src;
-  n->bytepos = n_start->bytepos;
-  n->type = n_start->type;
-  size = TYPE_PRECISION (n->type) / BITS_PER_UNIT;
-
-  for (i = 0, mask = MARKER_MASK; i < size; i++, mask <<= BITS_PER_MARKER)
-    {
-      uint64_t masked1, masked2;
-
-      masked1 = n1->n & mask;
-      masked2 = n2->n & mask;
-      if (masked1 && masked2 && masked1 != masked2)
-	return NULL;
-    }
-  n->n = n1->n | n2->n;
-
-  return source_stmt;
-}
-
-/* find_bswap_or_nop_1 invokes itself recursively with N and tries to perform
-   the operation given by the rhs of STMT on the result.  If the operation
-   could successfully be executed the function returns a gimple stmt whose
-   rhs's first tree is the expression of the source operand and NULL
-   otherwise.  */
-
-static gimple *
-find_bswap_or_nop_1 (gimple *stmt, struct symbolic_number *n, int limit)
-{
-  enum tree_code code;
-  tree rhs1, rhs2 = NULL;
-  gimple *rhs1_stmt, *rhs2_stmt, *source_stmt1;
-  enum gimple_rhs_class rhs_class;
-
-  if (!limit || !is_gimple_assign (stmt))
-    return NULL;
-
-  rhs1 = gimple_assign_rhs1 (stmt);
-
-  if (find_bswap_or_nop_load (stmt, rhs1, n))
-    return stmt;
-
-  /* Handle BIT_FIELD_REF.  */
-  if (TREE_CODE (rhs1) == BIT_FIELD_REF
-      && TREE_CODE (TREE_OPERAND (rhs1, 0)) == SSA_NAME)
-    {
-      unsigned HOST_WIDE_INT bitsize = tree_to_uhwi (TREE_OPERAND (rhs1, 1));
-      unsigned HOST_WIDE_INT bitpos = tree_to_uhwi (TREE_OPERAND (rhs1, 2));
-      if (bitpos % BITS_PER_UNIT == 0
-	  && bitsize % BITS_PER_UNIT == 0
-	  && init_symbolic_number (n, TREE_OPERAND (rhs1, 0)))
-	{
-	  /* Handle big-endian bit numbering in BIT_FIELD_REF.  */
-	  if (BYTES_BIG_ENDIAN)
-	    bitpos = TYPE_PRECISION (n->type) - bitpos - bitsize;
-
-	  /* Shift.  */
-	  if (!do_shift_rotate (RSHIFT_EXPR, n, bitpos))
-	    return NULL;
-
-	  /* Mask.  */
-	  uint64_t mask = 0;
-	  uint64_t tmp = (1 << BITS_PER_UNIT) - 1;
-	  for (unsigned i = 0; i < bitsize / BITS_PER_UNIT;
-	       i++, tmp <<= BITS_PER_UNIT)
-	    mask |= (uint64_t) MARKER_MASK << (i * BITS_PER_MARKER);
-	  n->n &= mask;
-
-	  /* Convert.  */
-	  n->type = TREE_TYPE (rhs1);
-	  if (!n->base_addr)
-	    n->range = TYPE_PRECISION (n->type) / BITS_PER_UNIT;
-
-	  return verify_symbolic_number_p (n, stmt) ? stmt : NULL;
-	}
-
-      return NULL;
-    }
-
-  if (TREE_CODE (rhs1) != SSA_NAME)
-    return NULL;
-
-  code = gimple_assign_rhs_code (stmt);
-  rhs_class = gimple_assign_rhs_class (stmt);
-  rhs1_stmt = SSA_NAME_DEF_STMT (rhs1);
-
-  if (rhs_class == GIMPLE_BINARY_RHS)
-    rhs2 = gimple_assign_rhs2 (stmt);
-
-  /* Handle unary rhs and binary rhs with integer constants as second
-     operand.  */
-
-  if (rhs_class == GIMPLE_UNARY_RHS
-      || (rhs_class == GIMPLE_BINARY_RHS
-	  && TREE_CODE (rhs2) == INTEGER_CST))
-    {
-      if (code != BIT_AND_EXPR
-	  && code != LSHIFT_EXPR
-	  && code != RSHIFT_EXPR
-	  && code != LROTATE_EXPR
-	  && code != RROTATE_EXPR
-	  && !CONVERT_EXPR_CODE_P (code))
-	return NULL;
-
-      source_stmt1 = find_bswap_or_nop_1 (rhs1_stmt, n, limit - 1);
-
-      /* If find_bswap_or_nop_1 returned NULL, STMT is a leaf node and
-	 we have to initialize the symbolic number.  */
-      if (!source_stmt1)
-	{
-	  if (gimple_assign_load_p (stmt)
-	      || !init_symbolic_number (n, rhs1))
-	    return NULL;
-	  source_stmt1 = stmt;
-	}
-
-      switch (code)
-	{
-	case BIT_AND_EXPR:
-	  {
-	    int i, size = TYPE_PRECISION (n->type) / BITS_PER_UNIT;
-	    uint64_t val = int_cst_value (rhs2), mask = 0;
-	    uint64_t tmp = (1 << BITS_PER_UNIT) - 1;
-
-	    /* Only constants masking full bytes are allowed.  */
-	    for (i = 0; i < size; i++, tmp <<= BITS_PER_UNIT)
-	      if ((val & tmp) != 0 && (val & tmp) != tmp)
-		return NULL;
-	      else if (val & tmp)
-		mask |= (uint64_t) MARKER_MASK << (i * BITS_PER_MARKER);
-
-	    n->n &= mask;
-	  }
-	  break;
-	case LSHIFT_EXPR:
-	case RSHIFT_EXPR:
-	case LROTATE_EXPR:
-	case RROTATE_EXPR:
-	  if (!do_shift_rotate (code, n, (int) TREE_INT_CST_LOW (rhs2)))
-	    return NULL;
-	  break;
-	CASE_CONVERT:
-	  {
-	    int i, type_size, old_type_size;
-	    tree type;
-
-	    type = gimple_expr_type (stmt);
-	    type_size = TYPE_PRECISION (type);
-	    if (type_size % BITS_PER_UNIT != 0)
-	      return NULL;
-	    type_size /= BITS_PER_UNIT;
-	    if (type_size > 64 / BITS_PER_MARKER)
-	      return NULL;
-
-	    /* Sign extension: result is dependent on the value.  */
-	    old_type_size = TYPE_PRECISION (n->type) / BITS_PER_UNIT;
-	    if (!TYPE_UNSIGNED (n->type) && type_size > old_type_size
-		&& HEAD_MARKER (n->n, old_type_size))
-	      for (i = 0; i < type_size - old_type_size; i++)
-		n->n |= (uint64_t) MARKER_BYTE_UNKNOWN
-			<< ((type_size - 1 - i) * BITS_PER_MARKER);
-
-	    if (type_size < 64 / BITS_PER_MARKER)
-	      {
-		/* If STMT casts to a smaller type mask out the bits not
-		   belonging to the target type.  */
-		n->n &= ((uint64_t) 1 << (type_size * BITS_PER_MARKER)) - 1;
-	      }
-	    n->type = type;
-	    if (!n->base_addr)
-	      n->range = type_size;
-	  }
-	  break;
-	default:
-	  return NULL;
-	};
-      return verify_symbolic_number_p (n, stmt) ? source_stmt1 : NULL;
-    }
-
-  /* Handle binary rhs.  */
-
-  if (rhs_class == GIMPLE_BINARY_RHS)
-    {
-      struct symbolic_number n1, n2;
-      gimple *source_stmt, *source_stmt2;
-
-      if (code != BIT_IOR_EXPR)
-	return NULL;
-
-      if (TREE_CODE (rhs2) != SSA_NAME)
-	return NULL;
-
-      rhs2_stmt = SSA_NAME_DEF_STMT (rhs2);
-
-      switch (code)
-	{
-	case BIT_IOR_EXPR:
-	  source_stmt1 = find_bswap_or_nop_1 (rhs1_stmt, &n1, limit - 1);
-
-	  if (!source_stmt1)
-	    return NULL;
-
-	  source_stmt2 = find_bswap_or_nop_1 (rhs2_stmt, &n2, limit - 1);
-
-	  if (!source_stmt2)
-	    return NULL;
-
-	  if (TYPE_PRECISION (n1.type) != TYPE_PRECISION (n2.type))
-	    return NULL;
-
-	  if (!n1.vuse != !n2.vuse
-	      || (n1.vuse && !operand_equal_p (n1.vuse, n2.vuse, 0)))
-	    return NULL;
-
-	  source_stmt
-	    = perform_symbolic_merge (source_stmt1, &n1, source_stmt2, &n2, n);
-
-	  if (!source_stmt)
-	    return NULL;
-
-	  if (!verify_symbolic_number_p (n, stmt))
-	    return NULL;
-
-	  break;
-	default:
-	  return NULL;
-	}
-      return source_stmt;
-    }
-  return NULL;
-}
-
-/* Check if STMT completes a bswap implementation or a read in a given
-   endianness consisting of ORs, SHIFTs and ANDs and sets *BSWAP
-   accordingly.  It also sets N to represent the kind of operations
-   performed: size of the resulting expression and whether it works on
-   a memory source, and if so alias-set and vuse.  At last, the
-   function returns a stmt whose rhs's first tree is the source
-   expression.  */
-
-static gimple *
-find_bswap_or_nop (gimple *stmt, struct symbolic_number *n, bool *bswap)
-{
-  unsigned rsize;
-  uint64_t tmpn, mask;
-/* The number which the find_bswap_or_nop_1 result should match in order
-   to have a full byte swap.  The number is shifted to the right
-   according to the size of the symbolic number before using it.  */
-  uint64_t cmpxchg = CMPXCHG;
-  uint64_t cmpnop = CMPNOP;
-
-  gimple *ins_stmt;
-  int limit;
-
-  /* The last parameter determines the depth search limit.  It usually
-     correlates directly to the number n of bytes to be touched.  We
-     increase that number by log2(n) + 1 here in order to also
-     cover signed -> unsigned conversions of the src operand as can be seen
-     in libgcc, and for initial shift/and operation of the src operand.  */
-  limit = TREE_INT_CST_LOW (TYPE_SIZE_UNIT (gimple_expr_type (stmt)));
-  limit += 1 + (int) ceil_log2 ((unsigned HOST_WIDE_INT) limit);
-  ins_stmt = find_bswap_or_nop_1 (stmt, n, limit);
-
-  if (!ins_stmt)
-    return NULL;
-
-  /* Find real size of result (highest non-zero byte).  */
-  if (n->base_addr)
-    for (tmpn = n->n, rsize = 0; tmpn; tmpn >>= BITS_PER_MARKER, rsize++);
-  else
-    rsize = n->range;
-
-  /* Zero out the bits corresponding to untouched bytes in original gimple
-     expression.  */
-  if (n->range < (int) sizeof (int64_t))
-    {
-      mask = ((uint64_t) 1 << (n->range * BITS_PER_MARKER)) - 1;
-      cmpxchg >>= (64 / BITS_PER_MARKER - n->range) * BITS_PER_MARKER;
-      cmpnop &= mask;
-    }
-
-  /* Zero out the bits corresponding to unused bytes in the result of the
-     gimple expression.  */
-  if (rsize < n->range)
-    {
-      if (BYTES_BIG_ENDIAN)
-	{
-	  mask = ((uint64_t) 1 << (rsize * BITS_PER_MARKER)) - 1;
-	  cmpxchg &= mask;
-	  cmpnop >>= (n->range - rsize) * BITS_PER_MARKER;
-	}
-      else
-	{
-	  mask = ((uint64_t) 1 << (rsize * BITS_PER_MARKER)) - 1;
-	  cmpxchg >>= (n->range - rsize) * BITS_PER_MARKER;
-	  cmpnop &= mask;
-	}
-      n->range = rsize;
-    }
-
-  /* A complete byte swap should make the symbolic number to start with
-     the largest digit in the highest order byte. Unchanged symbolic
-     number indicates a read with same endianness as target architecture.  */
-  if (n->n == cmpnop)
-    *bswap = false;
-  else if (n->n == cmpxchg)
-    *bswap = true;
-  else
-    return NULL;
-
-  /* Useless bit manipulation performed by code.  */
-  if (!n->base_addr && n->n == cmpnop)
-    return NULL;
-
-  n->range *= BITS_PER_UNIT;
-  return ins_stmt;
-}
-
-namespace {
-
-const pass_data pass_data_optimize_bswap =
-{
-  GIMPLE_PASS, /* type */
-  "bswap", /* name */
-  OPTGROUP_NONE, /* optinfo_flags */
-  TV_NONE, /* tv_id */
-  PROP_ssa, /* properties_required */
-  0, /* properties_provided */
-  0, /* properties_destroyed */
-  0, /* todo_flags_start */
-  0, /* todo_flags_finish */
-};
-
-class pass_optimize_bswap : public gimple_opt_pass
-{
-public:
-  pass_optimize_bswap (gcc::context *ctxt)
-    : gimple_opt_pass (pass_data_optimize_bswap, ctxt)
-  {}
-
-  /* opt_pass methods: */
-  virtual bool gate (function *)
-    {
-      return flag_expensive_optimizations && optimize;
-    }
-
-  virtual unsigned int execute (function *);
-
-}; // class pass_optimize_bswap
-
-/* Perform the bswap optimization: replace the expression computed in the rhs
-   of CUR_STMT by an equivalent bswap, load or load + bswap expression.
-   Which of these alternatives replace the rhs is given by N->base_addr (non
-   null if a load is needed) and BSWAP.  The type, VUSE and set-alias of the
-   load to perform are also given in N while the builtin bswap invoke is given
-   in FNDEL.  Finally, if a load is involved, SRC_STMT refers to one of the
-   load statements involved to construct the rhs in CUR_STMT and N->range gives
-   the size of the rhs expression for maintaining some statistics.
-
-   Note that if the replacement involve a load, CUR_STMT is moved just after
-   SRC_STMT to do the load with the same VUSE which can lead to CUR_STMT
-   changing of basic block.  */
-
-static bool
-bswap_replace (gimple *cur_stmt, gimple *ins_stmt, tree fndecl,
-	       tree bswap_type, tree load_type, struct symbolic_number *n,
-	       bool bswap)
-{
-  gimple_stmt_iterator gsi;
-  tree src, tmp, tgt;
-  gimple *bswap_stmt;
-
-  gsi = gsi_for_stmt (cur_stmt);
-  src = n->src;
-  tgt = gimple_assign_lhs (cur_stmt);
-
-  /* Need to load the value from memory first.  */
-  if (n->base_addr)
-    {
-      gimple_stmt_iterator gsi_ins = gsi_for_stmt (ins_stmt);
-      tree addr_expr, addr_tmp, val_expr, val_tmp;
-      tree load_offset_ptr, aligned_load_type;
-      gimple *addr_stmt, *load_stmt;
-      unsigned align;
-      HOST_WIDE_INT load_offset = 0;
-      basic_block ins_bb, cur_bb;
-
-      ins_bb = gimple_bb (ins_stmt);
-      cur_bb = gimple_bb (cur_stmt);
-      if (!dominated_by_p (CDI_DOMINATORS, cur_bb, ins_bb))
-	return false;
-
-      align = get_object_alignment (src);
-
-      /* Move cur_stmt just before  one of the load of the original
-	 to ensure it has the same VUSE.  See PR61517 for what could
-	 go wrong.  */
-      if (gimple_bb (cur_stmt) != gimple_bb (ins_stmt))
-	reset_flow_sensitive_info (gimple_assign_lhs (cur_stmt));
-      gsi_move_before (&gsi, &gsi_ins);
-      gsi = gsi_for_stmt (cur_stmt);
-
-      /* Compute address to load from and cast according to the size
-	 of the load.  */
-      addr_expr = build_fold_addr_expr (unshare_expr (src));
-      if (is_gimple_mem_ref_addr (addr_expr))
-	addr_tmp = addr_expr;
-      else
-	{
-	  addr_tmp = make_temp_ssa_name (TREE_TYPE (addr_expr), NULL,
-					 "load_src");
-	  addr_stmt = gimple_build_assign (addr_tmp, addr_expr);
-	  gsi_insert_before (&gsi, addr_stmt, GSI_SAME_STMT);
-	}
-
-      /* Perform the load.  */
-      aligned_load_type = load_type;
-      if (align < TYPE_ALIGN (load_type))
-	aligned_load_type = build_aligned_type (load_type, align);
-      load_offset_ptr = build_int_cst (n->alias_set, load_offset);
-      val_expr = fold_build2 (MEM_REF, aligned_load_type, addr_tmp,
-			      load_offset_ptr);
-
-      if (!bswap)
-	{
-	  if (n->range == 16)
-	    nop_stats.found_16bit++;
-	  else if (n->range == 32)
-	    nop_stats.found_32bit++;
-	  else
-	    {
-	      gcc_assert (n->range == 64);
-	      nop_stats.found_64bit++;
-	    }
-
-	  /* Convert the result of load if necessary.  */
-	  if (!useless_type_conversion_p (TREE_TYPE (tgt), load_type))
-	    {
-	      val_tmp = make_temp_ssa_name (aligned_load_type, NULL,
-					    "load_dst");
-	      load_stmt = gimple_build_assign (val_tmp, val_expr);
-	      gimple_set_vuse (load_stmt, n->vuse);
-	      gsi_insert_before (&gsi, load_stmt, GSI_SAME_STMT);
-	      gimple_assign_set_rhs_with_ops (&gsi, NOP_EXPR, val_tmp);
-	    }
-	  else
-	    {
-	      gimple_assign_set_rhs_with_ops (&gsi, MEM_REF, val_expr);
-	      gimple_set_vuse (cur_stmt, n->vuse);
-	    }
-	  update_stmt (cur_stmt);
-
-	  if (dump_file)
-	    {
-	      fprintf (dump_file,
-		       "%d bit load in target endianness found at: ",
-		       (int) n->range);
-	      print_gimple_stmt (dump_file, cur_stmt, 0, 0);
-	    }
-	  return true;
-	}
-      else
-	{
-	  val_tmp = make_temp_ssa_name (aligned_load_type, NULL, "load_dst");
-	  load_stmt = gimple_build_assign (val_tmp, val_expr);
-	  gimple_set_vuse (load_stmt, n->vuse);
-	  gsi_insert_before (&gsi, load_stmt, GSI_SAME_STMT);
-	}
-      src = val_tmp;
-    }
-  else if (TREE_CODE (src) == BIT_FIELD_REF)
-    src = TREE_OPERAND (src, 0);
-
-  if (n->range == 16)
-    bswap_stats.found_16bit++;
-  else if (n->range == 32)
-    bswap_stats.found_32bit++;
-  else
-    {
-      gcc_assert (n->range == 64);
-      bswap_stats.found_64bit++;
-    }
-
-  tmp = src;
-
-  /* Convert the src expression if necessary.  */
-  if (!useless_type_conversion_p (TREE_TYPE (tmp), bswap_type))
-    {
-      gimple *convert_stmt;
-
-      tmp = make_temp_ssa_name (bswap_type, NULL, "bswapsrc");
-      convert_stmt = gimple_build_assign (tmp, NOP_EXPR, src);
-      gsi_insert_before (&gsi, convert_stmt, GSI_SAME_STMT);
-    }
-
-  /* Canonical form for 16 bit bswap is a rotate expression.  Only 16bit values
-     are considered as rotation of 2N bit values by N bits is generally not
-     equivalent to a bswap.  Consider for instance 0x01020304 r>> 16 which
-     gives 0x03040102 while a bswap for that value is 0x04030201.  */
-  if (bswap && n->range == 16)
-    {
-      tree count = build_int_cst (NULL, BITS_PER_UNIT);
-      src = fold_build2 (LROTATE_EXPR, bswap_type, tmp, count);
-      bswap_stmt = gimple_build_assign (NULL, src);
-    }
-  else
-    bswap_stmt = gimple_build_call (fndecl, 1, tmp);
-
-  tmp = tgt;
-
-  /* Convert the result if necessary.  */
-  if (!useless_type_conversion_p (TREE_TYPE (tgt), bswap_type))
-    {
-      gimple *convert_stmt;
-
-      tmp = make_temp_ssa_name (bswap_type, NULL, "bswapdst");
-      convert_stmt = gimple_build_assign (tgt, NOP_EXPR, tmp);
-      gsi_insert_after (&gsi, convert_stmt, GSI_SAME_STMT);
-    }
-
-  gimple_set_lhs (bswap_stmt, tmp);
-
-  if (dump_file)
-    {
-      fprintf (dump_file, "%d bit bswap implementation found at: ",
-	       (int) n->range);
-      print_gimple_stmt (dump_file, cur_stmt, 0, 0);
-    }
-
-  gsi_insert_after (&gsi, bswap_stmt, GSI_SAME_STMT);
-  gsi_remove (&gsi, true);
-  return true;
-}
-
-/* Find manual byte swap implementations as well as load in a given
-   endianness. Byte swaps are turned into a bswap builtin invokation
-   while endian loads are converted to bswap builtin invokation or
-   simple load according to the target endianness.  */
-
-unsigned int
-pass_optimize_bswap::execute (function *fun)
-{
-  basic_block bb;
-  bool bswap32_p, bswap64_p;
-  bool changed = false;
-  tree bswap32_type = NULL_TREE, bswap64_type = NULL_TREE;
-
-  if (BITS_PER_UNIT != 8)
-    return 0;
-
-  bswap32_p = (builtin_decl_explicit_p (BUILT_IN_BSWAP32)
-	       && optab_handler (bswap_optab, SImode) != CODE_FOR_nothing);
-  bswap64_p = (builtin_decl_explicit_p (BUILT_IN_BSWAP64)
-	       && (optab_handler (bswap_optab, DImode) != CODE_FOR_nothing
-		   || (bswap32_p && word_mode == SImode)));
-
-  /* Determine the argument type of the builtins.  The code later on
-     assumes that the return and argument type are the same.  */
-  if (bswap32_p)
-    {
-      tree fndecl = builtin_decl_explicit (BUILT_IN_BSWAP32);
-      bswap32_type = TREE_VALUE (TYPE_ARG_TYPES (TREE_TYPE (fndecl)));
-    }
-
-  if (bswap64_p)
-    {
-      tree fndecl = builtin_decl_explicit (BUILT_IN_BSWAP64);
-      bswap64_type = TREE_VALUE (TYPE_ARG_TYPES (TREE_TYPE (fndecl)));
-    }
-
-  memset (&nop_stats, 0, sizeof (nop_stats));
-  memset (&bswap_stats, 0, sizeof (bswap_stats));
-  calculate_dominance_info (CDI_DOMINATORS);
-
-  FOR_EACH_BB_FN (bb, fun)
-    {
-      gimple_stmt_iterator gsi;
-
-      /* We do a reverse scan for bswap patterns to make sure we get the
-	 widest match. As bswap pattern matching doesn't handle previously
-	 inserted smaller bswap replacements as sub-patterns, the wider
-	 variant wouldn't be detected.  */
-      for (gsi = gsi_last_bb (bb); !gsi_end_p (gsi);)
-        {
-	  gimple *ins_stmt, *cur_stmt = gsi_stmt (gsi);
-	  tree fndecl = NULL_TREE, bswap_type = NULL_TREE, load_type;
-	  enum tree_code code;
-	  struct symbolic_number n;
-	  bool bswap;
-
-	  /* This gsi_prev (&gsi) is not part of the for loop because cur_stmt
-	     might be moved to a different basic block by bswap_replace and gsi
-	     must not points to it if that's the case.  Moving the gsi_prev
-	     there make sure that gsi points to the statement previous to
-	     cur_stmt while still making sure that all statements are
-	     considered in this basic block.  */
-	  gsi_prev (&gsi);
-
-	  if (!is_gimple_assign (cur_stmt))
-	    continue;
-
-	  code = gimple_assign_rhs_code (cur_stmt);
-	  switch (code)
-	    {
-	    case LROTATE_EXPR:
-	    case RROTATE_EXPR:
-	      if (!tree_fits_uhwi_p (gimple_assign_rhs2 (cur_stmt))
-		  || tree_to_uhwi (gimple_assign_rhs2 (cur_stmt))
-		     % BITS_PER_UNIT)
-		continue;
-	      /* Fall through.  */
-	    case BIT_IOR_EXPR:
-	      break;
-	    default:
-	      continue;
-	    }
-
-	  ins_stmt = find_bswap_or_nop (cur_stmt, &n, &bswap);
-
-	  if (!ins_stmt)
-	    continue;
-
-	  switch (n.range)
-	    {
-	    case 16:
-	      /* Already in canonical form, nothing to do.  */
-	      if (code == LROTATE_EXPR || code == RROTATE_EXPR)
-		continue;
-	      load_type = bswap_type = uint16_type_node;
-	      break;
-	    case 32:
-	      load_type = uint32_type_node;
-	      if (bswap32_p)
-		{
-		  fndecl = builtin_decl_explicit (BUILT_IN_BSWAP32);
-		  bswap_type = bswap32_type;
-		}
-	      break;
-	    case 64:
-	      load_type = uint64_type_node;
-	      if (bswap64_p)
-		{
-		  fndecl = builtin_decl_explicit (BUILT_IN_BSWAP64);
-		  bswap_type = bswap64_type;
-		}
-	      break;
-	    default:
-	      continue;
-	    }
-
-	  if (bswap && !fndecl && n.range != 16)
-	    continue;
-
-	  if (bswap_replace (cur_stmt, ins_stmt, fndecl, bswap_type, load_type,
-			     &n, bswap))
-	    changed = true;
-	}
-    }
-
-  statistics_counter_event (fun, "16-bit nop implementations found",
-			    nop_stats.found_16bit);
-  statistics_counter_event (fun, "32-bit nop implementations found",
-			    nop_stats.found_32bit);
-  statistics_counter_event (fun, "64-bit nop implementations found",
-			    nop_stats.found_64bit);
-  statistics_counter_event (fun, "16-bit bswap implementations found",
-			    bswap_stats.found_16bit);
-  statistics_counter_event (fun, "32-bit bswap implementations found",
-			    bswap_stats.found_32bit);
-  statistics_counter_event (fun, "64-bit bswap implementations found",
-			    bswap_stats.found_64bit);
-
-  return (changed ? TODO_update_ssa : 0);
-}
-
-} // anon namespace
-
-gimple_opt_pass *
-make_pass_optimize_bswap (gcc::context *ctxt)
-{
-  return new pass_optimize_bswap (ctxt);
 }
 
 /* Return true if stmt is a type conversion operation that can be stripped
@@ -3115,6 +2568,92 @@ is_widening_mult_p (gimple *stmt,
   return true;
 }
 
+/* Check to see if the CALL statement is an invocation of copysign
+   with 1. being the first argument.  */
+static bool
+is_copysign_call_with_1 (gimple *call)
+{
+  gcall *c = dyn_cast <gcall *> (call);
+  if (! c)
+    return false;
+
+  enum combined_fn code = gimple_call_combined_fn (c);
+
+  if (code == CFN_LAST)
+    return false;
+
+  if (builtin_fn_p (code))
+    {
+      switch (as_builtin_fn (code))
+	{
+	CASE_FLT_FN (BUILT_IN_COPYSIGN):
+	CASE_FLT_FN_FLOATN_NX (BUILT_IN_COPYSIGN):
+	  return real_onep (gimple_call_arg (c, 0));
+	default:
+	  return false;
+	}
+    }
+
+  if (internal_fn_p (code))
+    {
+      switch (as_internal_fn (code))
+	{
+	case IFN_COPYSIGN:
+	  return real_onep (gimple_call_arg (c, 0));
+	default:
+	  return false;
+	}
+    }
+
+   return false;
+}
+
+/* Try to expand the pattern x * copysign (1, y) into xorsign (x, y).
+   This only happens when the xorsign optab is defined, if the
+   pattern is not a xorsign pattern or if expansion fails FALSE is
+   returned, otherwise TRUE is returned.  */
+static bool
+convert_expand_mult_copysign (gimple *stmt, gimple_stmt_iterator *gsi)
+{
+  tree treeop0, treeop1, lhs, type;
+  location_t loc = gimple_location (stmt);
+  lhs = gimple_assign_lhs (stmt);
+  treeop0 = gimple_assign_rhs1 (stmt);
+  treeop1 = gimple_assign_rhs2 (stmt);
+  type = TREE_TYPE (lhs);
+  machine_mode mode = TYPE_MODE (type);
+
+  if (HONOR_SNANS (type))
+    return false;
+
+  if (TREE_CODE (treeop0) == SSA_NAME && TREE_CODE (treeop1) == SSA_NAME)
+    {
+      gimple *call0 = SSA_NAME_DEF_STMT (treeop0);
+      if (!has_single_use (treeop0) || !is_copysign_call_with_1 (call0))
+	{
+	  call0 = SSA_NAME_DEF_STMT (treeop1);
+	  if (!has_single_use (treeop1) || !is_copysign_call_with_1 (call0))
+	    return false;
+
+	  treeop1 = treeop0;
+	}
+	if (optab_handler (xorsign_optab, mode) == CODE_FOR_nothing)
+	  return false;
+
+	gcall *c = as_a<gcall*> (call0);
+	treeop0 = gimple_call_arg (c, 1);
+
+	gcall *call_stmt
+	  = gimple_build_call_internal (IFN_XORSIGN, 2, treeop1, treeop0);
+	gimple_set_lhs (call_stmt, lhs);
+	gimple_set_location (call_stmt, loc);
+	gsi_replace (gsi, call_stmt, true);
+	return true;
+    }
+
+  return false;
+}
+
 /* Process a single gimple statement STMT, which has a MULT_EXPR as
    its rhs, and try to convert it into a WIDEN_MULT_EXPR.  The return
    value is true iff we converted the statement.  */
@@ -3124,7 +2663,7 @@ convert_mult_to_widen (gimple *stmt, gimple_stmt_iterator *gsi)
 {
   tree lhs, rhs1, rhs2, type, type1, type2;
   enum insn_code handler;
-  machine_mode to_mode, from_mode, actual_mode;
+  scalar_int_mode to_mode, from_mode, actual_mode;
   optab op;
   int actual_precision;
   location_t loc = gimple_location (stmt);
@@ -3138,8 +2677,11 @@ convert_mult_to_widen (gimple *stmt, gimple_stmt_iterator *gsi)
   if (!is_widening_mult_p (stmt, &type1, &rhs1, &type2, &rhs2))
     return false;
 
-  to_mode = TYPE_MODE (type);
-  from_mode = TYPE_MODE (type1);
+  to_mode = SCALAR_INT_TYPE_MODE (type);
+  from_mode = SCALAR_INT_TYPE_MODE (type1);
+  if (to_mode == from_mode)
+    return false;
+
   from_unsigned1 = TYPE_UNSIGNED (type1);
   from_unsigned2 = TYPE_UNSIGNED (type2);
 
@@ -3151,7 +2693,7 @@ convert_mult_to_widen (gimple *stmt, gimple_stmt_iterator *gsi)
     op = usmul_widen_optab;
 
   handler = find_widening_optab_handler_and_mode (op, to_mode, from_mode,
-						  0, &actual_mode);
+						  &actual_mode);
 
   if (handler == CODE_FOR_nothing)
     {
@@ -3165,14 +2707,14 @@ convert_mult_to_widen (gimple *stmt, gimple_stmt_iterator *gsi)
 	      || (TYPE_UNSIGNED (type2)
 		  && TYPE_PRECISION (type2) == GET_MODE_PRECISION (from_mode)))
 	    {
-	      from_mode = GET_MODE_WIDER_MODE (from_mode);
-	      if (GET_MODE_SIZE (to_mode) <= GET_MODE_SIZE (from_mode))
+	      if (!GET_MODE_WIDER_MODE (from_mode).exists (&from_mode)
+		  || GET_MODE_SIZE (to_mode) <= GET_MODE_SIZE (from_mode))
 		return false;
 	    }
 
 	  op = smul_widen_optab;
 	  handler = find_widening_optab_handler_and_mode (op, to_mode,
-							  from_mode, 0,
+							  from_mode,
 							  &actual_mode);
 
 	  if (handler == CODE_FOR_nothing)
@@ -3232,7 +2774,7 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
   optab this_optab;
   enum tree_code wmult_code;
   enum insn_code handler;
-  machine_mode to_mode, from_mode, actual_mode;
+  scalar_mode to_mode, from_mode, actual_mode;
   location_t loc = gimple_location (stmt);
   int actual_precision;
   bool from_unsigned1, from_unsigned2;
@@ -3305,11 +2847,14 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
      multiply-and-accumulate instructions.
 
      If the widened-multiplication result has more than one uses, it is
-     probably wiser not to do the conversion.  */
+     probably wiser not to do the conversion.  Also restrict this operation
+     to single basic block to avoid moving the multiply to a different block
+     with a higher execution frequency.  */
   if (code == PLUS_EXPR
       && (rhs1_code == MULT_EXPR || rhs1_code == WIDEN_MULT_EXPR))
     {
       if (!has_single_use (rhs1)
+	  || gimple_bb (rhs1_stmt) != gimple_bb (stmt)
 	  || !is_widening_mult_p (rhs1_stmt, &type1, &mult_rhs1,
 				  &type2, &mult_rhs2))
 	return false;
@@ -3319,6 +2864,7 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
   else if (rhs2_code == MULT_EXPR || rhs2_code == WIDEN_MULT_EXPR)
     {
       if (!has_single_use (rhs2)
+	  || gimple_bb (rhs2_stmt) != gimple_bb (stmt)
 	  || !is_widening_mult_p (rhs2_stmt, &type1, &mult_rhs1,
 				  &type2, &mult_rhs2))
 	return false;
@@ -3328,8 +2874,11 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
   else
     return false;
 
-  to_mode = TYPE_MODE (type);
-  from_mode = TYPE_MODE (type1);
+  to_mode = SCALAR_TYPE_MODE (type);
+  from_mode = SCALAR_TYPE_MODE (type1);
+  if (to_mode == from_mode)
+    return false;
+
   from_unsigned1 = TYPE_UNSIGNED (type1);
   from_unsigned2 = TYPE_UNSIGNED (type2);
   optype = type1;
@@ -3347,8 +2896,8 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
 	  || (from_unsigned2
 	      && TYPE_PRECISION (type2) == GET_MODE_PRECISION (from_mode)))
 	{
-	  from_mode = GET_MODE_WIDER_MODE (from_mode);
-	  if (GET_MODE_SIZE (from_mode) >= GET_MODE_SIZE (to_mode))
+	  if (!GET_MODE_WIDER_MODE (from_mode).exists (&from_mode)
+	      || GET_MODE_SIZE (from_mode) >= GET_MODE_SIZE (to_mode))
 	    return false;
 	}
 
@@ -3390,7 +2939,7 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
      this transformation is likely to pessimize code.  */
   this_optab = optab_for_tree_code (wmult_code, optype, optab_default);
   handler = find_widening_optab_handler_and_mode (this_optab, to_mode,
-						  from_mode, 0, &actual_mode);
+						  from_mode, &actual_mode);
 
   if (handler == CODE_FOR_nothing)
     return false;
@@ -3427,17 +2976,256 @@ convert_plusminus_to_widen (gimple_stmt_iterator *gsi, gimple *stmt,
   return true;
 }
 
-/* Combine the multiplication at MUL_STMT with operands MULOP1 and MULOP2
-   with uses in additions and subtractions to form fused multiply-add
-   operations.  Returns true if successful and MUL_STMT should be removed.  */
+/* Given a result MUL_RESULT which is a result of a multiplication of OP1 and
+   OP2 and which we know is used in statements that can be, together with the
+   multiplication, converted to FMAs, perform the transformation.  */
+
+static void
+convert_mult_to_fma_1 (tree mul_result, tree op1, tree op2)
+{
+  tree type = TREE_TYPE (mul_result);
+  gimple *use_stmt;
+  imm_use_iterator imm_iter;
+  gcall *fma_stmt;
+
+  FOR_EACH_IMM_USE_STMT (use_stmt, imm_iter, mul_result)
+    {
+      gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
+      tree addop, mulop1 = op1, result = mul_result;
+      bool negate_p = false;
+      gimple_seq seq = NULL;
+
+      if (is_gimple_debug (use_stmt))
+	continue;
+
+      if (is_gimple_assign (use_stmt)
+	  && gimple_assign_rhs_code (use_stmt) == NEGATE_EXPR)
+	{
+	  result = gimple_assign_lhs (use_stmt);
+	  use_operand_p use_p;
+	  gimple *neguse_stmt;
+	  single_imm_use (gimple_assign_lhs (use_stmt), &use_p, &neguse_stmt);
+	  gsi_remove (&gsi, true);
+	  release_defs (use_stmt);
+
+	  use_stmt = neguse_stmt;
+	  gsi = gsi_for_stmt (use_stmt);
+	  negate_p = true;
+	}
+
+      tree cond, else_value, ops[3];
+      tree_code code;
+      if (!can_interpret_as_conditional_op_p (use_stmt, &cond, &code,
+					      ops, &else_value))
+	gcc_unreachable ();
+      addop = ops[0] == result ? ops[1] : ops[0];
+
+      if (code == MINUS_EXPR)
+	{
+	  if (ops[0] == result)
+	    /* a * b - c -> a * b + (-c)  */
+	    addop = gimple_build (&seq, NEGATE_EXPR, type, addop);
+	  else
+	    /* a - b * c -> (-b) * c + a */
+	    negate_p = !negate_p;
+	}
+
+      if (negate_p)
+	mulop1 = gimple_build (&seq, NEGATE_EXPR, type, mulop1);
+
+      if (seq)
+	gsi_insert_seq_before (&gsi, seq, GSI_SAME_STMT);
+
+      if (cond)
+	fma_stmt = gimple_build_call_internal (IFN_COND_FMA, 5, cond, mulop1,
+					       op2, addop, else_value);
+      else
+	fma_stmt = gimple_build_call_internal (IFN_FMA, 3, mulop1, op2, addop);
+      gimple_set_lhs (fma_stmt, gimple_get_lhs (use_stmt));
+      gimple_call_set_nothrow (fma_stmt, !stmt_can_throw_internal (cfun,
+								   use_stmt));
+      gsi_replace (&gsi, fma_stmt, true);
+      /* Follow all SSA edges so that we generate FMS, FNMA and FNMS
+	 regardless of where the negation occurs.  */
+      gimple *orig_stmt = gsi_stmt (gsi);
+      if (fold_stmt (&gsi, follow_all_ssa_edges))
+	{
+	  if (maybe_clean_or_replace_eh_stmt (orig_stmt, gsi_stmt (gsi)))
+	    gcc_unreachable ();
+	  update_stmt (gsi_stmt (gsi));
+	}
+
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "Generated FMA ");
+	  print_gimple_stmt (dump_file, gsi_stmt (gsi), 0, TDF_NONE);
+	  fprintf (dump_file, "\n");
+	}
+
+      /* If the FMA result is negated in a single use, fold the negation
+	 too.  */
+      orig_stmt = gsi_stmt (gsi);
+      use_operand_p use_p;
+      gimple *neg_stmt;
+      if (is_gimple_call (orig_stmt)
+	  && gimple_call_internal_p (orig_stmt)
+	  && gimple_call_lhs (orig_stmt)
+	  && TREE_CODE (gimple_call_lhs (orig_stmt)) == SSA_NAME
+	  && single_imm_use (gimple_call_lhs (orig_stmt), &use_p, &neg_stmt)
+	  && is_gimple_assign (neg_stmt)
+	  && gimple_assign_rhs_code (neg_stmt) == NEGATE_EXPR
+	  && !stmt_could_throw_p (cfun, neg_stmt))
+	{
+	  gsi = gsi_for_stmt (neg_stmt);
+	  if (fold_stmt (&gsi, follow_all_ssa_edges))
+	    {
+	      if (maybe_clean_or_replace_eh_stmt (neg_stmt, gsi_stmt (gsi)))
+		gcc_unreachable ();
+	      update_stmt (gsi_stmt (gsi));
+	      if (dump_file && (dump_flags & TDF_DETAILS))
+		{
+		  fprintf (dump_file, "Folded FMA negation ");
+		  print_gimple_stmt (dump_file, gsi_stmt (gsi), 0, TDF_NONE);
+		  fprintf (dump_file, "\n");
+		}
+	    }
+	}
+
+      widen_mul_stats.fmas_inserted++;
+    }
+}
+
+/* Data necessary to perform the actual transformation from a multiplication
+   and an addition to an FMA after decision is taken it should be done and to
+   then delete the multiplication statement from the function IL.  */
+
+struct fma_transformation_info
+{
+  gimple *mul_stmt;
+  tree mul_result;
+  tree op1;
+  tree op2;
+};
+
+/* Structure containing the current state of FMA deferring, i.e. whether we are
+   deferring, whether to continue deferring, and all data necessary to come
+   back and perform all deferred transformations.  */
+
+class fma_deferring_state
+{
+public:
+  /* Class constructor.  Pass true as PERFORM_DEFERRING in order to actually
+     do any deferring.  */
+
+  fma_deferring_state (bool perform_deferring)
+    : m_candidates (), m_mul_result_set (), m_initial_phi (NULL),
+      m_last_result (NULL_TREE), m_deferring_p (perform_deferring) {}
+
+  /* List of FMA candidates for which we the transformation has been determined
+     possible but we at this point in BB analysis we do not consider them
+     beneficial.  */
+  auto_vec<fma_transformation_info, 8> m_candidates;
+
+  /* Set of results of multiplication that are part of an already deferred FMA
+     candidates.  */
+  hash_set<tree> m_mul_result_set;
+
+  /* The PHI that supposedly feeds back result of a FMA to another over loop
+     boundary.  */
+  gphi *m_initial_phi;
+
+  /* Result of the last produced FMA candidate or NULL if there has not been
+     one.  */
+  tree m_last_result;
+
+  /* If true, deferring might still be profitable.  If false, transform all
+     candidates and no longer defer.  */
+  bool m_deferring_p;
+};
+
+/* Transform all deferred FMA candidates and mark STATE as no longer
+   deferring.  */
+
+static void
+cancel_fma_deferring (fma_deferring_state *state)
+{
+  if (!state->m_deferring_p)
+    return;
+
+  for (unsigned i = 0; i < state->m_candidates.length (); i++)
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	fprintf (dump_file, "Generating deferred FMA\n");
+
+      const fma_transformation_info &fti = state->m_candidates[i];
+      convert_mult_to_fma_1 (fti.mul_result, fti.op1, fti.op2);
+
+      gimple_stmt_iterator gsi = gsi_for_stmt (fti.mul_stmt);
+      gsi_remove (&gsi, true);
+      release_defs (fti.mul_stmt);
+    }
+  state->m_deferring_p = false;
+}
+
+/* If OP is an SSA name defined by a PHI node, return the PHI statement.
+   Otherwise return NULL.  */
+
+static gphi *
+result_of_phi (tree op)
+{
+  if (TREE_CODE (op) != SSA_NAME)
+    return NULL;
+
+  return dyn_cast <gphi *> (SSA_NAME_DEF_STMT (op));
+}
+
+/* After processing statements of a BB and recording STATE, return true if the
+   initial phi is fed by the last FMA candidate result ore one such result from
+   previously processed BBs marked in LAST_RESULT_SET.  */
 
 static bool
-convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
+last_fma_candidate_feeds_initial_phi (fma_deferring_state *state,
+				      hash_set<tree> *last_result_set)
+{
+  ssa_op_iter iter;
+  use_operand_p use;
+  FOR_EACH_PHI_ARG (use, state->m_initial_phi, iter, SSA_OP_USE)
+    {
+      tree t = USE_FROM_PTR (use);
+      if (t == state->m_last_result
+	  || last_result_set->contains (t))
+	return true;
+    }
+
+  return false;
+}
+
+/* Combine the multiplication at MUL_STMT with operands MULOP1 and MULOP2
+   with uses in additions and subtractions to form fused multiply-add
+   operations.  Returns true if successful and MUL_STMT should be removed.
+   If MUL_COND is nonnull, the multiplication in MUL_STMT is conditional
+   on MUL_COND, otherwise it is unconditional.
+
+   If STATE indicates that we are deferring FMA transformation, that means
+   that we do not produce FMAs for basic blocks which look like:
+
+    <bb 6>
+    # accumulator_111 = PHI <0.0(5), accumulator_66(6)>
+    _65 = _14 * _16;
+    accumulator_66 = _65 + accumulator_111;
+
+  or its unrolled version, i.e. with several FMA candidates that feed result
+  of one into the addend of another.  Instead, we add them to a list in STATE
+  and if we later discover an FMA candidate that is not part of such a chain,
+  we go back and perform all deferred past candidates.  */
+
+static bool
+convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2,
+		     fma_deferring_state *state, tree mul_cond = NULL_TREE)
 {
   tree mul_result = gimple_get_lhs (mul_stmt);
   tree type = TREE_TYPE (mul_result);
   gimple *use_stmt, *neguse_stmt;
-  gassign *fma_stmt;
   use_operand_p use_p;
   imm_use_iterator imm_iter;
 
@@ -3447,14 +3235,13 @@ convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
 
   /* We don't want to do bitfield reduction ops.  */
   if (INTEGRAL_TYPE_P (type)
-      && (TYPE_PRECISION (type)
-	  != GET_MODE_PRECISION (TYPE_MODE (type))
-	  || TYPE_OVERFLOW_TRAPS (type)))
+      && (!type_has_mode_precision_p (type) || TYPE_OVERFLOW_TRAPS (type)))
     return false;
 
   /* If the target doesn't support it, don't generate it.  We assume that
      if fma isn't available then fms, fnma or fnms are not either.  */
-  if (optab_handler (fma_optab, TYPE_MODE (type)) == CODE_FOR_nothing)
+  optimization_type opt_type = bb_optimization_type (gimple_bb (mul_stmt));
+  if (!direct_internal_fn_supported_p (IFN_FMA, type, opt_type))
     return false;
 
   /* If the multiplication has zero uses, it is kept around probably because
@@ -3463,13 +3250,18 @@ convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
   if (has_zero_uses (mul_result))
     return false;
 
+  bool check_defer
+    = (state->m_deferring_p
+       && maybe_le (tree_to_poly_int64 (TYPE_SIZE (type)),
+		    param_avoid_fma_max_bits));
+  bool defer = check_defer;
+  bool seen_negate_p = false;
   /* Make sure that the multiplication statement becomes dead after
      the transformation, thus that all uses are transformed to FMAs.
      This means we assume that an FMA operation has the same cost
      as an addition.  */
   FOR_EACH_IMM_USE_FAST (use_p, imm_iter, mul_result)
     {
-      enum tree_code use_code;
       tree result = mul_result;
       bool negate_p = false;
 
@@ -3490,16 +3282,18 @@ convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
       if (gimple_bb (use_stmt) != gimple_bb (mul_stmt))
 	return false;
 
-      if (!is_gimple_assign (use_stmt))
-	return false;
-
-      use_code = gimple_assign_rhs_code (use_stmt);
-
       /* A negate on the multiplication leads to FNMA.  */
-      if (use_code == NEGATE_EXPR)
+      if (is_gimple_assign (use_stmt)
+	  && gimple_assign_rhs_code (use_stmt) == NEGATE_EXPR)
 	{
 	  ssa_op_iter iter;
 	  use_operand_p usep;
+
+	  /* If (due to earlier missed optimizations) we have two
+	     negates of the same value, treat them as equivalent
+	     to a single negate with multiple uses.  */
+	  if (seen_negate_p)
+	    return false;
 
 	  result = gimple_assign_lhs (use_stmt);
 
@@ -3518,17 +3312,20 @@ convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
 	  use_stmt = neguse_stmt;
 	  if (gimple_bb (use_stmt) != gimple_bb (mul_stmt))
 	    return false;
-	  if (!is_gimple_assign (use_stmt))
-	    return false;
 
-	  use_code = gimple_assign_rhs_code (use_stmt);
-	  negate_p = true;
+	  negate_p = seen_negate_p = true;
 	}
 
-      switch (use_code)
+      tree cond, else_value, ops[3];
+      tree_code code;
+      if (!can_interpret_as_conditional_op_p (use_stmt, &cond, &code, ops,
+					      &else_value))
+	return false;
+
+      switch (code)
 	{
 	case MINUS_EXPR:
-	  if (gimple_assign_rhs2 (use_stmt) == result)
+	  if (ops[1] == result)
 	    negate_p = !negate_p;
 	  break;
 	case PLUS_EXPR:
@@ -3538,129 +3335,389 @@ convert_mult_to_fma (gimple *mul_stmt, tree op1, tree op2)
 	  return false;
 	}
 
-      /* If the subtrahend (gimple_assign_rhs2 (use_stmt)) is computed
-	 by a MULT_EXPR that we'll visit later, we might be able to
-	 get a more profitable match with fnma.
+      if (mul_cond && cond != mul_cond)
+	return false;
+
+      if (cond)
+	{
+	  if (cond == result || else_value == result)
+	    return false;
+	  if (!direct_internal_fn_supported_p (IFN_COND_FMA, type, opt_type))
+	    return false;
+	}
+
+      /* If the subtrahend (OPS[1]) is computed by a MULT_EXPR that
+	 we'll visit later, we might be able to get a more profitable
+	 match with fnma.
 	 OTOH, if we don't, a negate / fma pair has likely lower latency
 	 that a mult / subtract pair.  */
-      if (use_code == MINUS_EXPR && !negate_p
-	  && gimple_assign_rhs1 (use_stmt) == result
-	  && optab_handler (fms_optab, TYPE_MODE (type)) == CODE_FOR_nothing
-	  && optab_handler (fnma_optab, TYPE_MODE (type)) != CODE_FOR_nothing)
+      if (code == MINUS_EXPR
+	  && !negate_p
+	  && ops[0] == result
+	  && !direct_internal_fn_supported_p (IFN_FMS, type, opt_type)
+	  && direct_internal_fn_supported_p (IFN_FNMA, type, opt_type)
+	  && TREE_CODE (ops[1]) == SSA_NAME
+	  && has_single_use (ops[1]))
 	{
-	  tree rhs2 = gimple_assign_rhs2 (use_stmt);
-
-	  if (TREE_CODE (rhs2) == SSA_NAME)
-	    {
-	      gimple *stmt2 = SSA_NAME_DEF_STMT (rhs2);
-	      if (has_single_use (rhs2)
-		  && is_gimple_assign (stmt2)
-		  && gimple_assign_rhs_code (stmt2) == MULT_EXPR)
-	      return false;
-	    }
+	  gimple *stmt2 = SSA_NAME_DEF_STMT (ops[1]);
+	  if (is_gimple_assign (stmt2)
+	      && gimple_assign_rhs_code (stmt2) == MULT_EXPR)
+	    return false;
 	}
 
       /* We can't handle a * b + a * b.  */
-      if (gimple_assign_rhs1 (use_stmt) == gimple_assign_rhs2 (use_stmt))
+      if (ops[0] == ops[1])
+	return false;
+      /* If deferring, make sure we are not looking at an instruction that
+	 wouldn't have existed if we were not.  */
+      if (state->m_deferring_p
+	  && (state->m_mul_result_set.contains (ops[0])
+	      || state->m_mul_result_set.contains (ops[1])))
 	return false;
 
-      /* While it is possible to validate whether or not the exact form
-	 that we've recognized is available in the backend, the assumption
-	 is that the transformation is never a loss.  For instance, suppose
-	 the target only has the plain FMA pattern available.  Consider
-	 a*b-c -> fma(a,b,-c): we've exchanged MUL+SUB for FMA+NEG, which
-	 is still two operations.  Consider -(a*b)-c -> fma(-a,b,-c): we
-	 still have 3 operations, but in the FMA form the two NEGs are
-	 independent and could be run in parallel.  */
-    }
-
-  FOR_EACH_IMM_USE_STMT (use_stmt, imm_iter, mul_result)
-    {
-      gimple_stmt_iterator gsi = gsi_for_stmt (use_stmt);
-      enum tree_code use_code;
-      tree addop, mulop1 = op1, result = mul_result;
-      bool negate_p = false;
-
-      if (is_gimple_debug (use_stmt))
-	continue;
-
-      use_code = gimple_assign_rhs_code (use_stmt);
-      if (use_code == NEGATE_EXPR)
+      if (check_defer)
 	{
-	  result = gimple_assign_lhs (use_stmt);
-	  single_imm_use (gimple_assign_lhs (use_stmt), &use_p, &neguse_stmt);
-	  gsi_remove (&gsi, true);
-	  release_defs (use_stmt);
+	  tree use_lhs = gimple_get_lhs (use_stmt);
+	  if (state->m_last_result)
+	    {
+	      if (ops[1] == state->m_last_result
+		  || ops[0] == state->m_last_result)
+		defer = true;
+	      else
+		defer = false;
+	    }
+	  else
+	    {
+	      gcc_checking_assert (!state->m_initial_phi);
+	      gphi *phi;
+	      if (ops[0] == result)
+		phi = result_of_phi (ops[1]);
+	      else
+		{
+		  gcc_assert (ops[1] == result);
+		  phi = result_of_phi (ops[0]);
+		}
 
-	  use_stmt = neguse_stmt;
-	  gsi = gsi_for_stmt (use_stmt);
-	  use_code = gimple_assign_rhs_code (use_stmt);
-	  negate_p = true;
-	}
+	      if (phi)
+		{
+		  state->m_initial_phi = phi;
+		  defer = true;
+		}
+	      else
+		defer = false;
+	    }
 
-      if (gimple_assign_rhs1 (use_stmt) == result)
-	{
-	  addop = gimple_assign_rhs2 (use_stmt);
-	  /* a * b - c -> a * b + (-c)  */
-	  if (gimple_assign_rhs_code (use_stmt) == MINUS_EXPR)
-	    addop = force_gimple_operand_gsi (&gsi,
-					      build1 (NEGATE_EXPR,
-						      type, addop),
-					      true, NULL_TREE, true,
-					      GSI_SAME_STMT);
+	  state->m_last_result = use_lhs;
+	  check_defer = false;
 	}
       else
-	{
-	  addop = gimple_assign_rhs1 (use_stmt);
-	  /* a - b * c -> (-b) * c + a */
-	  if (gimple_assign_rhs_code (use_stmt) == MINUS_EXPR)
-	    negate_p = !negate_p;
-	}
+	defer = false;
 
-      if (negate_p)
-	mulop1 = force_gimple_operand_gsi (&gsi,
-					   build1 (NEGATE_EXPR,
-						   type, mulop1),
-					   true, NULL_TREE, true,
-					   GSI_SAME_STMT);
-
-      fma_stmt = gimple_build_assign (gimple_assign_lhs (use_stmt),
-				      FMA_EXPR, mulop1, op2, addop);
-      gsi_replace (&gsi, fma_stmt, true);
-      widen_mul_stats.fmas_inserted++;
+      /* While it is possible to validate whether or not the exact form that
+	 we've recognized is available in the backend, the assumption is that
+	 if the deferring logic above did not trigger, the transformation is
+	 never a loss.  For instance, suppose the target only has the plain FMA
+	 pattern available.  Consider a*b-c -> fma(a,b,-c): we've exchanged
+	 MUL+SUB for FMA+NEG, which is still two operations.  Consider
+         -(a*b)-c -> fma(-a,b,-c): we still have 3 operations, but in the FMA
+	 form the two NEGs are independent and could be run in parallel.  */
     }
 
-  return true;
+  if (defer)
+    {
+      fma_transformation_info fti;
+      fti.mul_stmt = mul_stmt;
+      fti.mul_result = mul_result;
+      fti.op1 = op1;
+      fti.op2 = op2;
+      state->m_candidates.safe_push (fti);
+      state->m_mul_result_set.add (mul_result);
+
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "Deferred generating FMA for multiplication ");
+	  print_gimple_stmt (dump_file, mul_stmt, 0, TDF_NONE);
+	  fprintf (dump_file, "\n");
+	}
+
+      return false;
+    }
+  else
+    {
+      if (state->m_deferring_p)
+	cancel_fma_deferring (state);
+      convert_mult_to_fma_1 (mul_result, op1, op2);
+      return true;
+    }
 }
 
 
-/* Helper function of match_uaddsub_overflow.  Return 1
+/* Helper function of match_arith_overflow.  For MUL_OVERFLOW, if we have
+   a check for non-zero like:
+   _1 = x_4(D) * y_5(D);
+   *res_7(D) = _1;
+   if (x_4(D) != 0)
+     goto <bb 3>; [50.00%]
+   else
+     goto <bb 4>; [50.00%]
+
+   <bb 3> [local count: 536870913]:
+   _2 = _1 / x_4(D);
+   _9 = _2 != y_5(D);
+   _10 = (int) _9;
+
+   <bb 4> [local count: 1073741824]:
+   # iftmp.0_3 = PHI <_10(3), 0(2)>
+   then in addition to using .MUL_OVERFLOW (x_4(D), y_5(D)) we can also
+   optimize the x_4(D) != 0 condition to 1.  */
+
+static void
+maybe_optimize_guarding_check (vec<gimple *> &mul_stmts, gimple *cond_stmt,
+			       gimple *div_stmt, bool *cfg_changed)
+{
+  basic_block bb = gimple_bb (cond_stmt);
+  if (gimple_bb (div_stmt) != bb || !single_pred_p (bb))
+    return;
+  edge pred_edge = single_pred_edge (bb);
+  basic_block pred_bb = pred_edge->src;
+  if (EDGE_COUNT (pred_bb->succs) != 2)
+    return;
+  edge other_edge = EDGE_SUCC (pred_bb, EDGE_SUCC (pred_bb, 0) == pred_edge);
+  edge other_succ_edge = NULL;
+  if (gimple_code (cond_stmt) == GIMPLE_COND)
+    {
+      if (EDGE_COUNT (bb->succs) != 2)
+	return;
+      other_succ_edge = EDGE_SUCC (bb, 0);
+      if (gimple_cond_code (cond_stmt) == NE_EXPR)
+	{
+	  if (other_succ_edge->flags & EDGE_TRUE_VALUE)
+	    other_succ_edge = EDGE_SUCC (bb, 1);
+	}
+      else if (other_succ_edge->flags & EDGE_FALSE_VALUE)
+	other_succ_edge = EDGE_SUCC (bb, 0);
+      if (other_edge->dest != other_succ_edge->dest)
+	return;
+    }
+  else if (!single_succ_p (bb) || other_edge->dest != single_succ (bb))
+    return;
+  gimple *zero_cond = last_stmt (pred_bb);
+  if (zero_cond == NULL
+      || gimple_code (zero_cond) != GIMPLE_COND
+      || (gimple_cond_code (zero_cond)
+	  != ((pred_edge->flags & EDGE_TRUE_VALUE) ? NE_EXPR : EQ_EXPR))
+      || !integer_zerop (gimple_cond_rhs (zero_cond)))
+    return;
+  tree zero_cond_lhs = gimple_cond_lhs (zero_cond);
+  if (TREE_CODE (zero_cond_lhs) != SSA_NAME)
+    return;
+  if (gimple_assign_rhs2 (div_stmt) != zero_cond_lhs)
+    {
+      /* Allow the divisor to be result of a same precision cast
+	 from zero_cond_lhs.  */
+      tree rhs2 = gimple_assign_rhs2 (div_stmt);
+      if (TREE_CODE (rhs2) != SSA_NAME)
+	return;
+      gimple *g = SSA_NAME_DEF_STMT (rhs2);
+      if (!gimple_assign_cast_p (g)
+	  || gimple_assign_rhs1 (g) != gimple_cond_lhs (zero_cond)
+	  || !INTEGRAL_TYPE_P (TREE_TYPE (zero_cond_lhs))
+	  || (TYPE_PRECISION (TREE_TYPE (zero_cond_lhs))
+	      != TYPE_PRECISION (TREE_TYPE (rhs2))))
+	return;
+    }
+  gimple_stmt_iterator gsi = gsi_after_labels (bb);
+  mul_stmts.quick_push (div_stmt);
+  if (is_gimple_debug (gsi_stmt (gsi)))
+    gsi_next_nondebug (&gsi);
+  unsigned cast_count = 0;
+  while (gsi_stmt (gsi) != cond_stmt)
+    {
+      /* If original mul_stmt has a single use, allow it in the same bb,
+	 we are looking then just at __builtin_mul_overflow_p.
+	 Though, in that case the original mul_stmt will be replaced
+	 by .MUL_OVERFLOW, REALPART_EXPR and IMAGPART_EXPR stmts.  */
+      gimple *mul_stmt;
+      unsigned int i;
+      bool ok = false;
+      FOR_EACH_VEC_ELT (mul_stmts, i, mul_stmt)
+	{
+	  if (gsi_stmt (gsi) == mul_stmt)
+	    {
+	      ok = true;
+	      break;
+	    }
+	}
+      if (!ok && gimple_assign_cast_p (gsi_stmt (gsi)) && ++cast_count < 4)
+	ok = true;
+      if (!ok)
+	return;
+      gsi_next_nondebug (&gsi);
+    }
+  if (gimple_code (cond_stmt) == GIMPLE_COND)
+    {
+      basic_block succ_bb = other_edge->dest;
+      for (gphi_iterator gpi = gsi_start_phis (succ_bb); !gsi_end_p (gpi);
+	   gsi_next (&gpi))
+	{
+	  gphi *phi = gpi.phi ();
+	  tree v1 = gimple_phi_arg_def (phi, other_edge->dest_idx);
+	  tree v2 = gimple_phi_arg_def (phi, other_succ_edge->dest_idx);
+	  if (!operand_equal_p (v1, v2, 0))
+	    return;
+	}
+    }
+  else
+    {
+      tree lhs = gimple_assign_lhs (cond_stmt);
+      if (!lhs || !INTEGRAL_TYPE_P (TREE_TYPE (lhs)))
+	return;
+      gsi_next_nondebug (&gsi);
+      if (!gsi_end_p (gsi))
+	{
+	  if (gimple_assign_rhs_code (cond_stmt) == COND_EXPR)
+	    return;
+	  gimple *cast_stmt = gsi_stmt (gsi);
+	  if (!gimple_assign_cast_p (cast_stmt))
+	    return;
+	  tree new_lhs = gimple_assign_lhs (cast_stmt);
+	  gsi_next_nondebug (&gsi);
+	  if (!gsi_end_p (gsi)
+	      || !new_lhs
+	      || !INTEGRAL_TYPE_P (TREE_TYPE (new_lhs))
+	      || TYPE_PRECISION (TREE_TYPE (new_lhs)) <= 1)
+	    return;
+	  lhs = new_lhs;
+	}
+      edge succ_edge = single_succ_edge (bb);
+      basic_block succ_bb = succ_edge->dest;
+      gsi = gsi_start_phis (succ_bb);
+      if (gsi_end_p (gsi))
+	return;
+      gphi *phi = as_a <gphi *> (gsi_stmt (gsi));
+      gsi_next (&gsi);
+      if (!gsi_end_p (gsi))
+	return;
+      if (gimple_phi_arg_def (phi, succ_edge->dest_idx) != lhs)
+	return;
+      tree other_val = gimple_phi_arg_def (phi, other_edge->dest_idx);
+      if (gimple_assign_rhs_code (cond_stmt) == COND_EXPR)
+	{
+	  tree cond = gimple_assign_rhs1 (cond_stmt);
+	  if (TREE_CODE (cond) == NE_EXPR)
+	    {
+	      if (!operand_equal_p (other_val,
+				    gimple_assign_rhs3 (cond_stmt), 0))
+		return;
+	    }
+	  else if (!operand_equal_p (other_val,
+				     gimple_assign_rhs2 (cond_stmt), 0))
+	    return;
+	}
+      else if (gimple_assign_rhs_code (cond_stmt) == NE_EXPR)
+	{
+	  if (!integer_zerop (other_val))
+	    return;
+	}
+      else if (!integer_onep (other_val))
+	return;
+    }
+  gcond *zero_gcond = as_a <gcond *> (zero_cond);
+  if (pred_edge->flags & EDGE_TRUE_VALUE)
+    gimple_cond_make_true (zero_gcond);
+  else
+    gimple_cond_make_false (zero_gcond);
+  update_stmt (zero_cond);
+  *cfg_changed = true;
+}
+
+/* Helper function for arith_overflow_check_p.  Return true
+   if VAL1 is equal to VAL2 cast to corresponding integral type
+   with other signedness or vice versa.  */
+
+static bool
+arith_cast_equal_p (tree val1, tree val2)
+{
+  if (TREE_CODE (val1) == INTEGER_CST && TREE_CODE (val2) == INTEGER_CST)
+    return wi::eq_p (wi::to_wide (val1), wi::to_wide (val2));
+  else if (TREE_CODE (val1) != SSA_NAME || TREE_CODE (val2) != SSA_NAME)
+    return false;
+  if (gimple_assign_cast_p (SSA_NAME_DEF_STMT (val1))
+      && gimple_assign_rhs1 (SSA_NAME_DEF_STMT (val1)) == val2)
+    return true;
+  if (gimple_assign_cast_p (SSA_NAME_DEF_STMT (val2))
+      && gimple_assign_rhs1 (SSA_NAME_DEF_STMT (val2)) == val1)
+    return true;
+  return false;
+}
+
+/* Helper function of match_arith_overflow.  Return 1
    if USE_STMT is unsigned overflow check ovf != 0 for
    STMT, -1 if USE_STMT is unsigned overflow check ovf == 0
    and 0 otherwise.  */
 
 static int
-uaddsub_overflow_check_p (gimple *stmt, gimple *use_stmt)
+arith_overflow_check_p (gimple *stmt, gimple *cast_stmt, gimple *&use_stmt,
+			tree maxval, tree *other)
 {
   enum tree_code ccode = ERROR_MARK;
   tree crhs1 = NULL_TREE, crhs2 = NULL_TREE;
-  if (gimple_code (use_stmt) == GIMPLE_COND)
+  enum tree_code code = gimple_assign_rhs_code (stmt);
+  tree lhs = gimple_assign_lhs (cast_stmt ? cast_stmt : stmt);
+  tree rhs1 = gimple_assign_rhs1 (stmt);
+  tree rhs2 = gimple_assign_rhs2 (stmt);
+  tree multop = NULL_TREE, divlhs = NULL_TREE;
+  gimple *cur_use_stmt = use_stmt;
+
+  if (code == MULT_EXPR)
     {
-      ccode = gimple_cond_code (use_stmt);
-      crhs1 = gimple_cond_lhs (use_stmt);
-      crhs2 = gimple_cond_rhs (use_stmt);
-    }
-  else if (is_gimple_assign (use_stmt))
-    {
-      if (gimple_assign_rhs_class (use_stmt) == GIMPLE_BINARY_RHS)
+      if (!is_gimple_assign (use_stmt))
+	return 0;
+      if (gimple_assign_rhs_code (use_stmt) != TRUNC_DIV_EXPR)
+	return 0;
+      if (gimple_assign_rhs1 (use_stmt) != lhs)
+	return 0;
+      if (cast_stmt)
 	{
-	  ccode = gimple_assign_rhs_code (use_stmt);
-	  crhs1 = gimple_assign_rhs1 (use_stmt);
-	  crhs2 = gimple_assign_rhs2 (use_stmt);
+	  if (arith_cast_equal_p (gimple_assign_rhs2 (use_stmt), rhs1))
+	    multop = rhs2;
+	  else if (arith_cast_equal_p (gimple_assign_rhs2 (use_stmt), rhs2))
+	    multop = rhs1;
+	  else
+	    return 0;
 	}
-      else if (gimple_assign_rhs_code (use_stmt) == COND_EXPR)
+      else if (gimple_assign_rhs2 (use_stmt) == rhs1)
+	multop = rhs2;
+      else if (operand_equal_p (gimple_assign_rhs2 (use_stmt), rhs2, 0))
+	multop = rhs1;
+      else
+	return 0;
+      if (stmt_ends_bb_p (use_stmt))
+	return 0;
+      divlhs = gimple_assign_lhs (use_stmt);
+      if (!divlhs)
+	return 0;
+      use_operand_p use;
+      if (!single_imm_use (divlhs, &use, &cur_use_stmt))
+	return 0;
+    }
+  if (gimple_code (cur_use_stmt) == GIMPLE_COND)
+    {
+      ccode = gimple_cond_code (cur_use_stmt);
+      crhs1 = gimple_cond_lhs (cur_use_stmt);
+      crhs2 = gimple_cond_rhs (cur_use_stmt);
+    }
+  else if (is_gimple_assign (cur_use_stmt))
+    {
+      if (gimple_assign_rhs_class (cur_use_stmt) == GIMPLE_BINARY_RHS)
 	{
-	  tree cond = gimple_assign_rhs1 (use_stmt);
+	  ccode = gimple_assign_rhs_code (cur_use_stmt);
+	  crhs1 = gimple_assign_rhs1 (cur_use_stmt);
+	  crhs2 = gimple_assign_rhs2 (cur_use_stmt);
+	}
+      else if (gimple_assign_rhs_code (cur_use_stmt) == COND_EXPR)
+	{
+	  tree cond = gimple_assign_rhs1 (cur_use_stmt);
 	  if (COMPARISON_CLASS_P (cond))
 	    {
 	      ccode = TREE_CODE (cond);
@@ -3679,30 +3736,75 @@ uaddsub_overflow_check_p (gimple *stmt, gimple *use_stmt)
   if (TREE_CODE_CLASS (ccode) != tcc_comparison)
     return 0;
 
-  enum tree_code code = gimple_assign_rhs_code (stmt);
-  tree lhs = gimple_assign_lhs (stmt);
-  tree rhs1 = gimple_assign_rhs1 (stmt);
-  tree rhs2 = gimple_assign_rhs2 (stmt);
-
   switch (ccode)
     {
     case GT_EXPR:
     case LE_EXPR:
+      if (maxval)
+	{
+	  /* r = a + b; r > maxval or r <= maxval  */
+	  if (crhs1 == lhs
+	      && TREE_CODE (crhs2) == INTEGER_CST
+	      && tree_int_cst_equal (crhs2, maxval))
+	    return ccode == GT_EXPR ? 1 : -1;
+	  break;
+	}
       /* r = a - b; r > a or r <= a
 	 r = a + b; a > r or a <= r or b > r or b <= r.  */
       if ((code == MINUS_EXPR && crhs1 == lhs && crhs2 == rhs1)
 	  || (code == PLUS_EXPR && (crhs1 == rhs1 || crhs1 == rhs2)
 	      && crhs2 == lhs))
 	return ccode == GT_EXPR ? 1 : -1;
+      /* r = ~a; b > r or b <= r.  */
+      if (code == BIT_NOT_EXPR && crhs2 == lhs)
+	{
+	  if (other)
+	    *other = crhs1;
+	  return ccode == GT_EXPR ? 1 : -1;
+	}
       break;
     case LT_EXPR:
     case GE_EXPR:
+      if (maxval)
+	break;
       /* r = a - b; a < r or a >= r
 	 r = a + b; r < a or r >= a or r < b or r >= b.  */
       if ((code == MINUS_EXPR && crhs1 == rhs1 && crhs2 == lhs)
 	  || (code == PLUS_EXPR && crhs1 == lhs
 	      && (crhs2 == rhs1 || crhs2 == rhs2)))
 	return ccode == LT_EXPR ? 1 : -1;
+      /* r = ~a; r < b or r >= b.  */
+      if (code == BIT_NOT_EXPR && crhs1 == lhs)
+	{
+	  if (other)
+	    *other = crhs2;
+	  return ccode == LT_EXPR ? 1 : -1;
+	}
+      break;
+    case EQ_EXPR:
+    case NE_EXPR:
+      /* r = a * b; _1 = r / a; _1 == b
+	 r = a * b; _1 = r / b; _1 == a
+	 r = a * b; _1 = r / a; _1 != b
+	 r = a * b; _1 = r / b; _1 != a.  */
+      if (code == MULT_EXPR)
+	{
+	  if (cast_stmt)
+	    {
+	      if ((crhs1 == divlhs && arith_cast_equal_p (crhs2, multop))
+		  || (crhs2 == divlhs && arith_cast_equal_p (crhs1, multop)))
+		{
+		  use_stmt = cur_use_stmt;
+		  return ccode == NE_EXPR ? 1 : -1;
+		}
+	    }
+	  else if ((crhs1 == divlhs && operand_equal_p (crhs2, multop, 0))
+		   || (crhs2 == divlhs && crhs1 == multop))
+	    {
+	      use_stmt = cur_use_stmt;
+	      return ccode == NE_EXPR ? 1 : -1;
+	    }
+	}
       break;
     default:
       break;
@@ -3714,15 +3816,58 @@ uaddsub_overflow_check_p (gimple *stmt, gimple *use_stmt)
    x = y - z;
    if (x > y)
    where there are other uses of x and replace it with
-   _7 = SUB_OVERFLOW (y, z);
+   _7 = .SUB_OVERFLOW (y, z);
    x = REALPART_EXPR <_7>;
    _8 = IMAGPART_EXPR <_7>;
    if (_8)
-   and similarly for addition.  */
+   and similarly for addition.
+
+   Also recognize:
+   yc = (type) y;
+   zc = (type) z;
+   x = yc + zc;
+   if (x > max)
+   where y and z have unsigned types with maximum max
+   and there are other uses of x and all of those cast x
+   back to that unsigned type and again replace it with
+   _7 = .ADD_OVERFLOW (y, z);
+   _9 = REALPART_EXPR <_7>;
+   _8 = IMAGPART_EXPR <_7>;
+   if (_8)
+   and replace (utype) x with _9.
+
+   Also recognize:
+   x = ~z;
+   if (y > x)
+   and replace it with
+   _7 = .ADD_OVERFLOW (y, z);
+   _8 = IMAGPART_EXPR <_7>;
+   if (_8)
+
+   And also recognize:
+   z = x * y;
+   if (x != 0)
+     goto <bb 3>; [50.00%]
+   else
+     goto <bb 4>; [50.00%]
+
+   <bb 3> [local count: 536870913]:
+   _2 = z / x;
+   _9 = _2 != y;
+   _10 = (int) _9;
+
+   <bb 4> [local count: 1073741824]:
+   # iftmp.0_3 = PHI <_10(3), 0(2)>
+   and replace it with
+   _7 = .MUL_OVERFLOW (x, y);
+   z = IMAGPART_EXPR <_7>;
+   _8 = IMAGPART_EXPR <_7>;
+   _9 = _8 != 0;
+   iftmp.0_3 = (int) _9;  */
 
 static bool
-match_uaddsub_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
-			enum tree_code code)
+match_arith_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
+		      enum tree_code code, bool *cfg_changed)
 {
   tree lhs = gimple_assign_lhs (stmt);
   tree type = TREE_TYPE (lhs);
@@ -3731,58 +3876,382 @@ match_uaddsub_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
   bool use_seen = false;
   bool ovf_use_seen = false;
   gimple *use_stmt;
+  gimple *add_stmt = NULL;
+  bool add_first = false;
+  gimple *cond_stmt = NULL;
+  gimple *cast_stmt = NULL;
+  tree cast_lhs = NULL_TREE;
 
-  gcc_checking_assert (code == PLUS_EXPR || code == MINUS_EXPR);
+  gcc_checking_assert (code == PLUS_EXPR
+		       || code == MINUS_EXPR
+		       || code == MULT_EXPR
+		       || code == BIT_NOT_EXPR);
   if (!INTEGRAL_TYPE_P (type)
       || !TYPE_UNSIGNED (type)
       || has_zero_uses (lhs)
-      || has_single_use (lhs)
-      || optab_handler (code == PLUS_EXPR ? uaddv4_optab : usubv4_optab,
-			TYPE_MODE (type)) == CODE_FOR_nothing)
+      || (code != PLUS_EXPR
+	  && code != MULT_EXPR
+	  && optab_handler (code == MINUS_EXPR ? usubv4_optab : uaddv4_optab,
+			    TYPE_MODE (type)) == CODE_FOR_nothing))
     return false;
 
+  tree rhs1 = gimple_assign_rhs1 (stmt);
+  tree rhs2 = gimple_assign_rhs2 (stmt);
   FOR_EACH_IMM_USE_FAST (use_p, iter, lhs)
     {
       use_stmt = USE_STMT (use_p);
       if (is_gimple_debug (use_stmt))
 	continue;
 
-      if (uaddsub_overflow_check_p (stmt, use_stmt))
-	ovf_use_seen = true;
-      else
-	use_seen = true;
+      tree other = NULL_TREE;
+      if (arith_overflow_check_p (stmt, NULL, use_stmt, NULL_TREE, &other))
+	{
+	  if (code == BIT_NOT_EXPR)
+	    {
+	      gcc_assert (other);
+	      if (TREE_CODE (other) != SSA_NAME)
+		return false;
+	      if (rhs2 == NULL)
+		rhs2 = other;
+	      else
+		return false;
+	      cond_stmt = use_stmt;
+	    }
+	  ovf_use_seen = true;
+	}
+      else 
+	{
+	  use_seen = true;
+	  if (code == MULT_EXPR
+	      && cast_stmt == NULL
+	      && gimple_assign_cast_p (use_stmt))
+	    {
+	      cast_lhs = gimple_assign_lhs (use_stmt);
+	      if (INTEGRAL_TYPE_P (TREE_TYPE (cast_lhs))
+		  && !TYPE_UNSIGNED (TREE_TYPE (cast_lhs))
+		  && (TYPE_PRECISION (TREE_TYPE (cast_lhs))
+		      == TYPE_PRECISION (TREE_TYPE (lhs))))
+		cast_stmt = use_stmt;
+	      else
+		cast_lhs = NULL_TREE;
+	    }
+	}
       if (ovf_use_seen && use_seen)
 	break;
     }
 
-  if (!ovf_use_seen || !use_seen)
-    return false;
+  if (!ovf_use_seen
+      && code == MULT_EXPR
+      && cast_stmt)
+    {
+      if (TREE_CODE (rhs1) != SSA_NAME
+	  || (TREE_CODE (rhs2) != SSA_NAME && TREE_CODE (rhs2) != INTEGER_CST))
+	return false;
+      FOR_EACH_IMM_USE_FAST (use_p, iter, cast_lhs)
+	{
+	  use_stmt = USE_STMT (use_p);
+	  if (is_gimple_debug (use_stmt))
+	    continue;
 
+	  if (arith_overflow_check_p (stmt, cast_stmt, use_stmt,
+				      NULL_TREE, NULL))
+	    ovf_use_seen = true;
+	}
+    }
+  else
+    {
+      cast_stmt = NULL;
+      cast_lhs = NULL_TREE;
+    }
+
+  tree maxval = NULL_TREE;
+  if (!ovf_use_seen
+      || (code != MULT_EXPR && (code == BIT_NOT_EXPR ? use_seen : !use_seen))
+      || (code == PLUS_EXPR
+	  && optab_handler (uaddv4_optab,
+			    TYPE_MODE (type)) == CODE_FOR_nothing)
+      || (code == MULT_EXPR
+	  && optab_handler (cast_stmt ? mulv4_optab : umulv4_optab,
+			    TYPE_MODE (type)) == CODE_FOR_nothing))
+    {
+      if (code != PLUS_EXPR)
+	return false;
+      if (TREE_CODE (rhs1) != SSA_NAME
+	  || !gimple_assign_cast_p (SSA_NAME_DEF_STMT (rhs1)))
+	return false;
+      rhs1 = gimple_assign_rhs1 (SSA_NAME_DEF_STMT (rhs1));
+      tree type1 = TREE_TYPE (rhs1);
+      if (!INTEGRAL_TYPE_P (type1)
+	  || !TYPE_UNSIGNED (type1)
+	  || TYPE_PRECISION (type1) >= TYPE_PRECISION (type)
+	  || (TYPE_PRECISION (type1)
+	      != GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE (type1))))
+	return false;
+      if (TREE_CODE (rhs2) == INTEGER_CST)
+	{
+	  if (wi::ne_p (wi::rshift (wi::to_wide (rhs2),
+	  			    TYPE_PRECISION (type1),
+				    UNSIGNED), 0))
+	    return false;
+	  rhs2 = fold_convert (type1, rhs2);
+	}
+      else
+	{
+	  if (TREE_CODE (rhs2) != SSA_NAME
+	      || !gimple_assign_cast_p (SSA_NAME_DEF_STMT (rhs2)))
+	    return false;
+	  rhs2 = gimple_assign_rhs1 (SSA_NAME_DEF_STMT (rhs2));
+	  tree type2 = TREE_TYPE (rhs2);
+	  if (!INTEGRAL_TYPE_P (type2)
+	      || !TYPE_UNSIGNED (type2)
+	      || TYPE_PRECISION (type2) >= TYPE_PRECISION (type)
+	      || (TYPE_PRECISION (type2)
+		  != GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE (type2))))
+	    return false;
+	}
+      if (TYPE_PRECISION (type1) >= TYPE_PRECISION (TREE_TYPE (rhs2)))
+	type = type1;
+      else
+	type = TREE_TYPE (rhs2);
+
+      if (TREE_CODE (type) != INTEGER_TYPE
+	  || optab_handler (uaddv4_optab,
+			    TYPE_MODE (type)) == CODE_FOR_nothing)
+	return false;
+
+      maxval = wide_int_to_tree (type, wi::max_value (TYPE_PRECISION (type),
+						      UNSIGNED));
+      ovf_use_seen = false;
+      use_seen = false;
+      basic_block use_bb = NULL;
+      FOR_EACH_IMM_USE_FAST (use_p, iter, lhs)
+	{
+	  use_stmt = USE_STMT (use_p);
+	  if (is_gimple_debug (use_stmt))
+	    continue;
+
+	  if (arith_overflow_check_p (stmt, NULL, use_stmt, maxval, NULL))
+	    {
+	      ovf_use_seen = true;
+	      use_bb = gimple_bb (use_stmt);
+	    }
+	  else
+	    {
+	      if (!gimple_assign_cast_p (use_stmt)
+		  || gimple_assign_rhs_code (use_stmt) == VIEW_CONVERT_EXPR)
+		return false;
+	      tree use_lhs = gimple_assign_lhs (use_stmt);
+	      if (!INTEGRAL_TYPE_P (TREE_TYPE (use_lhs))
+		  || (TYPE_PRECISION (TREE_TYPE (use_lhs))
+		      > TYPE_PRECISION (type)))
+		return false;
+	      use_seen = true;
+	    }
+	}
+      if (!ovf_use_seen)
+	return false;
+      if (!useless_type_conversion_p (type, TREE_TYPE (rhs1)))
+	{
+	  if (!use_seen)
+	    return false;
+	  tree new_rhs1 = make_ssa_name (type);
+	  gimple *g = gimple_build_assign (new_rhs1, NOP_EXPR, rhs1);
+	  gsi_insert_before (gsi, g, GSI_SAME_STMT);
+	  rhs1 = new_rhs1;
+	}
+      else if (!useless_type_conversion_p (type, TREE_TYPE (rhs2)))
+	{
+	  if (!use_seen)
+	    return false;
+	  tree new_rhs2 = make_ssa_name (type);
+	  gimple *g = gimple_build_assign (new_rhs2, NOP_EXPR, rhs2);
+	  gsi_insert_before (gsi, g, GSI_SAME_STMT);
+	  rhs2 = new_rhs2;
+	}
+      else if (!use_seen)
+	{
+	  /* If there are no uses of the wider addition, check if
+	     forwprop has not created a narrower addition.
+	     Require it to be in the same bb as the overflow check.  */
+	  FOR_EACH_IMM_USE_FAST (use_p, iter, rhs1)
+	    {
+	      use_stmt = USE_STMT (use_p);
+	      if (is_gimple_debug (use_stmt))
+		continue;
+
+	      if (use_stmt == stmt)
+		continue;
+
+	      if (!is_gimple_assign (use_stmt)
+		  || gimple_bb (use_stmt) != use_bb
+		  || gimple_assign_rhs_code (use_stmt) != PLUS_EXPR)
+		continue;
+
+	      if (gimple_assign_rhs1 (use_stmt) == rhs1)
+		{
+		  if (!operand_equal_p (gimple_assign_rhs2 (use_stmt),
+					rhs2, 0))
+		    continue;
+		}
+	      else if (gimple_assign_rhs2 (use_stmt) == rhs1)
+		{
+		  if (gimple_assign_rhs1 (use_stmt) != rhs2)
+		    continue;
+		}
+	      else
+		continue;
+
+	      add_stmt = use_stmt;
+	      break;
+	    }
+	  if (add_stmt == NULL)
+	    return false;
+
+	  /* If stmt and add_stmt are in the same bb, we need to find out
+	     which one is earlier.  If they are in different bbs, we've
+	     checked add_stmt is in the same bb as one of the uses of the
+	     stmt lhs, so stmt needs to dominate add_stmt too.  */
+	  if (gimple_bb (stmt) == gimple_bb (add_stmt))
+	    {
+	      gimple_stmt_iterator gsif = *gsi;
+	      gimple_stmt_iterator gsib = *gsi;
+	      int i;
+	      /* Search both forward and backward from stmt and have a small
+		 upper bound.  */
+	      for (i = 0; i < 128; i++)
+		{
+		  if (!gsi_end_p (gsib))
+		    {
+		      gsi_prev_nondebug (&gsib);
+		      if (gsi_stmt (gsib) == add_stmt)
+			{
+			  add_first = true;
+			  break;
+			}
+		    }
+		  else if (gsi_end_p (gsif))
+		    break;
+		  if (!gsi_end_p (gsif))
+		    {
+		      gsi_next_nondebug (&gsif);
+		      if (gsi_stmt (gsif) == add_stmt)
+			break;
+		    }
+		}
+	      if (i == 128)
+		return false;
+	      if (add_first)
+		*gsi = gsi_for_stmt (add_stmt);
+	    }
+	}
+    }
+
+  if (code == BIT_NOT_EXPR)
+    *gsi = gsi_for_stmt (cond_stmt);
+
+  auto_vec<gimple *, 8> mul_stmts;
+  if (code == MULT_EXPR && cast_stmt)
+    {
+      type = TREE_TYPE (cast_lhs);
+      gimple *g = SSA_NAME_DEF_STMT (rhs1);
+      if (gimple_assign_cast_p (g)
+	  && useless_type_conversion_p (type,
+					TREE_TYPE (gimple_assign_rhs1 (g)))
+	  && !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (gimple_assign_rhs1 (g)))
+	rhs1 = gimple_assign_rhs1 (g);
+      else
+	{
+	  g = gimple_build_assign (make_ssa_name (type), NOP_EXPR, rhs1);
+	  gsi_insert_before (gsi, g, GSI_SAME_STMT);
+	  rhs1 = gimple_assign_lhs (g);
+	  mul_stmts.quick_push (g);
+	}
+      if (TREE_CODE (rhs2) == INTEGER_CST)
+	rhs2 = fold_convert (type, rhs2);
+      else
+	{
+	  g = SSA_NAME_DEF_STMT (rhs2);
+	  if (gimple_assign_cast_p (g)
+	      && useless_type_conversion_p (type,
+					    TREE_TYPE (gimple_assign_rhs1 (g)))
+	      && !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (gimple_assign_rhs1 (g)))
+	    rhs2 = gimple_assign_rhs1 (g);
+	  else
+	    {
+	      g = gimple_build_assign (make_ssa_name (type), NOP_EXPR, rhs2);
+	      gsi_insert_before (gsi, g, GSI_SAME_STMT);
+	      rhs2 = gimple_assign_lhs (g);
+	      mul_stmts.quick_push (g);
+	    }
+	}
+    }
   tree ctype = build_complex_type (type);
-  tree rhs1 = gimple_assign_rhs1 (stmt);
-  tree rhs2 = gimple_assign_rhs2 (stmt);
-  gcall *g = gimple_build_call_internal (code == PLUS_EXPR
+  gcall *g = gimple_build_call_internal (code == MULT_EXPR
+					 ? IFN_MUL_OVERFLOW
+					 : code != MINUS_EXPR
 					 ? IFN_ADD_OVERFLOW : IFN_SUB_OVERFLOW,
 					 2, rhs1, rhs2);
   tree ctmp = make_ssa_name (ctype);
   gimple_call_set_lhs (g, ctmp);
   gsi_insert_before (gsi, g, GSI_SAME_STMT);
-  gassign *g2 = gimple_build_assign (lhs, REALPART_EXPR,
-				     build1 (REALPART_EXPR, type, ctmp));
-  gsi_replace (gsi, g2, true);
+  tree new_lhs = (maxval || cast_stmt) ? make_ssa_name (type) : lhs;
+  gassign *g2;
+  if (code != BIT_NOT_EXPR)
+    {
+      g2 = gimple_build_assign (new_lhs, REALPART_EXPR,
+				build1 (REALPART_EXPR, type, ctmp));
+      if (maxval || cast_stmt)
+	{
+	  gsi_insert_before (gsi, g2, GSI_SAME_STMT);
+	  if (add_first)
+	    *gsi = gsi_for_stmt (stmt);
+	}
+      else
+	gsi_replace (gsi, g2, true);
+      if (code == MULT_EXPR)
+	{
+	  mul_stmts.quick_push (g);
+	  mul_stmts.quick_push (g2);
+	  if (cast_stmt)
+	    {
+	      g2 = gimple_build_assign (lhs, NOP_EXPR, new_lhs);
+	      gsi_replace (gsi, g2, true);
+	      mul_stmts.quick_push (g2);
+	    }
+	}
+    }
   tree ovf = make_ssa_name (type);
   g2 = gimple_build_assign (ovf, IMAGPART_EXPR,
 			    build1 (IMAGPART_EXPR, type, ctmp));
-  gsi_insert_after (gsi, g2, GSI_NEW_STMT);
+  if (code != BIT_NOT_EXPR)
+    gsi_insert_after (gsi, g2, GSI_NEW_STMT);
+  else
+    gsi_insert_before (gsi, g2, GSI_SAME_STMT);
+  if (code == MULT_EXPR)
+    mul_stmts.quick_push (g2);
 
-  FOR_EACH_IMM_USE_STMT (use_stmt, iter, lhs)
+  FOR_EACH_IMM_USE_STMT (use_stmt, iter, cast_lhs ? cast_lhs : lhs)
     {
       if (is_gimple_debug (use_stmt))
 	continue;
 
-      int ovf_use = uaddsub_overflow_check_p (stmt, use_stmt);
+      gimple *orig_use_stmt = use_stmt;
+      int ovf_use = arith_overflow_check_p (stmt, cast_stmt, use_stmt,
+					    maxval, NULL);
       if (ovf_use == 0)
-	continue;
+	{
+	  gcc_assert (code != BIT_NOT_EXPR);
+	  if (maxval)
+	    {
+	      tree use_lhs = gimple_assign_lhs (use_stmt);
+	      gimple_assign_set_rhs1 (use_stmt, new_lhs);
+	      if (useless_type_conversion_p (TREE_TYPE (use_lhs),
+					     TREE_TYPE (new_lhs)))
+		gimple_assign_set_rhs_code (use_stmt, SSA_NAME);
+	      update_stmt (use_stmt);
+	    }
+	  continue;
+	}
       if (gimple_code (use_stmt) == GIMPLE_COND)
 	{
 	  gcond *cond_stmt = as_a <gcond *> (use_stmt);
@@ -3811,8 +4280,35 @@ match_uaddsub_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
 	    }
 	}
       update_stmt (use_stmt);
+      if (code == MULT_EXPR && use_stmt != orig_use_stmt)
+	{
+	  gimple_stmt_iterator gsi2 = gsi_for_stmt (orig_use_stmt);
+	  maybe_optimize_guarding_check (mul_stmts, use_stmt, orig_use_stmt,
+					 cfg_changed);
+	  gsi_remove (&gsi2, true);
+	  release_ssa_name (gimple_assign_lhs (orig_use_stmt));
+	}
     }
-  return true;
+  if (maxval)
+    {
+      gimple_stmt_iterator gsi2 = gsi_for_stmt (stmt);
+      gsi_remove (&gsi2, true);
+      if (add_stmt)
+	{
+	  gimple *g = gimple_build_assign (gimple_assign_lhs (add_stmt),
+					   new_lhs);
+	  gsi2 = gsi_for_stmt (add_stmt);
+	  gsi_replace (&gsi2, g, true);
+	}
+    }
+  else if (code == BIT_NOT_EXPR)
+    {
+      *gsi = gsi_for_stmt (stmt);
+      gsi_remove (gsi, true);
+      release_ssa_name (lhs);
+      return true;
+    }
+  return false;
 }
 
 /* Return true if target has support for divmod.  */
@@ -3830,9 +4326,8 @@ target_supports_divmod_p (optab divmod_optab, optab div_optab, machine_mode mode
     {
       /* If optab_handler exists for div_optab, perhaps in a wider mode,
 	 we don't want to use the libfunc even if it exists for given mode.  */ 
-      for (machine_mode div_mode = mode;
-	   div_mode != VOIDmode;
-	   div_mode = GET_MODE_WIDER_MODE (div_mode))
+      machine_mode div_mode;
+      FOR_EACH_MODE_FROM (div_mode, mode)
 	if (optab_handler (div_optab, div_mode) != CODE_FOR_nothing)
 	  return false;
 
@@ -3848,7 +4343,7 @@ static bool
 divmod_candidate_p (gassign *stmt)
 {
   tree type = TREE_TYPE (gimple_assign_lhs (stmt));
-  enum machine_mode mode = TYPE_MODE (type);
+  machine_mode mode = TYPE_MODE (type);
   optab divmod_optab, div_optab;
 
   if (TYPE_UNSIGNED (type))
@@ -3867,8 +4362,23 @@ divmod_candidate_p (gassign *stmt)
 
   /* Disable the transform if either is a constant, since division-by-constant
      may have specialized expansion.  */
-  if (CONSTANT_CLASS_P (op1) || CONSTANT_CLASS_P (op2))
+  if (CONSTANT_CLASS_P (op1))
     return false;
+
+  if (CONSTANT_CLASS_P (op2))
+    {
+      if (integer_pow2p (op2))
+	return false;
+
+      if (TYPE_PRECISION (type) <= HOST_BITS_PER_WIDE_INT
+	  && TYPE_PRECISION (type) <= BITS_PER_WORD)
+	return false;
+
+      /* If the divisor is not power of 2 and the precision wider than
+	 HWI, expand_divmod punts on that, so in that case it is better
+	 to use divmod optab or libfunc.  Similarly if choose_multiplier
+	 might need pre/post shifts of BITS_PER_WORD or more.  */
+    }
 
   /* Exclude the case where TYPE_OVERFLOW_TRAPS (type) as that should
      expand using the [su]divv optabs.  */
@@ -3902,7 +4412,7 @@ divmod_candidate_p (gassign *stmt)
 static bool
 convert_to_divmod (gassign *stmt)
 {
-  if (stmt_can_throw_internal (stmt)
+  if (stmt_can_throw_internal (cfun, stmt)
       || !divmod_candidate_p (stmt))
     return false;
 
@@ -3928,7 +4438,7 @@ convert_to_divmod (gassign *stmt)
 	  && operand_equal_p (op1, gimple_assign_rhs1 (use_stmt), 0)
 	  && operand_equal_p (op2, gimple_assign_rhs2 (use_stmt), 0))
 	{
-	  if (stmt_can_throw_internal (use_stmt))
+	  if (stmt_can_throw_internal (cfun, use_stmt))
 	    continue;
 
 	  basic_block bb = gimple_bb (use_stmt);
@@ -3966,7 +4476,7 @@ convert_to_divmod (gassign *stmt)
 	  && operand_equal_p (top_op2, gimple_assign_rhs2 (use_stmt), 0))
 	{
 	  if (use_stmt == top_stmt
-	      || stmt_can_throw_internal (use_stmt)
+	      || stmt_can_throw_internal (cfun, use_stmt)
 	      || !dominated_by_p (CDI_DOMINATORS, gimple_bb (use_stmt), top_bb))
 	    continue;
 
@@ -3986,6 +4496,8 @@ convert_to_divmod (gassign *stmt)
   tree res = make_temp_ssa_name (build_complex_type (TREE_TYPE (op1)),
 				 call_stmt, "divmod_tmp");
   gimple_call_set_lhs (call_stmt, res);
+  /* We rejected throwing statements above.  */
+  gimple_call_set_nothrow (call_stmt, true);
 
   /* Insert the call before top_stmt.  */
   gimple_stmt_iterator top_stmt_gsi = gsi_for_stmt (top_stmt);
@@ -4034,7 +4546,7 @@ const pass_data pass_data_optimize_widening_mul =
   GIMPLE_PASS, /* type */
   "widening_mul", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  TV_NONE, /* tv_id */
+  TV_TREE_WIDEN_MUL, /* tv_id */
   PROP_ssa, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
@@ -4059,91 +4571,151 @@ public:
 
 }; // class pass_optimize_widening_mul
 
+/* Walker class to perform the transformation in reverse dominance order. */
+
+class math_opts_dom_walker : public dom_walker
+{
+public:
+  /* Constructor, CFG_CHANGED is a pointer to a boolean flag that will be set
+     if walking modidifes the CFG.  */
+
+  math_opts_dom_walker (bool *cfg_changed_p)
+    : dom_walker (CDI_DOMINATORS), m_last_result_set (),
+      m_cfg_changed_p (cfg_changed_p) {}
+
+  /* The actual actions performed in the walk.  */
+
+  virtual void after_dom_children (basic_block);
+
+  /* Set of results of chains of multiply and add statement combinations that
+     were not transformed into FMAs because of active deferring.  */
+  hash_set<tree> m_last_result_set;
+
+  /* Pointer to a flag of the user that needs to be set if CFG has been
+     modified.  */
+  bool *m_cfg_changed_p;
+};
+
+void
+math_opts_dom_walker::after_dom_children (basic_block bb)
+{
+  gimple_stmt_iterator gsi;
+
+  fma_deferring_state fma_state (param_avoid_fma_max_bits > 0);
+
+  for (gsi = gsi_after_labels (bb); !gsi_end_p (gsi);)
+    {
+      gimple *stmt = gsi_stmt (gsi);
+      enum tree_code code;
+
+      if (is_gimple_assign (stmt))
+	{
+	  code = gimple_assign_rhs_code (stmt);
+	  switch (code)
+	    {
+	    case MULT_EXPR:
+	      if (!convert_mult_to_widen (stmt, &gsi)
+		  && !convert_expand_mult_copysign (stmt, &gsi)
+		  && convert_mult_to_fma (stmt,
+					  gimple_assign_rhs1 (stmt),
+					  gimple_assign_rhs2 (stmt),
+					  &fma_state))
+		{
+		  gsi_remove (&gsi, true);
+		  release_defs (stmt);
+		  continue;
+		}
+	      match_arith_overflow (&gsi, stmt, code, m_cfg_changed_p);
+	      break;
+
+	    case PLUS_EXPR:
+	    case MINUS_EXPR:
+	      if (!convert_plusminus_to_widen (&gsi, stmt, code))
+		match_arith_overflow (&gsi, stmt, code, m_cfg_changed_p);
+	      break;
+
+	    case BIT_NOT_EXPR:
+	      if (match_arith_overflow (&gsi, stmt, code, m_cfg_changed_p))
+		continue;
+	      break;
+
+	    case TRUNC_MOD_EXPR:
+	      convert_to_divmod (as_a<gassign *> (stmt));
+	      break;
+
+	    default:;
+	    }
+	}
+      else if (is_gimple_call (stmt))
+	{
+	  switch (gimple_call_combined_fn (stmt))
+	    {
+	    CASE_CFN_POW:
+	      if (gimple_call_lhs (stmt)
+		  && TREE_CODE (gimple_call_arg (stmt, 1)) == REAL_CST
+		  && real_equal (&TREE_REAL_CST (gimple_call_arg (stmt, 1)),
+				 &dconst2)
+		  && convert_mult_to_fma (stmt,
+					  gimple_call_arg (stmt, 0),
+					  gimple_call_arg (stmt, 0),
+					  &fma_state))
+		{
+		  unlink_stmt_vdef (stmt);
+		  if (gsi_remove (&gsi, true)
+		      && gimple_purge_dead_eh_edges (bb))
+		    *m_cfg_changed_p = true;
+		  release_defs (stmt);
+		  continue;
+		}
+	      break;
+
+	    case CFN_COND_MUL:
+	      if (convert_mult_to_fma (stmt,
+				       gimple_call_arg (stmt, 1),
+				       gimple_call_arg (stmt, 2),
+				       &fma_state,
+				       gimple_call_arg (stmt, 0)))
+
+		{
+		  gsi_remove (&gsi, true);
+		  release_defs (stmt);
+		  continue;
+		}
+	      break;
+
+	    case CFN_LAST:
+	      cancel_fma_deferring (&fma_state);
+	      break;
+
+	    default:
+	      break;
+	    }
+	}
+      gsi_next (&gsi);
+    }
+  if (fma_state.m_deferring_p
+      && fma_state.m_initial_phi)
+    {
+      gcc_checking_assert (fma_state.m_last_result);
+      if (!last_fma_candidate_feeds_initial_phi (&fma_state,
+						 &m_last_result_set))
+	cancel_fma_deferring (&fma_state);
+      else
+	m_last_result_set.add (fma_state.m_last_result);
+    }
+}
+
+
 unsigned int
 pass_optimize_widening_mul::execute (function *fun)
 {
-  basic_block bb;
   bool cfg_changed = false;
 
   memset (&widen_mul_stats, 0, sizeof (widen_mul_stats));
   calculate_dominance_info (CDI_DOMINATORS);
-  renumber_gimple_stmt_uids ();
+  renumber_gimple_stmt_uids (cfun);
 
-  FOR_EACH_BB_FN (bb, fun)
-    {
-      gimple_stmt_iterator gsi;
-
-      for (gsi = gsi_after_labels (bb); !gsi_end_p (gsi);)
-        {
-	  gimple *stmt = gsi_stmt (gsi);
-	  enum tree_code code;
-
-	  if (is_gimple_assign (stmt))
-	    {
-	      code = gimple_assign_rhs_code (stmt);
-	      switch (code)
-		{
-		case MULT_EXPR:
-		  if (!convert_mult_to_widen (stmt, &gsi)
-		      && convert_mult_to_fma (stmt,
-					      gimple_assign_rhs1 (stmt),
-					      gimple_assign_rhs2 (stmt)))
-		    {
-		      gsi_remove (&gsi, true);
-		      release_defs (stmt);
-		      continue;
-		    }
-		  break;
-
-		case PLUS_EXPR:
-		case MINUS_EXPR:
-		  if (!convert_plusminus_to_widen (&gsi, stmt, code))
-		    match_uaddsub_overflow (&gsi, stmt, code);
-		  break;
-
-		case TRUNC_MOD_EXPR:
-		  convert_to_divmod (as_a<gassign *> (stmt));
-		  break;
-
-		default:;
-		}
-	    }
-	  else if (is_gimple_call (stmt)
-		   && gimple_call_lhs (stmt))
-	    {
-	      tree fndecl = gimple_call_fndecl (stmt);
-	      if (fndecl
-		  && gimple_call_builtin_p (stmt, BUILT_IN_NORMAL))
-		{
-		  switch (DECL_FUNCTION_CODE (fndecl))
-		    {
-		      case BUILT_IN_POWF:
-		      case BUILT_IN_POW:
-		      case BUILT_IN_POWL:
-			if (TREE_CODE (gimple_call_arg (stmt, 1)) == REAL_CST
-			    && real_equal
-			         (&TREE_REAL_CST (gimple_call_arg (stmt, 1)),
-				  &dconst2)
-			    && convert_mult_to_fma (stmt,
-						    gimple_call_arg (stmt, 0),
-						    gimple_call_arg (stmt, 0)))
-			  {
-			    unlink_stmt_vdef (stmt);
-			    if (gsi_remove (&gsi, true)
-				&& gimple_purge_dead_eh_edges (bb))
-			      cfg_changed = true;
-			    release_defs (stmt);
-			    continue;
-			  }
-			  break;
-
-		      default:;
-		    }
-		}
-	    }
-	  gsi_next (&gsi);
-	}
-    }
+  math_opts_dom_walker (&cfg_changed).walk (ENTRY_BLOCK_PTR_FOR_FN (cfun));
 
   statistics_counter_event (fun, "widening multiplications inserted",
 			    widen_mul_stats.widen_mults_inserted);

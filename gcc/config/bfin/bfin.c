@@ -1,5 +1,5 @@
 /* The Blackfin code generation auxiliary output file.
-   Copyright (C) 2005-2017 Free Software Foundation, Inc.
+   Copyright (C) 2005-2021 Free Software Foundation, Inc.
    Contributed by Analog Devices.
 
    This file is part of GCC.
@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -25,6 +27,8 @@
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 #include "cfghooks.h"
 #include "df.h"
 #include "memmodel.h"
@@ -231,13 +235,13 @@ must_save_p (bool is_inthandler, unsigned regno)
       return (is_eh_return_reg
 	      || (df_regs_ever_live_p (regno)
 		  && !fixed_regs[regno]
-		  && (is_inthandler || !call_used_regs[regno])));
+		  && (is_inthandler || !call_used_or_fixed_reg_p (regno))));
     }
   else if (P_REGNO_P (regno))
     {
       return ((df_regs_ever_live_p (regno)
 	       && !fixed_regs[regno]
-	       && (is_inthandler || !call_used_regs[regno]))
+	       && (is_inthandler || !call_used_or_fixed_reg_p (regno)))
 	      || (is_inthandler
 		  && (ENABLE_WA_05000283 || ENABLE_WA_05000315)
 		  && regno == REG_P5)
@@ -247,9 +251,9 @@ must_save_p (bool is_inthandler, unsigned regno)
 		      || (TARGET_ID_SHARED_LIBRARY && !crtl->is_leaf))));
     }
   else
-    return ((is_inthandler || !call_used_regs[regno])
+    return ((is_inthandler || !call_used_or_fixed_reg_p (regno))
 	    && (df_regs_ever_live_p (regno)
-		|| (!leaf_function_p () && call_used_regs[regno])));
+		|| (!leaf_function_p () && call_used_or_fixed_reg_p (regno))));
 
 }
 
@@ -415,7 +419,7 @@ expand_prologue_reg_save (rtx spreg, int saveall, bool is_inthandler)
     if (saveall 
 	|| (is_inthandler
 	    && (df_regs_ever_live_p (i)
-		|| (!leaf_function_p () && call_used_regs[i]))))
+		|| (!leaf_function_p () && call_used_or_fixed_reg_p (i)))))
       {
 	rtx_insn *insn;
 	if (i == REG_A0 || i == REG_A1)
@@ -454,7 +458,7 @@ expand_epilogue_reg_restore (rtx spreg, bool saveall, bool is_inthandler)
     if (saveall
 	|| (is_inthandler
 	    && (df_regs_ever_live_p (i)
-		|| (!leaf_function_p () && call_used_regs[i]))))
+		|| (!leaf_function_p () && call_used_or_fixed_reg_p (i)))))
       {
 	if (i == REG_A0 || i == REG_A1)
 	  {
@@ -536,7 +540,7 @@ expand_epilogue_reg_restore (rtx spreg, bool saveall, bool is_inthandler)
 
    CUM is as above.
 
-   MODE and TYPE are the mode and type of the current parameter.
+   ARG is the last named argument.
 
    PRETEND_SIZE is a variable that should be set to the amount of stack
    that must be pushed by the prolog to pretend that our caller pushed
@@ -555,8 +559,7 @@ expand_epilogue_reg_restore (rtx spreg, bool saveall, bool is_inthandler)
 
 static void
 setup_incoming_varargs (cumulative_args_t cum,
-			machine_mode mode ATTRIBUTE_UNUSED,
-			tree type ATTRIBUTE_UNUSED, int *pretend_size,
+			const function_arg_info &, int *pretend_size,
 			int no_rtl)
 {
   rtx mem;
@@ -649,7 +652,7 @@ n_regs_saved_by_prologue (void)
     if (all
 	|| (fkind != SUBROUTINE
 	    && (df_regs_ever_live_p (i)
-		|| (!leaf_function_p () && call_used_regs[i]))))
+		|| (!leaf_function_p () && call_used_or_fixed_reg_p (i)))))
       n += i == REG_A0 || i == REG_A1 ? 2 : 1;
 
   return n;
@@ -750,7 +753,7 @@ add_to_reg (rtx reg, HOST_WIDE_INT value, int frame, int epilogue_p)
 	{
 	  int i;
 	  for (i = REG_P0; i <= REG_P5; i++)
-	    if ((df_regs_ever_live_p (i) && ! call_used_regs[i])
+	    if ((df_regs_ever_live_p (i) && ! call_used_or_fixed_reg_p (i))
 		|| (!TARGET_FDPIC
 		    && i == PIC_OFFSET_TABLE_REGNUM
 		    && (crtl->uses_pic_offset_table
@@ -1033,14 +1036,14 @@ expand_interrupt_handler_epilogue (rtx spreg, e_funkind fkind, bool all)
 static rtx
 bfin_load_pic_reg (rtx dest)
 {
-  struct cgraph_local_info *i = NULL;
   rtx addr;
- 
-  i = cgraph_node::local_info (current_function_decl);
- 
+
+  cgraph_node *local_info_node
+    = cgraph_node::local_info_node (current_function_decl);
+
   /* Functions local to the translation unit don't need to reload the
      pic reg, since the caller always passes a usable one.  */
-  if (i && i->local)
+  if (local_info_node && local_info_node->local)
     return pic_offset_table_rtx;
       
   if (global_options_set.x_bfin_library_id)
@@ -1644,18 +1647,16 @@ init_cumulative_args (CUMULATIVE_ARGS *cum, tree fntype,
   return;
 }
 
-/* Update the data in CUM to advance over an argument
-   of mode MODE and data type TYPE.
-   (TYPE is null for libcalls where that information may not be available.)  */
+/* Update the data in CUM to advance over argument ARG.  */
 
 static void
-bfin_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
-			   const_tree type, bool named ATTRIBUTE_UNUSED)
+bfin_function_arg_advance (cumulative_args_t cum_v,
+			   const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   int count, bytes, words;
 
-  bytes = (mode == BLKmode) ? int_size_in_bytes (type) : GET_MODE_SIZE (mode);
+  bytes = arg.promoted_size_in_bytes ();
   words = (bytes + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
 
   cum->words += words;
@@ -1679,24 +1680,17 @@ bfin_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
    Value is zero to push the argument on the stack,
    or a hard register in which to store the argument.
 
-   MODE is the argument's machine mode.
-   TYPE is the data type of the argument (as a tree).
-    This is null for libcalls where that information may
-    not be available.
    CUM is a variable of type CUMULATIVE_ARGS which gives info about
     the preceding args and about the function being called.
-   NAMED is nonzero if this argument is a named parameter
-    (otherwise it is an extra parameter matching an ellipsis).  */
+   ARG is a description of the argument.  */
 
 static rtx
-bfin_function_arg (cumulative_args_t cum_v, machine_mode mode,
-		   const_tree type, bool named ATTRIBUTE_UNUSED)
+bfin_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
-  int bytes
-    = (mode == BLKmode) ? int_size_in_bytes (type) : GET_MODE_SIZE (mode);
+  int bytes = arg.promoted_size_in_bytes ();
 
-  if (mode == VOIDmode)
+  if (arg.end_marker_p ())
     /* Compute operand 2 of the call insn.  */
     return GEN_INT (cum->call_cookie);
 
@@ -1704,7 +1698,7 @@ bfin_function_arg (cumulative_args_t cum_v, machine_mode mode,
     return NULL_RTX;
 
   if (cum->nregs)
-    return gen_rtx_REG (mode, *(cum->arg_regs));
+    return gen_rtx_REG (arg.mode, *(cum->arg_regs));
 
   return NULL_RTX;
 }
@@ -1719,12 +1713,9 @@ bfin_function_arg (cumulative_args_t cum_v, machine_mode mode,
    stack.   */
 
 static int
-bfin_arg_partial_bytes (cumulative_args_t cum, machine_mode mode,
-			tree type ATTRIBUTE_UNUSED,
-			bool named ATTRIBUTE_UNUSED)
+bfin_arg_partial_bytes (cumulative_args_t cum, const function_arg_info &arg)
 {
-  int bytes
-    = (mode == BLKmode) ? int_size_in_bytes (type) : GET_MODE_SIZE (mode);
+  int bytes = arg.promoted_size_in_bytes ();
   int bytes_left = get_cumulative_args (cum)->nregs * UNITS_PER_WORD;
   
   if (bytes == -1)
@@ -1740,11 +1731,9 @@ bfin_arg_partial_bytes (cumulative_args_t cum, machine_mode mode,
 /* Variable sized types are passed by reference.  */
 
 static bool
-bfin_pass_by_reference (cumulative_args_t cum ATTRIBUTE_UNUSED,
-			machine_mode mode ATTRIBUTE_UNUSED,
-			const_tree type, bool named ATTRIBUTE_UNUSED)
+bfin_pass_by_reference (cumulative_args_t, const function_arg_info &arg)
 {
-  return type && TREE_CODE (TYPE_SIZE (type)) != INTEGER_CST;
+  return arg.type && TREE_CODE (TYPE_SIZE (arg.type)) != INTEGER_CST;
 }
 
 /* Decide whether a type should be returned in memory (true)
@@ -1817,7 +1806,7 @@ static bool
 bfin_function_ok_for_sibcall (tree decl ATTRIBUTE_UNUSED,
 			      tree exp ATTRIBUTE_UNUSED)
 {
-  struct cgraph_local_info *this_func, *called_func;
+  cgraph_node *this_func, *called_func;
   e_funkind fkind = funkind (TREE_TYPE (current_function_decl));
   if (fkind != SUBROUTINE)
     return false;
@@ -1832,9 +1821,9 @@ bfin_function_ok_for_sibcall (tree decl ATTRIBUTE_UNUSED,
   if (!decl)
     /* Not enough information.  */
     return false;
- 
-  this_func = cgraph_node::local_info (current_function_decl);
-  called_func = cgraph_node::local_info (decl);
+
+  this_func = cgraph_node::local_info_node (current_function_decl);
+  called_func = cgraph_node::local_info_node (decl);
   if (!called_func)
     return false;
   return !called_func->local || this_func->local;
@@ -2112,16 +2101,30 @@ bfin_expand_call (rtx retval, rtx fnaddr, rtx callarg1, rtx cookie, int sibcall)
     CALL_INSN_FUNCTION_USAGE (call) = use;
 }
 
-/* Return 1 if hard register REGNO can hold a value of machine-mode MODE.  */
+/* Implement TARGET_HARD_REGNO_NREGS.  */
 
-int
-hard_regno_mode_ok (int regno, machine_mode mode)
+static unsigned int
+bfin_hard_regno_nregs (unsigned int regno, machine_mode mode)
+{
+  if (mode == PDImode && (regno == REG_A0 || regno == REG_A1))
+    return 1;
+  if (mode == V2PDImode && (regno == REG_A0 || regno == REG_A1))
+    return 2;
+  return CLASS_MAX_NREGS (GENERAL_REGS, mode);
+}
+
+/* Implement TARGET_HARD_REGNO_MODE_OK.
+
+   Do not allow to store a value in REG_CC for any mode.
+   Do not allow to store value in pregs if mode is not SI.  */
+static bool
+bfin_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
 {
   /* Allow only dregs to store value of mode HI or QI */
   enum reg_class rclass = REGNO_REG_CLASS (regno);
 
   if (mode == CCmode)
-    return 0;
+    return false;
 
   if (mode == V2HImode)
     return D_REGNO_P (regno);
@@ -2137,9 +2140,24 @@ hard_regno_mode_ok (int regno, machine_mode mode)
 
   if (mode == SImode
       && TEST_HARD_REG_BIT (reg_class_contents[PROLOGUE_REGS], regno))
-    return 1;
+    return true;
 
   return TEST_HARD_REG_BIT (reg_class_contents[MOST_REGS], regno);
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+bfin_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return (mode1 == mode2
+	  || ((GET_MODE_CLASS (mode1) == MODE_INT
+	       || GET_MODE_CLASS (mode1) == MODE_FLOAT)
+	      && (GET_MODE_CLASS (mode2) == MODE_INT
+		  || GET_MODE_CLASS (mode2) == MODE_FLOAT)
+	      && mode1 != BImode && mode2 != BImode
+	      && GET_MODE_SIZE (mode1) <= UNITS_PER_WORD
+	      && GET_MODE_SIZE (mode2) <= UNITS_PER_WORD));
 }
 
 /* Implements target hook vector_mode_supported_p.  */
@@ -2346,16 +2364,19 @@ bfin_option_override (void)
 
 #ifdef SUBTARGET_FDPIC_NOT_SUPPORTED
   if (TARGET_FDPIC)
-    error ("-mfdpic is not supported, please use a bfin-linux-uclibc target");
+    error ("%<-mfdpic%> is not supported, please use a bfin-linux-uclibc "
+	   "target");
 #endif
 
   /* Library identification */
   if (global_options_set.x_bfin_library_id && ! TARGET_ID_SHARED_LIBRARY)
-    error ("-mshared-library-id= specified without -mid-shared-library");
+    error ("%<-mshared-library-id=%> specified without "
+	   "%<-mid-shared-library%>");
 
   if (stack_limit_rtx && TARGET_FDPIC)
     {
-      warning (0, "-fstack-limit- options are ignored with -mfdpic; use -mstack-check-l1");
+      warning (0, "%<-fstack-limit-%> options are ignored with %<-mfdpic%>; "
+	       "use %<-mstack-check-l1%>");
       stack_limit_rtx = NULL_RTX;
     }
 
@@ -2368,7 +2389,7 @@ bfin_option_override (void)
   /* Don't allow the user to specify -mid-shared-library and -msep-data
      together, as it makes little sense from a user's point of view...  */
   if (TARGET_SEP_DATA && TARGET_ID_SHARED_LIBRARY)
-    error ("cannot specify both -msep-data and -mid-shared-library");
+    error ("cannot specify both %<-msep-data%> and %<-mid-shared-library%>");
   /* ... internally, however, it's nearly the same.  */
   if (TARGET_SEP_DATA)
     target_flags |= MASK_ID_SHARED_LIBRARY | MASK_LEAF_ID_SHARED_LIBRARY;
@@ -2388,16 +2409,16 @@ bfin_option_override (void)
     flag_pic = 0;
 
   if (TARGET_MULTICORE && bfin_cpu_type != BFIN_CPU_BF561)
-    error ("-mmulticore can only be used with BF561");
+    error ("%<-mmulticore%> can only be used with BF561");
 
   if (TARGET_COREA && !TARGET_MULTICORE)
-    error ("-mcorea should be used with -mmulticore");
+    error ("%<-mcorea%> should be used with %<-mmulticore%>");
 
   if (TARGET_COREB && !TARGET_MULTICORE)
-    error ("-mcoreb should be used with -mmulticore");
+    error ("%<-mcoreb%> should be used with %<-mmulticore%>");
 
   if (TARGET_COREA && TARGET_COREB)
-    error ("-mcorea and -mcoreb can%'t be used together");
+    error ("%<-mcorea%> and %<-mcoreb%> can%'t be used together");
 
   flag_schedule_insns = 0;
 
@@ -2435,9 +2456,8 @@ cbranch_predicted_taken_p (rtx insn)
 
   if (x)
     {
-      int pred_val = XINT (x, 0);
-
-      return pred_val >= REG_BR_PROB_BASE / 2;
+      return profile_probability::from_reg_br_prob_note (XINT (x, 0))
+	     >= profile_probability::even ();
     }
 
   return 0;
@@ -3173,7 +3193,7 @@ output_pop_multiple (rtx insn, rtx *operands)
 /* Adjust DST and SRC by OFFSET bytes, and generate one move in mode MODE.  */
 
 static void
-single_move_for_movmem (rtx dst, rtx src, machine_mode mode, HOST_WIDE_INT offset)
+single_move_for_cpymem (rtx dst, rtx src, machine_mode mode, HOST_WIDE_INT offset)
 {
   rtx scratch = gen_reg_rtx (mode);
   rtx srcmem, dstmem;
@@ -3189,7 +3209,7 @@ single_move_for_movmem (rtx dst, rtx src, machine_mode mode, HOST_WIDE_INT offse
    back on a different method.  */
 
 bool
-bfin_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
+bfin_expand_cpymem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
 {
   rtx srcreg, destreg, countreg;
   HOST_WIDE_INT align = 0;
@@ -3234,7 +3254,7 @@ bfin_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
 	{
 	  if ((count & ~3) == 4)
 	    {
-	      single_move_for_movmem (dst, src, SImode, offset);
+	      single_move_for_cpymem (dst, src, SImode, offset);
 	      offset = 4;
 	    }
 	  else if (count & ~3)
@@ -3247,7 +3267,7 @@ bfin_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
 	    }
 	  if (count & 2)
 	    {
-	      single_move_for_movmem (dst, src, HImode, offset);
+	      single_move_for_cpymem (dst, src, HImode, offset);
 	      offset += 2;
 	    }
 	}
@@ -3255,7 +3275,7 @@ bfin_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
 	{
 	  if ((count & ~1) == 2)
 	    {
-	      single_move_for_movmem (dst, src, HImode, offset);
+	      single_move_for_cpymem (dst, src, HImode, offset);
 	      offset = 2;
 	    }
 	  else if (count & ~1)
@@ -3269,7 +3289,7 @@ bfin_expand_movmem (rtx dst, rtx src, rtx count_exp, rtx align_exp)
 	}
       if (count & 1)
 	{
-	  single_move_for_movmem (dst, src, QImode, offset);
+	  single_move_for_cpymem (dst, src, QImode, offset);
 	}
       return true;
     }
@@ -3288,7 +3308,7 @@ bfin_local_alignment (tree type, unsigned align)
      memcpy can use 32 bit loads/stores.  */
   if (TYPE_SIZE (type)
       && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
-      && wi::gtu_p (TYPE_SIZE (type), 8)
+      && wi::gtu_p (wi::to_wide (TYPE_SIZE (type)), 8)
       && align < 32)
     return 32;
   return align;
@@ -3462,7 +3482,7 @@ hwloop_optimize (hwloop_info loop)
       for (i = REG_P0; i <= REG_P5; i++)
 	if ((df_regs_ever_live_p (i)
 	     || (funkind (TREE_TYPE (current_function_decl)) == SUBROUTINE
-		 && call_used_regs[i]))
+		 && call_used_or_fixed_reg_p (i)))
 	    && !REGNO_REG_SET_P (df_get_live_out (bb_in), i))
 	  {
 	    scratchreg = gen_rtx_REG (SImode, i);
@@ -3741,7 +3761,7 @@ hwloop_optimize (hwloop_info loop)
      point.  */
   if (!loop->incoming_src && loop->head != loop->incoming_dest)
     {
-      rtx label = BB_HEAD (loop->incoming_dest);
+      rtx_insn *label = BB_HEAD (loop->incoming_dest);
       /* If we're jumping to the final basic block in the loop, and there's
 	 only one cheap instruction before the end (typically an increment of
 	 an induction variable), we can just emit a copy here instead of a
@@ -4399,7 +4419,7 @@ workaround_speculation (void)
 	     we found earlier.  */
 	  if (recog_memoized (insn) != CODE_FOR_compare_eq)
 	    {
-	      note_stores (PATTERN (insn), note_np_check_stores, NULL);
+	      note_stores (insn, note_np_check_stores, NULL);
 	      if (np_check_regno != -1)
 		{
 		  if (find_regno_note (insn, REG_INC, np_check_regno))
@@ -4575,7 +4595,7 @@ add_sched_insns_for_speculation (void)
 	  && any_condjump_p (insn)
 	  && (cbranch_predicted_taken_p (insn)))
 	{
-	  rtx target = JUMP_LABEL (insn);
+	  rtx_insn *target = JUMP_LABEL_AS_INSN (insn);
 	  rtx_insn *next = next_real_insn (target);
 
 	  if (GET_CODE (PATTERN (next)) == UNSPEC_VOLATILE
@@ -4875,30 +4895,31 @@ bfin_handle_l2_attribute (tree *node, tree ARG_UNUSED (name),
 /* Table of valid machine attributes.  */
 static const struct attribute_spec bfin_attribute_table[] =
 {
-  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-       affects_type_identity } */
-  { "interrupt_handler", 0, 0, false, true,  true, handle_int_attribute,
-    false },
-  { "exception_handler", 0, 0, false, true,  true, handle_int_attribute,
-    false },
-  { "nmi_handler", 0, 0, false, true,  true, handle_int_attribute, false },
-  { "nesting", 0, 0, false, true,  true, NULL, false },
-  { "kspisusp", 0, 0, false, true,  true, NULL, false },
-  { "saveall", 0, 0, false, true,  true, NULL, false },
-  { "longcall",  0, 0, false, true,  true,  bfin_handle_longcall_attribute,
-    false },
-  { "shortcall", 0, 0, false, true,  true,  bfin_handle_longcall_attribute,
-    false },
-  { "l1_text", 0, 0, true, false, false,  bfin_handle_l1_text_attribute,
-    false },
-  { "l1_data", 0, 0, true, false, false,  bfin_handle_l1_data_attribute,
-    false },
-  { "l1_data_A", 0, 0, true, false, false, bfin_handle_l1_data_attribute,
-    false },
-  { "l1_data_B", 0, 0, true, false, false,  bfin_handle_l1_data_attribute,
-    false },
-  { "l2", 0, 0, true, false, false,  bfin_handle_l2_attribute, false },
-  { NULL, 0, 0, false, false, false, NULL, false }
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude } */
+  { "interrupt_handler", 0, 0, false, true,  true, false,
+    handle_int_attribute, NULL },
+  { "exception_handler", 0, 0, false, true,  true, false,
+    handle_int_attribute, NULL },
+  { "nmi_handler", 0, 0, false, true,  true, false, handle_int_attribute,
+    NULL },
+  { "nesting", 0, 0, false, true,  true, false, NULL, NULL },
+  { "kspisusp", 0, 0, false, true,  true, false, NULL, NULL },
+  { "saveall", 0, 0, false, true,  true, false, NULL, NULL },
+  { "longcall",  0, 0, false, true,  true, false,
+    bfin_handle_longcall_attribute, NULL },
+  { "shortcall", 0, 0, false, true,  true, false,
+    bfin_handle_longcall_attribute, NULL },
+  { "l1_text", 0, 0, true, false, false, false,
+    bfin_handle_l1_text_attribute, NULL },
+  { "l1_data", 0, 0, true, false, false, false,
+    bfin_handle_l1_data_attribute, NULL },
+  { "l1_data_A", 0, 0, true, false, false, false,
+    bfin_handle_l1_data_attribute, NULL },
+  { "l1_data_B", 0, 0, true, false, false, false,
+    bfin_handle_l1_data_attribute, NULL },
+  { "l2", 0, 0, true, false, false, false, bfin_handle_l2_attribute, NULL },
+  { NULL, 0, 0, false, false, false, false, NULL, NULL }
 };
 
 /* Implementation of TARGET_ASM_INTEGER.  When using FD-PIC, we need to
@@ -4940,10 +4961,12 @@ bfin_output_mi_thunk (FILE *file ATTRIBUTE_UNUSED,
 		      tree thunk ATTRIBUTE_UNUSED, HOST_WIDE_INT delta,
 		      HOST_WIDE_INT vcall_offset, tree function)
 {
+  const char *fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk));
   rtx xops[3];
   /* The this parameter is passed as the first argument.  */
   rtx this_rtx = gen_rtx_REG (Pmode, REG_R0);
 
+  assemble_start_function (thunk, fnname);
   /* Adjust the this parameter by a fixed constant.  */
   if (delta)
     {
@@ -4998,6 +5021,7 @@ bfin_output_mi_thunk (FILE *file ATTRIBUTE_UNUSED,
   xops[0] = XEXP (DECL_RTL (function), 0);
   if (1 || !flag_pic || (*targetm.binds_local_p) (function))
     output_asm_insn ("jump.l\t%P0", xops);
+  assemble_end_function (thunk, fnname);
 }
 
 /* Codes for all the Blackfin builtins.  */
@@ -5459,7 +5483,7 @@ bfin_expand_builtin (tree exp, rtx target ATTRIBUTE_UNUSED,
   enum insn_code icode;
   const struct builtin_description *d;
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
-  unsigned int fcode = DECL_FUNCTION_CODE (fndecl);
+  unsigned int fcode = DECL_MD_FUNCTION_CODE (fndecl);
   tree arg0, arg1, arg2;
   rtx op0, op1, op2, accvec, pat, tmp1, tmp2, a0reg, a1reg;
   machine_mode tmode, mode0;
@@ -5843,5 +5867,16 @@ bfin_conditional_register_usage (void)
 
 #undef TARGET_CAN_USE_DOLOOP_P
 #define TARGET_CAN_USE_DOLOOP_P bfin_can_use_doloop_p
+
+#undef TARGET_HARD_REGNO_NREGS
+#define TARGET_HARD_REGNO_NREGS bfin_hard_regno_nregs
+#undef TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK bfin_hard_regno_mode_ok
+
+#undef TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P bfin_modes_tieable_p
+
+#undef TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
 
 struct gcc_target targetm = TARGET_INITIALIZER;

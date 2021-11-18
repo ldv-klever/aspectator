@@ -1,5 +1,5 @@
 /* Definitions for option handling for IA-32.
-   Copyright (C) 1988-2017 Free Software Foundation, Inc.
+   Copyright (C) 1988-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -99,6 +99,13 @@ enum stack_protector_guard {
   SSP_GLOBAL    /* global canary */
 };
 
+enum prefer_vector_width {
+    PVW_NONE,
+    PVW_AVX128,
+    PVW_AVX256,
+    PVW_AVX512
+};
+
 /* This is used to mitigate variant #2 of the speculative execution
    vulnerabilities on x86 processors identified by CVE-2017-5715, aka
    Spectre.  They convert indirect branches and function returns to
@@ -110,6 +117,12 @@ enum indirect_branch {
   indirect_branch_thunk,
   indirect_branch_thunk_inline,
   indirect_branch_thunk_extern
+};
+
+enum instrument_return {
+  instrument_return_none = 0,
+  instrument_return_call,
+  instrument_return_nop5
 };
 
 #endif

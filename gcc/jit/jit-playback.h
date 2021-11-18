@@ -1,5 +1,5 @@
 /* Internals of libgccjit: classes for playing back recorded API calls.
-   Copyright (C) 2013-2017 Free Software Foundation, Inc.
+   Copyright (C) 2013-2021 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -75,6 +75,12 @@ public:
 	     type *type,
 	     const char *name);
 
+  field *
+  new_bitfield (location *loc,
+		type *type,
+		int width,
+		const char *name);
+
   compound_type *
   new_compound_type (location *loc,
 		     const char *name,
@@ -105,6 +111,15 @@ public:
 	      type *type,
 	      const char *name);
 
+  lvalue *
+  new_global_initialized (location *loc,
+                          enum gcc_jit_global_kind kind,
+                          type *type,
+                          size_t element_size,
+                          size_t initializer_num_elem,
+                          const void *initializer,
+                          const char *name);
+
   template <typename HOST_TYPE>
   rvalue *
   new_rvalue_from_const (type *type,
@@ -112,6 +127,11 @@ public:
 
   rvalue *
   new_string_literal (const char *value);
+
+  rvalue *
+  new_rvalue_from_vector (location *loc,
+			  type *type,
+			  const auto_vec<rvalue *> &elements);
 
   rvalue *
   new_unary_op (location *loc,
@@ -232,6 +252,8 @@ public:
 
   timer *get_timer () const { return m_recording_ctxt->get_timer (); }
 
+  void add_top_level_asm (const char *asm_stmts);
+
 private:
   void dump_generated_code ();
 
@@ -254,6 +276,14 @@ private:
   const char * get_path_c_file () const;
   const char * get_path_s_file () const;
   const char * get_path_so_file () const;
+
+  tree
+  global_new_decl (location *loc,
+                   enum gcc_jit_global_kind kind,
+                   type *type,
+                   const char *name);
+  lvalue *
+  global_finalize_lvalue (tree inner);
 
 private:
 
@@ -311,7 +341,6 @@ private:
 
   auto_vec<function *> m_functions;
   auto_vec<tree> m_globals;
-  tree m_char_array_type_node;
   tree m_const_char_ptr;
 
   /* Source location handling.  */
@@ -391,6 +420,9 @@ public:
     return new type (build_qualified_type (m_inner, TYPE_QUAL_VOLATILE));
   }
 
+  type *get_aligned (size_t alignment_in_bytes) const;
+  type *get_vector (size_t num_units) const;
+
 private:
   tree m_inner;
 };
@@ -418,6 +450,8 @@ private:
   tree m_inner;
 };
 
+class bitfield : public field {};
+
 class function : public wrapper
 {
 public:
@@ -439,6 +473,9 @@ public:
 
   block*
   new_block (const char *name);
+
+  rvalue *
+  get_address (location *loc);
 
   void
   build_stmt_list ();
@@ -477,6 +514,21 @@ struct case_
   rvalue *m_min_value;
   rvalue *m_max_value;
   block *m_dest_block;
+};
+
+struct asm_operand
+{
+  asm_operand (const char *asm_symbolic_name,
+	       const char *constraint,
+	       tree expr)
+  : m_asm_symbolic_name (asm_symbolic_name),
+    m_constraint (constraint),
+    m_expr (expr)
+  {}
+
+  const char *m_asm_symbolic_name;
+  const char *m_constraint;
+  tree m_expr;
 };
 
 class block : public wrapper
@@ -528,6 +580,16 @@ public:
 	      block *default_block,
 	      const auto_vec <case_> *cases);
 
+  void
+  add_extended_asm (location *loc,
+		    const char *asm_template,
+		    bool is_volatile,
+		    bool is_inline,
+		    const auto_vec <asm_operand> *outputs,
+		    const auto_vec <asm_operand> *inputs,
+		    const auto_vec <const char *> *clobbers,
+		    const auto_vec <block *> *goto_blocks);
+
 private:
   void
   set_tree_location (tree t, location *loc)
@@ -558,7 +620,12 @@ public:
   rvalue (context *ctxt, tree inner)
     : m_ctxt (ctxt),
       m_inner (inner)
-  {}
+  {
+    /* Pre-mark tree nodes with TREE_VISITED so that they can be
+       deeply unshared during gimplification (including across
+       functions); this requires LANG_HOOKS_DEEP_UNSHARING to be true.  */
+    TREE_VISITED (inner) = 1;
+  }
 
   rvalue *
   as_rvalue () { return this; }
@@ -603,6 +670,8 @@ public:
   rvalue *
   get_address (location *loc);
 
+private:
+  bool mark_addressable (location *loc);
 };
 
 class param : public lvalue
@@ -675,7 +744,7 @@ public:
 
   recording::location *get_recording_loc () const { return m_recording_loc; }
 
-  source_location m_srcloc;
+  location_t m_srcloc;
 
 private:
   recording::location *m_recording_loc;
@@ -692,4 +761,3 @@ extern playback::context *active_playback_ctxt;
 } // namespace gcc
 
 #endif /* JIT_PLAYBACK_H */
-

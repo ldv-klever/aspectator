@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -118,21 +118,6 @@ package Exp_Ch7 is
    --  finalization master must be analyzed. Insertion_Node is the insertion
    --  point before which the master is to be inserted.
 
-   procedure Build_Invariant_Procedure_Body
-     (Typ               : Entity_Id;
-      Partial_Invariant : Boolean := False);
-   --  Create the body of the procedure which verifies the invariants of type
-   --  Typ at runtime. Flag Partial_Invariant should be set when Typ denotes a
-   --  private type, otherwise it is assumed that Typ denotes the full view of
-   --  a private type.
-
-   procedure Build_Invariant_Procedure_Declaration
-     (Typ               : Entity_Id;
-      Partial_Invariant : Boolean := False);
-   --  Create the declaration of the procedure which verifies the invariants of
-   --  type Typ at runtime. Flag Partial_Invariant should be set when building
-   --  the invariant procedure for a private type.
-
    procedure Build_Late_Proc (Typ : Entity_Id; Nam : Name_Id);
    --  Build one controlling procedure when a late body overrides one of the
    --  controlling operations.
@@ -189,13 +174,6 @@ package Exp_Ch7 is
    --  adjusted. Typ is the expected type of Obj_Ref. When Skip_Self is set,
    --  only the components (if any) are adjusted. Return Empty if Adjust or
    --  Deep_Adjust is not available, possibly due to previous errors.
-
-   function Make_Detach_Call (Obj_Ref : Node_Id) return Node_Id;
-   --  Create a call to unhook an object from an arbitrary list. Obj_Ref is the
-   --  object. Generate the following:
-   --
-   --    Ada.Finalization.Heap_Management.Detach
-   --      (System.Finalization_Root.Root_Controlled_Ptr (Obj_Ref));
 
    function Make_Final_Call
      (Obj_Ref   : Node_Id;
@@ -291,10 +269,12 @@ package Exp_Ch7 is
    --  a "scope node" that is to say one of the following: N_Block_Statement,
    --  N_Subprogram_Body, N_Task_Body, N_Entry_Body.
 
-   procedure Establish_Transient_Scope (N : Node_Id; Sec_Stack : Boolean);
-   --  Push a new transient scope on the scope stack. N is the node responsible
-   --  for the need of a transient scope. If Sec_Stack is True then the
-   --  secondary stack is brought in, otherwise it isn't.
+   procedure Establish_Transient_Scope
+     (N                : Node_Id;
+      Manage_Sec_Stack : Boolean);
+   --  Push a new transient scope on the scope stack. N is the node which must
+   --  be serviced by the transient scope. Set Manage_Sec_Stack when the scope
+   --  must mark and release the secondary stack.
 
    function Node_To_Be_Wrapped return Node_Id;
    --  Return the node to be wrapped if the current scope is transient

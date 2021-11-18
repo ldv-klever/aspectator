@@ -79,7 +79,7 @@ type SockaddrUnix struct {
 func (sa *SockaddrUnix) sockaddr() (*RawSockaddrAny, Socklen_t, error) {
 	name := sa.Name
 	n := len(name)
-	if n >= len(sa.raw.Path) {
+	if n > len(sa.raw.Path) {
 		return nil, 0, EINVAL
 	}
 	sa.raw.Family = AF_UNIX
@@ -93,6 +93,11 @@ func (sa *SockaddrUnix) sockaddr() (*RawSockaddrAny, Socklen_t, error) {
 		sl += Socklen_t(n) + 1
 	}
 	sl = sa.raw.adjustAbstract(sl)
+	// Check again after adjustAbstract adjusts the length.
+	// This is testing whether the +1 for NUL puts us out of range.
+	if sl-2 > Socklen_t(len(sa.raw.Path)) {
+		return nil, 0, EINVAL
+	}
 
 	// length is family (uint16), name, NUL.
 	return (*RawSockaddrAny)(unsafe.Pointer(&sa.raw)), sl, nil
@@ -305,7 +310,11 @@ func SetsockoptIPv6Mreq(fd, level, opt int, mreq *IPv6Mreq) (err error) {
 }
 
 func SetsockoptString(fd, level, opt int, s string) (err error) {
-	return setsockopt(fd, level, opt, unsafe.Pointer(&[]byte(s)[0]), Socklen_t(len(s)))
+	var p unsafe.Pointer
+	if len(s) > 0 {
+		p = unsafe.Pointer(&[]byte(s)[0])
+	}
+	return setsockopt(fd, level, opt, p, Socklen_t(len(s)))
 }
 
 //sys	recvfrom(fd int, p []byte, flags int, from *RawSockaddrAny, fromlen *Socklen_t) (n int, err error)
@@ -343,8 +352,13 @@ func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from
 	}
 	var dummy byte
 	if len(oob) > 0 {
+		var sockType int
+		sockType, err = GetsockoptInt(fd, SOL_SOCKET, SO_TYPE)
+		if err != nil {
+			return
+		}
 		// receive at least one normal byte
-		if len(p) == 0 {
+		if sockType != SOCK_DGRAM && len(p) == 0 {
 			iov.Base = &dummy
 			iov.SetLen(1)
 		}
@@ -390,8 +404,13 @@ func SendmsgN(fd int, p, oob []byte, to Sockaddr, flags int) (n int, err error) 
 	}
 	var dummy byte
 	if len(oob) > 0 {
+		var sockType int
+		sockType, err = GetsockoptInt(fd, SOL_SOCKET, SO_TYPE)
+		if err != nil {
+			return 0, err
+		}
 		// send at least one normal byte
-		if len(p) == 0 {
+		if sockType != SOCK_DGRAM && len(p) == 0 {
 			iov.Base = &dummy
 			iov.SetLen(1)
 		}

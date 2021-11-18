@@ -1,10 +1,10 @@
 /* Verify diagnostics for aliases to strings containing extended
    identifiers or bad characters.  */
 /* { dg-do compile } */
-/* { dg-options "-std=gnu99" } */
+/* { dg-options "-std=gnu99 -w" } */
 /* { dg-require-alias "" } */
 /* { dg-require-ascii-locale "" } */
-/* { dg-skip-if "" { powerpc*-*-aix* } { "*" } { "" } } */
+/* { dg-skip-if "" { powerpc*-*-aix* } } */
 
 void f0 (void) __attribute__((alias("\xa1"))); /* { dg-error "undefined symbol '\\\\241'" } */
 void f1 (void) __attribute__((alias("\u00e9"))); /* { dg-error "undefined symbol '\\\\U000000e9'" } */

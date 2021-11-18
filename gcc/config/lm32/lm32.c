@@ -1,7 +1,7 @@
 /* Subroutines used for code generation on the Lattice Mico32 architecture.
    Contributed by Jon Beniston <jon@beniston.com>
 
-   Copyright (C) 2009-2017 Free Software Foundation, Inc.
+   Copyright (C) 2009-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -19,6 +19,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -26,6 +28,8 @@
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 #include "df.h"
 #include "memmodel.h"
 #include "tm_p.h"
@@ -60,7 +64,7 @@ static void expand_save_restore (struct lm32_frame_info *info, int op);
 static void stack_adjust (HOST_WIDE_INT amount);
 static bool lm32_in_small_data_p (const_tree);
 static void lm32_setup_incoming_varargs (cumulative_args_t cum,
-					 machine_mode mode, tree type,
+					 const function_arg_info &,
 					 int *pretend_size, int no_rtl);
 static bool lm32_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno,
 			    int *total, bool speed);
@@ -69,12 +73,12 @@ static bool
 lm32_legitimate_address_p (machine_mode mode, rtx x, bool strict);
 static HOST_WIDE_INT lm32_compute_frame_size (int size);
 static void lm32_option_override (void);
-static rtx lm32_function_arg (cumulative_args_t cum,
-			      machine_mode mode, const_tree type,
-			      bool named);
+static rtx lm32_function_arg (cumulative_args_t, const function_arg_info &);
 static void lm32_function_arg_advance (cumulative_args_t cum,
-				       machine_mode mode,
-				       const_tree type, bool named);
+				       const function_arg_info &);
+static bool lm32_hard_regno_mode_ok (unsigned int, machine_mode);
+static bool lm32_modes_tieable_p (machine_mode, machine_mode);
+static HOST_WIDE_INT lm32_starting_frame_offset (void);
 
 #undef TARGET_OPTION_OVERRIDE
 #define TARGET_OPTION_OVERRIDE lm32_option_override
@@ -104,6 +108,16 @@ static void lm32_function_arg_advance (cumulative_args_t cum,
 #define TARGET_LRA_P hook_bool_void_false
 #undef TARGET_LEGITIMATE_ADDRESS_P
 #define TARGET_LEGITIMATE_ADDRESS_P lm32_legitimate_address_p
+#undef TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK lm32_hard_regno_mode_ok
+#undef TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P lm32_modes_tieable_p
+
+#undef TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
+
+#undef TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET lm32_starting_frame_offset
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -443,7 +457,7 @@ lm32_compute_frame_size (int size)
      and calculate size required to store them in the stack.  */
   for (regno = 1; regno < SP_REGNUM; regno++)
     {
-      if (df_regs_ever_live_p (regno) && !call_used_regs[regno])
+      if (df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
 	{
 	  reg_save_mask |= 1 << regno;
 	  callee_size += UNITS_PER_WORD;
@@ -602,39 +616,34 @@ lm32_print_operand_address (FILE * file, rtx addr)
    Value is zero to push the argument on the stack,
    or a hard register in which to store the argument.
 
-   MODE is the argument's machine mode.
-   TYPE is the data type of the argument (as a tree).
-    This is null for libcalls where that information may
-    not be available.
    CUM is a variable of type CUMULATIVE_ARGS which gives info about
     the preceding args and about the function being called.
-   NAMED is nonzero if this argument is a named parameter
-    (otherwise it is an extra parameter matching an ellipsis).  */
+   ARG is a description of the argument.  */
 
 static rtx
-lm32_function_arg (cumulative_args_t cum_v, machine_mode mode,
-		   const_tree type, bool named)
+lm32_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
 
-  if (mode == VOIDmode)
+  if (arg.end_marker_p ())
     /* Compute operand 2 of the call insn.  */
     return GEN_INT (0);
 
-  if (targetm.calls.must_pass_in_stack (mode, type))
+  if (targetm.calls.must_pass_in_stack (arg))
     return NULL_RTX;
 
-  if (!named || (*cum + LM32_NUM_REGS2 (mode, type) > LM32_NUM_ARG_REGS))
+  if (!arg.named
+      || *cum + LM32_NUM_REGS2 (arg.mode, arg.type) > LM32_NUM_ARG_REGS)
     return NULL_RTX;
 
-  return gen_rtx_REG (mode, *cum + LM32_FIRST_ARG_REG);
+  return gen_rtx_REG (arg.mode, *cum + LM32_FIRST_ARG_REG);
 }
 
 static void
-lm32_function_arg_advance (cumulative_args_t cum, machine_mode mode,
-			   const_tree type, bool named ATTRIBUTE_UNUSED)
+lm32_function_arg_advance (cumulative_args_t cum,
+			   const function_arg_info &arg)
 {
-  *get_cumulative_args (cum) += LM32_NUM_REGS2 (mode, type);
+  *get_cumulative_args (cum) += LM32_NUM_REGS2 (arg.mode, arg.type);
 }
 
 HOST_WIDE_INT
@@ -667,8 +676,9 @@ lm32_compute_initial_elimination_offset (int from, int to)
 }
 
 static void
-lm32_setup_incoming_varargs (cumulative_args_t cum_v, machine_mode mode,
-			     tree type, int *pretend_size, int no_rtl)
+lm32_setup_incoming_varargs (cumulative_args_t cum_v,
+			     const function_arg_info &arg,
+			     int *pretend_size, int no_rtl)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   int first_anon_arg;
@@ -681,16 +691,11 @@ lm32_setup_incoming_varargs (cumulative_args_t cum_v, machine_mode mode,
   else
     {
       /* this is the common case, we have been passed details setup
-         for the last named argument, we want to skip over the
-         registers, if any used in passing this named paramter in
-         order to determine which is the first registers used to pass
-         anonymous arguments.  */
-      int size;
-
-      if (mode == BLKmode)
-	size = int_size_in_bytes (type);
-      else
-	size = GET_MODE_SIZE (mode);
+	 for the last named argument, we want to skip over the
+	 registers, if any used in passing this named parameter in
+	 order to determine which is the first registers used to pass
+	 anonymous arguments.  */
+      int size = arg.promoted_size_in_bytes ();
 
       first_anon_arg =
 	*cum + LM32_FIRST_ARG_REG +
@@ -828,7 +833,7 @@ lm32_block_move_inline (rtx dest, rtx src, HOST_WIDE_INT length,
       break;
     }
 
-  mode = mode_for_size (bits, MODE_INT, 0);
+  mode = int_mode_for_size (bits, 0).require ();
   delta = bits / BITS_PER_UNIT;
 
   /* Allocate a buffer for the temporary registers.  */
@@ -851,7 +856,7 @@ lm32_block_move_inline (rtx dest, rtx src, HOST_WIDE_INT length,
       src = adjust_address (src, BLKmode, offset);
       dest = adjust_address (dest, BLKmode, offset);
       move_by_pieces (dest, src, length - offset,
-		      MIN (MEM_ALIGN (src), MEM_ALIGN (dest)), 0);
+		      MIN (MEM_ALIGN (src), MEM_ALIGN (dest)), RETURN_BEGIN);
     }
 }
 
@@ -1218,4 +1223,31 @@ lm32_move_ok (machine_mode mode, rtx operands[2]) {
   if (memory_operand (operands[0], mode))
     return register_or_zero_operand (operands[1], mode);
   return true;
+}
+
+/* Implement TARGET_HARD_REGNO_MODE_OK.  */
+
+static bool
+lm32_hard_regno_mode_ok (unsigned int regno, machine_mode)
+{
+  return G_REG_P (regno);
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+lm32_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return (GET_MODE_CLASS (mode1) == MODE_INT
+	  && GET_MODE_CLASS (mode2) == MODE_INT
+	  && GET_MODE_SIZE (mode1) <= UNITS_PER_WORD
+	  && GET_MODE_SIZE (mode2) <= UNITS_PER_WORD);
+}
+
+/* Implement TARGET_STARTING_FRAME_OFFSET.  */
+
+static HOST_WIDE_INT
+lm32_starting_frame_offset (void)
+{
+  return UNITS_PER_WORD;
 }

@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on the Tilera TILE-Gx.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
    Contributed by Walter Lee (walt@tilera.com)
 
    This file is part of GCC.
@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -30,6 +32,7 @@
 #include "df.h"
 #include "tm_p.h"
 #include "stringpool.h"
+#include "attribs.h"
 #include "expmed.h"
 #include "optabs.h"
 #include "regs.h"
@@ -106,19 +109,19 @@ tilegx_option_override (void)
 
 /* Implement TARGET_SCALAR_MODE_SUPPORTED_P.  */
 static bool
-tilegx_scalar_mode_supported_p (machine_mode mode)
+tilegx_scalar_mode_supported_p (scalar_mode mode)
 {
   switch (mode)
     {
-    case QImode:
-    case HImode:
-    case SImode:
-    case DImode:
-    case TImode:
+    case E_QImode:
+    case E_HImode:
+    case E_SImode:
+    case E_DImode:
+    case E_TImode:
       return true;
 
-    case SFmode:
-    case DFmode:
+    case E_SFmode:
+    case E_DFmode:
       return true;
 
     default:
@@ -156,12 +159,11 @@ tilegx_function_ok_for_sibcall (tree decl, tree exp ATTRIBUTE_UNUSED)
 /* Implement TARGET_PASS_BY_REFERENCE.  Variable sized types are
    passed by reference.  */
 static bool
-tilegx_pass_by_reference (cumulative_args_t cum ATTRIBUTE_UNUSED,
-			  machine_mode mode ATTRIBUTE_UNUSED,
-			  const_tree type, bool named ATTRIBUTE_UNUSED)
+tilegx_pass_by_reference (cumulative_args_t, const function_arg_info &arg)
 {
-  return (type && TYPE_SIZE (type)
-	  && TREE_CODE (TYPE_SIZE (type)) != INTEGER_CST);
+  return (arg.type
+	  && TYPE_SIZE (arg.type)
+	  && TREE_CODE (TYPE_SIZE (arg.type)) != INTEGER_CST);
 }
 
 
@@ -187,7 +189,7 @@ tilegx_return_in_memory (const_tree type, const_tree fndecl ATTRIBUTE_UNUSED)
 
 /* Implement TARGET_MODE_REP_EXTENDED.  */
 static int
-tilegx_mode_rep_extended (machine_mode mode, machine_mode mode_rep)
+tilegx_mode_rep_extended (scalar_int_mode mode, scalar_int_mode mode_rep)
 {
   /* SImode register values are sign-extended to DImode.  */
   if (mode == SImode && mode_rep == DImode)
@@ -214,13 +216,10 @@ tilegx_function_arg_boundary (machine_mode mode, const_tree type)
 
 /* Implement TARGET_FUNCTION_ARG.  */
 static rtx
-tilegx_function_arg (cumulative_args_t cum_v,
-		     machine_mode mode,
-		     const_tree type, bool named ATTRIBUTE_UNUSED)
+tilegx_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   CUMULATIVE_ARGS cum = *get_cumulative_args (cum_v);
-  int byte_size = ((mode == BLKmode)
-		   ? int_size_in_bytes (type) : GET_MODE_SIZE (mode));
+  int byte_size = arg.promoted_size_in_bytes ();
   bool doubleword_aligned_p;
 
   if (cum >= TILEGX_NUM_ARG_REGS)
@@ -228,7 +227,7 @@ tilegx_function_arg (cumulative_args_t cum_v,
 
   /* See whether the argument has doubleword alignment.  */
   doubleword_aligned_p =
-    tilegx_function_arg_boundary (mode, type) > BITS_PER_WORD;
+    tilegx_function_arg_boundary (arg.mode, arg.type) > BITS_PER_WORD;
 
   if (doubleword_aligned_p)
     cum += cum & 1;
@@ -239,26 +238,24 @@ tilegx_function_arg (cumulative_args_t cum_v,
       > TILEGX_NUM_ARG_REGS)
     return NULL_RTX;
 
-  return gen_rtx_REG (mode, cum);
+  return gen_rtx_REG (arg.mode, cum);
 }
 
 
 /* Implement TARGET_FUNCTION_ARG_ADVANCE.  */
 static void
 tilegx_function_arg_advance (cumulative_args_t cum_v,
-			     machine_mode mode,
-			     const_tree type, bool named ATTRIBUTE_UNUSED)
+			     const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
 
-  int byte_size = ((mode == BLKmode)
-		   ? int_size_in_bytes (type) : GET_MODE_SIZE (mode));
+  int byte_size = arg.promoted_size_in_bytes ();
   int word_size = (byte_size + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
   bool doubleword_aligned_p;
 
   /* See whether the argument has doubleword alignment.  */
   doubleword_aligned_p =
-    tilegx_function_arg_boundary (mode, type) > BITS_PER_WORD;
+    tilegx_function_arg_boundary (arg.mode, arg.type) > BITS_PER_WORD;
 
   if (doubleword_aligned_p)
     *cum += *cum & 1;
@@ -388,8 +385,8 @@ tilegx_va_start (tree valist, rtx nextarg ATTRIBUTE_UNUSED)
 /* Implement TARGET_SETUP_INCOMING_VARARGS.  */
 static void
 tilegx_setup_incoming_varargs (cumulative_args_t cum,
-			       machine_mode mode,
-			       tree type, int *pretend_args, int no_rtl)
+			       const function_arg_info &arg,
+			       int *pretend_args, int no_rtl)
 {
   CUMULATIVE_ARGS local_cum = *get_cumulative_args (cum);
   int first_reg;
@@ -397,8 +394,7 @@ tilegx_setup_incoming_varargs (cumulative_args_t cum,
   /* The caller has advanced CUM up to, but not beyond, the last named
      argument.  Advance a local copy of CUM past the last "real" named
      argument, to find out how many registers are left over.  */
-  targetm.calls.function_arg_advance (pack_cumulative_args (&local_cum),
-				      mode, type, true);
+  targetm.calls.function_arg_advance (pack_cumulative_args (&local_cum), arg);
   first_reg = local_cum;
 
   if (local_cum < TILEGX_NUM_ARG_REGS)
@@ -468,8 +464,7 @@ tilegx_gimplify_va_arg_expr (tree valist, tree type, gimple_seq *pre_p,
 
   /* If an object is dynamically sized, a pointer to it is passed
      instead of the object itself.  */
-  pass_by_reference_p = pass_by_reference (NULL, TYPE_MODE (type), type,
-					   false);
+  pass_by_reference_p = pass_va_arg_by_reference (type);
 
   if (pass_by_reference_p)
     type = build_pointer_type (type);
@@ -1465,16 +1460,16 @@ tilegx_simd_int (rtx num, machine_mode mode)
 
   switch (mode)
     {
-    case QImode:
+    case E_QImode:
       n = 0x0101010101010101LL * (n & 0x000000FF);
       break;
-    case HImode:
+    case E_HImode:
       n = 0x0001000100010001LL * (n & 0x0000FFFF);
       break;
-    case SImode:
+    case E_SImode:
       n = 0x0000000100000001LL * (n & 0xFFFFFFFF);
       break;
-    case DImode:
+    case E_DImode:
       break;
     default:
       gcc_unreachable ();
@@ -1959,7 +1954,7 @@ tilegx_expand_unaligned_load (rtx dest_reg, rtx mem, HOST_WIDE_INT bitsize,
 	extract_bit_field (gen_lowpart (DImode, wide_result),
 			   bitsize, bit_offset % BITS_PER_UNIT,
 			   !sign, gen_lowpart (DImode, dest_reg),
-			   DImode, DImode, false);
+			   DImode, DImode, false, NULL);
 
       if (extracted != dest_reg)
 	emit_move_insn (dest_reg, gen_lowpart (DImode, extracted));
@@ -2619,9 +2614,8 @@ cbranch_predicted_p (rtx_insn *insn)
 
   if (x)
     {
-      int pred_val = XINT (x, 0);
-
-      return pred_val >= REG_BR_PROB_BASE / 2;
+      return profile_probability::from_reg_br_prob_note (XINT (x, 0))
+	     >= profile_probability::even ();
     }
 
   return false;
@@ -3529,7 +3523,7 @@ tilegx_expand_builtin (tree exp,
 #define MAX_BUILTIN_ARGS 4
 
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
-  unsigned int fcode = DECL_FUNCTION_CODE (fndecl);
+  unsigned int fcode = DECL_MD_FUNCTION_CODE (fndecl);
   tree arg;
   call_expr_arg_iterator iter;
   enum insn_code icode;
@@ -3666,7 +3660,7 @@ tilegx_builtin_decl (unsigned code, bool initialize_p ATTRIBUTE_UNUSED)
 static bool
 need_to_save_reg (unsigned int regno)
 {
-  if (!fixed_regs[regno] && !call_used_regs[regno]
+  if (!call_used_or_fixed_reg_p (regno)
       && df_regs_ever_live_p (regno))
     return true;
 
@@ -4347,20 +4341,11 @@ static void
 tilegx_conditional_register_usage (void)
 {
   global_regs[TILEGX_NETORDER_REGNUM] = 1;
-  /* TILEGX_PIC_TEXT_LABEL_REGNUM is conditionally used.  It is a
-     member of fixed_regs, and therefore must be member of
-     call_used_regs, but it is not a member of call_really_used_regs[]
-     because it is not clobbered by a call.  */
+  /* TILEGX_PIC_TEXT_LABEL_REGNUM is conditionally used.  */
   if (TILEGX_PIC_TEXT_LABEL_REGNUM != INVALID_REGNUM)
-    {
-      fixed_regs[TILEGX_PIC_TEXT_LABEL_REGNUM] = 1;
-      call_used_regs[TILEGX_PIC_TEXT_LABEL_REGNUM] = 1;
-    }
+    fixed_regs[TILEGX_PIC_TEXT_LABEL_REGNUM] = 1;
   if (PIC_OFFSET_TABLE_REGNUM != INVALID_REGNUM)
-    {
-      fixed_regs[PIC_OFFSET_TABLE_REGNUM] = 1;
-      call_used_regs[PIC_OFFSET_TABLE_REGNUM] = 1;
-    }
+    fixed_regs[PIC_OFFSET_TABLE_REGNUM] = 1;
 }
 
 
@@ -4918,6 +4903,7 @@ tilegx_output_mi_thunk (FILE *file, tree thunk_fndecl ATTRIBUTE_UNUSED,
 			HOST_WIDE_INT delta, HOST_WIDE_INT vcall_offset,
 			tree function)
 {
+  const char *fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk_fndecl));
   rtx this_rtx, funexp, addend;
   rtx_insn *insn;
 
@@ -4990,17 +4976,18 @@ tilegx_output_mi_thunk (FILE *file, tree thunk_fndecl ATTRIBUTE_UNUSED,
 
   /* Run just enough of rest_of_compilation to get the insns emitted.
      There's not really enough bulk here to make other passes such as
-     instruction scheduling worth while.  Note that use_thunk calls
-     assemble_start_function and assemble_end_function.
+     instruction scheduling worth while.
 
      We don't currently bundle, but the instruciton sequence is all
      serial except for the tail call, so we're only wasting one cycle.
    */
   insn = get_insns ();
   shorten_branches (insn);
+  assemble_start_function (thunk_fndecl, fnname);
   final_start_function (insn, file, 1);
   final (insn, file, 1);
   final_end_function ();
+  assemble_end_function (thunk_fndecl, fnname);
 
   /* Stop pretending to be a post-reload pass.  */
   reload_completed = 0;
@@ -5062,9 +5049,7 @@ tilegx_trampoline_init (rtx m_tramp, tree fndecl, rtx static_chain)
   end_addr = force_reg (Pmode, plus_constant (Pmode, XEXP (m_tramp, 0),
 					      TRAMPOLINE_SIZE));
 
-  emit_library_call (gen_rtx_SYMBOL_REF (Pmode, "__clear_cache"),
-		     LCT_NORMAL, VOIDmode, 2, begin_addr, Pmode,
-		     end_addr, Pmode);
+  maybe_emit_call_builtin___clear_cache (begin_addr, end_addr);
 }
 
 
@@ -5560,7 +5545,14 @@ tilegx_file_end (void)
     file_end_indicate_exec_stack ();
 }
 
+/* Implement TARGET_TRULY_NOOP_TRUNCATION.  We represent all SI values
+   as sign-extended DI values in registers.  */
 
+static bool
+tilegx_truly_noop_truncation (poly_uint64 outprec, poly_uint64 inprec)
+{
+  return inprec <= 32 || outprec > 32;
+}
 
 #undef  TARGET_HAVE_TLS
 #define TARGET_HAVE_TLS HAVE_AS_TLS
@@ -5723,6 +5715,12 @@ tilegx_file_end (void)
 
 #undef  TARGET_CAN_USE_DOLOOP_P
 #define TARGET_CAN_USE_DOLOOP_P can_use_doloop_if_innermost
+
+#undef  TARGET_TRULY_NOOP_TRUNCATION
+#define TARGET_TRULY_NOOP_TRUNCATION tilegx_truly_noop_truncation
+
+#undef  TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

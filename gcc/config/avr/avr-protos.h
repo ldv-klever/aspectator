@@ -1,6 +1,6 @@
 /* Prototypes for exported functions defined in avr.c
    
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
    Contributed by Denis Chertykov (chertykov@gmail.com)
 
    This file is part of GCC.
@@ -46,7 +46,6 @@ extern void avr_init_cumulative_args (CUMULATIVE_ARGS*, tree, rtx, tree);
 #endif /* TREE_CODE */
 
 #ifdef RTX_CODE
-extern int avr_hard_regno_call_part_clobbered (unsigned, machine_mode);
 extern const char *output_movqi (rtx_insn *insn, rtx operands[], int *l);
 extern const char *output_movhi (rtx_insn *insn, rtx operands[], int *l);
 extern const char *output_movsisf (rtx_insn *insn, rtx operands[], int *l);
@@ -83,18 +82,17 @@ extern rtx avr_to_int_mode (rtx);
 
 extern void avr_expand_prologue (void);
 extern void avr_expand_epilogue (bool);
-extern bool avr_emit_movmemhi (rtx*);
+extern bool avr_emit_cpymemhi (rtx*);
 extern int avr_epilogue_uses (int regno);
-extern int avr_starting_frame_offset (void);
 
-extern void avr_output_addr_vec_elt (FILE *stream, int value);
+extern void avr_output_addr_vec (rtx_insn*, rtx);
 extern const char *avr_out_sbxx_branch (rtx_insn *insn, rtx operands[]);
 extern const char* avr_out_bitop (rtx, rtx*, int*);
 extern const char* avr_out_plus (rtx, rtx*, int* =NULL, int* =NULL, bool =true);
 extern const char* avr_out_round (rtx_insn *, rtx*, int* =NULL);
 extern const char* avr_out_addto_sp (rtx*, int*);
 extern const char* avr_out_xload (rtx_insn *, rtx*, int*);
-extern const char* avr_out_movmem (rtx_insn *, rtx*, int*);
+extern const char* avr_out_cpymem (rtx_insn *, rtx*, int*);
 extern const char* avr_out_insert_bits (rtx*, int*);
 extern bool avr_popcount_each_byte (rtx, int, int);
 extern bool avr_has_nibble_0xf (rtx);
@@ -112,7 +110,6 @@ extern int avr_jump_mode (rtx x, rtx_insn *insn);
 extern int test_hard_reg_class (enum reg_class rclass, rtx x);
 extern int jump_over_one_insn_p (rtx_insn *insn, rtx dest);
 
-extern int avr_hard_regno_mode_ok (int regno, machine_mode mode);
 extern void avr_final_prescan_insn (rtx_insn *insn, rtx *operand,
 				    int num_operands);
 extern int avr_simplify_comparison_p (machine_mode mode,
@@ -131,10 +128,12 @@ extern bool avr_xload_libgcc_p (machine_mode);
 extern rtx avr_eval_addr_attrib (rtx x);
 extern bool avr_casei_sequence_check_operands (rtx *xop);
 
+extern bool avr_float_lib_compare_returns_bool (machine_mode, enum rtx_code);
+
 static inline unsigned
 regmask (machine_mode mode, unsigned regno)
 {
-  return ((1u << GET_MODE_SIZE (mode)) - 1) << regno;
+  return ((1u << GET_MODE_SIZE (as_a <fixed_size_mode> (mode))) - 1) << regno;
 }
 
 extern void avr_fix_inputs (rtx*, unsigned, unsigned);
@@ -158,6 +157,7 @@ extern bool avr_have_dimode;
 namespace gcc { class context; }
 class rtl_opt_pass;
 
+extern rtl_opt_pass *make_avr_pass_pre_proep (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_recompute_notes (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_casesi (gcc::context *);
 
@@ -175,6 +175,7 @@ typedef struct
   unsigned address_cost :1;
   unsigned builtin :1;
   unsigned constraints :1;
+  unsigned insn_addresses :1;
   unsigned legitimate_address_p :1;
   unsigned legitimize_address :1;
   unsigned legitimize_reload_address :1;

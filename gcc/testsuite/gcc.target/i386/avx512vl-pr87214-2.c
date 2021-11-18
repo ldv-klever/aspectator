@@ -16,56 +16,56 @@ typedef float v8sf __attribute__((vector_size (8 * sizeof (float))));
 typedef int v16si __attribute__((vector_size (16 * sizeof (int))));
 typedef float v16sf __attribute__((vector_size (16 * sizeof (float))));
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f1 (v4di *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v4di) { 2, 3, 5, 6 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f2 (v4df *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v4di) { 1, 2, 6, 7 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f3 (v8di *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v8di) { 2, 3, 5, 6, 8, 9, 11, 12 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f4 (v8df *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v8di) { 1, 2, 6, 7, 9, 10, 12, 13 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f5 (v8si *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v8si) { 2, 3, 4, 5, 9, 10, 11, 12 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f6 (v8sf *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v8si) { 1, 2, 3, 4, 12, 13, 14, 15 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f7 (v16si *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v16si) { 0, 1, 2, 3, 1, 2, 3, 4, 16, 17, 18, 19, 25, 26, 27, 28 });
 }
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 f8 (v16sf *p)
 {
   p[0] = __builtin_shuffle (p[1], p[2], (v16si) { 1, 2, 3, 4, 4, 5, 6, 7, 17, 18, 19, 20, 18, 19, 20, 21 });
 }
 
 static void
-avx512f_test (void)
+test_256 (void)
 {
   v4di a[3] = { { 0, 0, 0, 0 }, { 10, 11, 12, 13 }, { 14, 15, 16, 17 } };
   f1 (a);
@@ -120,4 +120,9 @@ avx512f_test (void)
       || h[0][8] != 27.0f || h[0][9] != 28.0f || h[0][10] != 29.0f || h[0][11] != 30.0f
       || h[0][12] != 28.0f || h[0][13] != 29.0f || h[0][14] != 30.0f || h[0][15] != 31.0f)
     __builtin_abort ();
+}
+
+static void
+test_128 (void)
+{
 }
