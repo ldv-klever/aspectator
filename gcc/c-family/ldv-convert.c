@@ -3601,6 +3601,85 @@ ldv_convert_jump_statement (tree t)
   return NULL;
 }
 
+/* iteration-statement:
+     while-statement
+     do-statement
+     for-statement
+*/
+static ldv_iteration_statement_ptr
+ldv_convert_iteration_statement (tree t) {
+  ldv_iteration_statement_ptr iteration_statement = XCNEW (struct ldv_iteration_statement);
+  tree cond_expr, body_stmt, for_expr, init_stmt;
+
+  switch (TREE_CODE (t)) {
+    case WHILE_STMT:
+      LDV_ITERATION_STATEMENT_KIND (iteration_statement) = LDV_ITERATION_STATEMENT_WHILE;
+
+      if (cond_expr = WHILE_COND (t))
+        LDV_ITERATION_STATEMENT_EXPR (iteration_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+      else
+        LDV_ERROR ("can not find conditional expression");
+
+      if (body_stmt = WHILE_BODY (t))
+        LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
+      else
+        LDV_ERROR ("can not find body statement");
+
+      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
+
+      break;
+
+    case DO_STMT:
+      LDV_ITERATION_STATEMENT_KIND (iteration_statement) = LDV_ITERATION_STATEMENT_DO;
+
+      if (cond_expr = DO_COND (t))
+        LDV_ITERATION_STATEMENT_EXPR (iteration_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+      else
+        LDV_ERROR ("can not find conditional expression");
+
+      if (body_stmt = DO_BODY (t))
+        LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
+      else
+        LDV_ERROR ("can not find body statement");
+
+      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
+
+      break;
+    case FOR_STMT:
+      LDV_ITERATION_STATEMENT_KIND (iteration_statement) = LDV_ITERATION_STATEMENT_FOR;
+
+      if (init_stmt = FOR_INIT_STMT (t))
+        LDV_ITERATION_STATEMENT_FOR_INIT (iteration_statement) = ldv_convert_statement (init_stmt);
+
+      if (cond_expr = FOR_COND (t))
+        LDV_ITERATION_STATEMENT_EXPR (iteration_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+      if (for_expr = FOR_EXPR (t))
+        LDV_ITERATION_STATEMENT_FOR_EXPR (iteration_statement) = ldv_convert_expr (for_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
+
+      if (body_stmt = FOR_BODY (t))
+        LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
+      else
+        LDV_ERROR ("can not find body statement");
+
+      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
+
+      break;
+
+    default:
+      LDV_CONVERT_ERROR (t);
+  }
+
+  if (LDV_ITERATION_STATEMENT_KIND (iteration_statement))
+    return iteration_statement;
+
+  LDV_ERROR ("iteration statement was not converted");
+
+  XDELETE (iteration_statement);
+
+  return NULL;
+}
+
 /*
 GNU extensions:
 
@@ -5002,6 +5081,14 @@ ldv_convert_statement (tree t)
     case CONTINUE_STMT:
       LDV_STATEMENT_KIND (statement) = LDV_JUMP_STATEMENT;
       LDV_STATEMENT_JUMP_STATEMENT (statement) = ldv_convert_jump_statement (t);
+
+      break;
+
+    case WHILE_STMT:
+    case FOR_STMT:
+    case DO_STMT:
+      LDV_STATEMENT_KIND (statement) = LDV_ITERATION_STATEMENT;
+      LDV_STATEMENT_ITERATION_STATEMENT (statement) = ldv_convert_iteration_statement (t);
 
       break;
 

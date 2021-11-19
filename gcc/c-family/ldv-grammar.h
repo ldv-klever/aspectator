@@ -1158,8 +1158,36 @@ typedef struct ldv_selection_statement *ldv_selection_statement_ptr;
 #define LDV_SELECTION_STATEMENT_STATEMENT2(selection_statement) (selection_statement->statement2)
 #define LDV_SELECTION_STATEMENT_LOCATION(selection_statement)   (selection_statement->location)
 
-/* There is no iteration statement in gcc.
-statement:
+/* iteration-statement:
+    while ( expression ) statement
+    do statement while ( expression ) ;
+    for ( statement ; expression ; expression ) statement
+*/
+enum ldv_iteration_statement_kind
+{
+  LDV_ITERATION_STATEMENT_WHILE = 1,
+  LDV_ITERATION_STATEMENT_DO,
+  LDV_ITERATION_STATEMENT_FOR
+};
+struct ldv_iteration_statement
+{
+  enum ldv_iteration_statement_kind kind;
+  const char *id;
+  ldv_expr_ptr expr, for_expr;
+  struct ldv_statement *body, *for_init;
+
+  ldv_location_ptr location;
+};
+typedef struct ldv_iteration_statement *ldv_iteration_statement_ptr;
+#define LDV_ITERATION_STATEMENT_KIND(iteration_statement)     (iteration_statement->kind)
+#define LDV_ITERATION_STATEMENT_ID(iteration_statement)       (iteration_statement->id)
+#define LDV_ITERATION_STATEMENT_EXPR(iteration_statement)     (iteration_statement->expr)
+#define LDV_ITERATION_STATEMENT_BODY(iteration_statement)     (iteration_statement->body)
+#define LDV_ITERATION_STATEMENT_FOR_EXPR(iteration_statement) (iteration_statement->for_expr)
+#define LDV_ITERATION_STATEMENT_FOR_INIT(iteration_statement) (iteration_statement->for_init)
+#define LDV_ITERATION_STATEMENT_LOCATION(iteration_statement) (iteration_statement->location)
+
+/* statement:
     labeled-statement
     compound-statement
     expression-statement
@@ -1190,6 +1218,7 @@ struct ldv_statement
   ldv_expr_statement_ptr expr_statement;
   ldv_selection_statement_ptr selection_statement;
   ldv_jump_statement_ptr jump_statement;
+  ldv_iteration_statement_ptr iteration_statement;
   ldv_asm_statement_ptr asm_statement;
 };
 typedef struct ldv_statement *ldv_statement_ptr;
@@ -1199,6 +1228,7 @@ typedef struct ldv_statement *ldv_statement_ptr;
 #define LDV_STATEMENT_EXPR_STATEMENT(statement)      (statement->expr_statement)
 #define LDV_STATEMENT_SELECTION_STATEMENT(statement) (statement->selection_statement)
 #define LDV_STATEMENT_JUMP_STATEMENT(statement)      (statement->jump_statement)
+#define LDV_STATEMENT_ITERATION_STATEMENT(statement) (statement->iteration_statement)
 #define LDV_STATEMENT_ASM_STATEMENT(statement)       (statement->asm_statement)
 
 /* Treated in the same way as function-definition.

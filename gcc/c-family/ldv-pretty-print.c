@@ -2498,6 +2498,93 @@ ldv_print_integer_suffix (unsigned int indent_level, ldv_integer_suffix_ptr inte
 }
 
 /*
+iteration-statement:
+     while-statement
+     do-statement
+     for-statement
+*/
+static void
+ldv_print_iteration_statement (unsigned int indent_level, ldv_iteration_statement_ptr iteration_statement) {
+  ldv_expr_ptr expr, for_expr;
+  ldv_statement_ptr body_statement, for_init;
+  ldv_location_ptr location;
+
+  if ((location = LDV_ITERATION_STATEMENT_LOCATION (iteration_statement)))
+    ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+
+  switch (LDV_ITERATION_STATEMENT_KIND (iteration_statement))
+    {
+      case LDV_ITERATION_STATEMENT_WHILE:
+        ldv_c_backend_print (indent_level, true, "while (");
+        ldv_c_backend_padding_cancel ();
+
+        if ((expr = LDV_ITERATION_STATEMENT_EXPR (iteration_statement)))
+          ldv_print_expr (indent_level, expr);
+        else
+          LDV_ERROR ("while condition was not printed");
+
+        ldv_c_backend_print (indent_level, false, ")\n");
+
+        if ((body_statement = LDV_ITERATION_STATEMENT_BODY (iteration_statement)))
+          ldv_print_statement_internal (indent_level, body_statement);
+        else
+          LDV_ERROR ("while body statement was not printed");
+
+        break;
+
+      case LDV_ITERATION_STATEMENT_DO:
+        ldv_c_backend_print (indent_level, true, "do\n");
+
+        if ((body_statement = LDV_ITERATION_STATEMENT_BODY (iteration_statement)))
+          ldv_print_statement_internal (indent_level, body_statement);
+        else
+          LDV_ERROR ("do body statement was not printed");
+
+        ldv_c_backend_print (indent_level, true, " while (");
+        ldv_c_backend_padding_cancel ();
+
+        if ((expr = LDV_ITERATION_STATEMENT_EXPR (iteration_statement)))
+          ldv_print_expr (indent_level, expr);
+        else
+          LDV_ERROR ("do condition was not printed");
+
+        ldv_c_backend_print (indent_level, false, ");");
+
+        break;
+
+      case LDV_ITERATION_STATEMENT_FOR:
+        ldv_c_backend_print (indent_level, true, "for (");
+
+        if ((for_init = LDV_ITERATION_STATEMENT_FOR_INIT(iteration_statement)))
+          ldv_print_statement_internal (indent_level, for_init);
+
+        ldv_c_backend_print (indent_level, true, ";");
+
+        if ((expr = LDV_ITERATION_STATEMENT_EXPR (iteration_statement)))
+          ldv_print_expr (indent_level, expr);
+
+        ldv_c_backend_print (indent_level, true, ";");
+
+        if ((for_expr = LDV_ITERATION_STATEMENT_FOR_EXPR (iteration_statement)))
+          ldv_print_expr (indent_level, for_expr);
+
+        ldv_c_backend_print (indent_level, true, ")\n");
+
+        if ((body_statement = LDV_ITERATION_STATEMENT_BODY (iteration_statement)))
+          ldv_print_statement_internal (indent_level, body_statement);
+        else
+          LDV_ERROR ("for body statement was not printed");
+
+        break;
+
+      default:
+        LDV_PRETTY_PRINT_ERROR (indent_level, "iteration statement was not printed");
+    }
+
+  LDV_XDELETE_ON_PRINTING (iteration_statement);
+}
+
+/*
 jump-statement:
     goto identifier ;
     continue ;
@@ -3677,6 +3764,7 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
   ldv_expr_statement_ptr expr_statement;
   ldv_selection_statement_ptr selection_statement;
   ldv_jump_statement_ptr jump_statement;
+  ldv_iteration_statement_ptr iteration_statement;
   ldv_asm_statement_ptr asm_statement;
 
   switch (LDV_STATEMENT_KIND (statement))
@@ -3714,7 +3802,10 @@ ldv_print_statement (unsigned int indent_level, ldv_statement_ptr statement)
       break;
 
     case LDV_ITERATION_STATEMENT:
-      LDV_PRETTY_PRINT_ERROR (indent_level, "iteration statement of statement was not printed");
+      if ((iteration_statement = LDV_STATEMENT_ITERATION_STATEMENT (statement)))
+        ldv_print_iteration_statement (indent_level, iteration_statement);
+      else
+        LDV_PRETTY_PRINT_ERROR (indent_level, "iteration statement of statement was not printed");
 
       break;
 
