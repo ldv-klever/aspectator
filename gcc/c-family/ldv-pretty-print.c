@@ -3210,9 +3210,9 @@ ldv_print_postfix_expr (unsigned int indent_level, ldv_postfix_expr_ptr postfix_
             LDV_PRETTY_PRINT_ERROR (indent_level, "identifier of postfix expression was not printed");
         }
       else if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_SIXTH)
-        ldv_c_backend_print (indent_level, true, "++");
+        ldv_c_backend_print (indent_level, false, "++");
       else if (LDV_POSTFIX_EXPR_KIND (postfix_expr) == LDV_POSTFIX_EXPR_SEVENTH)
-        ldv_c_backend_print (indent_level, true, "--");
+        ldv_c_backend_print (indent_level, false, "--");
       else
         {
           ldv_c_backend_print (indent_level, true, "(");
