@@ -304,6 +304,7 @@ ldv_convert_additive_expr (tree t, unsigned int recursion_limit)
     case PLUS_EXPR:
     case POINTER_PLUS_EXPR:
     case MINUS_EXPR:
+    case POINTER_DIFF_EXPR:
       if (TREE_CODE (t) == PLUS_EXPR || TREE_CODE (t) == POINTER_PLUS_EXPR)
         LDV_ADDITIVE_EXPR_KIND (additive_expr) = LDV_ADDITIVE_EXPR_SECOND;
       else
@@ -973,6 +974,7 @@ ldv_convert_assignment_operator (tree t)
         case PLUS_EXPR:
         case POINTER_PLUS_EXPR:
         case MINUS_EXPR:
+        case POINTER_DIFF_EXPR:
         case LSHIFT_EXPR:
         case RSHIFT_EXPR:
         case BIT_AND_EXPR:
@@ -1007,6 +1009,7 @@ ldv_convert_assignment_operator (tree t)
                   break;
 
                 case MINUS_EXPR:
+                case POINTER_DIFF_EXPR:
                   LDV_ASSIGNMENT_OPERATOR_KIND (assignment_operator) = LDV_ASSIGNMENT_OPERATOR_SIXTH;
                   break;
 
@@ -2804,6 +2807,12 @@ ldv_convert_expr (tree t, unsigned int recursion_limit)
       offset = build_int_cst (long_unsigned_type_node, (bitpos / size));
 
       if (!(ptr_plus = build2 (POINTER_PLUS_EXPR, cast_type, cast, offset)))
+        {
+          LDV_ERROR ("can't build cast for address");
+          break;
+        }
+
+      if (!(ptr_plus = build2 (POINTER_DIFF_EXPR, cast_type, cast, offset)))
         {
           LDV_ERROR ("can't build cast for address");
           break;
