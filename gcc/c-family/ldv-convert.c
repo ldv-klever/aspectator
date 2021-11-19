@@ -3559,7 +3559,8 @@ ldv_convert_jump_statement (tree t)
       break;
 
     case BREAK_STMT:
-      LDV_JUMP_STATEMENT_KIND (jump_statement) = LDV_JUMP_STATEMENT_BREAK;
+    case CONTINUE_STMT:
+      LDV_JUMP_STATEMENT_KIND (jump_statement) = TREE_CODE (t) == BREAK_STMT ? LDV_JUMP_STATEMENT_BREAK : LDV_JUMP_STATEMENT_CONTINUE;
       LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
 
       break;
@@ -4998,6 +4999,7 @@ ldv_convert_statement (tree t)
     case RETURN_EXPR:
     case GOTO_EXPR:
     case BREAK_STMT:
+    case CONTINUE_STMT:
       LDV_STATEMENT_KIND (statement) = LDV_JUMP_STATEMENT;
       LDV_STATEMENT_JUMP_STATEMENT (statement) = ldv_convert_jump_statement (t);
 
