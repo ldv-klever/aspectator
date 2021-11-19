@@ -47,7 +47,6 @@ $ bison ldv-aspect-parser.y
 #include "print-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "attribs.h"
 #include "stringpool.h"
 #include "tree-inline.h"
 #include "flags.h"
@@ -81,7 +80,6 @@ $ bison ldv-aspect-parser.y
 #include "langhooks-def.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
-#include "cilk.h"
 #include "builtins.h"
 #include "c/c-lang.h"
 

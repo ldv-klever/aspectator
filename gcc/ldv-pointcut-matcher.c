@@ -36,7 +36,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "print-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "attribs.h"
 #include "stringpool.h"
 #include "tree-inline.h"
 #include "flags.h"
@@ -72,7 +71,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "langhooks-def.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
-#include "cilk.h"
 #include "builtins.h"
 
 #include "ldv-advice-weaver.h"
@@ -794,7 +792,7 @@ ldv_match_expr (tree t, tree context)
             && TREE_CODE (func_called_addr) == ADDR_EXPR
             && (func_called = TREE_OPERAND (func_called_addr, 0))
             && TREE_CODE (func_called) == FUNCTION_DECL
-            && !DECL_IS_BUILTIN (func_called))
+            && !DECL_IS_UNDECLARED_BUILTIN (func_called))
             {
               /* Try to match a function declaration for a call join point. */
               func = ldv_match_func (func_called, EXPR_LINENO(t), LDV_PP_CALL);

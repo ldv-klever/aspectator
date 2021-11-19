@@ -36,7 +36,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "print-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
-#include "attribs.h"
 #include "stringpool.h"
 #include "tree-inline.h"
 #include "flags.h"
@@ -72,7 +71,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "langhooks-def.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
-#include "cilk.h"
 #include "builtins.h"
 
 #include "ldv-aspect-types.h"

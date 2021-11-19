@@ -32,7 +32,6 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "inchash.h"
 #include "tree.h"
 #include "stor-layout.h"
-#include "attribs.h"
 #include "intl.h"
 #include "c-pretty-print.h"
 #include "tree-pretty-print.h"

@@ -304,7 +304,7 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
     {
       macro_param = ldv_create_info_macro_func_param ();
       macro_param->name = ldv_create_id ();
-      macro_param_name_original = (char *) NODE_NAME (node->value.macro->params[i]);
+      macro_param_name_original = (char *) NODE_NAME (node->value.macro->parm.params[i]);
 
       /* Check the last parameter since it may be variadic and should be
        * processed respectively. */

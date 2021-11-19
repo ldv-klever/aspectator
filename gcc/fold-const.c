@@ -9434,7 +9434,7 @@ fold_unary_loc (location_t loc, enum tree_code code, tree type, tree op0)
 	  /* Omit this strange conversion since it results in
 	   * https://forge.ispras.ru/issues/7673. */
 	  if (ldv_is_c_backend_enabled ())
-	    return build1_stat_loc (loc, NOP_EXPR, type, arg0);
+	    return build1_loc (loc, NOP_EXPR, type, arg0);
 
 	  /* LDV extension end. */
 
