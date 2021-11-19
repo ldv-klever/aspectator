@@ -2511,13 +2511,13 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
   ldv_expr_ptr expr;
   ldv_location_ptr location;
 
+  if ((location = LDV_JUMP_STATEMENT_LOCATION (jump_statement)))
+    ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
+
   switch (LDV_JUMP_STATEMENT_KIND (jump_statement))
     {
       case LDV_JUMP_STATEMENT_GOTO:
       case LDV_JUMP_STATEMENT_RETURN:
-        if ((location = LDV_JUMP_STATEMENT_LOCATION (jump_statement)))
-          ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_STATEMENT, location);
-
         if (LDV_JUMP_STATEMENT_KIND (jump_statement) == LDV_JUMP_STATEMENT_GOTO)
           {
             ldv_c_backend_print (indent_level, true, "goto");
