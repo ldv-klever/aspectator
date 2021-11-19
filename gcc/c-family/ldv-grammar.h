@@ -1172,7 +1172,6 @@ enum ldv_iteration_statement_kind
 struct ldv_iteration_statement
 {
   enum ldv_iteration_statement_kind kind;
-  const char *id;
   ldv_expr_ptr expr, for_expr;
   struct ldv_statement *body, *for_init;
 
