@@ -2540,8 +2540,8 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
       case LDV_JUMP_STATEMENT_BREAK:
         ldv_c_backend_print (indent_level, true, "break");
 
-          if ((expr = LDV_JUMP_STATEMENT_EXPR (jump_statement)))
-            ldv_print_expr (indent_level, expr);
+        if ((expr = LDV_JUMP_STATEMENT_EXPR (jump_statement)))
+          ldv_print_expr (indent_level, expr);
 
         break;
 
