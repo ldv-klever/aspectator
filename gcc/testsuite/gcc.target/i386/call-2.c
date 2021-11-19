@@ -5,8 +5,8 @@
 
 /* Verify that %eax is always restored after a call.  */
 
-__attribute__((noinline, noclone)) void set_eax(int val);
-__attribute__((noinline, noclone)) void foo(int val);
-__attribute__((noinline, noclone)) int bar(int x);
+__attribute__((noipa)) void set_eax(int val);
+__attribute__((noipa)) void foo(int val);
+__attribute__((noipa)) int bar(int x);
 
 #include "call-1.c"

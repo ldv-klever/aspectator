@@ -1,13 +1,14 @@
 //===-- asan_descriptions.h -------------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
 // This file is a part of AddressSanitizer, an address sanity checker.
 //
-// ASan-private header for asan_descriptions.cc.
+// ASan-private header for asan_descriptions.cpp.
 // TODO(filcab): Most struct definitions should move to the interface headers.
 //===----------------------------------------------------------------------===//
 #ifndef ASAN_DESCRIPTIONS_H
@@ -24,19 +25,27 @@ void DescribeThread(AsanThreadContext *context);
 static inline void DescribeThread(AsanThread *t) {
   if (t) DescribeThread(t->context());
 }
-const char *ThreadNameWithParenthesis(AsanThreadContext *t, char buff[],
-                                      uptr buff_len);
-const char *ThreadNameWithParenthesis(u32 tid, char buff[], uptr buff_len);
+
+class AsanThreadIdAndName {
+ public:
+  explicit AsanThreadIdAndName(AsanThreadContext *t);
+  explicit AsanThreadIdAndName(u32 tid);
+
+  // Contains "T%tid (%name)" or "T%tid" if the name is empty.
+  const char *c_str() const { return &name[0]; }
+
+ private:
+  void Init(u32 tid, const char *tname);
+
+  char name[128];
+};
 
 class Decorator : public __sanitizer::SanitizerCommonDecorator {
  public:
   Decorator() : SanitizerCommonDecorator() {}
   const char *Access() { return Blue(); }
-  const char *EndAccess() { return Default(); }
   const char *Location() { return Green(); }
-  const char *EndLocation() { return Default(); }
   const char *Allocation() { return Magenta(); }
-  const char *EndAllocation() { return Default(); }
 
   const char *ShadowByte(u8 byte) {
     switch (byte) {
@@ -70,9 +79,6 @@ class Decorator : public __sanitizer::SanitizerCommonDecorator {
         return Default();
     }
   }
-  const char *EndShadowByte() { return Default(); }
-  const char *MemoryByte() { return Magenta(); }
-  const char *EndMemoryByte() { return Default(); }
 };
 
 enum ShadowKind : u8 {
@@ -106,6 +112,7 @@ struct ChunkAccess {
   sptr offset;
   uptr chunk_begin;
   uptr chunk_size;
+  u32 user_requested_alignment : 12;
   u32 access_type : 2;
   u32 alloc_type : 2;
 };
@@ -149,6 +156,10 @@ struct GlobalAddressDescription {
   u8 size;
 
   void Print(const char *bug_type = "") const;
+
+  // Returns true when this descriptions points inside the same global variable
+  // as other. Descriptions can have different address within the variable
+  bool PointsInsideTheSameVariable(const GlobalAddressDescription &other) const;
 };
 
 bool GetGlobalAddressInformation(uptr addr, uptr access_size,
@@ -192,7 +203,7 @@ class AddressDescription {
   AddressDescription() = default;
   // shouldLockThreadRegistry allows us to skip locking if we're sure we already
   // have done it.
-  AddressDescription(uptr addr, bool shouldLockThreadRegistry = true)
+  explicit AddressDescription(uptr addr, bool shouldLockThreadRegistry = true)
       : AddressDescription(addr, 1, shouldLockThreadRegistry) {}
   AddressDescription(uptr addr, uptr access_size,
                      bool shouldLockThreadRegistry = true);

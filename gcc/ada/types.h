@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2016, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2020, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -23,8 +23,9 @@
  *                                                                          *
  ****************************************************************************/
 
-/* This is the C file that corresponds to the Ada package spec Types. It was
-   created manually from the files types.ads and types.adb.
+/* This is the C header that corresponds to the Ada package specification for
+   Types.  It was created manually from types.ads and must be kept synchronized
+   with changes in this file.
 
    This package contains host independent type definitions which are used
    throughout the compiler modules. The comments in the C version are brief
@@ -97,7 +98,7 @@ typedef struct { const char *Array; String_Template *Bounds; }
    inlined stuff IN the C header changes the dependencies.  Both sinfo.h
    and einfo.h now reference routines defined in tree.h.
 
-   Note: these types would more naturally be defined as unsigned  char, but
+   Note: these types would more naturally be defined as unsigned char, but
    once again, the annoying restriction on bit fields for some compilers
    bites us!  */
 
@@ -138,38 +139,43 @@ typedef Text_Ptr Source_Ptr;
 /* Used for Sloc in all nodes in the representation of package Standard.  */
 #define Standard_Location -2
 
-/* Instance identifiers */
+/* Convention identifiers.  */
+typedef Byte Convention_Id;
+
+/* Instance identifiers.  */
 typedef Nat Instance_Id;
 
-/* Type used for union of all possible ID values covering all ranges */
+/* Type used for union of all possible ID values covering all ranges.  */
 typedef int Union_Id;
 
 /* Range definitions for Tree Data:  */
 
-#define List_Low_Bound		-100000000
+#define List_Low_Bound		-99999999
 #define List_High_Bound		0
 
 #define Node_Low_Bound		0
-#define Node_High_Bound		99999999
+#define Node_High_Bound		1999999999
+/* Above is the correct value of Node_High_Bound for 64-bit machines. It is
+   wrong for 32-bit machines, but that doesn't matter. */
 
-#define Elist_Low_Bound		100000000
-#define Elist_High_Bound	199999999
+#define Elist_Low_Bound		-199999999
+#define Elist_High_Bound	-100000000
 
-#define Elmt_Low_Bound		200000000
-#define Elmt_High_Bound		299999999
+#define Elmt_Low_Bound		-299999999
+#define Elmt_High_Bound		-200000000
 
-#define Names_Low_Bound		300000000
-#define Names_High_Bound	399999999
+#define Names_Low_Bound		-399999999
+#define Names_High_Bound	-300000000
 
-#define Strings_Low_Bound	400000000
-#define Strings_High_Bound	499999999
+#define Strings_Low_Bound	-499999999
+#define Strings_High_Bound	-400000000
 
-#define Ureal_Low_Bound		500000000
-#define Ureal_High_Bound        599999999
+#define Ureal_Low_Bound		-599999999
+#define Ureal_High_Bound        -500000000
 
-#define Uint_Low_Bound		600000000
-#define Uint_Table_Start        2000000000
-#define Uint_High_Bound	        2099999999
+#define Uint_Low_Bound		-2100000000
+#define Uint_Table_Start        -699999999
+#define Uint_High_Bound	        -600000000
 
 SUBTYPE (List_Range,      Int, List_Low_Bound,    List_High_Bound)
 SUBTYPE (Node_Range,      Int, Node_Low_Bound,    Node_High_Bound)
@@ -306,6 +312,9 @@ typedef Int Unit_Number_Type;
 /* Unit number value for main unit.  */
 #define Main_Unit 0
 
+/* Type used to index the source file table.  */
+typedef Nat Source_File_Index;
+
 /* Type used for lines table.  */
 typedef Source_Ptr *Lines_Table_Type;
 
@@ -373,6 +382,7 @@ typedef Int Mechanism_Type;
 #define PE_Aliased_Parameters              17
 #define PE_All_Guards_Closed               18
 #define PE_Bad_Predicated_Generic_Type     19
+#define PE_Build_In_Place_Mismatch         37
 #define PE_Current_Task_In_Entry_Body      20
 #define PE_Duplicated_Entry_Address        21
 #define PE_Explicit_Raise                  22
@@ -392,4 +402,4 @@ typedef Int Mechanism_Type;
 #define SE_Infinite_Recursion              34
 #define SE_Object_Too_Large                35
 
-#define LAST_REASON_CODE                   36
+#define LAST_REASON_CODE                   37

@@ -1,3 +1,5 @@
+! { dg-do run }
+!
 program subarrays
   integer, parameter     :: n = 20, c = 10
   integer                :: i, a(n), b(n)
@@ -32,7 +34,7 @@ program subarrays
   !$acc end parallel
 
   do i = 1, n
-     if (a(i) .ne. b(i)) call abort
+     if (a(i) .ne. b(i)) STOP 1
   end do
   call check (a, b, n)
 
@@ -92,6 +94,6 @@ subroutine check (a, b, n)
   integer :: i
 
   do i = 1, n
-     if (a(i) .ne. b(i)) call abort
+     if (a(i) .ne. b(i)) STOP 2
   end do
 end subroutine check

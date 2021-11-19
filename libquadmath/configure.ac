@@ -1,7 +1,6 @@
 # Process this file with autoconf to produce a configure script, like so:
 # aclocal && autoconf && autoheader && automake
 
-AC_PREREQ(2.64)
 AC_INIT([GCC Quad-precision Math Library], 0.1,,[libquadmath])
 AC_CONFIG_HEADER(config.h)
 
@@ -83,6 +82,8 @@ if test "x$GCC" != "xyes"; then
 fi
 AC_PROG_CPP
 
+GCC_WITH_TOOLEXECLIBDIR
+
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
 case ${version_specific_libs} in
@@ -98,7 +99,14 @@ case ${version_specific_libs} in
        test x"$with_cross_host" != x"no"; then
       # Install a library built with a cross compiler in tooldir, not libdir.
       toolexecdir='$(exec_prefix)/$(target_alias)'
-      toolexeclibdir='$(toolexecdir)/lib'
+      case ${with_toolexeclibdir} in
+	no)
+	  toolexeclibdir='$(toolexecdir)/lib'
+	  ;;
+	*)
+	  toolexeclibdir=${with_toolexeclibdir}
+	  ;;
+      esac
     else
       toolexecdir='$(libdir)/gcc-lib/$(target_alias)'
       toolexeclibdir='$(libdir)'
@@ -210,7 +218,11 @@ AM_CONDITIONAL(LIBQUAD_USE_SYMVER_SUN, [test "x$quadmath_use_symver" = xsun])
 
 AC_CACHE_CHECK([whether __float128 is supported], [libquad_cv_have_float128],
   [GCC_TRY_COMPILE_OR_LINK([
+    #if (!defined(_ARCH_PPC)) || defined(__LONG_DOUBLE_IEEE128__)
     typedef _Complex float __attribute__((mode(TC))) __complex128;
+    #else
+    typedef _Complex float __attribute__((mode(KC))) __complex128;
+    #endif
 
     __float128 foo (__float128 x)
     {
@@ -336,6 +348,11 @@ AC_MSG_RESULT($quadmath_use_i18n_number_h)
 if test x$quadmath_use_i18n_number_h = xyes; then
   AC_DEFINE([USE_I18N_NUMBER_H],[1],[whether i18n number rewriting can be supported])
 fi
+
+# Add CET specific flags if CET is enabled
+GCC_CET_FLAGS(CET_FLAGS)
+XCFLAGS="$XCFLAGS $CET_FLAGS"
+AC_SUBST(XCFLAGS)
 
 AC_CACHE_SAVE
 

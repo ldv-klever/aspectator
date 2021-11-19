@@ -1,6 +1,6 @@
 // class template regex -*- C++ -*-
 
-// Copyright (C) 2013-2017 Free Software Foundation, Inc.
+// Copyright (C) 2013-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -30,8 +30,9 @@
 
 // FIXME make comments doxygen format.
 
+/*
 // This compiler refers to "Regular Expression Matching Can Be Simple And Fast"
-// (http://swtch.com/~rsc/regexp/regexp1.html"),
+// (http://swtch.com/~rsc/regexp/regexp1.html),
 // but doesn't strictly follow it.
 //
 // When compiling, states are *chained* instead of tree- or graph-constructed.
@@ -51,14 +52,15 @@
 // article.
 //
 // That's why we introduced dummy node here ------ "end_tag" is a dummy node.
-// All dummy node will be eliminated at the end of compiling process.
+// All dummy nodes will be eliminated at the end of compilation.
+*/
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
-namespace __detail
-{
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
+namespace __detail
+{
   template<typename _TraitsT>
     _Compiler<_TraitsT>::
     _Compiler(_IterT __b, _IterT __e,
@@ -231,16 +233,16 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  _StateSeqT __e(*_M_nfa, _M_nfa->_M_insert_dummy());
 	  long __min_rep = _M_cur_int_value(10);
 	  bool __infi = false;
-	  long __n;
+	  long __n = 0;
 
 	  // {3
 	  if (_M_match_token(_ScannerT::_S_token_comma))
-	    if (_M_match_token(_ScannerT::_S_token_dup_count)) // {3,7}
-	      __n = _M_cur_int_value(10) - __min_rep;
-	    else
-	      __infi = true;
-	  else
-	    __n = 0;
+	    {
+	      if (_M_match_token(_ScannerT::_S_token_dup_count)) // {3,7}
+		__n = _M_cur_int_value(10) - __min_rep;
+	      else
+		__infi = true;
+	    }
 	  if (!_M_match_token(_ScannerT::_S_token_interval_end))
 	    __throw_regex_error(regex_constants::error_brace,
 				"Unexpected end of brace expression.");
@@ -292,19 +294,19 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       return true;
     }
 
-#define __INSERT_REGEX_MATCHER(__func, args...)\
-	do\
+#define __INSERT_REGEX_MATCHER(__func, ...)\
+	do {\
 	  if (!(_M_flags & regex_constants::icase))\
 	    if (!(_M_flags & regex_constants::collate))\
-	      __func<false, false>(args);\
+	      __func<false, false>(__VA_ARGS__);\
 	    else\
-	      __func<false, true>(args);\
+	      __func<false, true>(__VA_ARGS__);\
 	  else\
 	    if (!(_M_flags & regex_constants::collate))\
-	      __func<true, false>(args);\
+	      __func<true, false>(__VA_ARGS__);\
 	    else\
-	      __func<true, true>(args);\
-	while (false)
+	      __func<true, true>(__VA_ARGS__);\
+	} while (false)
 
   template<typename _TraitsT>
     bool
@@ -633,7 +635,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	return false;
       }() ^ _M_is_non_matching;
     }
+} // namespace __detail
 
 _GLIBCXX_END_NAMESPACE_VERSION
-} // namespace __detail
 } // namespace

@@ -1,5 +1,5 @@
 /* Exported functions from emit-rtl.c
-   Copyright (C) 2004-2017 Free Software Foundation, Inc.
+   Copyright (C) 2004-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,20 +20,22 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_EMIT_RTL_H
 #define GCC_EMIT_RTL_H
 
-struct temp_slot;
-typedef struct temp_slot *temp_slot_p;
+class temp_slot;
+typedef class temp_slot *temp_slot_p;
+class predefined_function_abi;
+namespace rtl_ssa { class function_info; }
 
 /* Information mainlined about RTL representation of incoming arguments.  */
 struct GTY(()) incoming_args {
   /* Number of bytes of args popped by function being compiled on its return.
      Zero if no bytes are to be popped.
      May affect compilation of return insn or of function epilogue.  */
-  int pops_args;
+  poly_int64_pod pops_args;
 
   /* If function's args have a fixed size, this is that size, in bytes.
      Otherwise, it is -1.
      May affect compilation of return insn or of function epilogue.  */
-  int size;
+  poly_int64_pod size;
 
   /* # bytes the prologue should push and pretend that the caller pushed them.
      The prologue must do this, but only if parms can be passed in
@@ -64,20 +66,27 @@ struct GTY(()) rtl_data {
   struct function_subsections subsections;
   struct rtl_eh eh;
 
+  /* The ABI of the function, i.e. the interface it presents to its callers.
+     This is the ABI that should be queried to see which registers the
+     function needs to save before it uses them.
+
+     Other functions (including those called by this function) might use
+     different ABIs.  */
+  const predefined_function_abi *GTY((skip)) abi;
+
+  rtl_ssa::function_info *GTY((skip)) ssa;
+
   /* For function.c  */
 
   /* # of bytes of outgoing arguments.  If ACCUMULATE_OUTGOING_ARGS is
      defined, the needed space is pushed by the prologue.  */
-  int outgoing_args_size;
+  poly_int64_pod outgoing_args_size;
 
   /* If nonzero, an RTL expression for the location at which the current
      function returns its result.  If the current function returns its
      result in a register, current_function_return_rtx will always be
      the hard register containing the result.  */
   rtx return_rtx;
-  /* If nonxero, an RTL expression for the lcoation at which the current
-     function returns bounds for its result.  */
-  rtx return_bnd;
 
   /* Vector of initial-value pairs.  Each pair consists of a pseudo
      register of approprite mode that stores the initial value a hard
@@ -89,6 +98,10 @@ struct GTY(()) rtl_data {
   /* A variable living at the top of the frame that holds a known value.
      Used for detecting stack clobbers.  */
   tree stack_protect_guard;
+
+  /* The __stack_chk_guard variable or expression holding the stack
+     protector canary value.  */
+  tree stack_protect_guard_decl;
 
   /* List (chain of INSN_LIST) of labels heading the current handlers for
      nonlocal gotos.  */
@@ -109,7 +122,7 @@ struct GTY(()) rtl_data {
   vec<rtx, va_gc> *x_stack_slot_list;
 
   /* List of empty areas in the stack frame.  */
-  struct frame_space *frame_space_list;
+  class frame_space *frame_space_list;
 
   /* Place after which to insert the tail_recursion_label if we need one.  */
   rtx_note *x_stack_check_probe_note;
@@ -126,7 +139,7 @@ struct GTY(()) rtl_data {
   /* Offset to end of allocated area of stack frame.
      If stack grows down, this is the address of the last stack slot allocated.
      If stack grows up, this is the address for the next slot.  */
-  HOST_WIDE_INT x_frame_offset;
+  poly_int64_pod x_frame_offset;
 
   /* Insn after which register parms and SAVE_EXPRs are born, if nonopt.  */
   rtx_insn *x_parm_birth_insn;
@@ -135,7 +148,7 @@ struct GTY(()) rtl_data {
   vec<temp_slot_p, va_gc> *x_used_temp_slots;
 
   /* List of available temp slots.  */
-  struct temp_slot *x_avail_temp_slots;
+  class temp_slot *x_avail_temp_slots;
 
   /* Current nesting level for temporaries.  */
   int x_temp_slot_level;
@@ -162,6 +175,12 @@ struct GTY(()) rtl_data {
      3. Alignment of non-local stack variables but might be spilled in
         local stack.  */
   unsigned int stack_alignment_estimated;
+
+  /* How many NOP insns to place at each function entry by default.  */
+  unsigned short patch_area_size;
+
+  /* How far the real asm entry point is into this area.  */
+  unsigned short patch_area_entry;
 
   /* For reorg.  */
 
@@ -248,7 +267,7 @@ struct GTY(()) rtl_data {
   /* True if dbr_schedule has already been called for this function.  */
   bool dbr_scheduled_p;
 
-  /* True if current function can not throw.  Unlike
+  /* True if current function cannot throw.  Unlike
      TREE_NOTHROW (current_function_decl) it is set even for overwritable
      function where currently compiled version of it is nothrow.  */
   bool nothrow;
@@ -265,9 +284,12 @@ struct GTY(()) rtl_data {
      pass_stack_ptr_mod has run.  */
   bool sp_is_unchanging;
 
+  /* True if the stack pointer is clobbered by asm statement.  */
+  bool sp_is_clobbered_by_asm;
+
   /* Nonzero if function being compiled doesn't contain any calls
      (ignoring the prologue and epilogue).  This is set prior to
-     local register allocation and is valid for the remaining
+     register allocation in IRA and is valid for the remaining
      compiler passes.  */
   bool is_leaf;
 
@@ -290,6 +312,9 @@ struct GTY(()) rtl_data {
      to eliminable regs (like the frame pointer) are set if an asm
      sets them.  */
   HARD_REG_SET asm_clobbers;
+
+  /* All hard registers that need to be zeroed at the return of the routine.  */
+  HARD_REG_SET must_be_zero_on_return;
 
   /* The highest address seen during shorten_branches.  */
   int max_insn_address;
@@ -318,7 +343,7 @@ extern GTY(()) struct rtl_data x_rtl;
 #define crtl (&x_rtl)
 
 /* Return whether two MEM_ATTRs are equal.  */
-bool mem_attrs_eq_p (const struct mem_attrs *, const struct mem_attrs *);
+bool mem_attrs_eq_p (const class mem_attrs *, const class mem_attrs *);
 
 /* Set the alias set of MEM to SET.  */
 extern void set_mem_alias_set (rtx, alias_set_type);
@@ -333,13 +358,13 @@ extern void set_mem_addr_space (rtx, addr_space_t);
 extern void set_mem_expr (rtx, tree);
 
 /* Set the offset for MEM to OFFSET.  */
-extern void set_mem_offset (rtx, HOST_WIDE_INT);
+extern void set_mem_offset (rtx, poly_int64);
 
 /* Clear the offset recorded for MEM.  */
 extern void clear_mem_offset (rtx);
 
 /* Set the size for MEM to SIZE.  */
-extern void set_mem_size (rtx, HOST_WIDE_INT);
+extern void set_mem_size (rtx, poly_int64);
 
 /* Clear the size recorded for MEM.  */
 extern void clear_mem_size (rtx);
@@ -362,13 +387,14 @@ extern rtvec gen_rtvec (int, ...);
 extern rtx copy_insn_1 (rtx);
 extern rtx copy_insn (rtx);
 extern rtx_insn *copy_delay_slot_insn (rtx_insn *);
-extern rtx gen_int_mode (HOST_WIDE_INT, machine_mode);
+extern rtx gen_int_mode (poly_int64, machine_mode);
 extern rtx_insn *emit_copy_of_insn_after (rtx_insn *, rtx_insn *);
 extern void set_reg_attrs_from_value (rtx, rtx);
 extern void set_reg_attrs_for_parm (rtx, rtx);
 extern void set_reg_attrs_for_decl_rtl (tree t, rtx x);
 extern void adjust_reg_mode (rtx, machine_mode);
 extern int mem_expr_equal_p (const_tree, const_tree);
+extern rtx gen_int_shift_amount (machine_mode, poly_int64);
 
 extern bool need_atomic_barrier_p (enum memmodel, bool);
 
@@ -438,6 +464,13 @@ get_max_uid (void)
   return crtl->emit.x_cur_insn_uid;
 }
 
+extern bool valid_for_const_vector_p (machine_mode, rtx);
+extern rtx gen_const_vec_duplicate (machine_mode, rtx);
+extern rtx gen_vec_duplicate (machine_mode, rtx);
+
+extern rtx gen_const_vec_series (machine_mode, rtx, rtx);
+extern rtx gen_vec_series (machine_mode, rtx, rtx);
+
 extern void set_decl_incoming_rtl (tree, rtx, bool);
 
 /* Return a memory reference like MEMREF, but with its mode changed
@@ -481,10 +514,10 @@ extern rtx change_address (rtx, machine_mode, rtx);
 #define adjust_automodify_address_nv(MEMREF, MODE, ADDR, OFFSET) \
   adjust_automodify_address_1 (MEMREF, MODE, ADDR, OFFSET, 0)
 
-extern rtx adjust_address_1 (rtx, machine_mode, HOST_WIDE_INT, int, int,
-			     int, HOST_WIDE_INT);
+extern rtx adjust_address_1 (rtx, machine_mode, poly_int64, int, int,
+			     int, poly_int64);
 extern rtx adjust_automodify_address_1 (rtx, machine_mode, rtx,
-					HOST_WIDE_INT, int);
+					poly_int64, int);
 
 /* Return a memory reference like MEMREF, but whose address is changed by
    adding OFFSET, an RTX, to it.  POW2 is the highest power of two factor
@@ -499,7 +532,7 @@ extern void set_mem_attributes (rtx, tree, int);
 /* Similar, except that BITPOS has not yet been applied to REF, so if
    we alter MEM_OFFSET according to T then we should subtract BITPOS
    expecting that it'll be added back in later.  */
-extern void set_mem_attributes_minus_bitpos (rtx, tree, int, HOST_WIDE_INT);
+extern void set_mem_attributes_minus_bitpos (rtx, tree, int, poly_int64);
 
 /* Return OFFSET if XEXP (MEM, 0) - OFFSET is known to be ALIGN
    bits aligned for 0 <= OFFSET < ALIGN / BITS_PER_UNIT, or
@@ -508,7 +541,7 @@ extern int get_mem_align_offset (rtx, unsigned int);
 
 /* Return a memory reference like MEMREF, but with its mode widened to
    MODE and adjusted by OFFSET.  */
-extern rtx widen_memory_access (rtx, machine_mode, HOST_WIDE_INT);
+extern rtx widen_memory_access (rtx, machine_mode, poly_int64);
 
 extern void maybe_set_max_label_num (rtx_code_label *x);
 

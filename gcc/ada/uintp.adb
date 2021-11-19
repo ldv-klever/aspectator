@@ -6,31 +6,24 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
 -- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
---                                                                          --
--- As a special exception under Section 7 of GPL version 3, you are granted --
--- additional permissions described in the GCC Runtime Library Exception,   --
--- version 3.1, as published by the Free Software Foundation.               --
---                                                                          --
--- You should have received a copy of the GNU General Public License and    --
--- a copy of the GCC Runtime Library Exception along with this program;     --
--- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
--- <http://www.gnu.org/licenses/>.                                          --
+-- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
+-- for  more details.  You should have  received  a copy of the GNU General --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Output;  use Output;
-with Tree_IO; use Tree_IO;
+with Output; use Output;
 
 with GNAT.HTable; use GNAT.HTable;
 
@@ -50,16 +43,16 @@ package body Uintp is
    Uint_Int_Last : Uint;
    --  Uint value containing Int'Last value set by Initialize
 
-   UI_Power_2 : array (Int range 0 .. 64) of Uint;
+   UI_Power_2 : array (Int range 0 .. 128) of Uint;
    --  This table is used to memoize exponentiations by powers of 2. The Nth
-   --  entry, if set, contains the Uint value 2 ** N. Initially UI_Power_2_Set
+   --  entry, if set, contains the Uint value 2**N. Initially UI_Power_2_Set
    --  is zero and only the 0'th entry is set, the invariant being that all
    --  entries in the range 0 .. UI_Power_2_Set are initialized.
 
    UI_Power_2_Set : Nat;
    --  Number of entries set in UI_Power_2;
 
-   UI_Power_10 : array (Int range 0 .. 64) of Uint;
+   UI_Power_10 : array (Int range 0 .. 128) of Uint;
    --  This table is used to memoize exponentiations by powers of 10 in the
    --  same manner as described above for UI_Power_2.
 
@@ -149,9 +142,9 @@ package body Uintp is
       Left_Hat  : out Int;
       Right_Hat : out Int);
    --  Returns leading two significant digits from the given pair of Uint's.
-   --  Mathematically: returns Left / (Base ** K) and Right / (Base ** K) where
+   --  Mathematically: returns Left / (Base**K) and Right / (Base**K) where
    --  K is as small as possible S.T. Right_Hat < Base * Base. It is required
-   --  that Left > Right for the algorithm to work.
+   --  that Left >= Right for the algorithm to work.
 
    function N_Digits (Input : Uint) return Int;
    pragma Inline (N_Digits);
@@ -264,7 +257,7 @@ package body Uintp is
       -------------------
 
       function Better_In_Hex return Boolean is
-         T16 : constant Uint := Uint_2 ** Int'(16);
+         T16 : constant Uint := Uint_2**Int'(16);
          A   : Uint;
 
       begin
@@ -506,6 +499,7 @@ package body Uintp is
       pragma Assert (Left >= Right);
 
       if Direct (Left) then
+         pragma Assert (Direct (Right));
          Left_Hat  := Direct_Val (Left);
          Right_Hat := Direct_Val (Right);
          return;
@@ -533,7 +527,7 @@ package body Uintp is
 
       begin
          if Direct (Right) then
-            T := Direct_Val (Left);
+            T := Direct_Val (Right);
             R1 := abs (T / Base);
             R2 := T rem Base;
             Length_R := 2;
@@ -714,58 +708,6 @@ package body Uintp is
          end;
       end if;
    end Release_And_Save;
-
-   ---------------
-   -- Tree_Read --
-   ---------------
-
-   procedure Tree_Read is
-   begin
-      Uints.Tree_Read;
-      Udigits.Tree_Read;
-
-      Tree_Read_Int (Int (Uint_Int_First));
-      Tree_Read_Int (Int (Uint_Int_Last));
-      Tree_Read_Int (UI_Power_2_Set);
-      Tree_Read_Int (UI_Power_10_Set);
-      Tree_Read_Int (Int (Uints_Min));
-      Tree_Read_Int (Udigits_Min);
-
-      for J in 0 .. UI_Power_2_Set loop
-         Tree_Read_Int (Int (UI_Power_2 (J)));
-      end loop;
-
-      for J in 0 .. UI_Power_10_Set loop
-         Tree_Read_Int (Int (UI_Power_10 (J)));
-      end loop;
-
-   end Tree_Read;
-
-   ----------------
-   -- Tree_Write --
-   ----------------
-
-   procedure Tree_Write is
-   begin
-      Uints.Tree_Write;
-      Udigits.Tree_Write;
-
-      Tree_Write_Int (Int (Uint_Int_First));
-      Tree_Write_Int (Int (Uint_Int_Last));
-      Tree_Write_Int (UI_Power_2_Set);
-      Tree_Write_Int (UI_Power_10_Set);
-      Tree_Write_Int (Int (Uints_Min));
-      Tree_Write_Int (Udigits_Min);
-
-      for J in 0 .. UI_Power_2_Set loop
-         Tree_Write_Int (Int (UI_Power_2 (J)));
-      end loop;
-
-      for J in 0 .. UI_Power_10_Set loop
-         Tree_Write_Int (Int (UI_Power_10 (J)));
-      end loop;
-
-   end Tree_Write;
 
    -------------
    -- UI_Abs --
@@ -1293,6 +1235,7 @@ package body Uintp is
                   Discard_Int : Int;
                   pragma Warnings (Off, Discard_Int);
                begin
+                  pragma Assert (D /= Int'(0));
                   UI_Div_Vector
                     (Dividend (Dividend'Last - R_Length + 1 .. Dividend'Last),
                      D,
@@ -1368,9 +1311,9 @@ package body Uintp is
 
       --  Cases which can be done by table lookup
 
-      elsif Right <= Uint_64 then
+      elsif Right <= Uint_128 then
 
-         --  2 ** N for N in 2 .. 64
+         --  2**N for N in 2 .. 128
 
          if Left = Uint_2 then
             declare
@@ -1390,7 +1333,7 @@ package body Uintp is
                return UI_Power_2 (Right_Int);
             end;
 
-         --  10 ** N for N in 2 .. 64
+         --  10**N for N in 2 .. 128
 
          elsif Left = Uint_10 then
             declare
@@ -1491,6 +1434,49 @@ package body Uintp is
       end;
    end UI_From_Int;
 
+   ----------------------
+   -- UI_From_Integral --
+   ----------------------
+
+   function UI_From_Integral (Input : In_T) return Uint is
+   begin
+      --  If in range of our normal conversion function, use it so we can use
+      --  direct access and our cache.
+
+      if In_T'Size <= Int'Size
+        or else Input in In_T (Int'First) .. In_T (Int'Last)
+      then
+         return UI_From_Int (Int (Input));
+
+      else
+         --  For values of larger magnitude, compute digits into a vector and
+         --  call Vector_To_Uint.
+
+         declare
+            Max_For_In_T : constant Int  := 3 * In_T'Size / Int'Size;
+            Our_Base     : constant In_T := In_T (Base);
+            Temp_Integer : In_T := Input;
+            --  Base is defined so that 3 Uint digits is sufficient to hold the
+            --  largest possible Int value.
+
+            U : Uint;
+            V : UI_Vector (1 .. Max_For_In_T);
+
+         begin
+            for J in reverse V'Range loop
+               V (J) := Int (abs (Temp_Integer rem Our_Base));
+               Temp_Integer := Temp_Integer / Our_Base;
+            end loop;
+
+            U := Vector_To_Uint (V, Input < 0);
+            Uints_Min := Uints.Last;
+            Udigits_Min := Udigits.Last;
+
+            return U;
+         end;
+      end if;
+   end UI_From_Integral;
+
    ------------
    -- UI_GCD --
    ------------
@@ -1584,20 +1570,6 @@ package body Uintp is
 
          else
             --  Use prior single precision steps to compute this Euclid step
-
-            --  For constructs such as:
-            --  sqrt_2: constant := 1.41421_35623_73095_04880_16887_24209_698;
-            --  sqrt_eps: constant long_float := long_float( 1.0 / sqrt_2)
-            --    ** long_float'machine_mantissa;
-            --
-            --  we spend 80% of our time working on this step. Perhaps we need
-            --  a special case Int / Uint dot product to speed things up. ???
-
-            --  Alternatively we could increase the single precision iterations
-            --  to handle Uint's of some small size ( <5 digits?). Then we
-            --  would have more iterations on small Uint. On the code above, we
-            --  only get 5 (on average) single precision iterations per large
-            --  iteration. ???
 
             Tmp_UI := (UI_From_Int (A) * U) + (UI_From_Int (B) * V);
             V := (UI_From_Int (C) * U) + (UI_From_Int (D) * V);

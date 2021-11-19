@@ -21,8 +21,8 @@
   thr(1) = thr(1) + 1
   i = i + 1
 !$omp end parallel
-  if (l) call abort
-  if (thr(1).ne.14) call abort
-  if (s(1).ne.1+i) call abort
-  if (u(1).ne.14) call abort
+  if (l) stop 1
+  if (thr(1).ne.14) stop 2
+  if (s(1).ne.1+i) stop 3
+  if (u(1).ne.14) stop 4
 end

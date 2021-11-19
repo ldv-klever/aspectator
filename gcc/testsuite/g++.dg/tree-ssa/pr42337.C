@@ -1,6 +1,6 @@
 // PR tree-optimize/42337
 // { dg-do compile }
-// { dg-options "-O2" }
+// { dg-options "-O2 -Wno-return-type" }
 
 template<class _T1, class _T2> struct pair {
   _T2 second;

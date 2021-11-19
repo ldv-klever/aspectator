@@ -1,7 +1,8 @@
 //===-- sanitizer_interface_internal.h --------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -45,8 +46,17 @@ extern "C" {
   void __sanitizer_report_error_summary(const char *error_summary);
 
   SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_cov_dump();
-  SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_cov_init();
+  SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_dump_coverage(
+      const __sanitizer::uptr *pcs, const __sanitizer::uptr len);
+  SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_dump_trace_pc_guard_coverage();
+
   SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_cov(__sanitizer::u32 *guard);
+
+  // Returns 1 on the first call, then returns 0 thereafter.  Called by the tool
+  // to ensure only one report is printed when multiple errors occur
+  // simultaneously.
+  SANITIZER_INTERFACE_ATTRIBUTE int __sanitizer_acquire_crash_state();
+
   SANITIZER_INTERFACE_ATTRIBUTE
   void __sanitizer_annotate_contiguous_container(const void *beg,
                                                  const void *end,
@@ -58,6 +68,51 @@ extern "C" {
   SANITIZER_INTERFACE_ATTRIBUTE
   const void *__sanitizer_contiguous_container_find_bad_address(
       const void *beg, const void *mid, const void *end);
-  } // extern "C"
+
+  SANITIZER_INTERFACE_ATTRIBUTE
+  int __sanitizer_get_module_and_offset_for_pc(
+      __sanitizer::uptr pc, char *module_path,
+      __sanitizer::uptr module_path_len, __sanitizer::uptr *pc_offset);
+
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_cmp();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_cmp1();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_cmp2();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_cmp4();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_cmp8();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_const_cmp1();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_const_cmp2();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_const_cmp4();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_const_cmp8();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_switch();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_div4();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_div8();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_gep();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_pc_indir();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_pc_guard(__sanitizer::u32*);
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_trace_pc_guard_init(__sanitizer::u32*,
+                                           __sanitizer::u32*);
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+  void __sanitizer_cov_8bit_counters_init();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void
+  __sanitizer_cov_bool_flag_init();
+  SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void
+  __sanitizer_cov_pcs_init();
+} // extern "C"
 
 #endif  // SANITIZER_INTERFACE_INTERNAL_H

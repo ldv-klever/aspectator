@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,19 +23,21 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Binderr;  use Binderr;
-with Butil;    use Butil;
-with Debug;    use Debug;
-with Fname;    use Fname;
-with Opt;      use Opt;
+with Binderr; use Binderr;
+with Butil;   use Butil;
+with Debug;   use Debug;
+with Fname;   use Fname;
+with Opt;     use Opt;
 with Osint;
-with Output;   use Output;
+with Output;  use Output;
 with Table;
+with Types;   use Types;
 
 with System.Case_Util; use System.Case_Util;
-with System.OS_Lib;
+with System.HTable;
 
 package body Binde is
+   use Unit_Id_Tables;
 
    --  We now have Elab_New, a new elaboration-order algorithm.
    --
@@ -112,7 +114,7 @@ package body Binde is
       --  elaborated before After is elaborated.
 
       Forced,
-      --  Before and After come from a pair of lines in the forced elaboration
+      --  Before and After come from a pair of lines in the forced-elaboration-
       --  order file.
 
       Elab,
@@ -229,7 +231,7 @@ package body Binde is
       --  Used in computing transitive closure for Elaborate_All and also in
       --  locating cycles and paths in the diagnose routines.
 
-      Elab_Position : Natural;
+      Elab_Position : Nat;
       --  Initialized to zero. Set non-zero when a unit is chosen and placed in
       --  the elaboration order. The value represents the ordinal position in
       --  the elaboration order.
@@ -279,8 +281,11 @@ package body Binde is
    --  Current unit, set by Gather_Dependencies, and picked up in Build_Link to
    --  set the Reason_Unit field of the created dependency link.
 
-   Num_Chosen : Natural;
+   Num_Chosen : Nat;
    --  Number of units chosen in the elaboration order so far
+
+   Diagnose_Elaboration_Problem_Called : Boolean := False;
+   --  True if Diagnose_Elaboration_Problem was called. Used in an assertion.
 
    -----------------------
    -- Local Subprograms --
@@ -329,7 +334,10 @@ package body Binde is
    --  the reason for the link is R. Ea_Id is the contents to be placed in the
    --  Elab_All_Link of the entry.
 
-   procedure Choose (Elab_Order : in out Unit_Id_Table; Chosen : Unit_Id);
+   procedure Choose
+     (Elab_Order : in out Unit_Id_Table;
+      Chosen     : Unit_Id;
+      Msg        : String);
    --  Chosen is the next entry chosen in the elaboration order. This procedure
    --  updates all data structures appropriately.
 
@@ -347,6 +355,7 @@ package body Binde is
 
    procedure Diagnose_Elaboration_Problem
      (Elab_Order : in out Unit_Id_Table);
+   pragma No_Return (Diagnose_Elaboration_Problem);
    --  Called when no elaboration order can be found. Outputs an appropriate
    --  diagnosis of the problem, and then abandons the bind.
 
@@ -372,7 +381,7 @@ package body Binde is
    --  "$ must be elaborated before $ ..." where ... is the reason.
 
    procedure Force_Elab_Order;
-   --  Gather dependencies from the forced elaboration order file (-f switch)
+   --  Gather dependencies from the forced-elaboration-order file (-f switch)
 
    procedure Gather_Dependencies;
    --  Compute dependencies, building the Succ and UNR tables
@@ -426,9 +435,9 @@ package body Binde is
 
       procedure Find_Elab_Order (Elab_Order : out Unit_Id_Table);
 
-      Illegal_Elab_All : Boolean := False;
-      --  Set true if Find_Elab_Order found an illegal pragma Elaborate_All
-      --  (explicit or implicit).
+      Elab_Cycle_Found : Boolean := False;
+      --  Set True if Find_Elab_Order found a cycle (usually an illegal pragma
+      --  Elaborate_All, explicit or implicit).
 
       function SCC (U : Unit_Id) return Unit_Id;
       --  The root of the strongly connected component containing U
@@ -984,7 +993,11 @@ package body Binde is
    -- Choose --
    ------------
 
-   procedure Choose (Elab_Order : in out Unit_Id_Table; Chosen : Unit_Id) is
+   procedure Choose
+     (Elab_Order : in out Unit_Id_Table;
+      Chosen     : Unit_Id;
+      Msg        : String)
+   is
       pragma Assert (Chosen /= No_Unit_Id);
       S : Successor_Id;
       U : Unit_Id;
@@ -993,7 +1006,7 @@ package body Binde is
       if Debug_Flag_C then
          Write_Str ("Choosing Unit ");
          Write_Unit_Name (Units.Table (Chosen).Uname);
-         Write_Eol;
+         Write_Str (Msg);
       end if;
 
       --  We shouldn't be choosing something with unelaborated predecessors,
@@ -1020,28 +1033,31 @@ package body Binde is
 
       if No_Pred = Chosen then
          No_Pred := UNR.Table (Chosen).Nextnp;
-
       else
-         --  Note that we just ignore the situation where it does not
-         --  appear in the No_Pred list, this happens in calls from the
-         --  Diagnose_Elaboration_Problem routine, where cycles are being
-         --  removed arbitrarily from the graph.
-
          U := No_Pred;
          while U /= No_Unit_Id loop
             if UNR.Table (U).Nextnp = Chosen then
                UNR.Table (U).Nextnp := UNR.Table (Chosen).Nextnp;
-               exit;
+               goto Done_Removal;
             end if;
 
             U := UNR.Table (U).Nextnp;
          end loop;
+
+         --  Here if we didn't find it on the No_Pred list. This can happen
+         --  only in calls from the Diagnose_Elaboration_Problem routine,
+         --  where cycles are being removed arbitrarily from the graph.
+
+         pragma Assert (Errors_Detected > 0);
+         <<Done_Removal>> null;
       end if;
 
       --  For all successors, decrement the number of predecessors, and if it
       --  becomes zero, then add to no-predecessor list.
 
       S := UNR.Table (Chosen).Successors;
+      pragma Annotate (CodePeer, Modified, S);
+
       while S /= No_Successor loop
          U := Succ.Table (S).After;
          UNR.Table (U).Num_Pred := UNR.Table (U).Num_Pred - 1;
@@ -1081,7 +1097,19 @@ package body Binde is
       Num_Chosen := Num_Chosen + 1;
 
       pragma Assert
-        (Errors_Detected > 0 or else Num_Chosen = Natural (Last (Elab_Order)));
+        (Errors_Detected > 0 or else Num_Chosen = Last (Elab_Order));
+      pragma Assert (Units.Last = UNR.Last);
+      pragma Assert (Num_Chosen + Num_Left = Int (UNR.Last));
+
+      if Debug_Flag_C then
+         Write_Str (" ");
+         Write_Int (Int (Num_Chosen));
+         Write_Str ("+");
+         Write_Int (Num_Left);
+         Write_Str ("=");
+         Write_Int (Int (UNR.Last));
+         Write_Eol;
+      end if;
 
       UNR.Table (Chosen).Elab_Position := Num_Chosen;
 
@@ -1098,8 +1126,19 @@ package body Binde is
            and then Units.Table (Chosen).RCI
          then
             null;
+
+         --  If this unit is an interface to a stand-alone library, then we
+         --  don't want to elaborate the body -- that will happen as part of
+         --  the library.
+
+         elsif Units.Table (Chosen).SAL_Interface then
+            null;
+
          else
-            Choose (Elab_Order, Corresponding_Body (Chosen));
+            Choose
+              (Elab_Order => Elab_Order,
+               Chosen     => Corresponding_Body (Chosen),
+               Msg        => " [Elaborate_Body]");
          end if;
       end if;
    end Choose;
@@ -1138,7 +1177,10 @@ package body Binde is
 
    function Debug_Flag_Old return Boolean is
    begin
-      return Debug_Flag_P;
+      --  If the user specified both flags, we want to use the older algorithm,
+      --  rather than some confusing mix of the two.
+
+      return Debug_Flag_P and not Debug_Flag_O;
    end Debug_Flag_Old;
 
    ----------------------
@@ -1196,7 +1238,7 @@ package body Binde is
             --  sufficiently long, generate error message and return True.
 
             if U = Uto and then PL >= ML then
-               Choose (Elab_Order, U);
+               Choose (Elab_Order, U, " [Find_Link: base]");
                return True;
 
             --  All done if already visited
@@ -1213,7 +1255,7 @@ package body Binde is
                while S /= No_Successor loop
                   if Find_Link (Succ.Table (S).After, PL + 1) then
                      Elab_Error_Msg (S);
-                     Choose (Elab_Order, U);
+                     Choose (Elab_Order, U, " [Find_Link: recursive]");
                      return True;
                   end if;
 
@@ -1243,6 +1285,7 @@ package body Binde is
    --  Start of processing for Diagnose_Elaboration_Problem
 
    begin
+      Diagnose_Elaboration_Problem_Called := True;
       Set_Standard_Error;
 
       --  Output state of things if debug flag N set
@@ -1254,10 +1297,8 @@ package body Binde is
          begin
             Write_Eol;
             Write_Eol;
-            Write_Str ("Diagnose_Elaboration_Problem called");
-            Write_Eol;
-            Write_Str ("List of remaining unchosen units and predecessors");
-            Write_Eol;
+            Write_Line ("Diagnose_Elaboration_Problem called");
+            Write_Line ("List of remaining unchosen units and predecessors");
 
             for U in Units.First .. Units.Last loop
                if UNR.Table (U).Elab_Position = 0 then
@@ -1269,17 +1310,14 @@ package body Binde is
                   Write_Unit_Name (Units.Table (U).Uname);
                   Write_Str (" (Num_Pred = ");
                   Write_Int (NP);
-                  Write_Char (')');
-                  Write_Eol;
+                  Write_Line (")");
 
                   if NP = 0 then
                      if Units.Table (U).Elaborate_Body then
-                        Write_Str
+                        Write_Line
                           ("    (not chosen because of Elaborate_Body)");
-                        Write_Eol;
                      else
-                        Write_Str ("  ****************** why not chosen?");
-                        Write_Eol;
+                        Write_Line ("  ****************** why not chosen?");
                      end if;
                   end if;
 
@@ -1304,8 +1342,7 @@ package body Binde is
                   end loop;
 
                   if NP /= 0 then
-                     Write_Str ("  **************** Num_Pred value wrong!");
-                     Write_Eol;
+                     Write_Line ("  **************** Num_Pred value wrong!");
                   end if;
                end if;
             end loop;
@@ -1591,7 +1628,7 @@ package body Binde is
          Error_Msg ("?since all units compiled with static elaboration model");
       end if;
 
-      if Do_New then
+      if Do_New and not Debug_Flag_Old and not Debug_Flag_Older then
          if Debug_Flag_V then
             Write_Line ("Doing new...");
          end if;
@@ -1602,14 +1639,15 @@ package body Binde is
       end if;
 
       --  Elab_New does not support the pessimistic order, so if that was
-      --  requested, use the old results. Use Elab_Old if -dp was selected.
-      --  Elab_New does not yet give proper error messages for illegal
-      --  Elaborate_Alls, so if there is one, run Elab_Old.
+      --  requested, use the old results. Use Elab_Old if -dp or -do was
+      --  selected. Elab_New does not yet give proper error messages for
+      --  illegal Elaborate_Alls, so if there is one, run Elab_Old.
 
       if Do_Old
         or Pessimistic_Elab_Order
         or Debug_Flag_Old
-        or Illegal_Elab_All
+        or Debug_Flag_Older
+        or Elab_Cycle_Found
       then
          if Debug_Flag_V then
             Write_Line ("Doing old...");
@@ -1620,122 +1658,136 @@ package body Binde is
          Elab_Old.Find_Elab_Order (Old_Elab_Order);
       end if;
 
+      pragma Assert (Elab_Cycle_Found <= -- implies
+                       Diagnose_Elaboration_Problem_Called);
+
       declare
          Old_Order : Unit_Id_Array renames
                        Old_Elab_Order.Table (1 .. Last (Old_Elab_Order));
-         New_Order : Unit_Id_Array renames
-                       Elab_Order.Table (1 .. Last (Elab_Order));
-         Old_Pairs : constant Nat := Num_Spec_Body_Pairs (Old_Order);
-         New_Pairs : constant Nat := Num_Spec_Body_Pairs (New_Order);
-
       begin
          if Do_Old and Do_New then
-            Write_Line (Get_Name_String (First_Main_Lib_File));
+            declare
+               New_Order : Unit_Id_Array renames
+                             Elab_Order.Table (1 .. Last (Elab_Order));
+               Old_Pairs : constant Nat := Num_Spec_Body_Pairs (Old_Order);
+               New_Pairs : constant Nat := Num_Spec_Body_Pairs (New_Order);
 
-            pragma Assert (Old_Order'Length = New_Order'Length);
-            pragma Debug (Validate (Old_Order, Doing_New => False));
-            pragma Debug (Validate (New_Order, Doing_New => True));
+            begin
+               Write_Line (Get_Name_String (First_Main_Lib_File));
 
-            --  Misc debug printouts that can be used for experimentation by
-            --  changing the 'if's below.
+               pragma Assert (Old_Order'Length = New_Order'Length);
+               pragma Debug (Validate (Old_Order, Doing_New => False));
+               pragma Debug (Validate (New_Order, Doing_New => True));
 
-            if True then
-               if New_Order = Old_Order then
-                  Write_Line ("Elab_New: same order.");
-               else
-                  Write_Line ("Elab_New: diff order.");
-               end if;
-            end if;
+               --  Misc debug printouts that can be used for experimentation by
+               --  changing the 'if's below.
 
-            if New_Order /= Old_Order and then False then
-               Write_Line ("Elaboration orders differ:");
-               Write_Elab_Order
-                 (Old_Order, Title => "OLD ELABORATION ORDER");
-               Write_Elab_Order
-                 (New_Order, Title => "NEW ELABORATION ORDER");
-            end if;
-
-            if True then
-               Write_Str ("Pairs: ");
-               Write_Int (Old_Pairs);
-
-               if Old_Pairs = New_Pairs then
-                  Write_Str (" = ");
-               elsif Old_Pairs < New_Pairs then
-                  Write_Str (" < ");
-               else
-                  Write_Str (" > ");
+               if True then
+                  if New_Order = Old_Order then
+                     Write_Line ("Elab_New: same order.");
+                  else
+                     Write_Line ("Elab_New: diff order.");
+                  end if;
                end if;
 
-               Write_Int (New_Pairs);
-               Write_Eol;
-            end if;
-
-            if Old_Pairs /= New_Pairs and then False then
-               Write_Str ("Pairs: ");
-               Write_Int (Old_Pairs);
-
-               if Old_Pairs < New_Pairs then
-                  Write_Str (" < ");
-               else
-                  Write_Str (" > ");
-               end if;
-
-               Write_Int (New_Pairs);
-               Write_Eol;
-
-               if Old_Pairs /= New_Pairs and then Debug_Flag_V then
+               if New_Order /= Old_Order and then False then
+                  Write_Line ("Elaboration orders differ:");
                   Write_Elab_Order
                     (Old_Order, Title => "OLD ELABORATION ORDER");
                   Write_Elab_Order
                     (New_Order, Title => "NEW ELABORATION ORDER");
-                  pragma Assert (New_Pairs >= Old_Pairs);
                end if;
-            end if;
+
+               if True then
+                  Write_Str ("Pairs: ");
+                  Write_Int (Old_Pairs);
+
+                  if Old_Pairs = New_Pairs then
+                     Write_Str (" = ");
+                  elsif Old_Pairs < New_Pairs then
+                     Write_Str (" < ");
+                  else
+                     Write_Str (" > ");
+                  end if;
+
+                  Write_Int (New_Pairs);
+                  Write_Eol;
+               end if;
+
+               if Old_Pairs /= New_Pairs and then False then
+                  Write_Str ("Pairs: ");
+                  Write_Int (Old_Pairs);
+
+                  if Old_Pairs < New_Pairs then
+                     Write_Str (" < ");
+                  else
+                     Write_Str (" > ");
+                  end if;
+
+                  Write_Int (New_Pairs);
+                  Write_Eol;
+
+                  if Old_Pairs /= New_Pairs and then Debug_Flag_V then
+                     Write_Elab_Order
+                       (Old_Order, Title => "OLD ELABORATION ORDER");
+                     Write_Elab_Order
+                       (New_Order, Title => "NEW ELABORATION ORDER");
+                     pragma Assert (New_Pairs >= Old_Pairs);
+                  end if;
+               end if;
+            end;
          end if;
 
          --  The Elab_New algorithm doesn't implement the -p switch, so if that
-         --  was used, use the results from the old algorithm.
+         --  was used, use the results from the old algorithm. Likewise if the
+         --  user has requested the old algorithm.
 
-         if Pessimistic_Elab_Order or Debug_Flag_Old then
-            New_Order := Old_Order;
+         if Pessimistic_Elab_Order or Debug_Flag_Old or Debug_Flag_Older then
+            pragma Assert
+              (Last (Elab_Order) = 0
+                or else Last (Elab_Order) = Old_Order'Last);
+
+            Init (Elab_Order);
+            Append_All (Elab_Order, Old_Order);
          end if;
 
          --  Now set the Elab_Positions in the Units table. It is important to
          --  do this late, in case we're running both Elab_New and Elab_Old.
 
          declare
+            New_Order : Unit_Id_Array renames
+                          Elab_Order.Table (1 .. Last (Elab_Order));
             Units_Array : Units.Table_Type renames
                             Units.Table (Units.First .. Units.Last);
-
          begin
             for J in New_Order'Range loop
                pragma Assert
-                 (UNR.Table (New_Order (J)).Elab_Position = Positive (J));
-               Units_Array  (New_Order (J)).Elab_Position := Positive (J);
+                 (UNR.Table (New_Order (J)).Elab_Position = J);
+               Units_Array  (New_Order (J)).Elab_Position := J;
             end loop;
-         end;
 
-         if Errors_Detected = 0 then
+            if Errors_Detected = 0 then
 
-            --  Display elaboration order if -l was specified
+               --  Display elaboration order if -l was specified
 
-            if Elab_Order_Output then
-               if Zero_Formatting then
-                  Write_Elab_Order (New_Order, Title => "");
-               else
-                  Write_Elab_Order (New_Order, Title => "ELABORATION ORDER");
+               if Elab_Order_Output then
+                  if Zero_Formatting then
+                     Write_Elab_Order (New_Order, Title => "");
+                  else
+                     Write_Elab_Order
+                       (New_Order, Title => "ELABORATION ORDER");
+                  end if;
+               end if;
+
+               --  Display list of sources in the closure (except predefined
+               --  sources) if -R was used. Include predefined sources if -Ra
+               --  was used.
+
+               if List_Closure then
+                  Write_Closure (New_Order);
                end if;
             end if;
-
-            --  Display list of sources in the closure (except predefined
-            --  sources) if -R was used. Include predefined sources if -Ra
-            --  was used.
-
-            if List_Closure then
-               Write_Closure (New_Order);
-            end if;
-         end if;
+         end;
       end;
    end Find_Elab_Order;
 
@@ -1744,214 +1796,113 @@ package body Binde is
    ----------------------
 
    procedure Force_Elab_Order is
-      use System.OS_Lib;
-      --  There is a lot of fiddly string manipulation below, because we don't
-      --  want to depend on misc utility packages like Ada.Characters.Handling.
+      subtype Header_Num is Unit_Name_Type'Base range 0 .. 2**16 - 1;
 
-      function Get_Line return String;
-      --  Read the next line from the file content read by Read_File. Strip
-      --  all leading and trailing blanks. Convert "(spec)" or "(body)" to
-      --  "%s"/"%b". Remove comments (Ada style; "--" to end of line).
+      function Hash (N : Unit_Name_Type) return Header_Num;
 
-      function Read_File (Name : String) return String_Ptr;
-      --  Read the entire contents of the named file
+      package Name_Map is new System.HTable.Simple_HTable
+        (Header_Num => Header_Num,
+         Element    => Logical_Line_Number,
+         No_Element => No_Line_Number,
+         Key        => Unit_Name_Type,
+         Hash       => Hash,
+         Equal      => "=");
+      --  Name_Map contains an entry for each file name seen, mapped to the
+      --  line number where we saw it first. This is used to give an error for
+      --  duplicates.
 
-      ---------------
-      -- Read_File --
-      ---------------
+      ----------
+      -- Hash --
+      ----------
 
-      function Read_File (Name : String) return String_Ptr is
-
-         --  All of the following calls should succeed, because we checked the
-         --  file in Switch.B, but we double check and raise Program_Error on
-         --  failure, just in case.
-
-         F : constant File_Descriptor := Open_Read (Name, Binary);
-
+      function Hash (N : Unit_Name_Type) return Header_Num is
+         --  Name_Ids are already widely dispersed; no need for any actual
+         --  hashing. Just subtract to make it zero based, and "mod" to
+         --  bring it in range.
       begin
-         if F = Invalid_FD then
-            raise Program_Error;
-         end if;
-
-         declare
-            Len      : constant Natural    := Natural (File_Length (F));
-            Result   : constant String_Ptr := new String (1 .. Len);
-            Len_Read : constant Natural    :=
-                         Read (F, Result (1)'Address, Len);
-
-            Status : Boolean;
-
-         begin
-            if Len_Read /= Len then
-               raise Program_Error;
-            end if;
-
-            Close (F, Status);
-
-            if not Status then
-               raise Program_Error;
-            end if;
-
-            return Result;
-         end;
-      end Read_File;
-
-      Cur : Positive   := 1;
-      S   : String_Ptr := Read_File (Force_Elab_Order_File.all);
-
-      --------------
-      -- Get_Line --
-      --------------
-
-      function Get_Line return String is
-         First : Positive := Cur;
-         Last  : Natural;
-
-      begin
-         --  Skip to end of line
-
-         while Cur <= S'Last
-           and then S (Cur) /= ASCII.LF
-           and then S (Cur) /= ASCII.CR
-         loop
-            Cur := Cur + 1;
-         end loop;
-
-         --  Strip leading blanks
-
-         while First <= S'Last and then S (First) = ' ' loop
-            First := First + 1;
-         end loop;
-
-         --  Strip trailing blanks and comment
-
-         Last := Cur - 1;
-
-         for J in First .. Last - 1 loop
-            if S (J .. J + 1) = "--" then
-               Last := J - 1;
-               exit;
-            end if;
-         end loop;
-
-         while Last >= First and then S (Last) = ' ' loop
-            Last := Last - 1;
-         end loop;
-
-         --  Convert "(spec)" or "(body)" to "%s"/"%b", strip trailing blanks
-         --  again.
-
-         declare
-            Body_String : constant String   := "(body)";
-            BL          : constant Positive := Body_String'Length;
-            Spec_String : constant String   := "(spec)";
-            SL          : constant Positive := Spec_String'Length;
-
-            Line : String renames S (First .. Last);
-
-            Is_Body : Boolean := False;
-            Is_Spec : Boolean := False;
-
-         begin
-            if Line'Length >= SL
-              and then Line (Last - SL + 1 .. Last) = Spec_String
-            then
-               Is_Spec := True;
-               Last := Last - SL;
-            elsif Line'Length >= BL
-              and then Line (Last - BL + 1 .. Last) = Body_String
-            then
-               Is_Body := True;
-               Last := Last - BL;
-            end if;
-
-            while Last >= First and then S (Last) = ' ' loop
-               Last := Last - 1;
-            end loop;
-
-            --  Skip past LF or CR/LF
-
-            if Cur <= S'Last and then S (Cur) = ASCII.CR then
-               Cur := Cur + 1;
-            end if;
-
-            if Cur <= S'Last and then S (Cur) = ASCII.LF then
-               Cur := Cur + 1;
-            end if;
-
-            if Is_Spec then
-               return Line (First .. Last) & "%s";
-            elsif Is_Body then
-               return Line (First .. Last) & "%b";
-            else
-               return Line;
-            end if;
-         end;
-      end Get_Line;
+         return (N - Unit_Name_Type'First) mod (Header_Num'Last + 1);
+      end Hash;
 
       --  Local variables
 
-      Empty_Name : constant Unit_Name_Type := Name_Find ("");
-      Prev_Unit  : Unit_Id := No_Unit_Id;
+      Cur_Line_Number : Logical_Line_Number;
+      Error           : Boolean := False;
+      Iter            : Forced_Units_Iterator;
+      Prev_Unit       : Unit_Id := No_Unit_Id;
+      Uname           : Unit_Name_Type;
 
    --  Start of processing for Force_Elab_Order
 
    begin
-      --  Loop through the file content, and build a dependency link for each
-      --  pair of lines. Ignore lines that should be ignored.
+      Iter := Iterate_Forced_Units;
+      while Has_Next (Iter) loop
+         Next (Iter, Uname, Cur_Line_Number);
 
-      while Cur <= S'Last loop
          declare
-            Uname : constant Unit_Name_Type := Name_Find (Get_Line);
-
+            Dup : constant Logical_Line_Number := Name_Map.Get (Uname);
          begin
-            if Uname = Empty_Name then
-               null; -- silently skip blank lines
+            if Dup = No_Line_Number then
+               Name_Map.Set (Uname, Cur_Line_Number);
 
-            elsif Get_Name_Table_Int (Uname) = 0
-              or else Unit_Id (Get_Name_Table_Int (Uname)) = No_Unit_Id
-            then
-               if Doing_New then
-                  Write_Line
-                    ("""" & Get_Name_String (Uname)
-                     & """: not present; ignored");
+               --  We don't need to give the "not present" message in the case
+               --  of "duplicate unit", because we would have already given the
+               --  "not present" message on the first occurrence.
+
+               if Get_Name_Table_Int (Uname) = 0
+                 or else Unit_Id (Get_Name_Table_Int (Uname)) = No_Unit_Id
+               then
+                  Error := True;
+                  if Doing_New then
+                     Write_Line
+                       ("""" & Get_Name_String (Uname)
+                        & """: not present; ignored");
+                  end if;
                end if;
 
             else
-               declare
-                  Cur_Unit : constant Unit_Id := Unit_Id_Of (Uname);
-
-               begin
-                  if Is_Internal_File_Name (Units.Table (Cur_Unit).Sfile) then
-                     if Doing_New then
-                        Write_Line
-                          ("""" & Get_Name_String (Uname) &
-                             """: predefined unit ignored");
-                     end if;
-
-                  else
-                     if Prev_Unit /= No_Unit_Id then
-                        if Doing_New then
-                           Write_Unit_Name (Units.Table (Prev_Unit).Uname);
-                           Write_Str (" <-- ");
-                           Write_Unit_Name (Units.Table (Cur_Unit).Uname);
-                           Write_Eol;
-                        end if;
-
-                        Build_Link
-                          (Before => Prev_Unit,
-                           After => Cur_Unit,
-                           R => Forced);
-                     end if;
-
-                     Prev_Unit := Cur_Unit;
-                  end if;
-               end;
+               Error := True;
+               if Doing_New then
+                  Error_Msg_Nat_1  := Nat (Cur_Line_Number);
+                  Error_Msg_Unit_1 := Uname;
+                  Error_Msg_Nat_2  := Nat (Dup);
+                  Error_Msg
+                    (Force_Elab_Order_File.all
+                     & ":#: duplicate unit name $ from line #");
+               end if;
             end if;
          end;
-      end loop;
 
-      Free (S);
+         if not Error then
+            declare
+               Cur_Unit : constant Unit_Id := Unit_Id_Of (Uname);
+            begin
+               if Is_Internal_File_Name (Units.Table (Cur_Unit).Sfile) then
+                  if Doing_New then
+                     Write_Line
+                       ("""" & Get_Name_String (Uname)
+                        & """: predefined unit ignored");
+                  end if;
+
+               else
+                  if Prev_Unit /= No_Unit_Id then
+                     if Doing_New then
+                        Write_Unit_Name (Units.Table (Prev_Unit).Uname);
+                        Write_Str (" <-- ");
+                        Write_Unit_Name (Units.Table (Cur_Unit).Uname);
+                        Write_Eol;
+                     end if;
+
+                     Build_Link
+                       (Before => Prev_Unit,
+                        After  => Cur_Unit,
+                        R      => Forced);
+                  end if;
+
+                  Prev_Unit := Cur_Unit;
+               end if;
+            end;
+         end if;
+      end loop;
    end Force_Elab_Order;
 
    -------------------------
@@ -2234,10 +2185,13 @@ package body Binde is
 
          begin
             while S /= No_Successor loop
-               pragma Assert
-                 (UNR.Table (Succ.Table (S).After).Elab_Position >
-                  UNR.Table (U).Elab_Position,
-                  Msg & " elab order failed");
+               if UNR.Table (Succ.Table (S).After).Elab_Position <=
+                    UNR.Table (U).Elab_Position
+               then
+                  OK := False;
+                  Write_Line (Msg & " elab order failed");
+               end if;
+
                S := Succ.Table (S).Next;
             end loop;
          end;
@@ -2346,8 +2300,7 @@ package body Binde is
 
       if not Zero_Formatting then
          Write_Eol;
-         Write_Str ("REFERENCED SOURCES");
-         Write_Eol;
+         Write_Line ("REFERENCED SOURCES");
       end if;
 
       for J in reverse Order'Range loop
@@ -2366,8 +2319,7 @@ package body Binde is
                Write_Str ("   ");
             end if;
 
-            Write_Str (Get_Name_String (Source));
-            Write_Eol;
+            Write_Line (Get_Name_String (Source));
          end if;
       end loop;
 
@@ -2390,8 +2342,7 @@ package body Binde is
                Write_Str ("   ");
             end if;
 
-            Write_Str (Get_Name_String (Source));
-            Write_Eol;
+            Write_Line (Get_Name_String (Source));
          end if;
       end loop;
 
@@ -2408,8 +2359,7 @@ package body Binde is
    begin
       if not Zero_Formatting then
          Write_Eol;
-         Write_Str ("                 ELABORATION ORDER DEPENDENCIES");
-         Write_Eol;
+         Write_Line ("                 ELABORATION ORDER DEPENDENCIES");
          Write_Eol;
       end if;
 
@@ -2442,6 +2392,8 @@ package body Binde is
    begin
       if ST.Reason in Elab_All .. Elab_All_Desirable then
          L := ST.Elab_All_Link;
+         pragma Annotate (CodePeer, Modified, L);
+
          while L /= No_Elab_All_Link loop
             Nam := Elab_All_Entries.Table (L).Needed_By;
             Error_Msg_Unit_1 := Nam;
@@ -2495,8 +2447,7 @@ package body Binde is
    begin
       if Title /= "" then
          Write_Eol;
-         Write_Str (Title);
-         Write_Eol;
+         Write_Line (Title);
       end if;
 
       for J in Order'Range loop
@@ -2711,8 +2662,7 @@ package body Binde is
                Write_Unit_Name (Units.Table (Root).Uname);
                Write_Str (" -- ");
                Write_Int (Nodes'Length);
-               Write_Str (" units:");
-               Write_Eol;
+               Write_Line (" units:");
 
                for J in Nodes'Range loop
                   Write_Str ("   ");
@@ -2861,12 +2811,12 @@ package body Binde is
                        or else Withs.Table (W).Elab_All_Desirable
                      then
                         if SCC (U) = SCC (Withed_Unit) then
-                           Illegal_Elab_All := True; -- ????
+                           Elab_Cycle_Found := True; -- ???
 
                            --  We could probably give better error messages
                            --  than Elab_Old here, but for now, to avoid
                            --  disruption, we don't give any error here.
-                           --  Instead, we set the Illegal_Elab_All flag above,
+                           --  Instead, we set the Elab_Cycle_Found flag above,
                            --  and then run the Elab_Old algorithm to issue the
                            --  error message. Ideally, we would like to print
                            --  multiple errors rather than stopping after the
@@ -2918,13 +2868,16 @@ package body Binde is
          --  nodes have been chosen.
 
          Outer : loop
+            if Debug_Flag_N then
+               Write_Line ("Outer loop");
+            end if;
 
             --  If there are no nodes with predecessors, then either we are
             --  done, as indicated by Num_Left being set to zero, or we have
             --  a circularity. In the latter case, diagnose the circularity,
             --  removing it from the graph and continue.
             --  ????But Diagnose_Elaboration_Problem always raises an
-            --  exception.
+            --  exception, so the loop never goes around more than once.
 
             Get_No_Pred : while No_Pred = No_Unit_Id loop
                exit Outer when Num_Left < 1;
@@ -2963,20 +2916,32 @@ package body Binde is
                  and then Better_Choice (U, Best_So_Far)
                then
                   if Debug_Flag_N then
-                     Write_Str ("    tentatively chosen (best so far)");
-                     Write_Eol;
+                     Write_Line ("    tentatively chosen (best so far)");
                   end if;
 
                   Best_So_Far := U;
+               else
+                  if Debug_Flag_N then
+                     Write_Line ("    SCC not ready");
+                  end if;
                end if;
 
                U := UNR.Table (U).Nextnp;
                exit No_Pred_Search when U = No_Unit_Id;
             end loop No_Pred_Search;
 
+            --  If there are no units on the No_Pred list whose SCC is ready,
+            --  there must be a cycle. Defer to Elab_Old to print an error
+            --  message.
+
+            if Best_So_Far = No_Unit_Id then
+               Elab_Cycle_Found := True;
+               return;
+            end if;
+
             --  Choose the best candidate found
 
-            Choose (Elab_Order, Best_So_Far);
+            Choose (Elab_Order, Best_So_Far, " [Best_So_Far]");
 
             --  If it's a spec with a body, and the body is not yet chosen,
             --  choose the body if possible. The case where the body is
@@ -3004,7 +2969,10 @@ package body Binde is
                   end if;
 
                   if Choose_The_Body then
-                     Choose (Elab_Order, Corresponding_Body (Best_So_Far));
+                     Choose
+                       (Elab_Order => Elab_Order,
+                        Chosen     => Corresponding_Body (Best_So_Far),
+                        Msg        => " [body]");
                   end if;
                end;
             end if;
@@ -3024,7 +2992,7 @@ package body Binde is
                        and then UNR.Table (SCC (J)).Num_Pred = 0
                      then
                         Chose_One_Or_More := True;
-                        Choose (Elab_Order, SCC (J));
+                        Choose (Elab_Order, SCC (J), " [same SCC]");
                      end if;
                   end loop;
 
@@ -3071,7 +3039,7 @@ package body Binde is
          pragma Assert (SCC (U) = U);
       begin
          for J in Nodes (U)'Range loop
-            Write_Int (Int (UNR.Table (Nodes (U) (J)).Elab_Position));
+            Write_Int (UNR.Table (Nodes (U) (J)).Elab_Position);
             Write_Str (". ");
             Write_Unit_Name (Units.Table (Nodes (U) (J)).Uname);
             Write_Eol;
@@ -3122,7 +3090,7 @@ package body Binde is
             --  a circularity. In the latter case, diagnose the circularity,
             --  removing it from the graph and continue.
             --  ????But Diagnose_Elaboration_Problem always raises an
-            --  exception.
+            --  exception, so the loop never goes around more than once.
 
             Get_No_Pred : while No_Pred = No_Unit_Id loop
                exit Outer when Num_Left < 1;
@@ -3157,8 +3125,7 @@ package body Binde is
 
                if Better_Choice (U, Best_So_Far) then
                   if Debug_Flag_N then
-                     Write_Str ("    tentatively chosen (best so far)");
-                     Write_Eol;
+                     Write_Line ("    tentatively chosen (best so far)");
                   end if;
 
                   Best_So_Far := U;
@@ -3170,7 +3137,7 @@ package body Binde is
 
             --  Choose the best candidate found
 
-            Choose (Elab_Order, Best_So_Far);
+            Choose (Elab_Order, Best_So_Far, " [Elab_Old Best_So_Far]");
          end loop Outer;
       end Find_Elab_Order;
 

@@ -1,7 +1,8 @@
 //===-- sanitizer_addrhashmap.h ---------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -71,6 +72,8 @@ class AddrHashMap {
 
     ~Handle();
     T *operator->();
+    T &operator*();
+    const T &operator*() const;
     bool created() const;
     bool exists() const;
 
@@ -132,6 +135,16 @@ AddrHashMap<T, kSize>::Handle::~Handle() {
 template <typename T, uptr kSize>
 T *AddrHashMap<T, kSize>::Handle::operator->() {
   return &cell_->val;
+}
+
+template <typename T, uptr kSize>
+const T &AddrHashMap<T, kSize>::Handle::operator*() const {
+  return cell_->val;
+}
+
+template <typename T, uptr kSize>
+T &AddrHashMap<T, kSize>::Handle::operator*() {
+  return cell_->val;
 }
 
 template<typename T, uptr kSize>

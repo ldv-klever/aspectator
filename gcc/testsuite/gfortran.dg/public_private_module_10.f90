@@ -1,6 +1,4 @@
-! { dg-do compile }
-! PR 87734 - this used to issue spurious errors.
-
+! PR 87734
 module m_vstring
   implicit none
 

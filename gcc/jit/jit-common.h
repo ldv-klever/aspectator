@@ -1,5 +1,5 @@
 /* Core of implementation of libgccjit.so
-   Copyright (C) 2013-2017 Free Software Foundation, Inc.
+   Copyright (C) 2013-2021 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -117,7 +117,9 @@ namespace recording {
       class compound_type;
         class struct_;
 	class union_;
+      class vector_type;
     class field;
+      class bitfield;
     class fields;
     class function;
     class block;
@@ -127,8 +129,11 @@ namespace recording {
 	class global;
         class param;
       class base_call;
+      class function_pointer;
     class statement;
+      class extended_asm;
     class case_;
+  class top_level_asm;
 
   /* End of recording types. */
 }

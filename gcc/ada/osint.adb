@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -88,6 +88,10 @@ package body Osint is
    function OS_Time_To_GNAT_Time (T : OS_Time) return Time_Stamp_Type;
    --  Convert OS format time to GNAT format time stamp. If T is Invalid_Time,
    --  then returns Empty_Time_Stamp.
+   --  Round to even seconds on Windows before conversion.
+   --  Windows ALI files had timestamps rounded to even seconds historically.
+   --  The rounding was originally done in GM_Split. Now that GM_Split no
+   --  longer does it, we are rounding it here only for ALI files.
 
    function Executable_Prefix return String_Ptr;
    --  Returns the name of the root directory where the executable is stored.
@@ -95,6 +99,10 @@ package body Osint is
    --  root/lib/gcc-lib/..., or under root/libexec/gcc/... For example, if
    --  executable is stored in directory "/foo/bar/bin", this routine returns
    --  "/foo/bar/". Return "" if location is not recognized as described above.
+
+   function File_Names_Equal (File1, File2 : String) return Boolean;
+   --  Compare File1 and File2 taking into account the case insensitivity
+   --  of the OS.
 
    function Update_Path (Path : String_Ptr) return String_Ptr;
    --  Update the specified path to replace the prefix with the location where
@@ -473,16 +481,9 @@ package body Osint is
          if Additional_Source_Dir then
             Search_Path := Getenv (Ada_Include_Path);
 
-            if Search_Path'Length > 0 then
-               Search_Path := To_Canonical_Path_Spec (Search_Path.all);
-            end if;
-
          else
             Search_Path := Getenv (Ada_Objects_Path);
 
-            if Search_Path'Length > 0 then
-               Search_Path := To_Canonical_Path_Spec (Search_Path.all);
-            end if;
          end if;
 
          Get_Next_Dir_In_Path_Init (Search_Path);
@@ -794,6 +795,17 @@ package body Osint is
       end if;
    end Dir_In_Src_Search_Path;
 
+   -----------------------------------------
+   -- Dump_Command_Line_Source_File_Names --
+   -----------------------------------------
+
+   procedure Dump_Command_Line_Source_File_Names is
+   begin
+      for J in 1 .. Number_Of_Files loop
+         Write_Str (File_Names (J).all & " ");
+      end loop;
+   end Dump_Command_Line_Source_File_Names;
+
    ----------------------------
    -- Dump_Source_File_Names --
    ----------------------------
@@ -837,39 +849,29 @@ package body Osint is
                   Add_Suffix := False;
                   exit;
 
-               elsif Name_Buffer (J) = '/' or else
-                     Name_Buffer (J) = Directory_Separator
-               then
+               elsif Is_Directory_Separator (Name_Buffer (J)) then
                   exit;
                end if;
             end loop;
          end if;
 
          if Add_Suffix then
-            declare
-               Buffer : String := Name_Buffer (1 .. Name_Len);
+            --  If Executable doesn't end with the executable suffix, add it
 
-            begin
-               --  Get the file name in canonical case to accept as is. Names
-               --  end with ".EXE" on Windows.
-
-               Canonical_Case_File_Name (Buffer);
-
-               --  If Executable doesn't end with the executable suffix, add it
-
-               if Buffer'Length <= Exec_Suffix'Length
-                 or else
-                   Buffer (Buffer'Last - Exec_Suffix'Length + 1 .. Buffer'Last)
-                     /= Exec_Suffix.all
-               then
-                  Name_Buffer
-                    (Name_Len + 1 .. Name_Len + Exec_Suffix'Length) :=
-                      Exec_Suffix.all;
-                  Name_Len := Name_Len + Exec_Suffix'Length;
-                  Free (Exec_Suffix);
-                  return Name_Find;
-               end if;
-            end;
+            if Name_Len <= Exec_Suffix'Length
+              or else not
+                File_Names_Equal
+                  (Name_Buffer
+                    (Name_Len - Exec_Suffix'Length + 1 .. Name_Len),
+                   Exec_Suffix.all)
+            then
+               Name_Buffer
+                 (Name_Len + 1 .. Name_Len + Exec_Suffix'Length) :=
+                   Exec_Suffix.all;
+               Name_Len := Name_Len + Exec_Suffix'Length;
+               Free (Exec_Suffix);
+               return Name_Find;
+            end if;
          end if;
       end if;
 
@@ -883,7 +885,6 @@ package body Osint is
    is
       Exec_Suffix    : String_Access;
       Add_Suffix     : Boolean;
-      Canonical_Name : String := Name;
 
    begin
       if Executable_Extension_On_Target = No_Name then
@@ -903,27 +904,26 @@ package body Osint is
 
          begin
             Free (Exec_Suffix);
-            Canonical_Case_File_Name (Canonical_Name);
-
             Add_Suffix := True;
+
             if Only_If_No_Suffix then
-               for J in reverse Canonical_Name'Range loop
-                  if Canonical_Name (J) = '.' then
+               for J in reverse Name'Range loop
+                  if Name (J) = '.' then
                      Add_Suffix := False;
                      exit;
 
-                  elsif Canonical_Name (J) = '/' or else
-                        Canonical_Name (J) = Directory_Separator
-                  then
+                  elsif Is_Directory_Separator (Name (J)) then
                      exit;
                   end if;
                end loop;
             end if;
 
             if Add_Suffix and then
-              (Canonical_Name'Length <= Suffix'Length
-               or else Canonical_Name (Canonical_Name'Last - Suffix'Length + 1
-                                       .. Canonical_Name'Last) /= Suffix)
+              (Name'Length <= Suffix'Length
+               or else not
+                 File_Names_Equal
+                   (Name (Name'Last - Suffix'Length + 1 .. Name'Last),
+                    Suffix))
             then
                declare
                   Result : String (1 .. Name'Length + Suffix'Length);
@@ -1053,13 +1053,26 @@ package body Osint is
       Exit_Program (E_Fatal);
    end Fail;
 
+   ----------------------
+   -- File_Names_Equal --
+   ----------------------
+
+   function File_Names_Equal (File1, File2 : String) return Boolean is
+   begin
+      if File_Names_Case_Sensitive then
+         return File1 = File2;
+      else
+         return To_Lower (File1) = To_Lower (File2);
+      end if;
+   end File_Names_Equal;
+
    ---------------
    -- File_Hash --
    ---------------
 
    function File_Hash (F : File_Name_Type) return File_Hash_Num is
    begin
-      return File_Hash_Num (Int (F) rem File_Hash_Num'Range_Length);
+      return File_Hash_Num (Int (F) mod File_Hash_Num'Range_Length);
    end File_Hash;
 
    -----------------
@@ -1186,18 +1199,27 @@ package body Osint is
                      and then Name_Buffer (Name_Len - 2 .. Name_Len) = ".dg")
          then
             Found := N;
-            Attr.all  := Unknown_Attributes;
+            Attr.all := Unknown_Attributes;
 
-            if T = Config and then Full_Name then
-               declare
-                  Full_Path : constant String :=
-                                Normalize_Pathname (Get_Name_String (N));
-                  Full_Size : constant Natural := Full_Path'Length;
-               begin
-                  Name_Buffer (1 .. Full_Size) := Full_Path;
-                  Name_Len := Full_Size;
-                  Found := Name_Find;
-               end;
+            if T = Config then
+               if Full_Name then
+                  declare
+                     Full_Path : constant String :=
+                                   Normalize_Pathname (Get_Name_String (N));
+                     Full_Size : constant Natural := Full_Path'Length;
+
+                  begin
+                     Name_Buffer (1 .. Full_Size) := Full_Path;
+                     Name_Len := Full_Size;
+                     Found    := Name_Find;
+                  end;
+               end if;
+
+               --  Check that it is a file, not a directory
+
+               if not Is_Regular_File (Get_Name_String (Found)) then
+                  Found := No_File;
+               end if;
             end if;
 
             return;
@@ -1413,6 +1435,15 @@ package body Osint is
       return Name_Find;
    end Get_Directory;
 
+   ------------------------------
+   -- Get_First_Main_File_Name --
+   ------------------------------
+
+   function Get_First_Main_File_Name return String is
+   begin
+      return File_Names (1).all;
+   end Get_First_Main_File_Name;
+
    --------------------------
    -- Get_Next_Dir_In_Path --
    --------------------------
@@ -1499,7 +1530,7 @@ package body Osint is
       --  Add a directory separator at the end of the directory if necessary
       --  so that we can directly append a file to the directory
 
-      if Search_Dir (Search_Dir'Last) /= Directory_Separator then
+      if not Is_Directory_Separator (Search_Dir (Search_Dir'Last)) then
          Local_Search_Dir :=
            new String'(Search_Dir & String'(1 => Directory_Separator));
       else
@@ -1514,7 +1545,7 @@ package body Osint is
          Default_Suffix_Dir := new String'("adalib");
       end if;
 
-      Norm_Search_Dir := To_Canonical_Path_Spec (Local_Search_Dir.all);
+      Norm_Search_Dir := Local_Search_Dir;
 
       if Is_Absolute_Path (Norm_Search_Dir.all) then
 
@@ -1547,7 +1578,11 @@ package body Osint is
          begin
             Get_Current_Dir (Buffer'Address, Path_Len'Address);
 
-            if Buffer (Path_Len) /= Directory_Separator then
+            if Path_Len = 0 then
+               raise Program_Error;
+            end if;
+
+            if not Is_Directory_Separator (Buffer (Path_Len)) then
                Path_Len := Path_Len + 1;
                Buffer (Path_Len) := Directory_Separator;
             end if;
@@ -1958,9 +1993,7 @@ package body Osint is
       Fptr := File_Name'First;
 
       for J in reverse File_Name'Range loop
-         if File_Name (J) = Directory_Separator
-           or else File_Name (J) = '/'
-         then
+         if Is_Directory_Separator (File_Name (J)) then
             if J = File_Name'Last then
                Fail ("File name missing");
             end if;
@@ -2159,6 +2192,19 @@ package body Osint is
    function OS_Time_To_GNAT_Time (T : OS_Time) return Time_Stamp_Type is
       GNAT_Time : Time_Stamp_Type;
 
+      type Underlying_OS_Time is
+        range -(2 ** (Standard'Address_Size - Integer'(1))) ..
+              +(2 ** (Standard'Address_Size - Integer'(1)) - 1);
+      --  Underlying_OS_Time is a redeclaration of OS_Time to allow integer
+      --  manipulation. Remove this in favor of To_Ada/To_C once newer
+      --  GNAT releases are available with these functions.
+
+      function To_Int is
+        new Unchecked_Conversion (OS_Time, Underlying_OS_Time);
+      function From_Int is
+        new Unchecked_Conversion (Underlying_OS_Time, OS_Time);
+
+      TI : Underlying_OS_Time := To_Int (T);
       Y  : Year_Type;
       Mo : Month_Type;
       D  : Day_Type;
@@ -2171,7 +2217,17 @@ package body Osint is
          return Empty_Time_Stamp;
       end if;
 
-      GM_Split (T, Y, Mo, D, H, Mn, S);
+      if On_Windows and then TI mod 2 > 0 then
+         --  Windows ALI files had timestamps rounded to even seconds
+         --  historically. The rounding was originally done in GM_Split.
+         --  Now that GM_Split no longer does it, we are rounding it here
+         --  only for ALI files.
+
+         TI := TI + 1;
+      end if;
+
+      GM_Split (From_Int (TI), Y, Mo, D, H, Mn, S);
+
       Make_Time_Stamp
         (Year    => Nat (Y),
          Month   => Nat (Mo),
@@ -2215,8 +2271,7 @@ package body Osint is
       --  Ditto for suffix, e.g. in "gcc-4.1", the suffix is "-4.1"
 
       for J in reverse 1 .. Name_Len loop
-         if Name_Buffer (J) = '/'
-           or else Name_Buffer (J) = Directory_Separator
+         if Is_Directory_Separator (Name_Buffer (J))
            or else Name_Buffer (J) = ':'
          then
             Start_Of_Prefix := J + 1;
@@ -2305,7 +2360,7 @@ package body Osint is
 
       --  Read the file. Note that the loop is probably not necessary since the
       --  whole file is read at once but the loop is harmless and that way we
-      --  are sure to accomodate systems where this is not the case.
+      --  are sure to accommodate systems where this is not the case.
 
       Curr := 1;
       Actual_Len := Len;
@@ -2558,12 +2613,9 @@ package body Osint is
       Lo  : Source_Ptr;
       Hi  : out Source_Ptr;
       Src : out Source_Buffer_Ptr;
+      FD  : out File_Descriptor;
       T   : File_Type := Source)
    is
-      Source_File_FD : File_Descriptor;
-      --  The file descriptor for the current source file. A negative value
-      --  indicates failure to open the specified source file.
-
       Len : Integer;
       --  Length of file, assume no more than 2 gigabytes of source
 
@@ -2587,6 +2639,7 @@ package body Osint is
             Fail ("Cannot find: " & Name_Buffer (1 .. Name_Len));
          end if;
 
+         FD  := Null_FD;
          Src := null;
          Hi  := No_Location;
          return;
@@ -2600,9 +2653,9 @@ package body Osint is
       --  DOS or Unix mode files, and there is no point in wasting time on
       --  text translation when it is not required.
 
-      Source_File_FD := Open_Read (Name_Buffer'Address, Binary);
+      FD := Open_Read (Name_Buffer'Address, Binary);
 
-      if Source_File_FD = Invalid_FD then
+      if FD = Invalid_FD then
          Src := null;
          Hi  := No_Location;
          return;
@@ -2638,7 +2691,7 @@ package body Osint is
 
       --  Prepare to read data from the file
 
-      Len := Integer (File_Length (Source_File_FD));
+      Len := Integer (File_Length (FD));
 
       --  Set Hi so that length is one more than the physical length,
       --  allowing for the extra EOF character at the end of the buffer
@@ -2648,58 +2701,36 @@ package body Osint is
       --  Do the actual read operation
 
       declare
-         subtype Actual_Source_Buffer is Source_Buffer (Lo .. Hi);
-         --  Physical buffer allocated
-
-         type Actual_Source_Ptr is access Actual_Source_Buffer;
-         --  This is the pointer type for the physical buffer allocated
-
-         Actual_Ptr : constant Actual_Source_Ptr := new Actual_Source_Buffer;
-         --  And this is the actual physical buffer
-
-      begin
+         Var_Ptr : constant Source_Buffer_Ptr_Var :=
+           new Source_Buffer (Lo .. Hi);
          --  Allocate source buffer, allowing extra character at end for EOF
-
+      begin
          --  Some systems have file types that require one read per line,
          --  so read until we get the Len bytes or until there are no more
          --  characters.
 
          Hi := Lo;
          loop
-            Actual_Len := Read (Source_File_FD, Actual_Ptr (Hi)'Address, Len);
+            Actual_Len := Read (FD, Var_Ptr (Hi)'Address, Len);
             Hi := Hi + Source_Ptr (Actual_Len);
             exit when Actual_Len = Len or else Actual_Len <= 0;
          end loop;
 
-         Actual_Ptr (Hi) := EOF;
-
-         --  Now we need to work out the proper virtual origin pointer to
-         --  return. This is exactly Actual_Ptr (0)'Address, but we have to
-         --  be careful to suppress checks to compute this address.
-
-         declare
-            pragma Suppress (All_Checks);
-
-            pragma Warnings (Off);
-            --  This use of unchecked conversion is aliasing safe
-
-            function To_Source_Buffer_Ptr is new
-              Unchecked_Conversion (Address, Source_Buffer_Ptr);
-
-            pragma Warnings (On);
-
-         begin
-            Src := To_Source_Buffer_Ptr (Actual_Ptr (0)'Address);
-         end;
+         Var_Ptr (Hi) := EOF;
+         Src := Var_Ptr.all'Access;
       end;
 
       --  Read is complete, get time stamp and close file and we are done
 
-      Close (Source_File_FD, Status);
+      Close (FD, Status);
 
       --  The status should never be False. But, if it is, what can we do?
       --  So, we don't test it.
 
+      --  ???We don't really need to return Hi anymore; We could get rid of
+      --  it. We could also make this into a function.
+
+      pragma Assert (Hi = Src'Last);
    end Read_Source_File;
 
    -------------------
@@ -2911,47 +2942,6 @@ package body Osint is
    end Strip_Suffix;
 
    ---------------------------
-   -- To_Canonical_Dir_Spec --
-   ---------------------------
-
-   function To_Canonical_Dir_Spec
-     (Host_Dir     : String;
-      Prefix_Style : Boolean) return String_Access
-   is
-      function To_Canonical_Dir_Spec
-        (Host_Dir    : Address;
-         Prefix_Flag : Integer) return Address;
-      pragma Import (C, To_Canonical_Dir_Spec, "__gnat_to_canonical_dir_spec");
-
-      C_Host_Dir         : String (1 .. Host_Dir'Length + 1);
-      Canonical_Dir_Addr : Address;
-      Canonical_Dir_Len  : CRTL.size_t;
-
-   begin
-      C_Host_Dir (1 .. Host_Dir'Length) := Host_Dir;
-      C_Host_Dir (C_Host_Dir'Last)      := ASCII.NUL;
-
-      if Prefix_Style then
-         Canonical_Dir_Addr := To_Canonical_Dir_Spec (C_Host_Dir'Address, 1);
-      else
-         Canonical_Dir_Addr := To_Canonical_Dir_Spec (C_Host_Dir'Address, 0);
-      end if;
-
-      Canonical_Dir_Len := C_String_Length (Canonical_Dir_Addr);
-
-      if Canonical_Dir_Len = 0 then
-         return null;
-      else
-         return To_Path_String_Access (Canonical_Dir_Addr, Canonical_Dir_Len);
-      end if;
-
-   exception
-      when others =>
-         Fail ("invalid directory spec: " & Host_Dir);
-         return null;
-   end To_Canonical_Dir_Spec;
-
-   ---------------------------
    -- To_Canonical_File_List --
    ---------------------------
 
@@ -3008,74 +2998,6 @@ package body Osint is
          return new String_Access_List'(Canonical_File_List);
       end;
    end To_Canonical_File_List;
-
-   ----------------------------
-   -- To_Canonical_File_Spec --
-   ----------------------------
-
-   function To_Canonical_File_Spec
-     (Host_File : String) return String_Access
-   is
-      function To_Canonical_File_Spec (Host_File : Address) return Address;
-      pragma Import
-        (C, To_Canonical_File_Spec, "__gnat_to_canonical_file_spec");
-
-      C_Host_File         : String (1 .. Host_File'Length + 1);
-      Canonical_File_Addr : Address;
-      Canonical_File_Len  : CRTL.size_t;
-
-   begin
-      C_Host_File (1 .. Host_File'Length) := Host_File;
-      C_Host_File (C_Host_File'Last)      := ASCII.NUL;
-
-      Canonical_File_Addr := To_Canonical_File_Spec (C_Host_File'Address);
-      Canonical_File_Len  := C_String_Length (Canonical_File_Addr);
-
-      if Canonical_File_Len = 0 then
-         return null;
-      else
-         return To_Path_String_Access
-                  (Canonical_File_Addr, Canonical_File_Len);
-      end if;
-
-   exception
-      when others =>
-         Fail ("invalid file spec: " & Host_File);
-         return null;
-   end To_Canonical_File_Spec;
-
-   ----------------------------
-   -- To_Canonical_Path_Spec --
-   ----------------------------
-
-   function To_Canonical_Path_Spec
-     (Host_Path : String) return String_Access
-   is
-      function To_Canonical_Path_Spec (Host_Path : Address) return Address;
-      pragma Import
-        (C, To_Canonical_Path_Spec, "__gnat_to_canonical_path_spec");
-
-      C_Host_Path         : String (1 .. Host_Path'Length + 1);
-      Canonical_Path_Addr : Address;
-      Canonical_Path_Len  : CRTL.size_t;
-
-   begin
-      C_Host_Path (1 .. Host_Path'Length) := Host_Path;
-      C_Host_Path (C_Host_Path'Last)      := ASCII.NUL;
-
-      Canonical_Path_Addr := To_Canonical_Path_Spec (C_Host_Path'Address);
-      Canonical_Path_Len  := C_String_Length (Canonical_Path_Addr);
-
-      --  Return a null string (vice a null) for zero length paths, for
-      --  compatibility with getenv().
-
-      return To_Path_String_Access (Canonical_Path_Addr, Canonical_Path_Len);
-
-   exception
-      when others =>
-         Fail ("invalid path spec: " & Host_Path);
-         return null;
-   end To_Canonical_Path_Spec;
 
    ----------------------
    -- To_Host_Dir_Spec --

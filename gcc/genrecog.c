@@ -1,5 +1,5 @@
 /* Generate code from machine description to recognize rtl as insns.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -388,7 +388,7 @@ find_operand (rtx pattern, int n, rtx stop)
 	      return r;
 	  break;
 
-	case 'i': case 'r': case 'w': case '0': case 's':
+	case 'r': case 'p': case 'i': case 'w': case '0': case 's':
 	  break;
 
 	default:
@@ -439,7 +439,7 @@ find_matching_operand (rtx pattern, int n)
 	      return r;
 	  break;
 
-	case 'i': case 'r': case 'w': case '0': case 's':
+	case 'r': case 'p': case 'i': case 'w': case '0': case 's':
 	  break;
 
 	default:
@@ -740,17 +740,38 @@ validate_pattern (rtx pattern, md_rtx_info *info, rtx set, int set_code)
     case VEC_SELECT:
       if (GET_MODE (pattern) != VOIDmode)
 	{
-	  enum machine_mode mode = GET_MODE (pattern);
-	  enum machine_mode imode = GET_MODE (XEXP (pattern, 0));
-	  enum machine_mode emode
+	  machine_mode mode = GET_MODE (pattern);
+	  machine_mode imode = GET_MODE (XEXP (pattern, 0));
+	  machine_mode emode
 	    = VECTOR_MODE_P (mode) ? GET_MODE_INNER (mode) : mode;
 	  if (GET_CODE (XEXP (pattern, 1)) == PARALLEL)
 	    {
-	      int expected = VECTOR_MODE_P (mode) ? GET_MODE_NUNITS (mode) : 1;
-	      if (XVECLEN (XEXP (pattern, 1), 0) != expected)
+	      int expected = 1;
+	      unsigned int nelems;
+	      if (VECTOR_MODE_P (mode)
+		  && !GET_MODE_NUNITS (mode).is_constant (&expected))
+		error_at (info->loc,
+			  "vec_select with variable-sized mode %s",
+			  GET_MODE_NAME (mode));
+	      else if (XVECLEN (XEXP (pattern, 1), 0) != expected)
 		error_at (info->loc,
 			  "vec_select parallel with %d elements, expected %d",
 			  XVECLEN (XEXP (pattern, 1), 0), expected);
+	      else if (VECTOR_MODE_P (imode)
+		       && GET_MODE_NUNITS (imode).is_constant (&nelems))
+		{
+		  int i;
+		  for (i = 0; i < expected; ++i)
+		    if (CONST_INT_P (XVECEXP (XEXP (pattern, 1), 0, i))
+			&& (UINTVAL (XVECEXP (XEXP (pattern, 1), 0, i))
+			    >= nelems))
+		      error_at (info->loc,
+				"out of bounds selector %u in vec_select, "
+				"expected at most %u",
+				(unsigned)
+				UINTVAL (XVECEXP (XEXP (pattern, 1), 0, i)),
+				nelems - 1);
+		}
 	    }
 	  if (imode != VOIDmode && !VECTOR_MODE_P (imode))
 	    error_at (info->loc, "%smode of first vec_select operand is not a "
@@ -782,7 +803,7 @@ validate_pattern (rtx pattern, md_rtx_info *info, rtx set, int set_code)
 	    validate_pattern (XVECEXP (pattern, i, j), info, NULL_RTX, 0);
 	  break;
 
-	case 'i': case 'r': case 'w': case '0': case 's':
+	case 'r': case 'p': case 'i': case 'w': case '0': case 's':
 	  break;
 
 	default:
@@ -796,11 +817,13 @@ validate_pattern (rtx pattern, md_rtx_info *info, rtx set, int set_code)
    to "T *prev, *next;" and a function "void set_parent (list_head <T> *)"
    to set the parent list.  */
 template <typename T>
-struct list_head
+class list_head
 {
+public:
   /* A range of linked items.  */
-  struct range
+  class range
   {
+  public:
     range (T *);
     range (T *, T *);
 
@@ -926,7 +949,7 @@ list_head <T>::singleton () const
   return first == last ? first : 0;
 }
 
-struct state;
+class state;
 
 /* Describes a possible successful return from a routine.  */
 struct acceptance_type
@@ -986,8 +1009,9 @@ operator != (const acceptance_type &a, const acceptance_type &b)
 }
 
 /* Represents a parameter to a pattern routine.  */
-struct parameter
+class parameter
 {
+public:
   /* The C type of parameter.  */
   enum type_enum {
     /* Represents an invalid parameter.  */
@@ -1047,8 +1071,9 @@ operator != (const parameter &param1, const parameter &param2)
    an ad-hoc enum value on success and -1 on failure.  The routine can
    be used by any subroutine type.  The match can be parameterized by
    things like mode, code and UNSPEC number.  */
-struct pattern_routine
+class pattern_routine
 {
+public:
   /* The state that implements the pattern.  */
   state *s;
 
@@ -1074,8 +1099,9 @@ struct pattern_routine
 static vec <pattern_routine *> patterns;
 
 /* Represents one use of a pattern routine.  */
-struct pattern_use
+class pattern_use
 {
+public:
   /* The pattern routine to use.  */
   pattern_routine *routine;
 
@@ -1085,8 +1111,9 @@ struct pattern_use
 };
 
 /* Represents a test performed by a decision.  */
-struct rtx_test
+class rtx_test
 {
+public:
   rtx_test ();
 
   /* The types of test that can be performed.  Most of them take as input
@@ -1103,6 +1130,9 @@ struct rtx_test
 
     /* Check REGNO (X) == LABEL.  */
     REGNO_FIELD,
+
+    /* Check known_eq (SUBREG_BYTE (X), LABEL).  */
+    SUBREG_FIELD,
 
     /* Check XINT (X, u.opno) == LABEL.  */
     INT_FIELD,
@@ -1184,6 +1214,7 @@ struct rtx_test
   static rtx_test code (position *);
   static rtx_test mode (position *);
   static rtx_test regno_field (position *);
+  static rtx_test subreg_field (position *);
   static rtx_test int_field (position *, int);
   static rtx_test wide_int_field (position *, int);
   static rtx_test veclen (position *);
@@ -1225,6 +1256,13 @@ rtx_test
 rtx_test::regno_field (position *pos)
 {
   rtx_test res (pos, rtx_test::REGNO_FIELD);
+  return res;
+}
+
+rtx_test
+rtx_test::subreg_field (position *pos)
+{
+  rtx_test res (pos, rtx_test::SUBREG_FIELD);
   return res;
 }
 
@@ -1349,6 +1387,7 @@ operator == (const rtx_test &a, const rtx_test &b)
     case rtx_test::CODE:
     case rtx_test::MODE:
     case rtx_test::REGNO_FIELD:
+    case rtx_test::SUBREG_FIELD:
     case rtx_test::VECLEN:
     case rtx_test::HAVE_NUM_CLOBBERS:
       return true;
@@ -1393,8 +1432,9 @@ operator != (const rtx_test &a, const rtx_test &b)
 
 /* A simple set of transition labels.  Most transitions have a singleton
    label, so try to make that case as efficient as possible.  */
-struct int_set : public auto_vec <uint64_t, 1>
+class int_set : public auto_vec <uint64_t, 1>
 {
+public:
   typedef uint64_t *iterator;
 
   int_set ();
@@ -1407,14 +1447,16 @@ struct int_set : public auto_vec <uint64_t, 1>
   iterator end ();
 };
 
-int_set::int_set () {}
+int_set::int_set () : auto_vec<uint64_t, 1> () {}
 
-int_set::int_set (uint64_t label)
+int_set::int_set (uint64_t label) :
+  auto_vec<uint64_t, 1> ()
 {
   safe_push (label);
 }
 
-int_set::int_set (const int_set &other)
+int_set::int_set (const int_set &other) :
+  auto_vec<uint64_t, 1> ()
 {
   safe_splice (other);
 }
@@ -1456,12 +1498,13 @@ operator != (const int_set &a, const int_set &b)
   return !operator == (a, b);
 }
 
-struct decision;
+class decision;
 
 /* Represents a transition between states, dependent on the result of
    a test T.  */
-struct transition
+class transition
 {
+public:
   transition (const int_set &, state *, bool);
 
   void set_parent (list_head <transition> *);
@@ -1500,8 +1543,9 @@ struct transition
    to the transition's target state.  If no suitable transition exists,
    the machine either falls through to the next decision or, if there are no
    more decisions to try, fails the match.  */
-struct decision : list_head <transition>
+class decision : public list_head <transition>
 {
+public:
   decision (const rtx_test &);
 
   void set_parent (list_head <decision> *s);
@@ -1520,8 +1564,9 @@ struct decision : list_head <transition>
 /* Represents one machine state.  For each state the machine tries a list
    of decisions, in order, and acts on the first match.  It fails without
    further backtracking if no decisions match.  */
-struct state : list_head <decision>
+class state : public list_head <decision>
 {
+public:
   void set_parent (list_head <state> *) {}
 };
 
@@ -1731,8 +1776,9 @@ const unsigned char TESTED_CODE = 1;
 const unsigned char TESTED_VECLEN = 2;
 
 /* Represents a set of conditions that are known to hold.  */
-struct known_conditions
+class known_conditions
 {
+public:
   /* A mask of TESTED_ values for each position, indexed by the position's
      id field.  */
   auto_vec <unsigned char> position_tests;
@@ -1804,6 +1850,7 @@ safe_to_hoist_p (decision *d, const rtx_test &test, known_conditions *kc)
       gcc_unreachable ();
 
     case rtx_test::REGNO_FIELD:
+    case rtx_test::SUBREG_FIELD:
     case rtx_test::INT_FIELD:
     case rtx_test::WIDE_INT_FIELD:
     case rtx_test::VECLEN:
@@ -2011,6 +2058,7 @@ transition_parameter_type (rtx_test::kind_enum kind)
       return parameter::MODE;
 
     case rtx_test::REGNO_FIELD:
+    case rtx_test::SUBREG_FIELD:
       return parameter::UINT;
 
     case rtx_test::INT_FIELD:
@@ -2057,8 +2105,9 @@ find_operand_positions (state *s, vec <int> &operand_pos)
 }
 
 /* Statistics about a matching routine.  */
-struct stats
+class stats
 {
+public:
   stats ();
 
   /* The total number of decisions in the routine, excluding trivial
@@ -2165,8 +2214,8 @@ optimize_subroutine_group (const char *type, state *root)
   if (cse_tests_p)
     {
       known_conditions kc;
-      kc.position_tests.safe_grow_cleared (num_positions);
-      kc.set_operands.safe_grow_cleared (num_operands);
+      kc.position_tests.safe_grow_cleared (num_positions, true);
+      kc.set_operands.safe_grow_cleared (num_operands, true);
       kc.peep2_count = 1;
       cse_tests (&root_pos, root, &kc);
     }
@@ -2194,11 +2243,12 @@ optimize_subroutine_group (const char *type, state *root)
 	   st.longest_backtrack, st.longest_backtrack_code);
 }
 
-struct merge_pattern_info;
+class merge_pattern_info;
 
 /* Represents a transition from one pattern to another.  */
-struct merge_pattern_transition
+class merge_pattern_transition
 {
+public:
   merge_pattern_transition (merge_pattern_info *);
 
   /* The target pattern.  */
@@ -2218,8 +2268,9 @@ merge_pattern_transition::merge_pattern_transition (merge_pattern_info *to_in)
 /* Represents a pattern that can might match several states.  The pattern
    may replace parts of the test with a parameter value.  It may also
    replace transition labels with parameters.  */
-struct merge_pattern_info
+class merge_pattern_info
 {
+public:
   merge_pattern_info (unsigned int);
 
   /* If PARAM_TEST_P, the state's singleton test should be generalized
@@ -2286,13 +2337,14 @@ merge_pattern_info::merge_pattern_info (unsigned int num_transitions)
     num_results (0),
     routine (0)
 {
-  transitions.safe_grow_cleared (num_transitions);
+  transitions.safe_grow_cleared (num_transitions, true);
 }
 
 /* Describes one way of matching a particular state to a particular
    pattern.  */
-struct merge_state_result
+class merge_state_result
 {
+public:
   merge_state_result (merge_pattern_info *, position *, merge_state_result *);
 
   /* A pattern that matches the state.  */
@@ -2322,8 +2374,9 @@ merge_state_result::merge_state_result (merge_pattern_info *pattern_in,
 
 /* Information about a state, used while trying to match it against
    a pattern.  */
-struct merge_state_info
+class merge_state_info
 {
+public:
   merge_state_info (state *);
 
   /* The state itself.  */
@@ -3614,7 +3667,7 @@ merge_into_decision (decision *d1, state *s2, const int_set *exclude,
     {
       transition *trans1 = intersecting[i];
       next->truncate (0);
-      next->safe_grow (trans1->labels.length () + combined->length ());
+      next->safe_grow (trans1->labels.length () + combined->length (), true);
       int_set::iterator end
 	= std::set_union (trans1->labels.begin (), trans1->labels.end (),
 			  combined->begin (), combined->end (),
@@ -3822,7 +3875,8 @@ merge_into_state (state *s1, state *s2)
 
 /* Pairs a pattern that needs to be matched with the rtx position at
    which the pattern should occur.  */
-struct pattern_pos {
+class pattern_pos {
+public:
   pattern_pos () {}
   pattern_pos (rtx, position *);
 
@@ -4022,6 +4076,14 @@ match_pattern_2 (state *s, md_rtx_info *info, position *pos, rtx pattern)
 				      XWINT (pattern, 0), false);
 		    break;
 
+		  case 'p':
+		    /* We don't have a way of parsing polynomial offsets yet,
+		       and hopefully never will.  */
+		    s = add_decision (s, rtx_test::subreg_field (pos),
+				      SUBREG_BYTE (pattern).to_constant (),
+				      false);
+		    break;
+
 		  case '0':
 		    break;
 
@@ -4201,6 +4263,8 @@ write_header (void)
 /* Generated automatically by the program `genrecog' from the target\n\
    machine description file.  */\n\
 \n\
+#define IN_TARGET_CODE 1\n\
+\n\
 #include \"config.h\"\n\
 #include \"system.h\"\n\
 #include \"coretypes.h\"\n\
@@ -4336,8 +4400,9 @@ enum exit_state {
 
 /* Information used while writing out code.  */
 
-struct output_state
+class output_state
 {
+public:
   /* The type of routine that we're generating.  */
   routine_type type;
 
@@ -4487,7 +4552,7 @@ print_parameter_value (const parameter &param)
 	break;
 
       case parameter::MODE:
-	printf ("%smode", GET_MODE_NAME ((machine_mode) param.value));
+	printf ("E_%smode", GET_MODE_NAME ((machine_mode) param.value));
 	break;
 
       case parameter::INT:
@@ -4548,6 +4613,12 @@ print_nonbool_test (output_state *os, const rtx_test &test)
 
     case rtx_test::REGNO_FIELD:
       printf ("REGNO (");
+      print_test_rtx (os, test);
+      printf (")");
+      break;
+
+    case rtx_test::SUBREG_FIELD:
+      printf ("SUBREG_BYTE (");
       print_test_rtx (os, test);
       printf (")");
       break;
@@ -4632,6 +4703,14 @@ print_test (output_state *os, const rtx_test &test, bool is_param,
       print_nonbool_test (os, test);
       printf (" %s ", invert_p ? "!=" : "==");
       print_label_value (test, is_param, value);
+      break;
+
+    case rtx_test::SUBREG_FIELD:
+      printf ("%s (", invert_p ? "maybe_ne" : "known_eq");
+      print_nonbool_test (os, test);
+      printf (", ");
+      print_label_value (test, is_param, value);
+      printf (")");
       break;
 
     case rtx_test::SAVED_CONST_INT:
@@ -5069,7 +5148,7 @@ print_subroutine_start (output_state *os, state *s, position *root)
 	}
 
       /* Say that x1 is valid and the rest aren't.  */
-      os->seen_vars.safe_grow_cleared (num_vars);
+      os->seen_vars.safe_grow_cleared (num_vars, true);
       os->seen_vars[1] = true;
     }
   if (os->type == SUBPATTERN || os->type == RECOG)
@@ -5342,7 +5421,7 @@ main (int argc, const char **argv)
   optimize_subroutine_group ("peephole2_insns", &peephole2_root);
 
   output_state os;
-  os.id_to_var.safe_grow_cleared (num_positions);
+  os.id_to_var.safe_grow_cleared (num_positions, true);
 
   if (use_pattern_routines_p)
     {

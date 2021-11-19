@@ -1,5 +1,5 @@
 /* Define control flow data structures for the CFG.
-   Copyright (C) 2014-2017 Free Software Foundation, Inc.
+   Copyright (C) 2014-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -40,19 +40,22 @@ extern basic_block force_nonfallthru_and_redirect (edge, basic_block, rtx);
 extern void insert_insn_on_edge (rtx, edge);
 extern void commit_one_edge_insertion (edge e);
 extern void commit_edge_insertions (void);
-extern void print_rtl_with_bb (FILE *, const rtx_insn *, int);
+extern void print_rtl_with_bb (FILE *, const rtx_insn *, dump_flags_t);
 extern void update_br_prob_note (basic_block);
 extern rtx_insn *get_last_bb_insn (basic_block);
 extern void fixup_partitions (void);
 extern bool purge_dead_edges (basic_block);
 extern bool purge_all_dead_edges (void);
 extern bool fixup_abnormal_edges (void);
+extern void update_cfg_for_uncondjump (rtx_insn *);
 extern rtx_insn *unlink_insn_chain (rtx_insn *, rtx_insn *);
 extern void relink_block_chain (bool);
-extern rtx_insn *duplicate_insn_chain (rtx_insn *, rtx_insn *);
-extern void cfg_layout_initialize (unsigned int);
+extern rtx_insn *duplicate_insn_chain (rtx_insn *, rtx_insn *,
+				       class loop *, class copy_bb_data *);
+extern void cfg_layout_initialize (int);
 extern void cfg_layout_finalize (void);
 extern void break_superblocks (void);
 extern void init_rtl_bb_info (basic_block);
+extern void find_bbs_reachable_by_hot_paths (hash_set <basic_block> *);
 
 #endif /* GCC_CFGRTL_H */

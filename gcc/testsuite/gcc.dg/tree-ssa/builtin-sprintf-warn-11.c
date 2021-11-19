@@ -19,15 +19,9 @@ typedef __WCHAR_TYPE__ wchar_t;
 extern int int_value (void);
 extern size_t size_value (void);
 
-int int_range (int min, int max)
+static int int_range (int min, int max)
 {
   int n = int_value ();
-  return n < min || max < n ? min : n;
-}
-
-size_t size_range (size_t min, size_t max)
-{
-  size_t n = size_value ();
   return n < min || max < n ? min : n;
 }
 
@@ -203,17 +197,21 @@ void test_narrow_string_with_width_and_precision (void)
      IR (imax / 9, imax / 8), IR (imax / 7, imax / 6), SR (x, y),
      IR (imax / 5, imax / 4), IR (imax / 3, imax / 2), SR (x, y));
 
-  /* The two directives below combined convert to [INT_MAX, INT_MAX + 1].
+  /* The two directives below combined convert to [INT_MAX -1, INT_MAX + 1].
      Since the lower end of the range doesn't exceed INT_MAX no warning
      is expected.  */
   T (-1, "%*.*s%*.*s",
-     IR (imax - 5, imax - 3), IR (1, 2), SR (x, y),
+     IR (imax - 6, imax - 3), IR (1, 2), SR (x, y),
      IR (       5,        6), IR (3, 4), SR (x, y));
 
   /* The three directives below (the two %s plus the space in between)
      combined convert to [INT_MAX + 1, INT_MAX + 2].  Since the lower
-     end of the range exceeds INT_MAX a warning is expected.  */
-  T (-1, "%*.*s %*.*s",                                     /* { dg-warning "INT_MAX" } */
+     end of the range exceeds INT_MAX a warning is expected.  In ILP32,
+     the output overflows the maximum object size.  */
+  T (-1, "%*.*s %*.*s",
+     /* { dg-warning "INT_MAX" "LP64" { target lp64 } .-1 }
+	{ dg-warning "directive writing between 5 and 6 bytes into a region of size between 2 and 4" "ILP32" { target ilp32 } .-2 }
+      */
      IR (imax - 5, imax - 3), IR (1, 2), SR (x, y),
      IR (       5,        6), IR (3, 4), SR (x, y));
 

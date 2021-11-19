@@ -1,6 +1,6 @@
 // -*- C++ -*-
 
-// Copyright (C) 2004-2017 Free Software Foundation, Inc.
+// Copyright (C) 2004-2021 Free Software Foundation, Inc.
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as
@@ -22,7 +22,13 @@
 #include <stdexcept>
 #include <vector>
 #include <locale>
-#include <tr1/unordered_map>
+#if __cplusplus >= 201103L
+# include <unordered_map>
+namespace unord = std;
+#else
+# include <tr1/unordered_map>
+namespace unord = std::tr1;
+#endif
 #include <cxxabi.h>
 
 // Encapsulates symbol characteristics.
@@ -65,7 +71,7 @@ struct symbol
 };
 
 // Map type between symbol names and full symbol info.
-typedef std::tr1::unordered_map<std::string, symbol> 	symbols;
+typedef unord::unordered_map<std::string, symbol> 	symbols;
 
 
 // Check.
@@ -94,5 +100,5 @@ compare_symbols(const char* baseline_file, const char* test_file, bool verb);
 symbols
 create_symbols(const char* file);
 
-const char*
+std::string
 demangle(const std::string& mangled);

@@ -1,5 +1,5 @@
 /* Definitions of target machine for GCC for IA-32.
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -39,18 +39,21 @@ ADJUST_ALIGNMENT (XF, TARGET_128BIT_LONG_DOUBLE ? 16 : 4);
    For the i386, we need separate modes when floating-point
    equality comparisons are being done.
 
-   Add CCNO to indicate comparisons against zero that requires
+   Add CCNO to indicate comparisons against zero that require
    Overflow flag to be unset.  Sign bit test is used instead and
    thus can be used to form "a&b>0" type of tests.
 
-   Add CCGC to indicate comparisons against zero that allows
+   Add CCGC to indicate comparisons against zero that allow
    unspecified garbage in the Carry flag.  This mode is used
    by inc/dec instructions.
 
-   Add CCGOC to indicate comparisons against zero that allows
+   Add CCGOC to indicate comparisons against zero that allow
    unspecified garbage in the Carry and Overflow flag. This
    mode is used to simulate comparisons of (a-b) and (a+b)
    against zero using sub/cmp/add operations.
+
+   Add CCGZ to indicate comparisons that allow unspecified garbage
+   in the Zero flag.  This mode is used in double-word comparisons.
 
    Add CCA to indicate that only the Above flag is valid.
    Add CCC to indicate that only the Carry flag is valid.
@@ -62,14 +65,15 @@ ADJUST_ALIGNMENT (XF, TARGET_128BIT_LONG_DOUBLE ? 16 : 4);
 CC_MODE (CCGC);
 CC_MODE (CCGOC);
 CC_MODE (CCNO);
+CC_MODE (CCGZ);
 CC_MODE (CCA);
 CC_MODE (CCC);
 CC_MODE (CCO);
 CC_MODE (CCP);
 CC_MODE (CCS);
 CC_MODE (CCZ);
+
 CC_MODE (CCFP);
-CC_MODE (CCFPU);
 
 /* Vector modes.  Note that VEC_CONCAT patterns require vector
    sizes twice as big as implemented in hardware.  */
@@ -94,16 +98,28 @@ VECTOR_MODE (INT, QI, 14);    /*                  V14QI */
 VECTOR_MODE (INT, HI, 6);     /*                   V6HI */
 VECTOR_MODE (INT, SI, 64);    /* 		  V64SI */
 
-POINTER_BOUNDS_MODE (BND32, 8);
-POINTER_BOUNDS_MODE (BND64, 16);
-
 INT_MODE (OI, 32);
 INT_MODE (XI, 64);
 
+/* Modes needs a consecutive register pair.
+   Note that Using PARTIAL_INT_MODE but not INT_MODE is to avoid mode promotion
+   issues.  */
+PARTIAL_INT_MODE (HI, 16, P2QI);
+PARTIAL_INT_MODE (SI, 32, P2HI);
+
+/* Mode used for signed overflow checking of TImode.  As
+   MAX_BITSIZE_MODE_ANY_INT is only 160, wide-int.h reserves only that
+   rounded up to multiple of HOST_BITS_PER_WIDE_INT bits in wide_int etc.,
+   so OImode is too large.  For the overflow checking we actually need
+   just 1 or 2 bits beyond TImode precision.  Use 160 bits to have
+   a multiple of 32.  */
+PARTIAL_INT_MODE (OI, 160, POI);
+
 /* Keep the OI and XI modes from confusing the compiler into thinking
    that these modes could actually be used for computation.  They are
-   only holders for vectors during data movement.  */
-#define MAX_BITSIZE_MODE_ANY_INT (128)
+   only holders for vectors during data movement.  Include POImode precision
+   though.  */
+#define MAX_BITSIZE_MODE_ANY_INT (160)
 
 /* The symbol Pmode stands for one of the above machine modes (usually SImode).
    The tm.h file specifies which one.  It is not a distinct mode.  */

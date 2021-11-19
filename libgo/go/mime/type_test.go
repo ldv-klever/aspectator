@@ -149,3 +149,70 @@ func TestLookupMallocs(t *testing.T) {
 		t.Errorf("allocs = %v; want 0", n)
 	}
 }
+
+func BenchmarkTypeByExtension(b *testing.B) {
+	initMime()
+	b.ResetTimer()
+
+	for _, ext := range []string{
+		".html",
+		".HTML",
+		".unused",
+	} {
+		b.Run(ext, func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					TypeByExtension(ext)
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkExtensionsByType(b *testing.B) {
+	initMime()
+	b.ResetTimer()
+
+	for _, typ := range []string{
+		"text/html",
+		"text/html; charset=utf-8",
+		"application/octet-stream",
+	} {
+		b.Run(typ, func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					if _, err := ExtensionsByType(typ); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestExtensionsByType2(t *testing.T) {
+	cleanup := setMimeInit(func() {
+		clearMimeTypes()
+		// Initialize built-in types like in type.go before osInitMime.
+		setMimeTypes(builtinTypesLower, builtinTypesLower)
+	})
+	defer cleanup()
+
+	tests := []struct {
+		typ  string
+		want []string
+	}{
+		{typ: "image/jpeg", want: []string{".jpeg", ".jpg"}},
+	}
+
+	for _, tt := range tests {
+		got, err := ExtensionsByType(tt.typ)
+		if err != nil {
+			t.Errorf("ExtensionsByType(%q): %v", tt.typ, err)
+			continue
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("ExtensionsByType(%q) = %q; want %q", tt.typ, got, tt.want)
+		}
+	}
+}

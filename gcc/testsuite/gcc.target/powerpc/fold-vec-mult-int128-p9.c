@@ -4,8 +4,7 @@
 /* { dg-do compile } */
 /* { dg-require-effective-target powerpc_p9vector_ok } */
 /* { dg-require-effective-target int128 } */
-/* { dg-skip-if "do not override -mcpu" { powerpc*-*-* } { "-mcpu=*" } { "-mcpu=power9" } } */
-/* { dg-options "-mpower9-vector -mcpu=power9 -O2" } */
+/* { dg-options "-mpower9-vector -mdejagnu-cpu=power9 -O2" } */
 /* { dg-additional-options "-maix64" { target powerpc-ibm-aix* } } */
 
 #include "altivec.h"
@@ -22,5 +21,5 @@ test2 (vector unsigned __int128 x, vector unsigned __int128 y)
   return vec_mul (x, y);
 }
 
-/* { dg-final { scan-assembler-times {\mmulld\M} 4 } } */
+/* { dg-final { scan-assembler-times {\mmulld\M|\mmaddld\M} 6 } } */
 /* { dg-final { scan-assembler-times {\mmulhdu\M} 2 } } */

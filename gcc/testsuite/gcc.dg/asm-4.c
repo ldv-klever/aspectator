@@ -1,6 +1,10 @@
 /* { dg-do compile } */
 /* { dg-options "" } */
 
+/* "p" modifier can't be used to generate a valid memory address with ILP32.  */
+/* { dg-skip-if "" { aarch64*-*-* && ilp32 } } */
+/* { dg-skip-if "'p' is not supported for GCN" { amdgcn-*-* } } */
+
 int main()
 {
   int x, y, z;

@@ -16,5 +16,5 @@
       do i = 1, 300000
         call atomic_add(lhs, rhs)
       enddo
-      if (lhs .ne. 300000) call abort
+      if (lhs .ne. 300000) stop 1
       end

@@ -2,12 +2,17 @@
 //
 // { dg-do compile { target { lp64 } } }
 // { dg-options  "-Wno-error -fno-exceptions -fno-tree-vrp -O2 -fprofile-generate  -finline-limit=500 -std=c++98"  }
-//
+// { dg-additional-options "-Wno-return-type" }
 
 #include <map>
 #include <vector>
 #include <iostream>
 #include <cstdlib>
+
+#ifdef ERROR
+#undef ERROR
+#endif
+
 using namespace std;
 template<typename _FIter, typename _Tp> _FIter lower_bound(_FIter, _FIter, _Tp&);
 template<class _Key> struct hash { };

@@ -1,5 +1,5 @@
 /* Output colorization.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,91 +19,13 @@
 #include "config.h"
 #include "system.h"
 #include "diagnostic-color.h"
+#include "diagnostic-url.h"
 
-/* Select Graphic Rendition (SGR, "\33[...m") strings.  */
-/* Also Erase in Line (EL) to Right ("\33[K") by default.  */
-/*    Why have EL to Right after SGR?
-	 -- The behavior of line-wrapping when at the bottom of the
-	    terminal screen and at the end of the current line is often
-	    such that a new line is introduced, entirely cleared with
-	    the current background color which may be different from the
-	    default one (see the boolean back_color_erase terminfo(5)
-	    capability), thus scrolling the display by one line.
-	    The end of this new line will stay in this background color
-	    even after reverting to the default background color with
-	    "\33[m', unless it is explicitly cleared again with "\33[K"
-	    (which is the behavior the user would instinctively expect
-	    from the whole thing).  There may be some unavoidable
-	    background-color flicker at the end of this new line because
-	    of this (when timing with the monitor's redraw is just right).
-	 -- The behavior of HT (tab, "\t") is usually the same as that of
-	    Cursor Forward Tabulation (CHT) with a default parameter
-	    of 1 ("\33[I"), i.e., it performs pure movement to the next
-	    tab stop, without any clearing of either content or screen
-	    attributes (including background color); try
-	       printf 'asdfqwerzxcv\rASDF\tZXCV\n'
-	    in a bash(1) shell to demonstrate this.  This is not what the
-	    user would instinctively expect of HT (but is ok for CHT).
-	    The instinctive behavior would include clearing the terminal
-	    cells that are skipped over by HT with blank cells in the
-	    current screen attributes, including background color;
-	    the boolean dest_tabs_magic_smso terminfo(5) capability
-	    indicates this saner behavior for HT, but only some rare
-	    terminals have it (although it also indicates a special
-	    glitch with standout mode in the Teleray terminal for which
-	    it was initially introduced).  The remedy is to add "\33K"
-	    after each SGR sequence, be it START (to fix the behavior
-	    of any HT after that before another SGR) or END (to fix the
-	    behavior of an HT in default background color that would
-	    follow a line-wrapping at the bottom of the screen in another
-	    background color, and to complement doing it after START).
-	    Piping GCC's output through a pager such as less(1) avoids
-	    any HT problems since the pager performs tab expansion.
+#ifdef __MINGW32__
+#  include <windows.h>
+#endif
 
-      Generic disadvantages of this remedy are:
-	 -- Some very rare terminals might support SGR but not EL (nobody
-	    will use "gcc -fdiagnostics-color" on a terminal that does not
-	    support SGR in the first place).
-	 -- Having these extra control sequences might somewhat complicate
-	    the task of any program trying to parse "gcc -fdiagnostics-color"
-	    output in order to extract structuring information from it.
-      A specific disadvantage to doing it after SGR START is:
-	 -- Even more possible background color flicker (when timing
-	    with the monitor's redraw is just right), even when not at the
-	    bottom of the screen.
-      There are no additional disadvantages specific to doing it after
-      SGR END.
-
-      It would be impractical for GCC to become a full-fledged
-      terminal program linked against ncurses or the like, so it will
-      not detect terminfo(5) capabilities.  */
-#define COLOR_SEPARATOR		";"
-#define COLOR_NONE		"00"
-#define COLOR_BOLD		"01"
-#define COLOR_UNDERSCORE	"04"
-#define COLOR_BLINK		"05"
-#define COLOR_REVERSE		"07"
-#define COLOR_FG_BLACK		"30"
-#define COLOR_FG_RED		"31"
-#define COLOR_FG_GREEN		"32"
-#define COLOR_FG_YELLOW		"33"
-#define COLOR_FG_BLUE		"34"
-#define COLOR_FG_MAGENTA	"35"
-#define COLOR_FG_CYAN		"36"
-#define COLOR_FG_WHITE		"37"
-#define COLOR_BG_BLACK		"40"
-#define COLOR_BG_RED		"41"
-#define COLOR_BG_GREEN		"42"
-#define COLOR_BG_YELLOW		"43"
-#define COLOR_BG_BLUE		"44"
-#define COLOR_BG_MAGENTA	"45"
-#define COLOR_BG_CYAN		"46"
-#define COLOR_BG_WHITE		"47"
-#define SGR_START		"\33["
-#define SGR_END			"m\33[K"
-#define SGR_SEQ(str)		SGR_START str SGR_END
-#define SGR_RESET		SGR_SEQ("")
-
+#include "color-macros.h"
 
 /* The context and logic for choosing default --color screen attributes
    (foreground and background colors, etc.) are the following.
@@ -168,12 +90,14 @@ static struct color_cap color_dict[] =
   { "range2", SGR_SEQ (COLOR_FG_BLUE), 6, false },
   { "locus", SGR_SEQ (COLOR_BOLD), 5, false },
   { "quote", SGR_SEQ (COLOR_BOLD), 5, false },
+  { "path", SGR_SEQ (COLOR_BOLD COLOR_SEPARATOR COLOR_FG_CYAN), 4, false },
   { "fixit-insert", SGR_SEQ (COLOR_FG_GREEN), 12, false },
   { "fixit-delete", SGR_SEQ (COLOR_FG_RED), 12, false },
   { "diff-filename", SGR_SEQ (COLOR_BOLD), 13, false },
   { "diff-hunk", SGR_SEQ (COLOR_FG_CYAN), 9, false },
   { "diff-delete", SGR_SEQ (COLOR_FG_RED), 11, false },
   { "diff-insert", SGR_SEQ (COLOR_FG_GREEN), 11, false },
+  { "type-diff", SGR_SEQ (COLOR_BOLD COLOR_SEPARATOR COLOR_FG_GREEN), 9, false },
   { NULL, NULL, 0, false }
 };
 
@@ -203,9 +127,10 @@ colorize_stop (bool show_color)
 
 /* Parse GCC_COLORS.  The default would look like:
    GCC_COLORS='error=01;31:warning=01;35:note=01;36:\
-   range1=32:range2=34:locus=01:quote=01:\
-   fixit-insert=32:fixit-delete=31'\
-   diff-filename=01:diff-hunk=32:diff-delete=31:diff-insert=32'
+   range1=32:range2=34:locus=01:quote=01:path=01;36:\
+   fixit-insert=32:fixit-delete=31:'\
+   diff-filename=01:diff-hunk=32:diff-delete=31:diff-insert=32:\
+   type-diff=01;32'
    No character escaping is needed or supported.  */
 static bool
 parse_gcc_colors (void)
@@ -273,22 +198,28 @@ parse_gcc_colors (void)
       return true;
 }
 
-#if defined(_WIN32)
-bool
-colorize_init (diagnostic_color_rule_t)
-{
-  return false;
-}
-#else
-
 /* Return true if we should use color when in auto mode, false otherwise. */
 static bool
 should_colorize (void)
 {
-  char const *t = getenv ("TERM");
-  return t && strcmp (t, "dumb") != 0 && isatty (STDERR_FILENO);
-}
+#ifdef __MINGW32__
+  /* For consistency reasons, one should check the handle returned by
+     _get_osfhandle(_fileno(stderr)) because the function
+     pp_write_text_to_stream() in pretty-print.c calls fputs() on
+     that stream.  However, the code below for non-Windows doesn't seem
+     to care about it either...  */
+  HANDLE h;
+  DWORD m;
 
+  h = GetStdHandle (STD_ERROR_HANDLE);
+  return (h != INVALID_HANDLE_VALUE) && (h != NULL)
+	  && GetConsoleMode (h, &m);
+#else
+  char const *t = getenv ("TERM");
+  /* emacs M-x shell sets TERM="dumb".  */
+  return t && strcmp (t, "dumb") != 0 && isatty (STDERR_FILENO);
+#endif
+}
 
 bool
 colorize_init (diagnostic_color_rule_t rule)
@@ -308,4 +239,110 @@ colorize_init (diagnostic_color_rule_t rule)
       gcc_unreachable ();
     }
 }
+
+/* Return URL_FORMAT_XXX which tells how we should emit urls
+   when in always mode.
+   We use GCC_URLS and if that is not defined TERM_URLS.
+   If neither is defined the feature is enabled by default.  */
+
+static diagnostic_url_format
+parse_env_vars_for_urls ()
+{
+  const char *p;
+
+  p = getenv ("GCC_URLS"); /* Plural! */
+  if (p == NULL)
+    p = getenv ("TERM_URLS");
+
+  if (p == NULL)
+    return URL_FORMAT_DEFAULT;
+
+  if (*p == '\0')
+    return URL_FORMAT_NONE;
+
+  if (!strcmp (p, "no"))
+    return URL_FORMAT_NONE;
+
+  if (!strcmp (p, "st"))
+    return URL_FORMAT_ST;
+
+  if (!strcmp (p, "bel"))
+    return URL_FORMAT_BEL;
+
+  return URL_FORMAT_DEFAULT;
+}
+
+/* Return true if we should use urls when in auto mode, false otherwise.  */
+
+static bool
+auto_enable_urls ()
+{
+#ifdef __MINGW32__
+  return false;
+#else
+  const char *term, *colorterm;
+
+  /* First check the terminal is capable of printing color escapes,
+     if not URLs won't work either.  */
+  if (!should_colorize ())
+    return false;
+
+  /* xfce4-terminal is known to not implement URLs at this time.
+     Recently new installations (0.8) will safely ignore the URL escape
+     sequences, but a large number of legacy installations (0.6.3) print
+     garbage when URLs are printed.  Therefore we lose nothing by
+     disabling this feature for that specific terminal type.  */
+  colorterm = getenv ("COLORTERM");
+  if (colorterm && !strcmp (colorterm, "xfce4-terminal"))
+    return false;
+
+  /* Old versions of gnome-terminal where URL escapes cause screen
+     corruptions set COLORTERM="gnome-terminal", recent versions
+     with working URL support set this to "truecolor".  */
+  if (colorterm && !strcmp (colorterm, "gnome-terminal"))
+    return false;
+
+  /* Since the following checks are less specific than the ones
+     above, let GCC_URLS and TERM_URLS override the decision.  */
+  if (getenv ("GCC_URLS") || getenv ("TERM_URLS"))
+    return true;
+
+  /* In an ssh session the COLORTERM is not there, but TERM=xterm
+     can be used as an indication of a incompatible terminal while
+     TERM=xterm-256color appears to be a working terminal.  */
+  term = getenv ("TERM");
+  if (!colorterm && term && !strcmp (term, "xterm"))
+    return false;
+
+  /* When logging in a linux over serial line, we see TERM=linux
+     and no COLORTERM, it is unlikely that the URL escapes will
+     work in that environmen either.  */
+  if (!colorterm && term && !strcmp (term, "linux"))
+    return false;
+
+  return true;
 #endif
+}
+
+/* Determine if URLs should be enabled, based on RULE,
+   and, if so, which format to use.
+   This reuses the logic for colorization.  */
+
+diagnostic_url_format
+determine_url_format (diagnostic_url_rule_t rule)
+{
+  switch (rule)
+    {
+    case DIAGNOSTICS_URL_NO:
+      return URL_FORMAT_NONE;
+    case DIAGNOSTICS_URL_YES:
+      return parse_env_vars_for_urls ();
+    case DIAGNOSTICS_URL_AUTO:
+      if (auto_enable_urls ())
+	return parse_env_vars_for_urls ();
+      else
+	return URL_FORMAT_NONE;
+    default:
+      gcc_unreachable ();
+    }
+}

@@ -6,23 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
 -- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
---                                                                          --
--- As a special exception under Section 7 of GPL version 3, you are granted --
--- additional permissions described in the GCC Runtime Library Exception,   --
--- version 3.1, as published by the Free Software Foundation.               --
---                                                                          --
--- You should have received a copy of the GNU General Public License and    --
--- a copy of the GCC Runtime Library Exception along with this program;     --
--- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
--- <http://www.gnu.org/licenses/>.                                          --
+-- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
+-- for  more details.  You should have  received  a copy of the GNU General --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -40,6 +34,10 @@ with Sinfo;    use Sinfo;
 with Sinput;   use Sinput;
 
 package body Uname is
+
+   function Has_Prefix (X, Prefix : String) return Boolean;
+   --  True if Prefix is at the beginning of X. For example,
+   --  Has_Prefix("a-filename.ads", Prefix => "a-") is True.
 
    -------------------
    -- Get_Body_Name --
@@ -296,12 +294,8 @@ package body Uname is
                when N_Compilation_Unit =>
                   Add_Node_Name (Unit (Node));
 
-               when N_Package_Body_Stub =>
-                  Add_Node_Name (Get_Parent (Node));
-                  Add_Char ('.');
-                  Add_Node_Name (Defining_Identifier (Node));
-
-               when N_Protected_Body_Stub
+               when N_Package_Body_Stub
+                  | N_Protected_Body_Stub
                   | N_Task_Body_Stub
                =>
                   Add_Node_Name (Get_Parent (Node));
@@ -472,6 +466,23 @@ package body Uname is
       end if;
    end Get_Unit_Name_String;
 
+   ----------------
+   -- Has_Prefix --
+   ----------------
+
+   function Has_Prefix (X, Prefix : String) return Boolean is
+   begin
+      if X'Length >= Prefix'Length then
+         declare
+            Slice : String renames
+                      X (X'First .. X'First + Prefix'Length - 1);
+         begin
+            return Slice = Prefix;
+         end;
+      end if;
+      return False;
+   end Has_Prefix;
+
    ------------------
    -- Is_Body_Name --
    ------------------
@@ -505,6 +516,72 @@ package body Uname is
 
       return True;
    end Is_Child_Name;
+
+   ---------------------------
+   -- Is_Internal_Unit_Name --
+   ---------------------------
+
+   function Is_Internal_Unit_Name
+     (Name               : String;
+      Renamings_Included : Boolean := True) return Boolean
+   is
+      Gnat : constant String := "gnat";
+
+   begin
+      if Name = Gnat then
+         return True;
+      end if;
+
+      if Has_Prefix (Name, Prefix => Gnat & ".") then
+         return True;
+      end if;
+
+      return Is_Predefined_Unit_Name (Name, Renamings_Included);
+   end Is_Internal_Unit_Name;
+
+   -----------------------------
+   -- Is_Predefined_Unit_Name --
+   -----------------------------
+
+   function Is_Predefined_Unit_Name
+     (Name               : String;
+      Renamings_Included : Boolean := True) return Boolean
+   is
+      Ada        : constant String := "ada";
+      Interfaces : constant String := "interfaces";
+      System     : constant String := "system";
+
+   begin
+      if Name = Ada
+        or else Name = Interfaces
+        or else Name = System
+      then
+         return True;
+      end if;
+
+      if Has_Prefix (Name, Prefix => Ada & ".")
+        or else Has_Prefix (Name, Prefix => Interfaces & ".")
+        or else Has_Prefix (Name, Prefix => System & ".")
+      then
+         return True;
+      end if;
+
+      if not Renamings_Included then
+         return False;
+      end if;
+
+      --  The following are the predefined renamings
+
+      return
+        Name = "calendar"
+          or else Name = "machine_code"
+          or else Name = "unchecked_conversion"
+          or else Name = "unchecked_deallocation"
+          or else Name = "direct_io"
+          or else Name = "io_exceptions"
+          or else Name = "sequential_io"
+          or else Name = "text_io";
+   end Is_Predefined_Unit_Name;
 
    ------------------
    -- Is_Spec_Name --

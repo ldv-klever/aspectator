@@ -1,5 +1,5 @@
 ;; Faraday FA606TE Pipeline Description
-;; Copyright (C) 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2021 Free Software Foundation, Inc.
 ;; Written by Mingfeng Wu, based on ARM926EJ-S Pipeline Description.
 ;;
 ;; This file is part of GCC.
@@ -67,13 +67,13 @@
                        adc_imm,adcs_imm,adc_reg,adcs_reg,\
                        adr,bfm,rev,\
                        shift_imm,shift_reg,extend,\
-                       alu_shift_imm,alus_shift_imm,\
+                       alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm,\
                        logic_shift_imm,logics_shift_imm,\
                        alu_shift_reg,alus_shift_reg,\
                        logic_shift_reg,logics_shift_reg,\
                        mov_imm,mov_reg,mov_shift,mov_shift_reg,\
                        mvn_imm,mvn_reg,mvn_shift,mvn_shift_reg,\
-                       mrs,multiple,no_insn"))
+                       mrs,multiple"))
  "fa606te_core")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -111,48 +111,48 @@
 
 (define_insn_reservation "606te_load1_op" 2
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "load1,load_byte"))
+      (eq_attr "type" "load_4,load_byte"))
  "fa606te_core")
 
 (define_insn_reservation "606te_load2_op" 3
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "load2"))
+      (eq_attr "type" "load_8"))
  "fa606te_core*2")
 
 (define_insn_reservation "606te_load3_op" 4
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "load3"))
+      (eq_attr "type" "load_12"))
  "fa606te_core*3")
 
 (define_insn_reservation "606te_load4_op" 5
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "load4"))
+      (eq_attr "type" "load_16"))
  "fa606te_core*4")
 
 (define_insn_reservation "606te_store1_op" 0
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "store1"))
+      (eq_attr "type" "store_4"))
  "fa606te_core")
 
 (define_insn_reservation "606te_store2_op" 1
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "store2"))
+      (eq_attr "type" "store_8"))
  "fa606te_core*2")
 
 (define_insn_reservation "606te_store3_op" 2
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "store3"))
+      (eq_attr "type" "store_12"))
  "fa606te_core*3")
 
 (define_insn_reservation "606te_store4_op" 3
  (and (eq_attr "tune" "fa606te")
-      (eq_attr "type" "store4"))
+      (eq_attr "type" "store_16"))
  "fa606te_core*4")
 
 
 ;;(define_insn_reservation "606te_ldm_op" 9
 ;; (and (eq_attr "tune" "fa606te")
-;;      (eq_attr "type" "load2,load3,load4,store2,store3,store4"))
+;;      (eq_attr "type" "load_8,load_12,load_16,store_8,store_12,store_16"))
 ;; "fa606te_core*7")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

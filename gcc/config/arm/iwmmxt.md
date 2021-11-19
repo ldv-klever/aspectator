@@ -1,5 +1,5 @@
 ;; Patterns for the Intel Wireless MMX technology architecture.
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2021 Free Software Foundation, Inc.
 ;; Contributed by Red Hat.
 
 ;; This file is part of GCC.
@@ -55,45 +55,36 @@
 )
 
 (define_insn "iwmmxt_iordi3"
-  [(set (match_operand:DI         0 "register_operand" "=y,?&r,?&r")
-        (ior:DI (match_operand:DI 1 "register_operand" "%y,0,r")
-		(match_operand:DI 2 "register_operand"  "y,r,r")))]
+  [(set (match_operand:DI         0 "register_operand" "=y")
+        (ior:DI (match_operand:DI 1 "register_operand" "%y")
+		(match_operand:DI 2 "register_operand"  "y")))]
   "TARGET_REALLY_IWMMXT"
-  "@
-   wor%?\\t%0, %1, %2
-   #
-   #"
+  "wor%?\\t%0, %1, %2"
   [(set_attr "predicable" "yes")
-   (set_attr "length" "4,8,8")
-   (set_attr "type" "wmmx_wor,*,*")]
+   (set_attr "length" "4")
+   (set_attr "type" "wmmx_wor")]
 )
 
 (define_insn "iwmmxt_xordi3"
-  [(set (match_operand:DI         0 "register_operand" "=y,?&r,?&r")
-        (xor:DI (match_operand:DI 1 "register_operand" "%y,0,r")
-		(match_operand:DI 2 "register_operand"  "y,r,r")))]
+  [(set (match_operand:DI         0 "register_operand" "=y")
+        (xor:DI (match_operand:DI 1 "register_operand" "%y")
+		(match_operand:DI 2 "register_operand"  "y")))]
   "TARGET_REALLY_IWMMXT"
-  "@
-   wxor%?\\t%0, %1, %2
-   #
-   #"
+  "wxor%?\\t%0, %1, %2"
   [(set_attr "predicable" "yes")
-   (set_attr "length" "4,8,8")
-   (set_attr "type" "wmmx_wxor,*,*")]
+   (set_attr "length" "4")
+   (set_attr "type" "wmmx_wxor")]
 )
 
 (define_insn "iwmmxt_anddi3"
-  [(set (match_operand:DI         0 "register_operand" "=y,?&r,?&r")
-        (and:DI (match_operand:DI 1 "register_operand" "%y,0,r")
-		(match_operand:DI 2 "register_operand"  "y,r,r")))]
+  [(set (match_operand:DI         0 "register_operand" "=y")
+        (and:DI (match_operand:DI 1 "register_operand" "%y")
+		(match_operand:DI 2 "register_operand"  "y")))]
   "TARGET_REALLY_IWMMXT"
-  "@
-   wand%?\\t%0, %1, %2
-   #
-   #"
+  "wand%?\\t%0, %1, %2"
   [(set_attr "predicable" "yes")
-   (set_attr "length" "4,8,8")
-   (set_attr "type" "wmmx_wand,*,*")]
+   (set_attr "length" "4")
+   (set_attr "type" "wmmx_wand")]
 )
 
 (define_insn "iwmmxt_nanddi3"
@@ -155,7 +146,7 @@
                                  (const_int 8)
                                  (const_int 4))]
                               (const_int 4)))
-   (set_attr "type" "*,*,*,load2,store2,*,*,*,*,*,f_mcrr,f_mrrc,\
+   (set_attr "type" "*,*,*,load_8,store_8,*,*,*,*,*,f_mcrr,f_mrrc,\
                      ffarithd,f_loadd,f_stored")
    (set_attr "arm_pool_range" "*,*,*,1020,*,*,*,*,*,*,*,*,*,1020,*")
    (set_attr "arm_neg_pool_range" "*,*,*,1008,*,*,*,*,*,*,*,*,*,1008,*")]
@@ -188,7 +179,7 @@
      default:
        gcc_unreachable ();
      }"
-  [(set_attr "type"           "*,*,*,*,load1,store1,*,*,*,*,f_mcr,f_mrc,\
+  [(set_attr "type"           "*,*,*,*,load_4,store_4,*,*,*,*,f_mcr,f_mrc,\
                                fmov,f_loads,f_stores")
    (set_attr "length"         "*,*,*,*,*,        *,*,*,  16,     *,*,*,*,*,*")
    (set_attr "pool_range"     "*,*,*,*,4096,     *,*,*,1024,     *,*,*,*,1020,*")
@@ -227,7 +218,7 @@
    case 4: return \"tmcr%?\\t%0, %1\";
    default: return \"tmrc%?\\t%0, %1\";
   }"
-  [(set_attr "type"           "*,*,load1,store1,*,*")
+  [(set_attr "type"           "*,*,load_4,store_4,*,*")
    (set_attr "pool_range"     "*,*,4096,     *,*,*")
    (set_attr "neg_pool_range" "*,*,4084,     *,*,*")]
 )
@@ -249,62 +240,62 @@
    }"
   [(set_attr "predicable" "yes")
    (set_attr "length"         "4,     4,   4,4,4,8,   8,8")
-   (set_attr "type"           "wmmx_wmov,wmmx_wstr,wmmx_wldr,wmmx_tmrrc,wmmx_tmcrr,*,load1,store1")
+   (set_attr "type"           "wmmx_wmov,wmmx_wstr,wmmx_wldr,wmmx_tmrrc,wmmx_tmcrr,*,load_4,store_4")
    (set_attr "pool_range"     "*,     *, 256,*,*,*, 256,*")
    (set_attr "neg_pool_range" "*,     *, 244,*,*,*, 244,*")]
 )
 
 (define_expand "iwmmxt_setwcgr0"
   [(set (reg:SI WCGR0)
-	(match_operand:SI 0 "register_operand"  ""))]
+	(match_operand:SI 0 "register_operand"))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_setwcgr1"
   [(set (reg:SI WCGR1)
-	(match_operand:SI 0 "register_operand"  ""))]
+	(match_operand:SI 0 "register_operand"))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_setwcgr2"
   [(set (reg:SI WCGR2)
-	(match_operand:SI 0 "register_operand"  ""))]
+	(match_operand:SI 0 "register_operand"))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_setwcgr3"
   [(set (reg:SI WCGR3)
-	(match_operand:SI 0 "register_operand"  ""))]
+	(match_operand:SI 0 "register_operand"))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_getwcgr0"
-  [(set (match_operand:SI 0 "register_operand"  "")
+  [(set (match_operand:SI 0 "register_operand")
         (reg:SI WCGR0))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_getwcgr1"
-  [(set (match_operand:SI 0 "register_operand"  "")
+  [(set (match_operand:SI 0 "register_operand")
         (reg:SI WCGR1))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_getwcgr2"
-  [(set (match_operand:SI 0 "register_operand"  "")
+  [(set (match_operand:SI 0 "register_operand")
         (reg:SI WCGR2))]
   "TARGET_REALLY_IWMMXT"
   {}
 )
 
 (define_expand "iwmmxt_getwcgr3"
-  [(set (match_operand:SI 0 "register_operand"  "")
+  [(set (match_operand:SI 0 "register_operand")
         (reg:SI WCGR3))]
   "TARGET_REALLY_IWMMXT"
   {}

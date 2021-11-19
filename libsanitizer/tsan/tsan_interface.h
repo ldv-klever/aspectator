@@ -1,7 +1,8 @@
 //===-- tsan_interface.h ----------------------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,6 +17,7 @@
 
 #include <sanitizer_common/sanitizer_internal_defs.h>
 using __sanitizer::uptr;
+using __sanitizer::tid_t;
 
 // This header should NOT include any other headers.
 // All functions in this header are extern "C" and start with __tsan_.
@@ -29,6 +31,8 @@ extern "C" {
 // This function should be called at the very beginning of the process,
 // before any instrumented code is executed and before any call to malloc.
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_init();
+
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_flush_memory();
 
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_read1(void *addr);
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_read2(void *addr);
@@ -71,10 +75,29 @@ void __tsan_vptr_update(void **vptr_p, void *new_val);
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_func_entry(void *call_pc);
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_func_exit();
 
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_ignore_thread_begin();
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_ignore_thread_end();
+
 SANITIZER_INTERFACE_ATTRIBUTE
-void __tsan_read_range(void *addr, unsigned long size);  // NOLINT
+void *__tsan_external_register_tag(const char *object_type);
 SANITIZER_INTERFACE_ATTRIBUTE
-void __tsan_write_range(void *addr, unsigned long size);  // NOLINT
+void __tsan_external_register_header(void *tag, const char *header);
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_external_assign_tag(void *addr, void *tag);
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_external_read(void *addr, void *caller_pc, void *tag);
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_external_write(void *addr, void *caller_pc, void *tag);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_read_range(void *addr, unsigned long size);
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_write_range(void *addr, unsigned long size);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_read_range_pc(void *addr, unsigned long size, void *pc);  // NOLINT
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_write_range_pc(void *addr, unsigned long size, void *pc);  // NOLINT
 
 // User may provide function that would be called right when TSan detects
 // an error. The argument 'report' is an opaque pointer that can be used to
@@ -98,6 +121,19 @@ int __tsan_get_report_data(void *report, const char **description, int *count,
                            int *unique_tid_count, void **sleep_trace,
                            uptr trace_size);
 
+/// Retrieves the "tag" from a report (for external-race report types). External
+/// races can be associated with a tag which give them more meaning. For example
+/// tag value '1' means "Swift access race". Tag value '0' indicated a plain
+/// external race.
+///
+/// \param report opaque pointer to the current report (obtained as argument in
+///               __tsan_on_report, or from __tsan_get_current_report)
+/// \param [out] tag points to storage that will be filled with the tag value
+///
+/// \returns non-zero value on success, zero on failure
+SANITIZER_INTERFACE_ATTRIBUTE
+int __tsan_get_report_tag(void *report, uptr *tag);
+
 // Returns information about stack traces included in the report.
 SANITIZER_INTERFACE_ATTRIBUTE
 int __tsan_get_report_stack(void *report, uptr idx, void **trace,
@@ -116,6 +152,10 @@ int __tsan_get_report_loc(void *report, uptr idx, const char **type,
                           int *fd, int *suppressable, void **trace,
                           uptr trace_size);
 
+SANITIZER_INTERFACE_ATTRIBUTE
+int __tsan_get_report_loc_object_type(void *report, uptr idx,
+                                      const char **object_type);
+
 // Returns information about mutexes included in the report.
 SANITIZER_INTERFACE_ATTRIBUTE
 int __tsan_get_report_mutex(void *report, uptr idx, uptr *mutex_id, void **addr,
@@ -123,13 +163,24 @@ int __tsan_get_report_mutex(void *report, uptr idx, uptr *mutex_id, void **addr,
 
 // Returns information about threads included in the report.
 SANITIZER_INTERFACE_ATTRIBUTE
-int __tsan_get_report_thread(void *report, uptr idx, int *tid, uptr *os_id,
+int __tsan_get_report_thread(void *report, uptr idx, int *tid, tid_t *os_id,
                              int *running, const char **name, int *parent_tid,
                              void **trace, uptr trace_size);
 
 // Returns information about unique thread IDs included in the report.
 SANITIZER_INTERFACE_ATTRIBUTE
 int __tsan_get_report_unique_tid(void *report, uptr idx, int *tid);
+
+// Returns the type of the pointer (heap, stack, global, ...) and if possible
+// also the starting address (e.g. of a heap allocation) and size.
+SANITIZER_INTERFACE_ATTRIBUTE
+const char *__tsan_locate_address(uptr addr, char *name, uptr name_size,
+                                  uptr *region_address, uptr *region_size);
+
+// Returns the allocation stack for a heap pointer.
+SANITIZER_INTERFACE_ATTRIBUTE
+int __tsan_get_alloc_stack(uptr addr, uptr *trace, uptr size, int *thread_id,
+                           tid_t *os_id);
 
 #endif  // SANITIZER_GO
 
@@ -141,9 +192,9 @@ namespace __tsan {
 
 // These should match declarations from public tsan_interface_atomic.h header.
 typedef unsigned char      a8;
-typedef unsigned short     a16;  // NOLINT
+typedef unsigned short a16;
 typedef unsigned int       a32;
-typedef unsigned long long a64;  // NOLINT
+typedef unsigned long long a64;
 #if !SANITIZER_GO && (defined(__SIZEOF_INT128__) \
     || (__clang_major__ * 100 + __clang_minor__ >= 302)) && !defined(__mips64)
 __extension__ typedef __int128 a128;
@@ -153,7 +204,7 @@ __extension__ typedef __int128 a128;
 #endif
 
 // Part of ABI, do not change.
-// http://llvm.org/viewvc/llvm-project/libcxx/trunk/include/atomic?view=markup
+// https://github.com/llvm/llvm-project/blob/master/libcxx/include/atomic
 typedef enum {
   mo_relaxed,
   mo_consume,

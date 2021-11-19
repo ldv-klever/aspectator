@@ -5,7 +5,7 @@
 
 static unsigned long long q = 0;
 
-__attribute__((noinline, noclone)) static void
+__attribute__((noipa)) static void
 foo (void)
 {
   q = (q & ~0x1ffffffffULL) | 0x100000000ULL;

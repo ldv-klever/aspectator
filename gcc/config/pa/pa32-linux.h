@@ -1,5 +1,5 @@
 /* Definitions for PA_RISC with ELF-32 format
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -57,11 +57,21 @@ call_ ## FUNC (void)					\
 }
 #endif
 
+/* We need to link against libgcc.a for __canonicalize_funcptr_for_compare
+   and $$dyncall.  */
+#undef  ENDFILE_SPEC
+#define ENDFILE_SPEC GNU_USER_TARGET_ENDFILE_SPEC "libgcc.a%s"
+
 #undef  WCHAR_TYPE
 #define WCHAR_TYPE "long int"
 
 #undef  WCHAR_TYPE_SIZE
 #define WCHAR_TYPE_SIZE BITS_PER_WORD
+
+/* POSIX types such as pthread_mutex_t require 16-byte alignment to retain
+   layout compatibility with the original linux thread implementation.  */
+#undef MALLOC_ABI_ALIGNMENT
+#define MALLOC_ABI_ALIGNMENT 128
 
 /* Place jump tables in the text section except when generating non-PIC
    code.  When generating non-PIC code, the relocations needed to load the
@@ -71,3 +81,8 @@ call_ ## FUNC (void)					\
    rodata when generating non-PIC code.  */
 #undef JUMP_TABLES_IN_TEXT_SECTION
 #define JUMP_TABLES_IN_TEXT_SECTION (flag_pic)
+
+/* We need to override default selection to put references to functions
+   in COMDAT groups in .data.rel.ro.local.  */
+#undef TARGET_ASM_SELECT_RTX_SECTION
+#define TARGET_ASM_SELECT_RTX_SECTION pa_elf_select_rtx_section

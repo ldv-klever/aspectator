@@ -1,5 +1,5 @@
 /* Perform optimizations on tree structure.
-   Copyright (C) 1998-2017 Free Software Foundation, Inc.
+   Copyright (C) 1998-2021 Free Software Foundation, Inc.
    Written by Mark Michell (mark@codesourcery.com).
 
 This file is part of GCC.
@@ -58,7 +58,7 @@ update_cloned_parm (tree parm, tree cloned_parm, bool first)
   DECL_SOURCE_LOCATION (cloned_parm) = DECL_SOURCE_LOCATION (parm);
   TREE_TYPE (cloned_parm) = TREE_TYPE (parm);
 
-  DECL_GIMPLE_REG_P (cloned_parm) = DECL_GIMPLE_REG_P (parm);
+  DECL_NOT_GIMPLE_REG_P (cloned_parm) = DECL_NOT_GIMPLE_REG_P (parm);
 }
 
 /* Like copy_decl_no_change, but handle DECL_OMP_PRIVATIZED_MEMBER
@@ -136,11 +136,6 @@ build_delete_destructor_body (tree delete_dtor, tree complete_dtor)
   tree parm = DECL_ARGUMENTS (delete_dtor);
   tree virtual_size = cxx_sizeof (current_class_type);
 
-  /* Call the corresponding complete destructor.  */
-  gcc_assert (complete_dtor);
-  tree call_dtor = build_cxx_call (complete_dtor, 1, &parm,
-				   tf_warning_or_error);
-
   /* Call the delete function.  */
   tree call_delete = build_op_delete_call (DELETE_EXPR, current_class_ptr,
 					   virtual_size,
@@ -149,10 +144,26 @@ build_delete_destructor_body (tree delete_dtor, tree complete_dtor)
 					   /*alloc_fn=*/NULL_TREE,
 					   tf_warning_or_error);
 
-  /* Operator delete must be called, whether or not the dtor throws.  */
-  add_stmt (build2 (TRY_FINALLY_EXPR, void_type_node, call_dtor, call_delete));
+  tree op = get_callee_fndecl (call_delete);
+  if (op && DECL_P (op) && destroying_delete_p (op))
+    {
+      /* The destroying delete will handle calling complete_dtor.  */
+      add_stmt (call_delete);
+    }
+  else
+    {
+      /* Call the corresponding complete destructor.  */
+      gcc_assert (complete_dtor);
+      tree call_dtor = build_cxx_call (complete_dtor, 1, &parm,
+				       tf_warning_or_error);
 
-  /* Return the address of the object.  */
+      /* Operator delete must be called, whether or not the dtor throws.  */
+      add_stmt (build2 (TRY_FINALLY_EXPR, void_type_node,
+			call_dtor, call_delete));
+    }
+
+  /* Return the address of the object.
+     ??? How is it useful to return an invalid address?  */
   if (targetm.cxx.cdtor_returns_this ())
     {
       tree val = DECL_ARGUMENTS (delete_dtor);
@@ -205,18 +216,14 @@ cdtor_comdat_group (tree complete, tree base)
 static bool
 can_alias_cdtor (tree fn)
 {
-#ifndef ASM_OUTPUT_DEF
   /* If aliases aren't supported by the assembler, fail.  */
-  return false;
-#endif
+  if (!TARGET_SUPPORTS_ALIASES)
+    return false;
+
   /* We can't use an alias if there are virtual bases.  */
   if (CLASSTYPE_VBASECLASSES (DECL_CONTEXT (fn)))
     return false;
-  /* ??? Why not use aliases with -frepo?  */
-  if (flag_use_repository)
-    return false;
-  gcc_assert (DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (fn)
-	      || DECL_MAYBE_IN_CHARGE_DESTRUCTOR_P (fn));
+  gcc_assert (DECL_MAYBE_IN_CHARGE_CDTOR_P (fn));
   /* Don't use aliases for weak/linkonce definitions unless we can put both
      symbols in the same COMDAT group.  */
   return (DECL_INTERFACE_KNOWN (fn)
@@ -237,8 +244,6 @@ populate_clone_array (tree fn, tree *fns)
   fns[1] = NULL_TREE;
   fns[2] = NULL_TREE;
 
-  /* Look for the complete destructor which may be used to build the
-     delete destructor.  */
   FOR_EACH_CLONE (clone, fn)
     if (DECL_NAME (clone) == complete_dtor_identifier
 	|| DECL_NAME (clone) == complete_ctor_identifier)
@@ -282,8 +287,12 @@ maybe_thunk_body (tree fn, bool force)
 
   populate_clone_array (fn, fns);
 
+  /* Can happen during error recovery (c++/71464).  */
+  if (!fns[0] || !fns[1])
+    return 0;
+
   /* Don't use thunks if the base clone omits inherited parameters.  */
-  if (fns[0] && ctor_omit_inherited_parms (fns[0]))
+  if (ctor_omit_inherited_parms (fns[0]))
     return 0;
 
   DECL_ABSTRACT_P (fn) = false;
@@ -347,7 +356,7 @@ maybe_thunk_body (tree fn, bool force)
     }
   args = XALLOCAVEC (tree, max_parms);
 
-  /* We know that any clones immediately follow FN in TYPE_METHODS.  */
+  /* We know that any clones immediately follow FN in TYPE_FIELDS.  */
   FOR_EACH_CLONE (clone, fn)
     {
       tree clone_parm;
@@ -439,7 +448,7 @@ maybe_thunk_body (tree fn, bool force)
 	}
 
       DECL_ABSTRACT_ORIGIN (clone) = NULL;
-      expand_or_defer_fn (finish_function (0));
+      expand_or_defer_fn (finish_function (/*inline_p=*/false));
     }
   return 1;
 }
@@ -459,8 +468,7 @@ maybe_clone_body (tree fn)
   bool need_alias = false;
 
   /* We only clone constructors and destructors.  */
-  if (!DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (fn)
-      && !DECL_MAYBE_IN_CHARGE_DESTRUCTOR_P (fn))
+  if (!DECL_MAYBE_IN_CHARGE_CDTOR_P (fn))
     return 0;
 
   populate_clone_array (fn, fns);
@@ -470,7 +478,7 @@ maybe_clone_body (tree fn)
   if (!tree_versionable_function_p (fn))
     need_alias = true;
 
-  /* We know that any clones immediately follow FN in the TYPE_METHODS
+  /* We know that any clones immediately follow FN in the TYPE_FIELDS
      list.  */
   push_to_top_level ();
   for (idx = 0; idx < 3; idx++)
@@ -504,7 +512,7 @@ maybe_clone_body (tree fn)
       DECL_DLLIMPORT_P (clone) = DECL_DLLIMPORT_P (fn);
       DECL_ATTRIBUTES (clone) = copy_list (DECL_ATTRIBUTES (fn));
       DECL_DISREGARD_INLINE_LIMITS (clone) = DECL_DISREGARD_INLINE_LIMITS (fn);
-      set_decl_section_name (clone, DECL_SECTION_NAME (fn));
+      set_decl_section_name (clone, fn);
 
       /* Adjust the parameter names and locations.  */
       parm = DECL_ARGUMENTS (fn);
@@ -539,7 +547,7 @@ maybe_clone_body (tree fn)
   /* Emit the DWARF1 abstract instance.  */
   (*debug_hooks->deferred_inline_function) (fn);
 
-  /* We know that any clones immediately follow FN in the TYPE_METHODS list. */
+  /* We know that any clones immediately follow FN in the TYPE_FIELDS. */
   for (idx = 0; idx < 3; idx++)
     {
       tree parm;
@@ -680,7 +688,7 @@ maybe_clone_body (tree fn)
       cp_function_chain->can_throw = !TREE_NOTHROW (fn);
 
       /* Now, expand this function into RTL, if appropriate.  */
-      finish_function (0);
+      finish_function (/*inline_p=*/false);
       BLOCK_ABSTRACT_ORIGIN (DECL_INITIAL (clone)) = DECL_INITIAL (fn);
       if (alias)
 	{

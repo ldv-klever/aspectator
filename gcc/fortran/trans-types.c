@@ -1,5 +1,5 @@
 /* Backend support for Fortran 95 basic types and derived types.
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
    and Steven Bosscher <s.bosscher@student.tudelft.nl>
 
@@ -35,7 +35,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "toplev.h"	/* For rest_of_decl_compilation.  */
 #include "trans-types.h"
 #include "trans-const.h"
+#include "trans-array.h"
 #include "dwarf2out.h"	/* For struct array_descr_info.  */
+#include "attribs.h"
+#include "alias.h"
 
 
 #if (GFC_MAX_DIMENSIONS < 10)
@@ -111,6 +114,7 @@ int gfc_default_character_kind;
 int gfc_default_logical_kind;
 int gfc_default_complex_kind;
 int gfc_c_int_kind;
+int gfc_c_intptr_kind;
 int gfc_atomic_int_kind;
 int gfc_atomic_logical_kind;
 
@@ -121,10 +125,54 @@ int gfc_intio_kind;
 /* The integer kind used to store character lengths.  */
 int gfc_charlen_int_kind;
 
+/* Kind of internal integer for storing object sizes.  */
+int gfc_size_kind;
+
 /* The size of the numeric storage unit and character storage unit.  */
 int gfc_numeric_storage_size;
 int gfc_character_storage_size;
 
+tree dtype_type_node = NULL_TREE;
+
+
+/* Build the dtype_type_node if necessary.  */
+tree get_dtype_type_node (void)
+{
+  tree field;
+  tree dtype_node;
+  tree *dtype_chain = NULL;
+
+  if (dtype_type_node == NULL_TREE)
+    {
+      dtype_node = make_node (RECORD_TYPE);
+      TYPE_NAME (dtype_node) = get_identifier ("dtype_type");
+      TYPE_NAMELESS (dtype_node) = 1;
+      field = gfc_add_field_to_struct_1 (dtype_node,
+					 get_identifier ("elem_len"),
+					 size_type_node, &dtype_chain);
+      TREE_NO_WARNING (field) = 1;
+      field = gfc_add_field_to_struct_1 (dtype_node,
+					 get_identifier ("version"),
+					 integer_type_node, &dtype_chain);
+      TREE_NO_WARNING (field) = 1;
+      field = gfc_add_field_to_struct_1 (dtype_node,
+					 get_identifier ("rank"),
+					 signed_char_type_node, &dtype_chain);
+      TREE_NO_WARNING (field) = 1;
+      field = gfc_add_field_to_struct_1 (dtype_node,
+					 get_identifier ("type"),
+					 signed_char_type_node, &dtype_chain);
+      TREE_NO_WARNING (field) = 1;
+      field = gfc_add_field_to_struct_1 (dtype_node,
+					 get_identifier ("attribute"),
+					 short_integer_type_node, &dtype_chain);
+      TREE_NO_WARNING (field) = 1;
+      gfc_finish_type (dtype_node);
+      TYPE_DECL_SUPPRESS_DEBUG (TYPE_STUB_DECL (dtype_node)) = 1;
+      dtype_type_node = dtype_node;
+    }
+  return dtype_type_node;
+}
 
 bool
 gfc_check_any_c_kind (gfc_typespec *ts)
@@ -170,43 +218,6 @@ get_int_kind_from_node (tree type)
       return gfc_integer_kinds[i].kind;
 
   return -1;
-}
-
-/* Return a typenode for the "standard" C type with a given name.  */
-static tree
-get_typenode_from_name (const char *name)
-{
-  if (name == NULL || *name == '\0')
-    return NULL_TREE;
-
-  if (strcmp (name, "char") == 0)
-    return char_type_node;
-  if (strcmp (name, "unsigned char") == 0)
-    return unsigned_char_type_node;
-  if (strcmp (name, "signed char") == 0)
-    return signed_char_type_node;
-
-  if (strcmp (name, "short int") == 0)
-    return short_integer_type_node;
-  if (strcmp (name, "short unsigned int") == 0)
-    return short_unsigned_type_node;
-
-  if (strcmp (name, "int") == 0)
-    return integer_type_node;
-  if (strcmp (name, "unsigned int") == 0)
-    return unsigned_type_node;
-
-  if (strcmp (name, "long int") == 0)
-    return long_integer_type_node;
-  if (strcmp (name, "long unsigned int") == 0)
-    return long_unsigned_type_node;
-
-  if (strcmp (name, "long long int") == 0)
-    return long_long_integer_type_node;
-  if (strcmp (name, "long long unsigned int") == 0)
-    return long_long_unsigned_type_node;
-
-  gcc_unreachable ();
 }
 
 static int
@@ -365,22 +376,25 @@ gfc_init_c_interop_kinds (void)
 void
 gfc_init_kinds (void)
 {
-  unsigned int mode;
+  opt_scalar_int_mode int_mode_iter;
+  opt_scalar_float_mode float_mode_iter;
   int i_index, r_index, kind;
   bool saw_i4 = false, saw_i8 = false;
   bool saw_r4 = false, saw_r8 = false, saw_r10 = false, saw_r16 = false;
 
-  for (i_index = 0, mode = MIN_MODE_INT; mode <= MAX_MODE_INT; mode++)
+  i_index = 0;
+  FOR_EACH_MODE_IN_CLASS (int_mode_iter, MODE_INT)
     {
+      scalar_int_mode mode = int_mode_iter.require ();
       int kind, bitsize;
 
-      if (!targetm.scalar_mode_supported_p ((machine_mode) mode))
+      if (!targetm.scalar_mode_supported_p (mode))
 	continue;
 
       /* The middle end doesn't support constants larger than 2*HWI.
 	 Perhaps the target hook shouldn't have accepted these either,
 	 but just to be safe...  */
-      bitsize = GET_MODE_BITSIZE ((machine_mode) mode);
+      bitsize = GET_MODE_BITSIZE (mode);
       if (bitsize > 2*HOST_BITS_PER_WIDE_INT)
 	continue;
 
@@ -420,22 +434,22 @@ gfc_init_kinds (void)
   /* Set the maximum integer kind.  Used with at least BOZ constants.  */
   gfc_max_integer_kind = gfc_integer_kinds[i_index - 1].kind;
 
-  for (r_index = 0, mode = MIN_MODE_FLOAT; mode <= MAX_MODE_FLOAT; mode++)
+  r_index = 0;
+  FOR_EACH_MODE_IN_CLASS (float_mode_iter, MODE_FLOAT)
     {
-      const struct real_format *fmt =
-	REAL_MODE_FORMAT ((machine_mode) mode);
+      scalar_float_mode mode = float_mode_iter.require ();
+      const struct real_format *fmt = REAL_MODE_FORMAT (mode);
       int kind;
 
       if (fmt == NULL)
 	continue;
-      if (!targetm.scalar_mode_supported_p ((machine_mode) mode))
+      if (!targetm.scalar_mode_supported_p (mode))
 	continue;
 
       /* Only let float, double, long double and __float128 go through.
 	 Runtime support for others is not provided, so they would be
 	 useless.  */
-      if (!targetm.libgcc_floating_mode_supported_p ((machine_mode)
-						       mode))
+      if (!targetm.libgcc_floating_mode_supported_p (mode))
 	continue;
       if (mode != TYPE_MODE (float_type_node)
 	    && (mode != TYPE_MODE (double_type_node))
@@ -528,7 +542,7 @@ gfc_init_kinds (void)
     }
 
   /* Choose the default real kind.  Again, we choose 4 when possible.  */
-  if (flag_default_real)
+  if (flag_default_real_8)
     {
       if (!saw_r8)
 	gfc_fatal_error ("REAL(KIND=8) is not available for "
@@ -536,6 +550,22 @@ gfc_init_kinds (void)
 
       gfc_default_real_kind = 8;
     }
+  else if (flag_default_real_10)
+  {
+    if (!saw_r10)
+      gfc_fatal_error ("REAL(KIND=10) is not available for "
+			"%<-fdefault-real-10%> option");
+
+    gfc_default_real_kind = 10;
+  }
+  else if (flag_default_real_16)
+  {
+    if (!saw_r16)
+      gfc_fatal_error ("REAL(KIND=16) is not available for "
+			"%<-fdefault-real-16%> option");
+
+    gfc_default_real_kind = 16;
+  }
   else if (flag_real4_kind == 8)
   {
     if (!saw_r8)
@@ -569,14 +599,20 @@ gfc_init_kinds (void)
      are specified, we use kind=8, if it's available.  If -fdefault-real is
      specified without -fdefault-double, we use kind=16, if it's available.
      Otherwise we do not change anything.  */
-  if (flag_default_double && !flag_default_real)
-    gfc_fatal_error ("Use of %<-fdefault-double-8%> requires "
-		     "%<-fdefault-real-8%>");
-
-  if (flag_default_real && flag_default_double && saw_r8)
+  if (flag_default_double && saw_r8)
     gfc_default_double_kind = 8;
-  else if (flag_default_real && saw_r16)
-    gfc_default_double_kind = 16;
+  else if (flag_default_real_8 || flag_default_real_10 || flag_default_real_16)
+    {
+      /* Use largest available kind.  */
+      if (saw_r16)
+	gfc_default_double_kind = 16;
+      else if (saw_r10)
+	gfc_default_double_kind = 10;
+      else if (saw_r8)
+	gfc_default_double_kind = 8;
+      else
+	gfc_default_double_kind = gfc_default_real_kind;
+    }
   else if (flag_real8_kind == 4)
     {
       if (!saw_r4)
@@ -656,6 +692,8 @@ gfc_init_kinds (void)
   /* Choose atomic kinds to match C's int.  */
   gfc_atomic_int_kind = gfc_c_int_kind;
   gfc_atomic_logical_kind = gfc_c_int_kind;
+
+  gfc_c_intptr_kind = POINTER_SIZE / 8;
 }
 
 
@@ -973,20 +1011,23 @@ gfc_init_types (void)
      by the number of bits available to store this field in the array
      descriptor.  */
 
-  n = TYPE_PRECISION (gfc_array_index_type) - GFC_DTYPE_SIZE_SHIFT;
+  n = TYPE_PRECISION (size_type_node);
   gfc_max_array_element_size
     = wide_int_to_tree (size_type_node,
 			wi::mask (n, UNSIGNED,
 				  TYPE_PRECISION (size_type_node)));
 
-
   logical_type_node = gfc_get_logical_type (gfc_default_logical_kind);
   logical_true_node = build_int_cst (logical_type_node, 1);
   logical_false_node = build_int_cst (logical_type_node, 0);
 
-  /* ??? Shouldn't this be based on gfc_index_integer_kind or so?  */
-  gfc_charlen_int_kind = 4;
+  /* Character lengths are of type size_t, except signed.  */
+  gfc_charlen_int_kind = get_int_kind_from_node (size_type_node);
   gfc_charlen_type_node = gfc_get_int_type (gfc_charlen_int_kind);
+
+  /* Fortran kind number of size_type_node (size_t). This is used for
+     the _size member in vtables.  */
+  gfc_size_kind = get_int_kind_from_node (size_type_node);
 }
 
 /* Get the type node for the given type and kind.  */
@@ -1226,10 +1267,19 @@ gfc_get_element_type (tree type)
 
     struct gfc_array_descriptor
     {
-      array *data
+      array *data;
       index offset;
-      index dtype;
+      struct dtype_type dtype;
       struct descriptor_dimension dimension[N_DIM];
+    }
+
+    struct dtype_type
+    {
+      size_t elem_len;
+      int version;
+      signed char rank;
+      signed char type;
+      signed short attribute;
     }
 
     struct descriptor_dimension
@@ -1247,11 +1297,6 @@ gfc_get_element_type (tree type)
    This is represented internally as a RECORD_TYPE. The index nodes
    are gfc_array_index_type and the data node is a pointer to the
    data.  See below for the handling of character types.
-
-   The dtype member is formatted as follows:
-    rank = dtype & GFC_DTYPE_RANK_MASK // 3 bits
-    type = (dtype & GFC_DTYPE_TYPE_MASK) >> GFC_DTYPE_TYPE_SHIFT // 3 bits
-    size = dtype >> GFC_DTYPE_SIZE_SHIFT
 
    I originally used nested ARRAY_TYPE nodes to represent arrays, but
    this generated poor code for assumed/deferred size arrays.  These
@@ -1439,9 +1484,12 @@ gfc_get_dtype_rank_type (int rank, tree etype)
 {
   tree size;
   int n;
-  HOST_WIDE_INT i;
   tree tmp;
   tree dtype;
+  tree field;
+  vec<constructor_elt, va_gc> *v = NULL;
+
+  size = TYPE_SIZE_UNIT (etype);
 
   switch (TREE_CODE (etype))
     {
@@ -1461,51 +1509,51 @@ gfc_get_dtype_rank_type (int rank, tree etype)
       n = BT_COMPLEX;
       break;
 
-    /* We will never have arrays of arrays.  */
     case RECORD_TYPE:
-      n = BT_DERIVED;
+      if (GFC_CLASS_TYPE_P (etype))
+	n = BT_CLASS;
+      else
+	n = BT_DERIVED;
       break;
 
+    /* We will never have arrays of arrays.  */
     case ARRAY_TYPE:
       n = BT_CHARACTER;
+      if (size == NULL_TREE)
+	size = TYPE_SIZE_UNIT (TREE_TYPE (etype));
       break;
 
     case POINTER_TYPE:
       n = BT_ASSUMED;
-      break;
+      if (TREE_CODE (TREE_TYPE (etype)) != VOID_TYPE)
+	size = TYPE_SIZE_UNIT (TREE_TYPE (etype));
+      else
+	size = build_int_cst (size_type_node, 0);
+    break;
 
     default:
       /* TODO: Don't do dtype for temporary descriptorless arrays.  */
-      /* We can strange array types for temporary arrays.  */
+      /* We can encounter strange array types for temporary arrays.  */
       return gfc_index_zero_node;
     }
 
-  gcc_assert (rank <= GFC_DTYPE_RANK_MASK);
-  size = TYPE_SIZE_UNIT (etype);
+  tmp = get_dtype_type_node ();
+  field = gfc_advance_chain (TYPE_FIELDS (tmp),
+			     GFC_DTYPE_ELEM_LEN);
+  CONSTRUCTOR_APPEND_ELT (v, field,
+			  fold_convert (TREE_TYPE (field), size));
 
-  i = rank | (n << GFC_DTYPE_TYPE_SHIFT);
-  if (size && INTEGER_CST_P (size))
-    {
-      if (tree_int_cst_lt (gfc_max_array_element_size, size))
-	gfc_fatal_error ("Array element size too big at %C");
+  field = gfc_advance_chain (TYPE_FIELDS (dtype_type_node),
+			     GFC_DTYPE_RANK);
+  CONSTRUCTOR_APPEND_ELT (v, field,
+			  build_int_cst (TREE_TYPE (field), rank));
 
-      i += TREE_INT_CST_LOW (size) << GFC_DTYPE_SIZE_SHIFT;
-    }
-  dtype = build_int_cst (gfc_array_index_type, i);
+  field = gfc_advance_chain (TYPE_FIELDS (dtype_type_node),
+			     GFC_DTYPE_TYPE);
+  CONSTRUCTOR_APPEND_ELT (v, field,
+			  build_int_cst (TREE_TYPE (field), n));
 
-  if (size && !INTEGER_CST_P (size))
-    {
-      tmp = build_int_cst (gfc_array_index_type, GFC_DTYPE_SIZE_SHIFT);
-      tmp  = fold_build2_loc (input_location, LSHIFT_EXPR,
-			      gfc_array_index_type,
-			      fold_convert (gfc_array_index_type, size), tmp);
-      dtype = fold_build2_loc (input_location, PLUS_EXPR, gfc_array_index_type,
-			       tmp, dtype);
-    }
-  /* If we don't know the size we leave it as zero.  This should never happen
-     for anything that is actually used.  */
-  /* TODO: Check this is actually true, particularly when repacking
-     assumed size parameters.  */
+  dtype = build_constructor (tmp, v);
 
   return dtype;
 }
@@ -1519,9 +1567,6 @@ gfc_get_dtype (tree type)
   int rank;
 
   gcc_assert (GFC_DESCRIPTOR_TYPE_P (type) || GFC_ARRAY_TYPE_P (type));
-
-  if (GFC_TYPE_ARRAY_DTYPE (type))
-    return GFC_TYPE_ARRAY_DTYPE (type);
 
   rank = GFC_TYPE_ARRAY_RANK (type);
   etype = gfc_get_element_type (type);
@@ -1554,7 +1599,7 @@ gfc_get_nodesc_array_type (tree etype, gfc_array_spec * as, gfc_packed packed,
   mpz_init_set_ui (stride, 1);
   mpz_init (delta);
 
-  /* We don't use build_array_type because this does not include include
+  /* We don't use build_array_type because this does not include
      lang-specific information (i.e. the bounds of the array) when checking
      for duplicates.  */
   if (as->rank)
@@ -1776,11 +1821,11 @@ gfc_get_array_descriptor_base (int dimen, int codimen, bool restricted)
   TYPE_NAMELESS (fat_type) = 1;
 
   /* Add the data member as the first element of the descriptor.  */
-  decl = gfc_add_field_to_struct_1 (fat_type,
-				    get_identifier ("data"),
-				    (restricted
-				     ? prvoid_type_node
-				     : ptr_type_node), &chain);
+  gfc_add_field_to_struct_1 (fat_type,
+			     get_identifier ("data"),
+			     (restricted
+			      ? prvoid_type_node
+			      : ptr_type_node), &chain);
 
   /* Add the base component.  */
   decl = gfc_add_field_to_struct_1 (fat_type,
@@ -1791,6 +1836,12 @@ gfc_get_array_descriptor_base (int dimen, int codimen, bool restricted)
   /* Add the dtype component.  */
   decl = gfc_add_field_to_struct_1 (fat_type,
 				    get_identifier ("dtype"),
+				    get_dtype_type_node (), &chain);
+  TREE_NO_WARNING (decl) = 1;
+
+  /* Add the span component.  */
+  decl = gfc_add_field_to_struct_1 (fat_type,
+				    get_identifier ("span"),
 				    gfc_array_index_type, &chain);
   TREE_NO_WARNING (decl) = 1;
 
@@ -1843,11 +1894,23 @@ gfc_get_array_type_bounds (tree etype, int dimen, int codimen, tree * lbound,
 
   base_type = gfc_get_array_descriptor_base (dimen, codimen, restricted);
   fat_type = build_distinct_type_copy (base_type);
+  /* Unshare TYPE_FIELDs.  */
+  for (tree *tp = &TYPE_FIELDS (fat_type); *tp; tp = &DECL_CHAIN (*tp))
+    {
+      tree next = DECL_CHAIN (*tp);
+      *tp = copy_node (*tp);
+      DECL_CONTEXT (*tp) = fat_type;
+      DECL_CHAIN (*tp) = next;
+    }
   /* Make sure that nontarget and target array type have the same canonical
      type (and same stub decl for debug info).  */
   base_type = gfc_get_array_descriptor_base (dimen, codimen, false);
   TYPE_CANONICAL (fat_type) = base_type;
   TYPE_STUB_DECL (fat_type) = TYPE_STUB_DECL (base_type);
+  /* Arrays of unknown type must alias with all array descriptors.  */
+  TYPE_TYPELESS_STORAGE (base_type) = 1;
+  TYPE_TYPELESS_STORAGE (fat_type) = 1;
+  gcc_checking_assert (!get_alias_set (base_type) && !get_alias_set (fat_type));
 
   tmp = TYPE_NAME (etype);
   if (tmp && TREE_CODE (tmp) == TYPE_DECL)
@@ -2191,7 +2254,8 @@ gfc_sym_type (gfc_symbol * sym)
   else
     type = gfc_typenode_for_spec (&sym->ts, sym->attr.codimension);
 
-  if (sym->attr.dummy && !sym->attr.function && !sym->attr.value)
+  if (sym->attr.dummy && !sym->attr.function && !sym->attr.value
+      && !sym->pass_as_value)
     byref = 1;
   else
     byref = 0;
@@ -2380,7 +2444,9 @@ gfc_get_ppc_type (gfc_component* c)
   else
     t = void_type_node;
 
-  return build_pointer_type (build_function_type_list (t, NULL_TREE));
+  /* FIXME: it would be better to provide explicit interfaces in all
+     cases, since they should be known by the compiler.  */
+  return build_pointer_type (build_function_type (t, NULL_TREE));
 }
 
 
@@ -2454,7 +2520,6 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
   bool got_canonical = false;
   bool unlimited_entity = false;
   gfc_component *c;
-  gfc_dt_list *dt;
   gfc_namespace *ns;
   tree tmp;
   bool coarray_flag;
@@ -2462,16 +2527,20 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
   coarray_flag = flag_coarray == GFC_FCOARRAY_LIB
 		 && derived->module && !derived->attr.vtype;
 
+  gcc_assert (!derived->attr.pdt_template);
+
   if (derived->attr.unlimited_polymorphic
       || (flag_coarray == GFC_FCOARRAY_LIB
 	  && derived->from_intmod == INTMOD_ISO_FORTRAN_ENV
 	  && (derived->intmod_sym_id == ISOFORTRAN_LOCK_TYPE
-	      || derived->intmod_sym_id == ISOFORTRAN_EVENT_TYPE)))
+	      || derived->intmod_sym_id == ISOFORTRAN_EVENT_TYPE
+	      || derived->intmod_sym_id == ISOFORTRAN_TEAM_TYPE)))
     return ptr_type_node;
 
   if (flag_coarray != GFC_FCOARRAY_LIB
       && derived->from_intmod == INTMOD_ISO_FORTRAN_ENV
-      && derived->intmod_sym_id == ISOFORTRAN_EVENT_TYPE)
+      && (derived->intmod_sym_id == ISOFORTRAN_EVENT_TYPE
+	  || derived->intmod_sym_id == ISOFORTRAN_TEAM_TYPE))
     return gfc_get_int_type (gfc_default_integer_kind);
 
   if (derived && derived->attr.flavor == FL_PROCEDURE
@@ -2501,28 +2570,35 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 
   /* If use associated, use the module type for this one.  */
   if (derived->backend_decl == NULL
-      && derived->attr.use_assoc
+      && (derived->attr.use_assoc || derived->attr.used_in_submodule)
       && derived->module
       && gfc_get_module_backend_decl (derived))
     goto copy_derived_types;
 
   /* The derived types from an earlier namespace can be used as the
      canonical type.  */
-  if (derived->backend_decl == NULL && !derived->attr.use_assoc
+  if (derived->backend_decl == NULL
+      && !derived->attr.use_assoc
+      && !derived->attr.used_in_submodule
       && gfc_global_ns_list)
     {
       for (ns = gfc_global_ns_list;
 	   ns->translated && !got_canonical;
 	   ns = ns->sibling)
 	{
-	  dt = ns->derived_types;
-	  for (; dt && !canonical; dt = dt->next)
+	  if (ns->derived_types)
 	    {
-	      gfc_copy_dt_decls_ifequal (dt->derived, derived, true);
-	      if (derived->backend_decl)
-		got_canonical = true;
-	    }
-	}
+	      for (gfc_symbol *dt = ns->derived_types; dt && !got_canonical;
+		   dt = dt->dt_next)
+		{
+		  gfc_copy_dt_decls_ifequal (dt, derived, true);
+		  if (derived->backend_decl)
+		    got_canonical = true;
+		  if (dt->dt_next == ns->derived_types)
+		    break;
+		}
+ 	    }
+ 	}
     }
 
   /* Store up the canonical type to be added to this one.  */
@@ -2649,7 +2725,7 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 	field_type = gfc_get_ppc_type (c);
       else if (c->attr.proc_pointer && derived->backend_decl)
 	{
-	  tmp = build_function_type_list (derived->backend_decl, NULL_TREE);
+	  tmp = build_function_type (derived->backend_decl, NULL_TREE);
 	  field_type = build_pointer_type (tmp);
 	}
       else if (c->ts.type == BT_DERIVED || c->ts.type == BT_CLASS)
@@ -2658,7 +2734,8 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 	field_type = pvoid_type_node;
       else
 	{
-	  if (c->ts.type == BT_CHARACTER && !c->ts.deferred)
+	  if (c->ts.type == BT_CHARACTER
+	      && !c->ts.deferred && !c->attr.pdt_string)
 	    {
 	      /* Evaluate the string length.  */
 	      gfc_conv_const_charlen (c->ts.u.cl);
@@ -2675,7 +2752,7 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
          required.  */
       if ((c->attr.dimension || c->attr.codimension) && !c->attr.proc_pointer )
 	{
-	  if (c->attr.pointer || c->attr.allocatable)
+	  if (c->attr.pointer || c->attr.allocatable || c->attr.pdt_array)
 	    {
 	      enum gfc_array_kind akind;
 	      if (c->attr.pointer)
@@ -2696,7 +2773,7 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 						    PACKED_STATIC,
 						    !c->attr.target);
 	}
-      else if ((c->attr.pointer || c->attr.allocatable)
+      else if ((c->attr.pointer || c->attr.allocatable || c->attr.pdt_string)
 	       && !c->attr.proc_pointer
 	       && !(unlimited_entity && c == derived->components))
 	field_type = build_pointer_type (field_type);
@@ -2734,6 +2811,11 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
       gcc_assert (field);
       if (!c->backend_decl)
 	c->backend_decl = field;
+
+      if (c->attr.pointer && c->attr.dimension
+	  && !(c->ts.type == BT_DERIVED
+	       && strcmp (c->name, "_data") == 0))
+	GFC_DECL_PTR_ARRAY_P (c->backend_decl) = 1;
     }
 
   /* Now lay out the derived type, including the fields.  */
@@ -2767,9 +2849,10 @@ copy_derived_types:
 	  && (c->attr.allocatable || c->attr.pointer)
 	  && !derived->attr.is_class)
 	{
-	  char caf_name[GFC_MAX_SYMBOL_LEN];
+	  /* Provide sufficient space to hold "_caf_symbol".  */
+	  char caf_name[GFC_MAX_SYMBOL_LEN + 6];
 	  gfc_component *token;
-	  snprintf (caf_name, GFC_MAX_SYMBOL_LEN, "_caf_%s", c->name);
+	  snprintf (caf_name, sizeof (caf_name), "_caf_%s", c->name);
 	  token = gfc_find_component (derived, caf_name, true, true, NULL);
 	  gcc_assert (token);
 	  c->caf_token = token->backend_decl;
@@ -2777,8 +2860,12 @@ copy_derived_types:
 	}
     }
 
-  for (dt = gfc_derived_types; dt; dt = dt->next)
-    gfc_copy_dt_decls_ifequal (derived, dt->derived, false);
+  for (gfc_symbol *dt = gfc_derived_types; dt; dt = dt->dt_next)
+    {
+      gfc_copy_dt_decls_ifequal (derived, dt, false);
+      if (dt->dt_next == gfc_derived_types)
+	break;
+    }
 
   return derived->backend_decl;
 }
@@ -2862,20 +2949,33 @@ create_fn_spec (gfc_symbol *sym, tree fntype)
 
   memset (&spec, 0, sizeof (spec));
   spec[0] = '.';
-  spec_len = 1;
+  spec[1] = ' ';
+  spec_len = 2;
 
   if (sym->attr.entry_master)
-    spec[spec_len++] = 'R';
+    {
+      spec[spec_len++] = 'R';
+      spec[spec_len++] = ' ';
+    }
   if (gfc_return_by_reference (sym))
     {
       gfc_symbol *result = sym->result ? sym->result : sym;
 
       if (result->attr.pointer || sym->attr.proc_pointer)
-	spec[spec_len++] = '.';
+	{
+	  spec[spec_len++] = '.';
+	  spec[spec_len++] = ' ';
+	}
       else
-	spec[spec_len++] = 'w';
+	{
+	  spec[spec_len++] = 'w';
+	  spec[spec_len++] = ' ';
+	}
       if (sym->ts.type == BT_CHARACTER)
-	spec[spec_len++] = 'R';
+	{
+	  spec[spec_len++] = 'R';
+	  spec[spec_len++] = ' ';
+	}
     }
 
   for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)
@@ -2890,11 +2990,20 @@ create_fn_spec (gfc_symbol *sym, tree fntype)
 		&& (CLASS_DATA (f->sym)->ts.u.derived->attr.proc_pointer_comp
 		    || CLASS_DATA (f->sym)->ts.u.derived->attr.pointer_comp))
 	    || (f->sym->ts.type == BT_INTEGER && f->sym->ts.is_c_interop))
-	  spec[spec_len++] = '.';
+	  {
+	    spec[spec_len++] = '.';
+	    spec[spec_len++] = ' ';
+	  }
 	else if (f->sym->attr.intent == INTENT_IN)
-	  spec[spec_len++] = 'r';
+	  {
+	    spec[spec_len++] = 'r';
+	    spec[spec_len++] = ' ';
+	  }
 	else if (f->sym)
-	  spec[spec_len++] = 'w';
+	  {
+	    spec[spec_len++] = 'w';
+	    spec[spec_len++] = ' ';
+	  }
       }
 
   tmp = build_tree_list (NULL_TREE, build_string (spec_len, spec));
@@ -2902,65 +3011,13 @@ create_fn_spec (gfc_symbol *sym, tree fntype)
   return build_type_attribute_variant (fntype, tmp);
 }
 
-/* Helper function - if we do not find an interface for a procedure,
-   construct it from the actual arglist.  Luckily, this can only
-   happen for call by reference, so the information we actually need
-   to provide (and which would be impossible to guess from the call
-   itself) is not actually needed.  */
 
-static void
-get_formal_from_actual_arglist (gfc_symbol *sym, gfc_actual_arglist *actual_args)
-{
-  gfc_actual_arglist *a;
-  gfc_formal_arglist **f;
-  gfc_symbol *s;
-  char name[GFC_MAX_SYMBOL_LEN + 1];
-  static int var_num;
-
-  f = &sym->formal;
-  for (a = actual_args; a != NULL; a = a->next)
-    {
-      (*f) = gfc_get_formal_arglist ();
-      if (a->expr)
-	{
-	  snprintf (name, GFC_MAX_SYMBOL_LEN, "_formal_%d", var_num ++);
-	  gfc_get_symbol (name, gfc_current_ns, &s);
-	  if (a->expr->ts.type == BT_PROCEDURE)
-	    {
-	      s->attr.flavor = FL_PROCEDURE;
-	    }
-	  else
-	    {
-	      s->ts = a->expr->ts;
-
-	      if (s->ts.type == BT_CHARACTER)
-		s->ts.u.cl = gfc_get_charlen ();
-
- 	      s->ts.deferred = 0;
- 	      s->ts.is_iso_c = 0;
- 	      s->ts.is_c_interop = 0;
-	      s->attr.flavor = FL_VARIABLE;
-	      if (a->expr->rank > 0)
-		{
-		  s->attr.dimension = 1;
-		  s->as = gfc_get_array_spec ();
-		  s->as->type = AS_ASSUMED_SIZE;
-		}
-	    }
-	  s->attr.dummy = 1;
-	  s->attr.artificial = 1;
-	  s->attr.intent = INTENT_UNKNOWN;
-	  (*f)->sym = s;
-	}
-      else  /* If a->expr is NULL, this is an alternate rerturn.  */
-	(*f)->sym = NULL;
-
-      f = &((*f)->next);
-    }
-}
+/* NOTE: The returned function type must match the argument list created by
+   create_function_arglist.  */
 
 tree
-gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
+gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args,
+		       const char *fnspec)
 {
   tree type;
   vec<tree, va_gc> *typelist = NULL;
@@ -3021,7 +3078,7 @@ gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
   if (sym->backend_decl == error_mark_node && actual_args != NULL
       && sym->formal == NULL && (sym->attr.proc == PROC_EXTERNAL
 				 || sym->attr.proc == PROC_UNKNOWN))
-    get_formal_from_actual_arglist (sym, actual_args);
+    gfc_get_formal_from_actual_arglist (sym, actual_args);
 
   /* Build the argument types for the function.  */
   for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)
@@ -3066,10 +3123,11 @@ gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
         }
     }
 
-  /* Add hidden string length parameters.  */
+  /* Add hidden arguments.  */
   for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)
     {
       arg = f->sym;
+      /* Add hidden string length parameters.  */
       if (arg && arg->ts.type == BT_CHARACTER && !sym->attr.is_bind_c)
 	{
 	  if (!arg->ts.deferred)
@@ -3081,6 +3139,30 @@ gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
 	    type = build_pointer_type (gfc_charlen_type_node);
 
 	  vec_safe_push (typelist, type);
+	}
+      /* For noncharacter scalar intrinsic types, VALUE passes the value,
+	 hence, the optional status cannot be transferred via a NULL pointer.
+	 Thus, we will use a hidden argument in that case.  */
+      else if (arg
+	       && arg->attr.optional
+	       && arg->attr.value
+	       && !arg->attr.dimension
+	       && arg->ts.type != BT_CLASS
+	       && !gfc_bt_struct (arg->ts.type))
+	vec_safe_push (typelist, boolean_type_node);
+      /* Coarrays which are descriptorless or assumed-shape pass with
+	 -fcoarray=lib the token and the offset as hidden arguments.  */
+      if (arg
+	  && flag_coarray == GFC_FCOARRAY_LIB
+	  && ((arg->ts.type != BT_CLASS
+	       && arg->attr.codimension
+	       && !arg->attr.allocatable)
+	      || (arg->ts.type == BT_CLASS
+		  && CLASS_DATA (arg)->attr.codimension
+		  && !CLASS_DATA (arg)->attr.allocatable)))
+	{
+	  vec_safe_push (typelist, pvoid_type_node);  /* caf_token.  */
+	  vec_safe_push (typelist, gfc_array_index_type);  /* caf_offset.  */
 	}
     }
 
@@ -3134,7 +3216,19 @@ arg_type_list_done:
     type = build_varargs_function_type_vec (type, typelist);
   else
     type = build_function_type_vec (type, typelist);
-  type = create_fn_spec (sym, type);
+
+  /* If we were passed an fn spec, add it here, otherwise determine it from
+     the formal arguments.  */
+  if (fnspec)
+    {
+      tree tmp;
+      int spec_len = strlen (fnspec);
+      tmp = build_tree_list (NULL_TREE, build_string (spec_len, fnspec));
+      tmp = tree_cons (get_identifier ("fn spec"), tmp, TYPE_ATTRIBUTES (type));
+      type = build_type_attribute_variant (type, tmp);
+    }
+  else
+    type = create_fn_spec (sym, type);
 
   return type;
 }
@@ -3200,17 +3294,27 @@ gfc_type_for_mode (machine_mode mode, int unsignedp)
 {
   int i;
   tree *base;
+  scalar_int_mode int_mode;
 
   if (GET_MODE_CLASS (mode) == MODE_FLOAT)
     base = gfc_real_types;
   else if (GET_MODE_CLASS (mode) == MODE_COMPLEX_FLOAT)
     base = gfc_complex_types;
-  else if (SCALAR_INT_MODE_P (mode))
+  else if (is_a <scalar_int_mode> (mode, &int_mode))
     {
-      tree type = gfc_type_for_size (GET_MODE_PRECISION (mode), unsignedp);
+      tree type = gfc_type_for_size (GET_MODE_PRECISION (int_mode), unsignedp);
       return type != NULL_TREE && mode == TYPE_MODE (type) ? type : NULL_TREE;
     }
-  else if (VECTOR_MODE_P (mode))
+  else if (GET_MODE_CLASS (mode) == MODE_VECTOR_BOOL
+	   && valid_vector_subparts_p (GET_MODE_NUNITS (mode)))
+    {
+      unsigned int elem_bits = vector_element_size (GET_MODE_BITSIZE (mode),
+						    GET_MODE_NUNITS (mode));
+      tree bool_type = build_nonstandard_boolean_type (elem_bits);
+      return build_vector_type_for_mode (bool_type, mode);
+    }
+  else if (VECTOR_MODE_P (mode)
+	   && valid_vector_subparts_p (GET_MODE_NUNITS (mode)))
     {
       machine_mode inner_mode = GET_MODE_INNER (mode);
       tree inner_type = gfc_type_for_mode (inner_mode, unsignedp);
@@ -3239,9 +3343,10 @@ gfc_get_array_descr_info (const_tree type, struct array_descr_info *info)
 {
   int rank, dim;
   bool indirect = false;
-  tree etype, ptype, field, t, base_decl;
-  tree data_off, dim_off, dtype_off, dim_size, elem_size;
+  tree etype, ptype, t, base_decl;
+  tree data_off, span_off, dim_off, dtype_off, dim_size, elem_size;
   tree lower_suboff, upper_suboff, stride_suboff;
+  tree dtype, field, rank_off;
 
   if (! GFC_DESCRIPTOR_TYPE_P (type))
     {
@@ -3296,24 +3401,12 @@ gfc_get_array_descr_info (const_tree type, struct array_descr_info *info)
   if (indirect)
     base_decl = build1 (INDIRECT_REF, ptype, base_decl);
 
-  if (GFC_TYPE_ARRAY_SPAN (type))
-    elem_size = GFC_TYPE_ARRAY_SPAN (type);
-  else
-    elem_size = fold_convert (gfc_array_index_type, TYPE_SIZE_UNIT (etype));
-  field = TYPE_FIELDS (TYPE_MAIN_VARIANT (type));
-  data_off = byte_position (field);
-  field = DECL_CHAIN (field);
-  field = DECL_CHAIN (field);
-  dtype_off = byte_position (field);
-  field = DECL_CHAIN (field);
-  dim_off = byte_position (field);
-  dim_size = TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (field)));
-  field = TYPE_FIELDS (TREE_TYPE (TREE_TYPE (field)));
-  stride_suboff = byte_position (field);
-  field = DECL_CHAIN (field);
-  lower_suboff = byte_position (field);
-  field = DECL_CHAIN (field);
-  upper_suboff = byte_position (field);
+  gfc_get_descriptor_offsets_for_info (type, &data_off, &dtype_off, &span_off,
+				       &dim_off, &dim_size, &stride_suboff,
+				       &lower_suboff, &upper_suboff);
+
+  t = fold_build_pointer_plus (base_decl, span_off);
+  elem_size = build1 (INDIRECT_REF, gfc_array_index_type, t);
 
   t = base_decl;
   if (!integer_zerop (data_off))
@@ -3336,11 +3429,15 @@ gfc_get_array_descr_info (const_tree type, struct array_descr_info *info)
       t = base_decl;
       if (!integer_zerop (dtype_off))
 	t = fold_build_pointer_plus (t, dtype_off);
+      dtype = TYPE_MAIN_VARIANT (get_dtype_type_node ());
+      field = gfc_advance_chain (TYPE_FIELDS (dtype), GFC_DTYPE_RANK);
+      rank_off = byte_position (field);
+      if (!integer_zerop (dtype_off))
+	t = fold_build_pointer_plus (t, rank_off);
+
       t = build1 (NOP_EXPR, build_pointer_type (gfc_array_index_type), t);
       t = build1 (INDIRECT_REF, gfc_array_index_type, t);
-      info->rank = build2 (BIT_AND_EXPR, gfc_array_index_type, t,
-			   build_int_cst (gfc_array_index_type,
-					  GFC_DTYPE_RANK_MASK));
+      info->rank = t;
       t = build0 (PLACEHOLDER_EXPR, TREE_TYPE (dim_off));
       t = size_binop (MULT_EXPR, t, dim_size);
       dim_off = build2 (PLUS_EXPR, TREE_TYPE (dim_off), t, dim_off);

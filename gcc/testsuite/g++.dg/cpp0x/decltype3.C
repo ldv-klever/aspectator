@@ -49,12 +49,12 @@ public:
   int a;
   enum B_enum { b }; 
   decltype(a) c;
-  decltype(a) foo() { }
+  decltype(a) foo() { return 0; }
   decltype(b) enums_are_in_scope() { return b; } // ok 
 }; 
 
 CHECK_DECLTYPE(decltype(aa.*&A::a), int&);
-decltype(aa.*&A::b) zz; // { dg-error "cannot create pointer to reference member" "cannot" }
+decltype(aa.*&A::b) zz; // { dg-error "18:cannot create pointer to reference member" "cannot" }
 
 CHECK_DECLTYPE(decltype(caa.*&A::a), const int&);
 

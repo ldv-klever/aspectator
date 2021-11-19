@@ -1,5 +1,5 @@
 /* Subroutines for the gcc driver.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -16,6 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
+
+#define IN_TARGET_CODE 1
 
 #include "config.h"
 #include "system.h"
@@ -132,19 +134,8 @@ host_detect_local_cpu (int argc, const char **argv)
 	  && ksp->ks_type == KSTAT_TYPE_NAMED)
 	brand = (kstat_named_t *)
 	  kstat_data_lookup (ksp, CONST_CAST2 (char *, const char *, "brand"));
-      /* "brand" was only introduced in Solaris 10.  */
-      if (brand == NULL)
-	  brand = (kstat_named_t *)
-	    kstat_data_lookup (ksp, CONST_CAST2 (char *, const char *,
-						 "implementation"));
-      /* KSTAT_DATA_STRING was introduced in Solaris 9.  */
-#ifdef KSTAT_DATA_STRING
       if (brand != NULL && brand->data_type == KSTAT_DATA_STRING)
 	buf = KSTAT_NAMED_STR_PTR (brand);
-#else
-      if (brand != NULL && brand->data_type == KSTAT_DATA_CHAR)
-	buf = brand->value.c;
-#endif
     }
   kstat_close (kc);
 

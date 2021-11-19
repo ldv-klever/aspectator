@@ -1,5 +1,5 @@
 /* mingw32 host-specific hook definitions.
-   Copyright (C) 2004-2017 Free Software Foundation, Inc.
+   Copyright (C) 2004-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -16,6 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
+
+#define IN_TARGET_CODE 1
 
 #include "config.h"
 #include "system.h"
@@ -155,10 +157,10 @@ mingw32_gt_pch_use_address (void *addr, size_t size, int fd,
   /* Determine the version of Windows we are running on and use a
      uniquely-named local object if running > 4.  */
   GetVersionEx (&version_info);
+
+  char local_object_name[sizeof (OBJECT_NAME_FMT) + sizeof (DWORD) * 2];
   if (version_info.dwMajorVersion > 4)
     {
-      char local_object_name [sizeof (OBJECT_NAME_FMT)
-			      + sizeof (DWORD) * 2];
       snprintf (local_object_name, sizeof (local_object_name),
 		OBJECT_NAME_FMT "%lx", GetCurrentProcessId());
       object_name = local_object_name;

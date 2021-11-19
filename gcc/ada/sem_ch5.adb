@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,6 +26,7 @@
 with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Checks;   use Checks;
+with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Errout;   use Errout;
 with Expander; use Expander;
@@ -39,8 +40,6 @@ with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
-with Restrict; use Restrict;
-with Rident;   use Rident;
 with Sem;      use Sem;
 with Sem_Aux;  use Sem_Aux;
 with Sem_Case; use Sem_Case;
@@ -60,14 +59,17 @@ with Stand;    use Stand;
 with Sinfo;    use Sinfo;
 with Targparm; use Targparm;
 with Tbuild;   use Tbuild;
+with Ttypes;   use Ttypes;
 with Uintp;    use Uintp;
 
 package body Sem_Ch5 is
 
-   Current_LHS : Node_Id := Empty;
-   --  Holds the left-hand side of the assignment statement being analyzed.
-   --  Used to determine the type of a target_name appearing on the RHS, for
-   --  AI12-0125 and the use of '@' as an abbreviation for the LHS.
+   Current_Assignment : Node_Id := Empty;
+   --  This variable holds the node for an assignment that contains target
+   --  names. The corresponding flag has been set by the parser, and when
+   --  set the analysis of the RHS must be done with all expansion disabled,
+   --  because the assignment is reanalyzed after expansion has replaced all
+   --  occurrences of the target name appropriately.
 
    Unblocked_Exit_Count : Nat := 0;
    --  This variable is used when processing if statements, case statements,
@@ -80,6 +82,12 @@ package body Sem_Ch5 is
    --  CASE or block statement. This is used for the generation of warning
    --  messages. This variable is recursively saved on entry to processing the
    --  construct, and restored on exit.
+
+   function Has_Sec_Stack_Call (N : Node_Id) return Boolean;
+   --  N is the node for an arbitrary construct. This function searches the
+   --  construct N to see if any expressions within it contain function
+   --  calls that use the secondary stack, returning True if any such call
+   --  is found, and False otherwise.
 
    procedure Preanalyze_Range (R_Copy : Node_Id);
    --  Determine expected type of range or domain of iteration of Ada 2012
@@ -98,15 +106,17 @@ package body Sem_Ch5 is
    --  Ghost mode.
 
    procedure Analyze_Assignment (N : Node_Id) is
-      Lhs  : constant Node_Id := Name (N);
-      Rhs  : constant Node_Id := Expression (N);
-      T1   : Entity_Id;
-      T2   : Entity_Id;
-      Decl : Node_Id;
+      Lhs : constant Node_Id := Name (N);
+      Rhs : Node_Id          := Expression (N);
 
       procedure Diagnose_Non_Variable_Lhs (N : Node_Id);
       --  N is the node for the left hand side of an assignment, and it is not
       --  a variable. This routine issues an appropriate diagnostic.
+
+      function Is_Protected_Part_Of_Constituent
+        (Nod : Node_Id) return Boolean;
+      --  Determine whether arbitrary node Nod denotes a Part_Of constituent of
+      --  a single protected type.
 
       procedure Kill_Lhs;
       --  This is called to kill current value settings of a simple variable
@@ -120,6 +130,31 @@ package body Sem_Ch5 is
       --  Opnd is either the Lhs or Rhs of the assignment, and Opnd_Type is the
       --  nominal subtype. This procedure is used to deal with cases where the
       --  nominal subtype must be replaced by the actual subtype.
+
+      procedure Transform_BIP_Assignment (Typ : Entity_Id);
+      function Should_Transform_BIP_Assignment
+        (Typ : Entity_Id) return Boolean;
+      --  If the right-hand side of an assignment statement is a build-in-place
+      --  call we cannot build in place, so we insert a temp initialized with
+      --  the call, and transform the assignment statement to copy the temp.
+      --  Transform_BIP_Assignment does the tranformation, and
+      --  Should_Transform_BIP_Assignment determines whether we should.
+      --  The same goes for qualified expressions and conversions whose
+      --  operand is such a call.
+      --
+      --  This is only for nonlimited types; assignment statements are illegal
+      --  for limited types, but are generated internally for aggregates and
+      --  init procs. These limited-type are not really assignment statements
+      --  -- conceptually, they are initializations, so should not be
+      --  transformed.
+      --
+      --  Similarly, for nonlimited types, aggregates and init procs generate
+      --  assignment statements that are really initializations. These are
+      --  marked No_Ctrl_Actions.
+
+      function Within_Function return Boolean;
+      --  Determine whether the current scope is a function or appears within
+      --  one.
 
       -------------------------------
       -- Diagnose_Non_Variable_Lhs --
@@ -140,7 +175,13 @@ package body Sem_Ch5 is
                Ent : constant Entity_Id := Entity (N);
 
             begin
-               if Ekind (Ent) = E_In_Parameter then
+               if Ekind (Ent) = E_Loop_Parameter
+                 or else Is_Loop_Parameter (Ent)
+               then
+                  Error_Msg_N ("assignment to loop parameter not allowed", N);
+                  return;
+
+               elsif Ekind (Ent) = E_In_Parameter then
                   Error_Msg_N
                     ("assignment to IN mode parameter not allowed", N);
                   return;
@@ -150,21 +191,12 @@ package body Sem_Ch5 is
                --  of single protected types, the private component appears
                --  directly.
 
-               elsif (Is_Prival (Ent)
-                       and then
-                         (Ekind (Current_Scope) = E_Function
-                           or else Ekind (Enclosing_Dynamic_Scope
-                                            (Current_Scope)) = E_Function))
-                   or else
-                     (Ekind (Ent) = E_Component
-                       and then Is_Protected_Type (Scope (Ent)))
+               elsif (Is_Prival (Ent) and then Within_Function)
+                   or else Is_Protected_Component (Ent)
                then
                   Error_Msg_N
-                    ("protected function cannot modify protected object", N);
-                  return;
-
-               elsif Ekind (Ent) = E_Loop_Parameter then
-                  Error_Msg_N ("assignment to loop parameter not allowed", N);
+                    ("protected function cannot modify its protected object",
+                     N);
                   return;
                end if;
             end;
@@ -202,6 +234,39 @@ package body Sem_Ch5 is
          Error_Msg_N ("left hand side of assignment must be a variable", N);
       end Diagnose_Non_Variable_Lhs;
 
+      --------------------------------------
+      -- Is_Protected_Part_Of_Constituent --
+      --------------------------------------
+
+      function Is_Protected_Part_Of_Constituent
+        (Nod : Node_Id) return Boolean
+      is
+         Encap_Id : Entity_Id;
+         Var_Id   : Entity_Id;
+
+      begin
+         --  Abstract states and variables may act as Part_Of constituents of
+         --  single protected types, however only variables can be modified by
+         --  an assignment.
+
+         if Is_Entity_Name (Nod) then
+            Var_Id := Entity (Nod);
+
+            if Present (Var_Id) and then Ekind (Var_Id) = E_Variable then
+               Encap_Id := Encapsulating_State (Var_Id);
+
+               --  To qualify, the node must denote a reference to a variable
+               --  whose encapsulating state is a single protected object.
+
+               return
+                 Present (Encap_Id)
+                   and then Is_Single_Protected_Object (Encap_Id);
+            end if;
+         end if;
+
+         return False;
+      end Is_Protected_Part_Of_Constituent;
+
       --------------
       -- Kill_Lhs --
       --------------
@@ -227,6 +292,8 @@ package body Sem_Ch5 is
         (Opnd      : Node_Id;
          Opnd_Type : in out Entity_Id)
       is
+         Decl : Node_Id;
+
       begin
          Require_Entity (Opnd);
 
@@ -237,23 +304,22 @@ package body Sem_Ch5 is
          --  also have an actual subtype.
 
          if Is_Entity_Name (Opnd)
-           and then (Ekind (Entity (Opnd)) = E_Out_Parameter
-                      or else Ekind_In (Entity (Opnd),
-                                        E_In_Out_Parameter,
-                                        E_Generic_In_Out_Parameter)
+           and then (Ekind (Entity (Opnd)) in E_Out_Parameter
+                                            | E_In_Out_Parameter
+                                            | E_Generic_In_Out_Parameter
                       or else
                         (Ekind (Entity (Opnd)) = E_Variable
                           and then Nkind (Parent (Entity (Opnd))) =
-                                            N_Object_Renaming_Declaration
+                                     N_Object_Renaming_Declaration
                           and then Nkind (Parent (Parent (Entity (Opnd)))) =
-                                            N_Accept_Statement))
+                                     N_Accept_Statement))
          then
             Opnd_Type := Get_Actual_Subtype (Opnd);
 
          --  If assignment operand is a component reference, then we get the
          --  actual subtype of the component for the unconstrained case.
 
-         elsif Nkind_In (Opnd, N_Selected_Component, N_Explicit_Dereference)
+         elsif Nkind (Opnd) in N_Selected_Component | N_Explicit_Dereference
            and then not Is_Unchecked_Union (Opnd_Type)
          then
             Decl := Build_Actual_Subtype_Of_Component (Opnd_Type, Opnd);
@@ -277,38 +343,156 @@ package body Sem_Ch5 is
          end if;
       end Set_Assignment_Type;
 
+      -------------------------------------
+      -- Should_Transform_BIP_Assignment --
+      -------------------------------------
+
+      function Should_Transform_BIP_Assignment
+        (Typ : Entity_Id) return Boolean
+      is
+      begin
+         if Expander_Active
+           and then not Is_Limited_View (Typ)
+           and then Is_Build_In_Place_Result_Type (Typ)
+           and then not No_Ctrl_Actions (N)
+         then
+            --  This function is called early, before name resolution is
+            --  complete, so we have to deal with things that might turn into
+            --  function calls later. N_Function_Call and N_Op nodes are the
+            --  obvious case. An N_Identifier or N_Expanded_Name is a
+            --  parameterless function call if it denotes a function.
+            --  Finally, an attribute reference can be a function call.
+
+            declare
+               Unqual_Rhs : constant Node_Id := Unqual_Conv (Rhs);
+            begin
+               case Nkind (Unqual_Rhs) is
+                  when N_Function_Call
+                     | N_Op
+                  =>
+                     return True;
+
+                  when N_Expanded_Name
+                     | N_Identifier
+                  =>
+                     return
+                       Ekind (Entity (Unqual_Rhs)) in E_Function | E_Operator;
+
+                  --  T'Input will turn into a call whose result type is T
+
+                  when N_Attribute_Reference =>
+                     return Attribute_Name (Unqual_Rhs) = Name_Input;
+
+                  when others =>
+                     return False;
+               end case;
+            end;
+         else
+            return False;
+         end if;
+      end Should_Transform_BIP_Assignment;
+
+      ------------------------------
+      -- Transform_BIP_Assignment --
+      ------------------------------
+
+      procedure Transform_BIP_Assignment (Typ : Entity_Id) is
+
+         --  Tranform "X : [constant] T := F (...);" into:
+         --
+         --     Temp : constant T := F (...);
+         --     X := Temp;
+
+         Loc      : constant Source_Ptr := Sloc (N);
+         Def_Id   : constant Entity_Id  := Make_Temporary (Loc, 'Y', Rhs);
+         Obj_Decl : constant Node_Id    :=
+                      Make_Object_Declaration (Loc,
+                        Defining_Identifier => Def_Id,
+                        Constant_Present    => True,
+                        Object_Definition   => New_Occurrence_Of (Typ, Loc),
+                        Expression          => Rhs,
+                        Has_Init_Expression => True);
+
+      begin
+         Set_Etype (Def_Id, Typ);
+         Set_Expression (N, New_Occurrence_Of (Def_Id, Loc));
+
+         --  At this point, Rhs is no longer equal to Expression (N), so:
+
+         Rhs := Expression (N);
+
+         Insert_Action (N, Obj_Decl);
+      end Transform_BIP_Assignment;
+
+      ---------------------
+      -- Within_Function --
+      ---------------------
+
+      function Within_Function return Boolean is
+         Scop_Id : constant Entity_Id := Current_Scope;
+
+      begin
+         if Ekind (Scop_Id) = E_Function then
+            return True;
+
+         elsif Ekind (Enclosing_Dynamic_Scope (Scop_Id)) = E_Function then
+            return True;
+         end if;
+
+         return False;
+      end Within_Function;
+
       --  Local variables
 
-      Mode : Ghost_Mode_Type;
+      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
+      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      --  Save the Ghost-related attributes to restore on exit
+
+      T1 : Entity_Id;
+      T2 : Entity_Id;
+
+      Save_Full_Analysis : Boolean := False;
+      --  Force initialization to facilitate static analysis
 
    --  Start of processing for Analyze_Assignment
 
    begin
-      --  Save LHS for use in target names (AI12-125)
-
-      Current_LHS := Lhs;
-
       Mark_Coextensions (N, Rhs);
 
-      --  Analyze the target of the assignment first in case the expression
-      --  contains references to Ghost entities. The checks that verify the
-      --  proper use of a Ghost entity need to know the enclosing context.
+      --  Preserve relevant elaboration-related attributes of the context which
+      --  are no longer available or very expensive to recompute once analysis,
+      --  resolution, and expansion are over.
 
-      Analyze (Lhs);
+      Mark_Elaboration_Attributes
+        (N_Id   => N,
+         Checks => True,
+         Modes  => True);
 
       --  An assignment statement is Ghost when the left hand side denotes a
       --  Ghost entity. Set the mode now to ensure that any nodes generated
       --  during analysis and expansion are properly marked as Ghost.
 
-      Mark_And_Set_Ghost_Assignment (N, Mode);
+      Mark_And_Set_Ghost_Assignment (N);
+
+      if Has_Target_Names (N) then
+         Current_Assignment := N;
+         Expander_Mode_Save_And_Set (False);
+         Save_Full_Analysis := Full_Analysis;
+         Full_Analysis      := False;
+      else
+         Current_Assignment := Empty;
+      end if;
+
+      Analyze (Lhs);
       Analyze (Rhs);
 
       --  Ensure that we never do an assignment on a variable marked as
-      --  as Safe_To_Reevaluate.
+      --  Is_Safe_To_Reevaluate.
 
-      pragma Assert (not Is_Entity_Name (Lhs)
-        or else Ekind (Entity (Lhs)) /= E_Variable
-        or else not Is_Safe_To_Reevaluate (Entity (Lhs)));
+      pragma Assert
+        (not Is_Entity_Name (Lhs)
+          or else Ekind (Entity (Lhs)) /= E_Variable
+          or else not Is_Safe_To_Reevaluate (Entity (Lhs)));
 
       --  Start type analysis for assignment
 
@@ -348,8 +532,9 @@ package body Sem_Ch5 is
                   null;
 
                elsif Has_Compatible_Type (Rhs, It.Typ) then
-                  if T1 /= Any_Type then
-
+                  if T1 = Any_Type then
+                     T1 := It.Typ;
+                  else
                      --  An explicit dereference is overloaded if the prefix
                      --  is. Try to remove the ambiguity on the prefix, the
                      --  error will be posted there if the ambiguity is real.
@@ -400,8 +585,6 @@ package body Sem_Ch5 is
                           ("ambiguous left-hand side in assignment", Lhs);
                         exit;
                      end if;
-                  else
-                     T1 := It.Typ;
                   end if;
                end if;
 
@@ -417,12 +600,60 @@ package body Sem_Ch5 is
          end if;
       end if;
 
+      --  Deal with build-in-place calls for nonlimited types. We don't do this
+      --  later, because resolving the rhs tranforms it incorrectly for build-
+      --  in-place.
+
+      if Should_Transform_BIP_Assignment (Typ => T1) then
+
+         --  In certain cases involving user-defined concatenation operators,
+         --  we need to resolve the right-hand side before transforming the
+         --  assignment.
+
+         case Nkind (Unqual_Conv (Rhs)) is
+            when N_Function_Call =>
+               declare
+                  Actual     : Node_Id :=
+                    First (Parameter_Associations (Unqual_Conv (Rhs)));
+                  Actual_Exp : Node_Id;
+
+               begin
+                  while Present (Actual) loop
+                     if Nkind (Actual) = N_Parameter_Association then
+                        Actual_Exp := Explicit_Actual_Parameter (Actual);
+                     else
+                        Actual_Exp := Actual;
+                     end if;
+
+                     if Nkind (Actual_Exp) = N_Op_Concat then
+                        Resolve (Rhs, T1);
+                        exit;
+                     end if;
+
+                     Next (Actual);
+                  end loop;
+               end;
+
+            when N_Attribute_Reference
+               | N_Expanded_Name
+               | N_Identifier
+               | N_Op
+            =>
+               null;
+
+            when others =>
+               raise Program_Error;
+         end case;
+
+         Transform_BIP_Assignment (Typ => T1);
+      end if;
+
+      pragma Assert (not Should_Transform_BIP_Assignment (Typ => T1));
+
       --  The resulting assignment type is T1, so now we will resolve the left
       --  hand side of the assignment using this determined type.
 
       Resolve (Lhs, T1);
-
-      --  Cases where Lhs is not a variable
 
       --  Cases where Lhs is not a variable. In an instance or an inlined body
       --  no need for further check because assignment was legal in template.
@@ -475,7 +706,8 @@ package body Sem_Ch5 is
                     and then Convention (S) = Convention_Protected
                   then
                      Error_Msg_N
-                       ("protected function cannot modify protected object",
+                       ("protected function cannot modify its protected " &
+                        "object",
                         Lhs);
                   end if;
 
@@ -535,6 +767,15 @@ package body Sem_Ch5 is
            ("target of assignment operation must not be abstract", Lhs);
       end if;
 
+      --  Variables which are Part_Of constituents of single protected types
+      --  behave in similar fashion to protected components. Such variables
+      --  cannot be modified by protected functions.
+
+      if Is_Protected_Part_Of_Constituent (Lhs) and then Within_Function then
+         Error_Msg_N
+           ("protected function cannot modify its protected object", Lhs);
+      end if;
+
       --  Resolution may have updated the subtype, in case the left-hand side
       --  is a private protected component. Use the correct subtype to avoid
       --  scoping issues in the back-end.
@@ -568,15 +809,22 @@ package body Sem_Ch5 is
 
       Set_Assignment_Type (Lhs, T1);
 
-      Resolve (Rhs, T1);
+      --  If the target of the assignment is an entity of a mutable type and
+      --  the expression is a conditional expression, its alternatives can be
+      --  of different subtypes of the nominal type of the LHS, so they must be
+      --  resolved with the base type, given that their subtype may differ from
+      --  that of the target mutable object.
 
-      --  If the right-hand side contains target names, expansion has been
-      --  disabled to prevent expansion that might move target names out of
-      --  the context of the assignment statement. Restore the expander mode
-      --  now so that assignment statement can be properly expanded.
+      if Is_Entity_Name (Lhs)
+        and then Is_Assignable (Entity (Lhs))
+        and then Is_Composite_Type (T1)
+        and then not Is_Constrained (Etype (Entity (Lhs)))
+        and then Nkind (Rhs) in N_If_Expression | N_Case_Expression
+      then
+         Resolve (Rhs, Base_Type (T1));
 
-      if Nkind (N) = N_Assignment_Statement and then Has_Target_Names (N) then
-         Expander_Mode_Restore;
+      else
+         Resolve (Rhs, T1);
       end if;
 
       --  This is the point at which we check for an unset reference
@@ -708,7 +956,7 @@ package body Sem_Ch5 is
             Apply_Compile_Time_Constraint_Error
               (N      => Rhs,
                Msg    =>
-                 "(Ada 2005) null not allowed in null-excluding objects??",
+                 "(Ada 2005) NULL not allowed in null-excluding objects??",
                Reason => CE_Null_Not_Allowed);
 
             --  We still mark this as a possible modification, that's necessary
@@ -740,7 +988,7 @@ package body Sem_Ch5 is
         and then (Nkind (Rhs) /= N_Function_Call
                    or else Nkind (N) /= N_Block_Statement)
       then
-         --  Assignment verifies that the length of the Lsh and Rhs are equal,
+         --  Assignment verifies that the length of the Lhs and Rhs are equal,
          --  but of course the indexes do not have to match. If the right-hand
          --  side is a type conversion to an unconstrained type, a length check
          --  is performed on the expression itself during expansion. In rare
@@ -748,7 +996,7 @@ package body Sem_Ch5 is
          --  with a different representation, triggering incorrect code in the
          --  back end.
 
-         Apply_Length_Check (Rhs, Etype (Lhs));
+         Apply_Length_Check_On_Assignment (Rhs, Etype (Lhs), Lhs);
 
       else
          --  Discriminant checks are applied in the course of expansion
@@ -796,16 +1044,23 @@ package body Sem_Ch5 is
 
       if not Support_Composite_Assign_On_Target
         and then (Is_Array_Type (T1) or else Is_Record_Type (T1))
-        and then (not Has_Size_Clause (T1) or else Esize (T1) > 64)
+        and then (not Has_Size_Clause (T1)
+                   or else Esize (T1) > Ttypes.System_Max_Integer_Size)
       then
          Error_Msg_CRT ("composite assignment", N);
       end if;
 
       --  Check elaboration warning for left side if not in elab code
 
-      if not In_Subprogram_Or_Concurrent_Unit then
+      if Legacy_Elaboration_Checks
+        and not In_Subprogram_Or_Concurrent_Unit
+      then
          Check_Elab_Assign (Lhs);
       end if;
+
+      --  Save the scenario for later examination by the ABE Processing phase
+
+      Record_Elaboration_Scenario (N);
 
       --  Set Referenced_As_LHS if appropriate. We only set this flag if the
       --  assignment is a source assignment in the extended main source unit.
@@ -818,14 +1073,16 @@ package body Sem_Ch5 is
          Set_Referenced_Modified (Lhs, Out_Param => False);
       end if;
 
-      --  RM 7.3.2 (12/3): An assignment to a view conversion (from a type
-      --  to one of its ancestors) requires an invariant check. Apply check
-      --  only if expression comes from source, otherwise it will be applied
-      --  when value is assigned to source entity.
+      --  RM 7.3.2 (12/3): An assignment to a view conversion (from a type to
+      --  one of its ancestors) requires an invariant check. Apply check only
+      --  if expression comes from source, otherwise it will be applied when
+      --  value is assigned to source entity. This is not done in GNATprove
+      --  mode, as GNATprove handles invariant checks itself.
 
       if Nkind (Lhs) = N_Type_Conversion
         and then Has_Invariants (Etype (Expression (Lhs)))
         and then Comes_From_Source (Expression (Lhs))
+        and then not GNATprove_Mode
       then
          Insert_After (N, Make_Invariant_Call (Expression (Lhs)));
       end if;
@@ -937,8 +1194,21 @@ package body Sem_Ch5 is
       Analyze_Dimension (N);
 
    <<Leave>>
-      Current_LHS := Empty;
-      Restore_Ghost_Mode (Mode);
+      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+
+      --  If the right-hand side contains target names, expansion has been
+      --  disabled to prevent expansion that might move target names out of
+      --  the context of the assignment statement. Restore the expander mode
+      --  now so that assignment statement can be properly expanded.
+
+      if Nkind (N) = N_Assignment_Statement then
+         if Has_Target_Names (N) then
+            Expander_Mode_Restore;
+            Full_Analysis := Save_Full_Analysis;
+         end if;
+
+         pragma Assert (not Should_Transform_BIP_Assignment (Typ => T1));
+      end if;
    end Analyze_Assignment;
 
    -----------------------------
@@ -964,7 +1234,7 @@ package body Sem_Ch5 is
 
             --  Do not install the return object
 
-            if not Ekind_In (Id, E_Constant, E_Variable)
+            if Ekind (Id) not in E_Constant | E_Variable
               or else not Is_Return_Object (Id)
             then
                Install_Entity (Id);
@@ -985,13 +1255,6 @@ package body Sem_Ch5 is
    --  Start of processing for Analyze_Block_Statement
 
    begin
-      --  In SPARK mode, we reject block statements. Note that the case of
-      --  block statements generated by the expander is fine.
-
-      if Nkind (Original_Node (N)) = N_Block_Statement then
-         Check_SPARK_05_Restriction ("block statement is not allowed", N);
-      end if;
-
       --  If no handled statement sequence is present, things are really messed
       --  up, and we just return immediately (defence against previous errors).
 
@@ -1100,6 +1363,7 @@ package body Sem_Ch5 is
          end if;
 
          Check_References (Ent);
+         Update_Use_Clause_Chain;
          End_Scope;
 
          if Unblocked_Exit_Count = 0 then
@@ -1125,25 +1389,13 @@ package body Sem_Ch5 is
    ----------------------------
 
    procedure Analyze_Case_Statement (N : Node_Id) is
-      Exp            : Node_Id;
-      Exp_Type       : Entity_Id;
-      Exp_Btype      : Entity_Id;
-      Last_Choice    : Nat;
-
-      Others_Present : Boolean;
-      --  Indicates if Others was present
-
-      pragma Warnings (Off, Last_Choice);
-      --  Don't care about assigned value
+      Exp : constant Node_Id := Expression (N);
 
       Statements_Analyzed : Boolean := False;
       --  Set True if at least some statement sequences get analyzed. If False
       --  on exit, means we had a serious error that prevented full analysis of
       --  the case statement, and as a result it is not a good idea to output
       --  warning messages about unreachable code.
-
-      Save_Unblocked_Exit_Count : constant Nat := Unblocked_Exit_Count;
-      --  Recursively save value of this global, will be restored on exit
 
       procedure Non_Static_Choice_Error (Choice : Node_Id);
       --  Error routine invoked by the generic instantiation below when the
@@ -1204,10 +1456,7 @@ package body Sem_Ch5 is
          if Is_Entity_Name (Exp) then
             Ent := Entity (Exp);
 
-            if Ekind_In (Ent, E_Variable,
-                              E_In_Out_Parameter,
-                              E_Out_Parameter)
-            then
+            if Is_Assignable (Ent) then
                if List_Length (Choices) = 1
                  and then Nkind (First (Choices)) in N_Subexpr
                  and then Compile_Time_Known_Value (First (Choices))
@@ -1231,11 +1480,20 @@ package body Sem_Ch5 is
          Analyze_Statements (Statements (Alternative));
       end Process_Statements;
 
+      --  Local variables
+
+      Exp_Type  : Entity_Id;
+      Exp_Btype : Entity_Id;
+
+      Others_Present : Boolean;
+      --  Indicates if Others was present
+
+      Save_Unblocked_Exit_Count : constant Nat := Unblocked_Exit_Count;
+      --  Recursively save value of this global, will be restored on exit
+
    --  Start of processing for Analyze_Case_Statement
 
    begin
-      Unblocked_Exit_Count := 0;
-      Exp := Expression (N);
       Analyze (Exp);
 
       --  The expression must be of any discrete type. In rare cases, the
@@ -1299,17 +1557,12 @@ package body Sem_Ch5 is
          Exp_Type := Exp_Btype;
       end if;
 
-      --  Call instantiated procedures to analyzwe and check discrete choices
+      --  Call instantiated procedures to analyze and check discrete choices
+
+      Unblocked_Exit_Count := 0;
 
       Analyze_Choices (Alternatives (N), Exp_Type);
       Check_Choices (N, Alternatives (N), Exp_Type, Others_Present);
-
-      --  Case statement with single OTHERS alternative not allowed in SPARK
-
-      if Others_Present and then List_Length (Alternatives (N)) = 1 then
-         Check_SPARK_05_Restriction
-           ("OTHERS as unique case alternative is not allowed", N);
-      end if;
 
       if Exp_Type = Universal_Integer and then not Others_Present then
          Error_Msg_N ("case on universal integer requires OTHERS choice", Exp);
@@ -1375,7 +1628,7 @@ package body Sem_Ch5 is
    procedure Analyze_Exit_Statement (N : Node_Id) is
       Target   : constant Node_Id := Name (N);
       Cond     : constant Node_Id := Condition (N);
-      Scope_Id : Entity_Id;
+      Scope_Id : Entity_Id := Empty;  -- initialize to prevent warning
       U_Name   : Entity_Id;
       Kind     : Entity_Kind;
 
@@ -1393,11 +1646,6 @@ package body Sem_Ch5 is
             return;
 
          else
-            if Has_Loop_In_Inner_Open_Scopes (U_Name) then
-               Check_SPARK_05_Restriction
-                 ("exit label must name the closest enclosing loop", N);
-            end if;
-
             Set_Has_Exit (U_Name);
          end if;
 
@@ -1433,42 +1681,6 @@ package body Sem_Ch5 is
          Check_Unset_Reference (Cond);
       end if;
 
-      --  In SPARK mode, verify that the exit statement respects the SPARK
-      --  restrictions.
-
-      if Present (Cond) then
-         if Nkind (Parent (N)) /= N_Loop_Statement then
-            Check_SPARK_05_Restriction
-              ("exit with when clause must be directly in loop", N);
-         end if;
-
-      else
-         if Nkind (Parent (N)) /= N_If_Statement then
-            if Nkind (Parent (N)) = N_Elsif_Part then
-               Check_SPARK_05_Restriction
-                 ("exit must be in IF without ELSIF", N);
-            else
-               Check_SPARK_05_Restriction ("exit must be directly in IF", N);
-            end if;
-
-         elsif Nkind (Parent (Parent (N))) /= N_Loop_Statement then
-            Check_SPARK_05_Restriction
-              ("exit must be in IF directly in loop", N);
-
-         --  First test the presence of ELSE, so that an exit in an ELSE leads
-         --  to an error mentioning the ELSE.
-
-         elsif Present (Else_Statements (Parent (N))) then
-            Check_SPARK_05_Restriction ("exit must be in IF without ELSE", N);
-
-         --  An exit in an ELSIF does not reach here, as it would have been
-         --  detected in the case (Nkind (Parent (N)) /= N_If_Statement).
-
-         elsif Present (Elsif_Parts (Parent (N))) then
-            Check_SPARK_05_Restriction ("exit must be in IF without ELSIF", N);
-         end if;
-      end if;
-
       --  Chain exit statement to associated loop entity
 
       Set_Next_Exit_Statement  (N, First_Exit_Statement (Scope_Id));
@@ -1493,8 +1705,6 @@ package body Sem_Ch5 is
       Label_Ent   : Entity_Id;
 
    begin
-      Check_SPARK_05_Restriction ("goto statement is not allowed", N);
-
       --  Actual semantic checks
 
       Check_Unreachable_Code (N);
@@ -1533,7 +1743,8 @@ package body Sem_Ch5 is
          Scope_Id := Scope_Stack.Table (J).Entity;
 
          if Label_Scope = Scope_Id
-           or else not Ekind_In (Scope_Id, E_Block, E_Loop, E_Return_Statement)
+           or else Ekind (Scope_Id) not in
+                     E_Block | E_Loop | E_Return_Statement
          then
             if Scope_Id /= Label_Scope then
                Error_Msg_N
@@ -1563,12 +1774,10 @@ package body Sem_Ch5 is
    --  on which they depend will not be available at the freeze point.
 
    procedure Analyze_If_Statement (N : Node_Id) is
-      E : Node_Id;
-
       Save_Unblocked_Exit_Count : constant Nat := Unblocked_Exit_Count;
       --  Recursively save value of this global, will be restored on exit
 
-      Save_In_Deleted_Code : Boolean;
+      Save_In_Deleted_Code : Boolean := In_Deleted_Code;
 
       Del : Boolean := False;
       --  This flag gets set True if a True condition has been found, which
@@ -1614,7 +1823,7 @@ package body Sem_Ch5 is
 
             --  If condition is False, analyze THEN with expansion off
 
-            else -- Is_False (Expr_Value (Cond))
+            else pragma Assert (Is_False (Expr_Value (Cond)));
                Expander_Mode_Save_And_Set (False);
                In_Deleted_Code := True;
                Analyze_Statements (Tstm);
@@ -1628,6 +1837,11 @@ package body Sem_Ch5 is
             Analyze_Statements (Tstm);
          end if;
       end Analyze_Cond_Then;
+
+      --  Local variables
+
+      E : Node_Id;
+      --  For iterating over elsif parts
 
    --  Start of processing for Analyze_If_Statement
 
@@ -1784,10 +1998,22 @@ package body Sem_Ch5 is
    ------------------------------------
 
    procedure Analyze_Iterator_Specification (N : Node_Id) is
+      Def_Id    : constant Node_Id    := Defining_Identifier (N);
+      Iter_Name : constant Node_Id    := Name (N);
+      Loc       : constant Source_Ptr := Sloc (N);
+      Subt      : constant Node_Id    := Subtype_Indication (N);
+
+      Bas : Entity_Id := Empty;  -- initialize to prevent warning
+      Typ : Entity_Id;
+
       procedure Check_Reverse_Iteration (Typ : Entity_Id);
       --  For an iteration over a container, if the loop carries the Reverse
       --  indicator, verify that the container type has an Iterate aspect that
       --  implements the reversible iterator interface.
+
+      procedure Check_Subtype_Indication (Comp_Type : Entity_Id);
+      --  If a subtype indication is present, verify that it is consistent
+      --  with the component type of the array or container name.
 
       function Get_Cursor_Type (Typ : Entity_Id) return Entity_Id;
       --  For containers with Iterator and related aspects, the cursor is
@@ -1800,14 +2026,42 @@ package body Sem_Ch5 is
 
       procedure Check_Reverse_Iteration (Typ : Entity_Id) is
       begin
-         if Reverse_Present (N)
-           and then not Is_Array_Type (Typ)
-           and then not Is_Reversible_Iterator (Typ)
-         then
-            Error_Msg_NE
-              ("container type does not support reverse iteration", N, Typ);
+         if Reverse_Present (N) then
+            if Is_Array_Type (Typ)
+              or else Is_Reversible_Iterator (Typ)
+              or else
+                (Present (Find_Aspect (Typ, Aspect_Iterable))
+                  and then
+                    Present
+                      (Get_Iterable_Type_Primitive (Typ, Name_Previous)))
+            then
+               null;
+            else
+               Error_Msg_NE
+                 ("container type does not support reverse iteration", N, Typ);
+            end if;
          end if;
       end Check_Reverse_Iteration;
+
+      -------------------------------
+      --  Check_Subtype_Indication --
+      -------------------------------
+
+      procedure Check_Subtype_Indication (Comp_Type : Entity_Id) is
+      begin
+         if Present (Subt)
+           and then (not Covers (Base_Type ((Bas)), Comp_Type)
+                      or else not Subtypes_Statically_Match (Bas, Comp_Type))
+         then
+            if Is_Array_Type (Typ) then
+               Error_Msg_N
+                 ("subtype indication does not match component type", Subt);
+            else
+               Error_Msg_N
+                 ("subtype indication does not match element type", Subt);
+            end if;
+         end if;
+      end Check_Subtype_Indication;
 
       ---------------------
       -- Get_Cursor_Type --
@@ -1845,16 +2099,6 @@ package body Sem_Ch5 is
          return Etype (Ent);
       end Get_Cursor_Type;
 
-      --  Local variables
-
-      Def_Id    : constant Node_Id    := Defining_Identifier (N);
-      Iter_Name : constant Node_Id    := Name (N);
-      Loc       : constant Source_Ptr := Sloc (N);
-      Subt      : constant Node_Id    := Subtype_Indication (N);
-
-      Bas : Entity_Id;
-      Typ : Entity_Id;
-
    --   Start of processing for Analyze_Iterator_Specification
 
    begin
@@ -1890,8 +2134,20 @@ package body Sem_Ch5 is
 
       Preanalyze_Range (Iter_Name);
 
-      --  Set the kind of the loop variable, which is not visible within
-      --  the iterator name.
+      --  If the domain of iteration is a function call, make sure the function
+      --  itself is frozen. This is an issue if this is a local expression
+      --  function.
+
+      if Nkind (Iter_Name) = N_Function_Call
+        and then Is_Entity_Name (Name (Iter_Name))
+        and then Full_Analysis
+        and then (In_Assertion_Expr = 0 or else Assertions_Enabled)
+      then
+         Freeze_Before (N, Entity (Name (Iter_Name)));
+      end if;
+
+      --  Set the kind of the loop variable, which is not visible within the
+      --  iterator name.
 
       Set_Ekind (Def_Id, E_Variable);
 
@@ -1913,14 +2169,22 @@ package body Sem_Ch5 is
                It : Interp;
 
             begin
+               --  The domain of iteration must implement either the RM
+               --  iterator interface, or the SPARK Iterable aspect.
+
                if No (Iterator) then
-                  null;   --  error reported below.
+                  if No (Find_Aspect (Etype (Iter_Name), Aspect_Iterable)) then
+                     Error_Msg_NE
+                       ("cannot iterate over&",
+                        N, Base_Type (Etype (Iter_Name)));
+                     return;
+                  end if;
 
                elsif not Is_Overloaded (Iterator) then
                   Check_Reverse_Iteration (Etype (Iterator));
 
-               --  If Iterator is overloaded, use reversible iterator if
-               --  one is available.
+               --  If Iterator is overloaded, use reversible iterator if one is
+               --  available.
 
                elsif Is_Overloaded (Iterator) then
                   Get_First_Interp (Iterator, I, It);
@@ -1944,8 +2208,8 @@ package body Sem_Ch5 is
 
       --  If the domain of iteration is an expression, create a declaration for
       --  it, so that finalization actions are introduced outside of the loop.
-      --  The declaration must be a renaming because the body of the loop may
-      --  assign to elements.
+      --  The declaration must be a renaming (both in GNAT and GNATprove
+      --  modes), because the body of the loop may assign to elements.
 
       if not Is_Entity_Name (Iter_Name)
 
@@ -1954,14 +2218,15 @@ package body Sem_Ch5 is
         --  doing expansion.
 
         and then (Nkind (Parent (N)) /= N_Quantified_Expression
-                   or else Operating_Mode = Check_Semantics)
+                   or else (Operating_Mode = Check_Semantics
+                            and then not GNATprove_Mode))
 
-        --  Do not perform this expansion for ASIS and when expansion is
-        --  disabled, where the temporary may hide the transformation of a
-        --  selected component into a prefixed function call, and references
-        --  need to see the original expression.
+        --  Do not perform this expansion when expansion is disabled, where the
+        --  temporary may hide the transformation of a selected component into
+        --  a prefixed function call, and references need to see the original
+        --  expression.
 
-        and then Expander_Active
+        and then (Expander_Active or GNATprove_Mode)
       then
          declare
             Id    : constant Entity_Id := Make_Temporary (Loc, 'R', Iter_Name);
@@ -1971,7 +2236,7 @@ package body Sem_Ch5 is
          begin
 
             --  If the domain of iteration is an array component that depends
-            --  on a discriminant, create actual subtype for it. Pre-analysis
+            --  on a discriminant, create actual subtype for it. Preanalysis
             --  does not generate the actual subtype of a selected component.
 
             if Nkind (Iter_Name) = N_Selected_Component
@@ -2014,6 +2279,27 @@ package body Sem_Ch5 is
                Check_Reverse_Iteration (Typ);
             end if;
 
+            --  For an element iteration over a slice, we must complete
+            --  the resolution and expansion of the slice bounds. These
+            --  can be arbitrary expressions, and the preanalysis that
+            --  was performed in preparation for the iteration may have
+            --  generated an itype whose bounds must be fully expanded.
+            --  We set the parent node to provide a proper insertion
+            --  point for generated actions, if any.
+
+            if Nkind (Iter_Name) = N_Slice
+              and then Nkind (Discrete_Range (Iter_Name)) = N_Range
+              and then not Analyzed (Discrete_Range (Iter_Name))
+            then
+               declare
+                  Indx : constant Node_Id :=
+                     Entity (First_Index (Etype (Iter_Name)));
+               begin
+                  Set_Parent (Indx, Iter_Name);
+                  Resolve (Scalar_Range (Indx), Etype (Indx));
+               end;
+            end if;
+
             --  The name in the renaming declaration may be a function call.
             --  Indicate that it does not come from source, to suppress
             --  spurious warnings on renamings of parameterless functions,
@@ -2028,6 +2314,7 @@ package body Sem_Ch5 is
 
             Insert_Actions (Parent (Parent (N)), New_List (Decl));
             Rewrite (Name (N), New_Occurrence_Of (Id, Loc));
+            Analyze (Name (N));
             Set_Etype (Id, Typ);
             Set_Etype (Name (N), Typ);
          end;
@@ -2091,14 +2378,15 @@ package body Sem_Ch5 is
             Set_Etype (Def_Id, Component_Type (Typ));
 
             --  The loop variable is aliased if the array components are
-            --  aliased.
+            --  aliased. Likewise for the independent aspect.
 
-            Set_Is_Aliased (Def_Id, Has_Aliased_Components (Typ));
+            Set_Is_Aliased     (Def_Id, Has_Aliased_Components     (Typ));
+            Set_Is_Independent (Def_Id, Has_Independent_Components (Typ));
 
             --  AI12-0047 stipulates that the domain (array or container)
             --  cannot be a component that depends on a discriminant if the
             --  enclosing object is mutable, to prevent a modification of the
-            --  dowmain of iteration in the course of an iteration.
+            --  domain of iteration in the course of an iteration.
 
             --  If the object is an expression it has been captured in a
             --  temporary, so examine original node.
@@ -2112,15 +2400,7 @@ package body Sem_Ch5 is
                   & "component of a mutable object", N);
             end if;
 
-            if Present (Subt)
-              and then
-                (Base_Type (Bas) /= Base_Type (Component_Type (Typ))
-                  or else
-                    not Subtypes_Statically_Match (Bas, Component_Type (Typ)))
-            then
-               Error_Msg_N
-                 ("subtype indication does not match component type", Subt);
-            end if;
+            Check_Subtype_Indication (Component_Type (Typ));
 
          --  Here we have a missing Range attribute
 
@@ -2166,10 +2446,13 @@ package body Sem_Ch5 is
                        ("missing Element primitive for iteration", N);
                   else
                      Set_Etype (Def_Id, Etype (Elt));
+                     Check_Reverse_Iteration (Typ);
                   end if;
                end;
 
-            --  For a predefined container, The type of the loop variable is
+               Check_Subtype_Indication (Etype (Def_Id));
+
+            --  For a predefined container, the type of the loop variable is
             --  the Iterator_Element aspect of the container type.
 
             else
@@ -2194,18 +2477,7 @@ package body Sem_Ch5 is
                      Cursor_Type := Get_Cursor_Type (Typ);
                      pragma Assert (Present (Cursor_Type));
 
-                     --  If subtype indication was given, verify that it covers
-                     --  the element type of the container.
-
-                     if Present (Subt)
-                       and then (not Covers (Bas, Etype (Def_Id))
-                                  or else not Subtypes_Statically_Match
-                                                (Bas, Etype (Def_Id)))
-                     then
-                        Error_Msg_N
-                          ("subtype indication does not match element type",
-                           Subt);
-                     end if;
+                     Check_Subtype_Indication (Etype (Def_Id));
 
                      --  If the container has a variable indexing aspect, the
                      --  element is a variable and is modifiable in the loop.
@@ -2245,10 +2517,9 @@ package body Sem_Ch5 is
                      if Nkind (Orig_Iter_Name) = N_Selected_Component
                        and then
                          Present (Entity (Selector_Name (Orig_Iter_Name)))
-                       and then Ekind_In
-                                  (Entity (Selector_Name (Orig_Iter_Name)),
-                                   E_Component,
-                                   E_Discriminant)
+                       and then
+                         Ekind (Entity (Selector_Name (Orig_Iter_Name))) in
+                           E_Component | E_Discriminant
                        and then Is_Dependent_Component_Of_Mutable_Object
                                   (Orig_Iter_Name)
                      then
@@ -2351,6 +2622,13 @@ package body Sem_Ch5 is
 
          end if;
       end if;
+
+      if Present (Iterator_Filter (N)) then
+         --  Preanalyze the filter. Expansion will take place when enclosing
+         --  loop is expanded.
+
+         Preanalyze_And_Resolve (Iterator_Filter (N), Standard_Boolean);
+      end if;
    end Analyze_Iterator_Specification;
 
    -------------------
@@ -2401,17 +2679,11 @@ package body Sem_Ch5 is
       --  forms. In this case it is not sufficent to check the static predicate
       --  function only, look for a dynamic predicate aspect as well.
 
-      function Has_Call_Using_Secondary_Stack (N : Node_Id) return Boolean;
-      --  N is the node for an arbitrary construct. This function searches the
-      --  construct N to see if any expressions within it contain function
-      --  calls that use the secondary stack, returning True if any such call
-      --  is found, and False otherwise.
-
       procedure Process_Bounds (R : Node_Id);
       --  If the iteration is given by a range, create temporaries and
       --  assignment statements block to capture the bounds and perform
       --  required finalization actions in case a bound includes a function
-      --  call that uses the temporary stack. We first pre-analyze a copy of
+      --  call that uses the temporary stack. We first preanalyze a copy of
       --  the range in order to determine the expected type, and analyze and
       --  resolve the original bounds.
 
@@ -2483,74 +2755,13 @@ package body Sem_Ch5 is
                & "iteration", Discrete_Subtype_Definition (N),
                T, Suggest_Static => True);
 
-         elsif Inside_A_Generic and then Is_Generic_Formal (T) then
+         elsif Inside_A_Generic
+           and then Is_Generic_Formal (T)
+           and then Is_Discrete_Type (T)
+         then
             Set_No_Dynamic_Predicate_On_Actual (T);
          end if;
       end Check_Predicate_Use;
-
-      ------------------------------------
-      -- Has_Call_Using_Secondary_Stack --
-      ------------------------------------
-
-      function Has_Call_Using_Secondary_Stack (N : Node_Id) return Boolean is
-
-         function Check_Call (N : Node_Id) return Traverse_Result;
-         --  Check if N is a function call which uses the secondary stack
-
-         ----------------
-         -- Check_Call --
-         ----------------
-
-         function Check_Call (N : Node_Id) return Traverse_Result is
-            Nam        : Node_Id;
-            Subp       : Entity_Id;
-            Return_Typ : Entity_Id;
-
-         begin
-            if Nkind (N) = N_Function_Call then
-               Nam := Name (N);
-
-               --  Call using access to subprogram with explicit dereference
-
-               if Nkind (Nam) = N_Explicit_Dereference then
-                  Subp := Etype (Nam);
-
-               --  Call using a selected component notation or Ada 2005 object
-               --  operation notation
-
-               elsif Nkind (Nam) = N_Selected_Component then
-                  Subp := Entity (Selector_Name (Nam));
-
-               --  Common case
-
-               else
-                  Subp := Entity (Nam);
-               end if;
-
-               Return_Typ := Etype (Subp);
-
-               if Is_Composite_Type (Return_Typ)
-                 and then not Is_Constrained (Return_Typ)
-               then
-                  return Abandon;
-
-               elsif Sec_Stack_Needed_For_Return (Subp) then
-                  return Abandon;
-               end if;
-            end if;
-
-            --  Continue traversing the tree
-
-            return OK;
-         end Check_Call;
-
-         function Check_Calls is new Traverse_Func (Check_Call);
-
-      --  Start of processing for Has_Call_Using_Secondary_Stack
-
-      begin
-         return Check_Calls (N) = Abandon;
-      end Has_Call_Using_Secondary_Stack;
 
       --------------------
       -- Process_Bounds --
@@ -2589,8 +2800,8 @@ package body Sem_Ch5 is
             if Analyzed (Original_Bound) then
                return Original_Bound;
 
-            elsif Nkind_In (Analyzed_Bound, N_Integer_Literal,
-                                            N_Character_Literal)
+            elsif Nkind (Analyzed_Bound) in
+                    N_Integer_Literal | N_Character_Literal
               or else Is_Entity_Name (Analyzed_Bound)
             then
                Analyze_And_Resolve (Original_Bound, Typ);
@@ -2608,7 +2819,7 @@ package body Sem_Ch5 is
             --  proper trace of the value, useful in optimizations that get rid
             --  of junk range checks.
 
-            if not Has_Call_Using_Secondary_Stack (Analyzed_Bound) then
+            if not Has_Sec_Stack_Call (Analyzed_Bound) then
                Analyze_And_Resolve (Original_Bound, Typ);
 
                --  Ensure that the bound is valid. This check should not be
@@ -2747,13 +2958,6 @@ package body Sem_Ch5 is
          end if;
       end;
 
-      --  Loop parameter specification must include subtype mark in SPARK
-
-      if Nkind (DS) = N_Range then
-         Check_SPARK_05_Restriction
-           ("loop parameter specification must include subtype mark", N);
-      end if;
-
       --  Analyze the subtype definition and create temporaries for the bounds.
       --  Do not evaluate the range when preanalyzing a quantified expression
       --  because bounds expressed as function calls with side effects will be
@@ -2795,8 +2999,8 @@ package body Sem_Ch5 is
                      and then not Is_Type (Entity (DS_Copy)))
 
            or else (Nkind (DS_Copy) = N_Attribute_Reference
-                     and then Nam_In (Attribute_Name (DS_Copy),
-                                      Name_Loop_Entry, Name_Old))
+                     and then Attribute_Name (DS_Copy) in
+                                Name_Loop_Entry | Name_Old)
 
            or else Has_Aspect (Etype (DS_Copy), Aspect_Iterable)
 
@@ -2820,6 +3024,9 @@ package body Sem_Ch5 is
             begin
                Set_Iterator_Specification (Scheme, I_Spec);
                Set_Loop_Parameter_Specification (Scheme, Empty);
+               Set_Iterator_Filter (I_Spec,
+                 Relocate_Node (Iterator_Filter (N)));
+
                Analyze_Iterator_Specification (I_Spec);
 
                --  In a generic context, analyze the original domain of
@@ -2842,7 +3049,7 @@ package body Sem_Ch5 is
 
          else
             --  A quantified expression that appears in a pre/post condition
-            --  is pre-analyzed several times.  If the range is given by an
+            --  is preanalyzed several times. If the range is given by an
             --  attribute reference it is rewritten as a range, and this is
             --  done even with expansion disabled. If the type is already set
             --  do not reanalyze, because a range with static bounds may be
@@ -2892,7 +3099,10 @@ package body Sem_Ch5 is
          Check_Predicate_Use (Entity (Subtype_Mark (DS)));
       end if;
 
-      Make_Index (DS, N, In_Iter_Schm => True);
+      if Nkind (DS) not in N_Raise_xxx_Error then
+         Make_Index (DS, N);
+      end if;
+
       Set_Ekind (Id, E_Loop_Parameter);
 
       --  A quantified expression which appears in a pre- or post-condition may
@@ -2936,14 +3146,15 @@ package body Sem_Ch5 is
 
       --  Case where we have a range or a subtype, get type bounds
 
-      if Nkind_In (DS, N_Range, N_Subtype_Indication)
+      if Nkind (DS) in N_Range | N_Subtype_Indication
         and then not Error_Posted (DS)
         and then Etype (DS) /= Any_Type
         and then Is_Discrete_Type (Etype (DS))
       then
          declare
-            L : Node_Id;
-            H : Node_Id;
+            L          : Node_Id;
+            H          : Node_Id;
+            Null_Range : Boolean := False;
 
          begin
             if Nkind (DS) = N_Range then
@@ -2963,6 +3174,14 @@ package body Sem_Ch5 is
             --  null range may be detected statically.
 
             if Compile_Time_Compare (L, H, Assume_Valid => True) = GT then
+               if Compile_Time_Compare (L, H, Assume_Valid => False) = GT then
+                  --  Since we know the range of the loop is always null,
+                  --  set the appropriate flag to remove the loop entirely
+                  --  during expansion.
+
+                  Set_Is_Null_Loop (Loop_Nod);
+                  Null_Range := True;
+               end if;
 
                --  Suppress the warning if inside a generic template or
                --  instance, since in practice they tend to be dubious in these
@@ -2973,24 +3192,14 @@ package body Sem_Ch5 is
                   --  Specialize msg if invalid values could make the loop
                   --  non-null after all.
 
-                  if Compile_Time_Compare
-                       (L, H, Assume_Valid => False) = GT
-                  then
-                     --  Since we know the range of the loop is null, set the
-                     --  appropriate flag to remove the loop entirely during
-                     --  expansion.
-
-                     Set_Is_Null_Loop (Loop_Nod);
-
+                  if Null_Range then
                      if Comes_From_Source (N) then
                         Error_Msg_N
                           ("??loop range is null, loop will not execute", DS);
                      end if;
 
-                     --  Here is where the loop could execute because of
-                     --  invalid values, so issue appropriate message and in
-                     --  this case we do not set the Is_Null_Loop flag since
-                     --  the loop may execute.
+                  --  Here is where the loop could execute because of
+                  --  invalid values, so issue appropriate message.
 
                   elsif Comes_From_Source (N) then
                      Error_Msg_N
@@ -3099,8 +3308,18 @@ package body Sem_Ch5 is
          --  the warning is perfectly acceptable.
 
          exception
-            when others => null;
+            when others =>
+               --  With debug flag K we will get an exception unless an error
+               --  has already occurred (useful for debugging).
+
+               if Debug_Flag_K then
+                  Check_Error_Detected;
+               end if;
          end;
+      end if;
+
+      if Present (Iterator_Filter (N)) then
+         Analyze_And_Resolve (Iterator_Filter (N), Standard_Boolean);
       end if;
 
       --  A loop parameter cannot be effectively volatile (SPARK RM 7.1.3(4)).
@@ -3118,107 +3337,358 @@ package body Sem_Ch5 is
 
    procedure Analyze_Loop_Statement (N : Node_Id) is
 
-      function Is_Container_Iterator (Iter : Node_Id) return Boolean;
-      --  Given a loop iteration scheme, determine whether it is an Ada 2012
-      --  container iteration.
+      --  The following exception is raised by routine Prepare_Loop_Statement
+      --  to avoid further analysis of a transformed loop.
 
-      function Is_Wrapped_In_Block (N : Node_Id) return Boolean;
-      --  Determine whether loop statement N has been wrapped in a block to
-      --  capture finalization actions that may be generated for container
-      --  iterators. Prevents infinite recursion when block is analyzed.
-      --  Routine is a noop if loop is single statement within source block.
+      procedure Prepare_Loop_Statement
+        (Iter            : Node_Id;
+         Stop_Processing : out Boolean);
+      --  Determine whether loop statement N with iteration scheme Iter must be
+      --  transformed prior to analysis, and if so, perform it.
+      --  If Stop_Processing is set to True, should stop further processing.
 
-      ---------------------------
-      -- Is_Container_Iterator --
-      ---------------------------
+      ----------------------------
+      -- Prepare_Loop_Statement --
+      ----------------------------
 
-      function Is_Container_Iterator (Iter : Node_Id) return Boolean is
-      begin
-         --  Infinite loop
+      procedure Prepare_Loop_Statement
+        (Iter            : Node_Id;
+         Stop_Processing : out Boolean)
+      is
+         function Has_Sec_Stack_Default_Iterator
+           (Cont_Typ : Entity_Id) return Boolean;
+         pragma Inline (Has_Sec_Stack_Default_Iterator);
+         --  Determine whether container type Cont_Typ has a default iterator
+         --  that requires secondary stack management.
 
-         if No (Iter) then
+         function Is_Sec_Stack_Iteration_Primitive
+           (Cont_Typ      : Entity_Id;
+            Iter_Prim_Nam : Name_Id) return Boolean;
+         pragma Inline (Is_Sec_Stack_Iteration_Primitive);
+         --  Determine whether container type Cont_Typ has an iteration routine
+         --  described by its name Iter_Prim_Nam that requires secondary stack
+         --  management.
+
+         function Is_Wrapped_In_Block (Stmt : Node_Id) return Boolean;
+         pragma Inline (Is_Wrapped_In_Block);
+         --  Determine whether arbitrary statement Stmt is the sole statement
+         --  wrapped within some block, excluding pragmas.
+
+         procedure Prepare_Iterator_Loop
+           (Iter_Spec       : Node_Id;
+            Stop_Processing : out Boolean);
+         pragma Inline (Prepare_Iterator_Loop);
+         --  Prepare an iterator loop with iteration specification Iter_Spec
+         --  for transformation if needed.
+         --  If Stop_Processing is set to True, should stop further processing.
+
+         procedure Prepare_Param_Spec_Loop
+           (Param_Spec      : Node_Id;
+            Stop_Processing : out Boolean);
+         pragma Inline (Prepare_Param_Spec_Loop);
+         --  Prepare a discrete loop with parameter specification Param_Spec
+         --  for transformation if needed.
+         --  If Stop_Processing is set to True, should stop further processing.
+
+         procedure Wrap_Loop_Statement (Manage_Sec_Stack : Boolean);
+         pragma Inline (Wrap_Loop_Statement);
+         --  Wrap loop statement N within a block. Flag Manage_Sec_Stack must
+         --  be set when the block must mark and release the secondary stack.
+         --  Should stop further processing after calling this procedure.
+
+         ------------------------------------
+         -- Has_Sec_Stack_Default_Iterator --
+         ------------------------------------
+
+         function Has_Sec_Stack_Default_Iterator
+           (Cont_Typ : Entity_Id) return Boolean
+         is
+            Def_Iter : constant Node_Id :=
+                         Find_Value_Of_Aspect
+                           (Cont_Typ, Aspect_Default_Iterator);
+         begin
+            return
+              Present (Def_Iter)
+                and then Requires_Transient_Scope (Etype (Def_Iter));
+         end Has_Sec_Stack_Default_Iterator;
+
+         --------------------------------------
+         -- Is_Sec_Stack_Iteration_Primitive --
+         --------------------------------------
+
+         function Is_Sec_Stack_Iteration_Primitive
+           (Cont_Typ      : Entity_Id;
+            Iter_Prim_Nam : Name_Id) return Boolean
+         is
+            Iter_Prim : constant Entity_Id :=
+                          Get_Iterable_Type_Primitive
+                            (Cont_Typ, Iter_Prim_Nam);
+         begin
+            return
+              Present (Iter_Prim)
+                and then Requires_Transient_Scope (Etype (Iter_Prim));
+         end Is_Sec_Stack_Iteration_Primitive;
+
+         -------------------------
+         -- Is_Wrapped_In_Block --
+         -------------------------
+
+         function Is_Wrapped_In_Block (Stmt : Node_Id) return Boolean is
+            Blk_HSS  : Node_Id;
+            Blk_Id   : Entity_Id;
+            Blk_Stmt : Node_Id;
+
+         begin
+            Blk_Id := Current_Scope;
+
+            --  The current context is a block. Inspect the statements of the
+            --  block to determine whether it wraps Stmt.
+
+            if Ekind (Blk_Id) = E_Block
+              and then Present (Block_Node (Blk_Id))
+            then
+               Blk_HSS :=
+                 Handled_Statement_Sequence (Parent (Block_Node (Blk_Id)));
+
+               --  Skip leading pragmas introduced for invariant and predicate
+               --  checks.
+
+               Blk_Stmt := First (Statements (Blk_HSS));
+               while Present (Blk_Stmt)
+                 and then Nkind (Blk_Stmt) = N_Pragma
+               loop
+                  Next (Blk_Stmt);
+               end loop;
+
+               return Blk_Stmt = Stmt and then No (Next (Blk_Stmt));
+            end if;
+
             return False;
+         end Is_Wrapped_In_Block;
 
-         --  While loop
+         ---------------------------
+         -- Prepare_Iterator_Loop --
+         ---------------------------
 
-         elsif Present (Condition (Iter)) then
-            return False;
+         procedure Prepare_Iterator_Loop
+           (Iter_Spec       : Node_Id;
+            Stop_Processing : out Boolean)
+         is
+            Cont_Typ : Entity_Id;
+            Nam      : Node_Id;
+            Nam_Copy : Node_Id;
 
-         --  for Def_Id in [reverse] Name loop
-         --  for Def_Id [: Subtype_Indication] of [reverse] Name loop
+         begin
+            Stop_Processing := False;
 
-         elsif Present (Iterator_Specification (Iter)) then
-            declare
-               Nam : constant Node_Id := Name (Iterator_Specification (Iter));
-               Nam_Copy : Node_Id;
+            --  The iterator specification has syntactic errors. Transform the
+            --  loop into an infinite loop in order to safely perform at least
+            --  some minor analysis. This check must come first.
 
-            begin
+            if Error_Posted (Iter_Spec) then
+               Set_Iteration_Scheme (N, Empty);
+               Analyze (N);
+               Stop_Processing := True;
+
+            --  Nothing to do when the loop is already wrapped in a block
+
+            elsif Is_Wrapped_In_Block (N) then
+               null;
+
+            --  Otherwise the iterator loop traverses an array or a container
+            --  and appears in the form
+            --
+            --    for Def_Id in [reverse] Iterator_Name loop
+            --    for Def_Id [: Subtyp_Indic] of [reverse] Iterable_Name loop
+
+            else
+               --  Prepare a copy of the iterated name for preanalysis. The
+               --  copy is semi inserted into the tree by setting its Parent
+               --  pointer.
+
+               Nam      := Name (Iter_Spec);
                Nam_Copy := New_Copy_Tree (Nam);
                Set_Parent (Nam_Copy, Parent (Nam));
+
+               --  Determine what the loop is iterating on
+
                Preanalyze_Range (Nam_Copy);
+               Cont_Typ := Etype (Nam_Copy);
 
-               --  The only two options here are iteration over a container or
-               --  an array.
+               --  The iterator loop is traversing an array. This case does not
+               --  require any transformation.
 
-               return not Is_Array_Type (Etype (Nam_Copy));
-            end;
+               if Is_Array_Type (Cont_Typ) then
+                  null;
 
-         --  for Def_Id in [reverse] Discrete_Subtype_Definition loop
+               --  Otherwise unconditionally wrap the loop statement within
+               --  a block. The expansion of iterator loops may relocate the
+               --  iterator outside the loop, thus "leaking" its entity into
+               --  the enclosing scope. Wrapping the loop statement allows
+               --  for multiple iterator loops using the same iterator name
+               --  to coexist within the same scope.
+               --
+               --  The block must manage the secondary stack when the iterator
+               --  loop is traversing a container using either
+               --
+               --    * A default iterator obtained on the secondary stack
+               --
+               --    * Call to Iterate where the iterator is returned on the
+               --      secondary stack.
+               --
+               --    * Combination of First, Next, and Has_Element where the
+               --      first two return a cursor on the secondary stack.
 
-         else
-            declare
-               LP : constant Node_Id := Loop_Parameter_Specification (Iter);
-               DS : constant Node_Id := Discrete_Subtype_Definition (LP);
-               DS_Copy : Node_Id;
+               else
+                  Wrap_Loop_Statement
+                    (Manage_Sec_Stack =>
+                       Has_Sec_Stack_Default_Iterator (Cont_Typ)
+                         or else Has_Sec_Stack_Call (Nam_Copy)
+                         or else Is_Sec_Stack_Iteration_Primitive
+                                   (Cont_Typ, Name_First)
+                         or else Is_Sec_Stack_Iteration_Primitive
+                                   (Cont_Typ, Name_Next));
+                  Stop_Processing := True;
+               end if;
+            end if;
+         end Prepare_Iterator_Loop;
 
-            begin
-               DS_Copy := New_Copy_Tree (DS);
-               Set_Parent (DS_Copy, Parent (DS));
-               Preanalyze_Range (DS_Copy);
+         -----------------------------
+         -- Prepare_Param_Spec_Loop --
+         -----------------------------
 
-               --  Check for a call to Iterate () or an expression with
-               --  an iterator type.
+         procedure Prepare_Param_Spec_Loop
+           (Param_Spec      : Node_Id;
+            Stop_Processing : out Boolean)
+         is
+            High     : Node_Id;
+            Low      : Node_Id;
+            Rng      : Node_Id;
+            Rng_Copy : Node_Id;
+            Rng_Typ  : Entity_Id;
 
-               return
-                 (Nkind (DS_Copy) = N_Function_Call
-                   and then Needs_Finalization (Etype (DS_Copy)))
-                 or else Is_Iterator (Etype (DS_Copy));
-            end;
-         end if;
-      end Is_Container_Iterator;
+         begin
+            Stop_Processing := False;
+            Rng := Discrete_Subtype_Definition (Param_Spec);
 
-      -------------------------
-      -- Is_Wrapped_In_Block --
-      -------------------------
+            --  Nothing to do when the loop is already wrapped in a block
 
-      function Is_Wrapped_In_Block (N : Node_Id) return Boolean is
-         HSS  : Node_Id;
-         Stat : Node_Id;
+            if Is_Wrapped_In_Block (N) then
+               null;
+
+            --  The parameter specification appears in the form
+            --
+            --    for Def_Id in Subtype_Mark Constraint loop
+
+            elsif Nkind (Rng) = N_Subtype_Indication
+              and then Nkind (Range_Expression (Constraint (Rng))) = N_Range
+            then
+               Rng := Range_Expression (Constraint (Rng));
+
+               --  Preanalyze the bounds of the range constraint, setting
+               --  parent fields to associate the copied bounds with the range,
+               --  allowing proper tree climbing during preanalysis.
+
+               Low  := New_Copy_Tree (Low_Bound  (Rng));
+               High := New_Copy_Tree (High_Bound (Rng));
+
+               Set_Parent (Low, Rng);
+               Set_Parent (High, Rng);
+
+               Preanalyze (Low);
+               Preanalyze (High);
+
+               --  The bounds contain at least one function call that returns
+               --  on the secondary stack. Note that the loop must be wrapped
+               --  only when such a call exists.
+
+               if Has_Sec_Stack_Call (Low) or else Has_Sec_Stack_Call (High)
+               then
+                  Wrap_Loop_Statement (Manage_Sec_Stack => True);
+                  Stop_Processing := True;
+               end if;
+
+            --  Otherwise the parameter specification appears in the form
+            --
+            --    for Def_Id in Range loop
+
+            else
+               --  Prepare a copy of the discrete range for preanalysis. The
+               --  copy is semi inserted into the tree by setting its Parent
+               --  pointer.
+
+               Rng_Copy := New_Copy_Tree (Rng);
+               Set_Parent (Rng_Copy, Parent (Rng));
+
+               --  Determine what the loop is iterating on
+
+               Preanalyze_Range (Rng_Copy);
+               Rng_Typ := Etype (Rng_Copy);
+
+               --  Wrap the loop statement within a block in order to manage
+               --  the secondary stack when the discrete range is
+               --
+               --    * Either a Forward_Iterator or a Reverse_Iterator
+               --
+               --    * Function call whose return type requires finalization
+               --      actions.
+
+               --  ??? it is unclear why using Has_Sec_Stack_Call directly on
+               --  the discrete range causes the freeze node of an itype to be
+               --  in the wrong scope in complex assertion expressions.
+
+               if Is_Iterator (Rng_Typ)
+                 or else (Nkind (Rng_Copy) = N_Function_Call
+                           and then Needs_Finalization (Rng_Typ))
+               then
+                  Wrap_Loop_Statement (Manage_Sec_Stack => True);
+                  Stop_Processing := True;
+               end if;
+            end if;
+         end Prepare_Param_Spec_Loop;
+
+         -------------------------
+         -- Wrap_Loop_Statement --
+         -------------------------
+
+         procedure Wrap_Loop_Statement (Manage_Sec_Stack : Boolean) is
+            Loc : constant Source_Ptr := Sloc (N);
+
+            Blk    : Node_Id;
+            Blk_Id : Entity_Id;
+
+         begin
+            Blk :=
+              Make_Block_Statement (Loc,
+                Declarations               => New_List,
+                Handled_Statement_Sequence =>
+                  Make_Handled_Sequence_Of_Statements (Loc,
+                    Statements => New_List (Relocate_Node (N))));
+
+            Add_Block_Identifier (Blk, Blk_Id);
+            Set_Uses_Sec_Stack (Blk_Id, Manage_Sec_Stack);
+
+            Rewrite (N, Blk);
+            Analyze (N);
+         end Wrap_Loop_Statement;
+
+         --  Local variables
+
+         Iter_Spec  : constant Node_Id := Iterator_Specification (Iter);
+         Param_Spec : constant Node_Id := Loop_Parameter_Specification (Iter);
+
+      --  Start of processing for Prepare_Loop_Statement
 
       begin
+         Stop_Processing := False;
 
-         --  Check if current scope is a block that is not a transient block.
+         if Present (Iter_Spec) then
+            Prepare_Iterator_Loop (Iter_Spec, Stop_Processing);
 
-         if Ekind (Current_Scope) /= E_Block
-           or else No (Block_Node (Current_Scope))
-         then
-            return False;
-
-         else
-            HSS  :=
-              Handled_Statement_Sequence (Parent (Block_Node (Current_Scope)));
-
-            --  Skip leading pragmas that may be introduced for invariant and
-            --  predicate checks.
-
-            Stat := First (Statements (HSS));
-            while Present (Stat) and then Nkind (Stat) = N_Pragma loop
-               Stat := Next (Stat);
-            end loop;
-
-            return Stat = N and then No (Next (Stat));
+         elsif Present (Param_Spec) then
+            Prepare_Param_Spec_Loop (Param_Spec, Stop_Processing);
          end if;
-      end Is_Wrapped_In_Block;
+      end Prepare_Loop_Statement;
 
       --  Local declarations
 
@@ -3297,61 +3767,32 @@ package body Sem_Ch5 is
          Set_Has_Created_Identifier (N);
       end if;
 
-      --  If the iterator specification has a syntactic error, transform
-      --  construct into an infinite loop to prevent a crash and perform
-      --  some analysis.
+      --  Determine whether the loop statement must be transformed prior to
+      --  analysis, and if so, perform it. This early modification is needed
+      --  when:
+      --
+      --    * The loop has an erroneous iteration scheme. In this case the
+      --      loop is converted into an infinite loop in order to perform
+      --      minor analysis.
+      --
+      --    * The loop is an Ada 2012 iterator loop. In this case the loop is
+      --      wrapped within a block to provide a local scope for the iterator.
+      --      If the iterator specification requires the secondary stack in any
+      --      way, the block is marked in order to manage it.
+      --
+      --    * The loop is using a parameter specification where the discrete
+      --      range requires the secondary stack. In this case the loop is
+      --      wrapped within a block in order to manage the secondary stack.
 
-      if Present (Iter)
-        and then Present (Iterator_Specification (Iter))
-        and then Error_Posted (Iterator_Specification (Iter))
-      then
-         Set_Iteration_Scheme (N, Empty);
-         Analyze (N);
-         return;
-      end if;
-
-      --  Iteration over a container in Ada 2012 involves the creation of a
-      --  controlled iterator object. Wrap the loop in a block to ensure the
-      --  timely finalization of the iterator and release of container locks.
-      --  The same applies to the use of secondary stack when obtaining an
-      --  iterator.
-
-      if Ada_Version >= Ada_2012
-        and then Is_Container_Iterator (Iter)
-        and then not Is_Wrapped_In_Block (N)
-      then
+      if Present (Iter) then
          declare
-            Block_Nod : Node_Id;
-            Block_Id  : Entity_Id;
-
+            Stop_Processing : Boolean;
          begin
-            Block_Nod :=
-              Make_Block_Statement (Loc,
-                Declarations               => New_List,
-                Handled_Statement_Sequence =>
-                  Make_Handled_Sequence_Of_Statements (Loc,
-                    Statements => New_List (Relocate_Node (N))));
+            Prepare_Loop_Statement (Iter, Stop_Processing);
 
-            Add_Block_Identifier (Block_Nod, Block_Id);
-
-            --  The expansion of iterator loops generates an iterator in order
-            --  to traverse the elements of a container:
-
-            --    Iter : <iterator type> := Iterate (Container)'reference;
-
-            --  The iterator is controlled and returned on the secondary stack.
-            --  The analysis of the call to Iterate establishes a transient
-            --  scope to deal with the secondary stack management, but never
-            --  really creates a physical block as this would kill the iterator
-            --  too early (see Wrap_Transient_Declaration). To address this
-            --  case, mark the generated block as needing secondary stack
-            --  management.
-
-            Set_Uses_Sec_Stack (Block_Id);
-
-            Rewrite (N, Block_Nod);
-            Analyze (N);
-            return;
+            if Stop_Processing then
+               return;
+            end if;
          end;
       end if;
 
@@ -3426,7 +3867,7 @@ package body Sem_Ch5 is
       --  If the expander is not active then we want to analyze the loop body
       --  now even in the Ada 2012 iterator case, since the rewriting will not
       --  be done. Insert the loop variable in the current scope, if not done
-      --  when analysing the iteration scheme.  Set its kind properly to detect
+      --  when analysing the iteration scheme. Set its kind properly to detect
       --  improper uses in the loop body.
 
       --  In GNATprove mode, we do one of the above depending on the kind of
@@ -3462,7 +3903,7 @@ package body Sem_Ch5 is
                   Enter_Name (Id);
                end if;
 
-               --  In an element iterator, The loop parameter is a variable if
+               --  In an element iterator, the loop parameter is a variable if
                --  the domain of iteration (container or array) is a variable.
 
                if not Of_Present (I_Spec)
@@ -3476,10 +3917,15 @@ package body Sem_Ch5 is
          end if;
 
       else
-
-         --  Pre-Ada2012 for-loops and while loops.
+         --  Pre-Ada2012 for-loops and while loops
 
          Analyze_Statements (Statements (N));
+      end if;
+
+      --  If the loop has no side effects, mark it for removal.
+
+      if Side_Effect_Free_Loop (N) then
+         Set_Is_Null_Loop (N);
       end if;
 
       --  When the iteration scheme of a loop contains attribute 'Loop_Entry,
@@ -3539,23 +3985,10 @@ package body Sem_Ch5 is
 
    procedure Analyze_Target_Name (N : Node_Id) is
    begin
-      if No (Current_LHS) then
-         Error_Msg_N ("target name can only appear within an assignment", N);
-         Set_Etype (N, Any_Type);
+      --  A target name has the type of the left-hand side of the enclosing
+      --  assignment.
 
-      else
-         Set_Has_Target_Names (Parent (Current_LHS));
-         Set_Etype (N, Etype (Current_LHS));
-
-         --  Disable expansion for the rest of the analysis of the current
-         --  right-hand side. The enclosing assignment statement will be
-         --  rewritten during expansion, together with occurrences of the
-         --  target name.
-
-         if Expander_Active then
-            Expander_Mode_Save_And_Set (False);
-         end if;
-      end if;
+      Set_Etype (N, Etype (Name (Current_Assignment)));
    end Analyze_Target_Name;
 
    ------------------------
@@ -3563,8 +3996,8 @@ package body Sem_Ch5 is
    ------------------------
 
    procedure Analyze_Statements (L : List_Id) is
-      S   : Node_Id;
       Lab : Entity_Id;
+      S   : Node_Id;
 
    begin
       --  The labels declared in the statement list are reachable from
@@ -3589,7 +4022,7 @@ package body Sem_Ch5 is
                end if;
 
             --  If we failed to find a label, it means the implicit declaration
-            --  of the label was hidden.  A for-loop parameter can do this to
+            --  of the label was hidden. A for-loop parameter can do this to
             --  a label with the same name inside the loop, since the implicit
             --  label declaration is in the innermost enclosing body or block
             --  statement.
@@ -3658,12 +4091,9 @@ package body Sem_Ch5 is
             end loop;
 
             --  If a label follows us, then we never have dead code, since
-            --  someone could branch to the label, so we just ignore it, unless
-            --  we are in formal mode where goto statements are not allowed.
+            --  someone could branch to the label, so we just ignore it.
 
-            if Nkind (Nxt) = N_Label
-              and then not Restriction_Check_Required (SPARK_05)
-            then
+            if Nkind (Nxt) = N_Label then
                return;
 
             --  Otherwise see if we have a real statement following us
@@ -3696,8 +4126,8 @@ package body Sem_Ch5 is
                   --  This is the one case where we remove dead code in the
                   --  semantics as opposed to the expander, and we do not want
                   --  to remove code if we are not in code generation mode,
-                  --  since this messes up the ASIS trees or loses useful
-                  --  information in the CodePeer tree.
+                  --  since this messes up the tree or loses useful information
+                  --  for CodePeer.
 
                   --  Note that one might react by moving the whole circuit to
                   --  exp_ch5, but then we lose the warning in -gnatc mode.
@@ -3722,14 +4152,8 @@ package body Sem_Ch5 is
                      end loop;
                   end if;
 
-                  --  Now issue the warning (or error in formal mode)
-
-                  if Restriction_Check_Required (SPARK_05) then
-                     Check_SPARK_05_Restriction
-                       ("unreachable code is not allowed", Error_Node);
-                  else
-                     Error_Msg ("??unreachable code!", Sloc (Error_Node));
-                  end if;
+                  Error_Msg
+                    ("??unreachable code!", Sloc (Error_Node), Error_Node);
                end if;
 
             --  If the unconditional transfer of control instruction is the
@@ -3796,6 +4220,68 @@ package body Sem_Ch5 is
       end if;
    end Check_Unreachable_Code;
 
+   ------------------------
+   -- Has_Sec_Stack_Call --
+   ------------------------
+
+   function Has_Sec_Stack_Call (N : Node_Id) return Boolean is
+      function Check_Call (N : Node_Id) return Traverse_Result;
+      --  Check if N is a function call which uses the secondary stack
+
+      ----------------
+      -- Check_Call --
+      ----------------
+
+      function Check_Call (N : Node_Id) return Traverse_Result is
+         Nam  : Node_Id;
+         Subp : Entity_Id;
+         Typ  : Entity_Id;
+
+      begin
+         if Nkind (N) = N_Function_Call then
+            Nam := Name (N);
+
+            --  Obtain the subprogram being invoked
+
+            loop
+               if Nkind (Nam) = N_Explicit_Dereference then
+                  Nam := Prefix (Nam);
+
+               elsif Nkind (Nam) = N_Selected_Component then
+                  Nam := Selector_Name (Nam);
+
+               else
+                  exit;
+               end if;
+            end loop;
+
+            Subp := Entity (Nam);
+
+            if Present (Subp) then
+               Typ := Etype (Subp);
+
+               if Requires_Transient_Scope (Typ) then
+                  return Abandon;
+
+               elsif Sec_Stack_Needed_For_Return (Subp) then
+                  return Abandon;
+               end if;
+            end if;
+         end if;
+
+         --  Continue traversing the tree
+
+         return OK;
+      end Check_Call;
+
+      function Check_Calls is new Traverse_Func (Check_Call);
+
+   --  Start of processing for Has_Sec_Stack_Call
+
+   begin
+      return Check_Calls (N) = Abandon;
+   end Has_Sec_Stack_Call;
+
    ----------------------
    -- Preanalyze_Range --
    ----------------------
@@ -3808,11 +4294,23 @@ package body Sem_Ch5 is
       Full_Analysis := False;
       Expander_Mode_Save_And_Set (False);
 
+      --  In addition to the above we must explicitly suppress the generation
+      --  of freeze nodes that might otherwise be generated during resolution
+      --  of the range (e.g. if given by an attribute that will freeze its
+      --  prefix).
+
+      Set_Must_Not_Freeze (R_Copy);
+
+      if Nkind (R_Copy) = N_Attribute_Reference then
+         Set_Must_Not_Freeze (Prefix (R_Copy));
+      end if;
+
       Analyze (R_Copy);
 
       if Nkind (R_Copy) in N_Subexpr and then Is_Overloaded (R_Copy) then
 
          --  Apply preference rules for range of predefined integer types, or
+         --  check for array or iterable construct for "of" iterator, or
          --  diagnose true ambiguity.
 
          declare
@@ -3842,6 +4340,23 @@ package body Sem_Ch5 is
                         Error_Msg_NE ("\\} ", R_Copy, Found);
                         Error_Msg_NE ("\\} ", R_Copy, It.Typ);
                         exit;
+                     end if;
+                  end if;
+
+               elsif Nkind (Parent (R_Copy)) = N_Iterator_Specification
+                 and then Of_Present (Parent (R_Copy))
+               then
+                  if Is_Array_Type (It.Typ)
+                    or else Has_Aspect (It.Typ, Aspect_Iterator_Element)
+                    or else Has_Aspect (It.Typ, Aspect_Constant_Indexing)
+                    or else Has_Aspect (It.Typ, Aspect_Variable_Indexing)
+                  then
+                     if No (Found) then
+                        Found := It.Typ;
+                        Set_Etype (R_Copy, It.Typ);
+
+                     else
+                        Error_Msg_N ("ambiguous domain of iteration", R_Copy);
                      end if;
                   end if;
                end if;
@@ -3878,21 +4393,8 @@ package body Sem_Ch5 is
          --  visible in the loop.
 
          elsif Has_Implicit_Dereference (Etype (R_Copy)) then
-            declare
-               Disc : Entity_Id;
-
-            begin
-               Disc := First_Discriminant (Typ);
-               while Present (Disc) loop
-                  if Has_Implicit_Dereference (Disc) then
-                     Build_Explicit_Dereference (R_Copy, Disc);
-                     exit;
-                  end if;
-
-                  Next_Discriminant (Disc);
-               end loop;
-            end;
-
+            Build_Explicit_Dereference
+              (R_Copy, Get_Reference_Discriminant (Etype (R_Copy)));
          end if;
       end if;
 

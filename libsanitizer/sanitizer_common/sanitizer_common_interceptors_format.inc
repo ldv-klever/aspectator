@@ -1,7 +1,8 @@
 //===-- sanitizer_common_interceptors_format.inc ----------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -323,8 +324,8 @@ static void scanf_common(void *ctx, int n_inputs, bool allowGnuMalloc,
       continue;
     int size = scanf_get_value_size(&dir);
     if (size == FSS_INVALID) {
-      Report("WARNING: unexpected format specifier in scanf interceptor: "
-        "%.*s\n", dir.end - dir.begin, dir.begin);
+      Report("%s: WARNING: unexpected format specifier in scanf interceptor: ",
+             SanitizerToolName, "%.*s\n", dir.end - dir.begin, dir.begin);
       break;
     }
     void *argp = va_arg(aq, void *);
@@ -339,6 +340,12 @@ static void scanf_common(void *ctx, int n_inputs, bool allowGnuMalloc,
       size = 0;
     }
     COMMON_INTERCEPTOR_WRITE_RANGE(ctx, argp, size);
+    // For %ms/%mc, write the allocated output buffer as well.
+    if (dir.allocate) {
+      char *buf = *(char **)argp;
+      if (buf)
+        COMMON_INTERCEPTOR_WRITE_RANGE(ctx, buf, internal_strlen(buf) + 1);
+    }
   }
 }
 
@@ -433,10 +440,6 @@ static const char *printf_parse_next(const char *p, PrintfDirective *dir) {
 }
 
 static int printf_get_value_size(PrintfDirective *dir) {
-  if (dir->convSpecifier == 'm') {
-    return sizeof(char *);
-  }
-
   if (char_is_one_of(dir->convSpecifier, "cCsS")) {
     unsigned charSize =
         format_get_char_size(dir->convSpecifier, dir->lengthModifier);
@@ -517,10 +520,17 @@ static void printf_common(void *ctx, const char *format, va_list aq) {
       // Dynamic precision
       SKIP_SCALAR_ARG(&aq, 'd', sizeof(int));
     }
+    // %m does not require an argument: strlen(errno).
+    if (dir.convSpecifier == 'm')
+      continue;
     int size = printf_get_value_size(&dir);
     if (size == FSS_INVALID) {
-      Report("WARNING: unexpected format specifier in printf "
-             "interceptor: %.*s\n", dir.end - dir.begin, dir.begin);
+      static int ReportedOnce;
+      if (!ReportedOnce++)
+        Report(
+            "%s: WARNING: unexpected format specifier in printf "
+            "interceptor: %.*s (reported once per process)\n",
+            SanitizerToolName, dir.end - dir.begin, dir.begin);
       break;
     }
     if (dir.convSpecifier == 'n') {

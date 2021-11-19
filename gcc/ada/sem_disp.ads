@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -64,16 +64,15 @@ package Sem_Disp is
    --  this call actually do???
 
    procedure Check_Operation_From_Private_View (Subp, Old_Subp : Entity_Id);
-   --  Add Old_Subp to the list of primitive operations of the corresponding
-   --  tagged type if it is the full view of a private tagged type. The Alias
-   --  of Old_Subp is adjusted to point to the inherited procedure of the
-   --  full view because it is always this one which has to be called.
-   --  What is Subp used for???
+   --  No action performed if Subp is not an alias of a dispatching operation.
+   --  Add Old_Subp (if not already present) to the list of primitives of the
+   --  tagged type T of Subp if T is the full view of a private tagged type.
+   --  The Alias of Old_Subp is adjusted to point to the inherited procedure
+   --  of the full view because it is always this one which has to be called.
 
-   function Covers_Some_Interface (Prim : Entity_Id) return Boolean;
-   --  Returns true if Prim covers some interface primitive of its associated
-   --  tagged type. The tagged type of Prim must be frozen when this function
-   --  is invoked.
+   function Covered_Interface_Op (Prim : Entity_Id) return Entity_Id;
+   --  Returns the interface primitive that Prim covers, when its controlling
+   --  type has progenitors.
 
    function Find_Controlling_Arg (N : Node_Id) return Node_Id;
    --  Returns the actual controlling argument if N is dynamically tagged, and
@@ -100,6 +99,23 @@ package Sem_Disp is
 
    type Subprogram_List is array (Nat range <>) of Entity_Id;
    --  Type returned by Inherited_Subprograms function
+
+   generic
+      with function Find_DT (Subp : Entity_Id) return Entity_Id;
+   package Inheritance_Utilities is
+
+      --  This package provides generic versions of inheritance utilities
+      --  provided here. These versions are used in GNATprove backend to adapt
+      --  these utilities to GNATprove specific version of visibility of types.
+
+      function Inherited_Subprograms
+        (S               : Entity_Id;
+         No_Interfaces   : Boolean := False;
+         Interfaces_Only : Boolean := False;
+         One_Only        : Boolean := False) return Subprogram_List;
+
+      function Is_Overriding_Subprogram (E : Entity_Id) return Boolean;
+   end Inheritance_Utilities;
 
    function Inherited_Subprograms
      (S               : Entity_Id;
@@ -135,7 +151,8 @@ package Sem_Disp is
    --  Returns True if E is a null procedure that is an interface primitive
 
    function Is_Overriding_Subprogram (E : Entity_Id) return Boolean;
-   --  Returns True if E is an overriding subprogram
+   --  Returns True if E is an overriding subprogram and False otherwise, in
+   --  particular for an inherited subprogram.
 
    function Is_Tag_Indeterminate (N : Node_Id) return Boolean;
    --  Returns true if the expression N is tag-indeterminate. An expression

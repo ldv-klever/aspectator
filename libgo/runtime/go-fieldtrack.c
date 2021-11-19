@@ -5,7 +5,6 @@
    license that can be found in the LICENSE file.  */
 
 #include "runtime.h"
-#include "go-type.h"
 
 /* The compiler will track fields that have the tag go:"track".  Any
    function that refers to such a field will call this function with a
@@ -26,19 +25,13 @@ __go_fieldtrack (byte *p __attribute__ ((unused)))
 /* A runtime function to add all the tracked fields to a
    map[string]bool.  */
 
-extern const char _etext[] __attribute__ ((weak));
-extern const char __etext[] __attribute__ ((weak));
-extern const char __data_start[] __attribute__ ((weak));
-extern const char _edata[] __attribute__ ((weak));
-extern const char __edata[] __attribute__ ((weak));
-extern const char __bss_start[] __attribute__ ((weak));
-
-extern void *mapassign (const struct __go_map_type *, void *hmap,
-			const void *key)
+extern void *mapassign (const struct maptype *, void *hmap, const void *key)
   __asm__ (GOSYM_PREFIX "runtime.mapassign");
 
 // The type descriptor for map[string] bool.  */
-extern const char __go_td_MN6_string__N4_bool[] __attribute__ ((weak));
+extern const char map_string_bool[] __attribute__ ((weak));
+extern const char map_string_bool[]
+  __asm__ (GOSYM_PREFIX "type..map_6string_7bool");
 
 void runtime_Fieldtrack (void *) __asm__ (GOSYM_PREFIX "runtime.Fieldtrack");
 
@@ -50,7 +43,7 @@ runtime_Fieldtrack (void *m)
   const char *prefix;
   size_t prefix_len;
 
-  if (__go_td_MN6_string__N4_bool == NULL)
+  if (map_string_bool == NULL)
     return;
 
   p = __data_start;
@@ -99,7 +92,7 @@ runtime_Fieldtrack (void *m)
 
 	  s.str = (const byte *) q1;
 	  s.len = q2 - q1;
-	  p = mapassign((const void*) __go_td_MN6_string__N4_bool, m, &s);
+	  p = mapassign((const void*) map_string_bool, m, &s);
 	  *(_Bool*)p = 1;
 	}
 

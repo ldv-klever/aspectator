@@ -6,23 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
 -- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
---                                                                          --
--- As a special exception under Section 7 of GPL version 3, you are granted --
--- additional permissions described in the GCC Runtime Library Exception,   --
--- version 3.1, as published by the Free Software Foundation.               --
---                                                                          --
--- You should have received a copy of the GNU General Public License and    --
--- a copy of the GCC Runtime Library Exception along with this program;     --
--- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
--- <http://www.gnu.org/licenses/>.                                          --
+-- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
+-- for  more details.  You should have  received  a copy of the GNU General --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -92,17 +86,17 @@ package body Nlists is
       Table_Component_Type => Node_Or_Entity_Id,
       Table_Index_Type     => Node_Or_Entity_Id'Base,
       Table_Low_Bound      => First_Node_Id,
-      Table_Initial        => Alloc.Orig_Nodes_Initial,
-      Table_Increment      => Alloc.Orig_Nodes_Increment,
-      Release_Threshold    => Alloc.Orig_Nodes_Release_Threshold,
+      Table_Initial        => Alloc.Nodes_Initial,
+      Table_Increment      => Alloc.Nodes_Increment,
+      Release_Threshold    => Alloc.Nodes_Release_Threshold,
       Table_Name           => "Next_Node");
 
    package Prev_Node is new Table.Table (
       Table_Component_Type => Node_Or_Entity_Id,
       Table_Index_Type     => Node_Or_Entity_Id'Base,
       Table_Low_Bound      => First_Node_Id,
-      Table_Initial        => Alloc.Orig_Nodes_Initial,
-      Table_Increment      => Alloc.Orig_Nodes_Increment,
+      Table_Initial        => Alloc.Nodes_Initial,
+      Table_Increment      => Alloc.Nodes_Increment,
       Table_Name           => "Prev_Node");
 
    -----------------------
@@ -141,8 +135,7 @@ package body Nlists is
       Next_Node.Set_Last (N);
       Prev_Node.Set_Last (N);
 
-      --  Make sure we have no uninitialized junk in any new entires added.
-      --  This ensures that Tree_Gen will not write out any uninitialized junk.
+      --  Make sure we have no uninitialized junk in any new entries added.
 
       for J in Old_Last + 1 .. N loop
          Next_Node.Table (J) := Empty;
@@ -244,7 +237,7 @@ package body Nlists is
             N := F;
             loop
                Set_List_Link (N, To);
-               N := Next (N);
+               Next (N);
                exit when No (N);
             end loop;
 
@@ -339,8 +332,6 @@ package body Nlists is
    ----------------
 
    procedure Initialize is
-      E : constant List_Id := Error_List;
-
    begin
       Lists.Init;
       Next_Node.Init;
@@ -349,9 +340,9 @@ package body Nlists is
       --  Allocate Error_List list header
 
       Lists.Increment_Last;
-      Set_Parent (E, Empty);
-      Set_First  (E, Empty);
-      Set_Last   (E, Empty);
+      Set_Parent (Error_List, Empty);
+      Set_First  (Error_List, Empty);
+      Set_Last   (Error_List, Empty);
    end Initialize;
 
    ------------------
@@ -531,7 +522,7 @@ package body Nlists is
             loop
                Set_List_Link (N, LC);
                exit when N = L;
-               N := Next (N);
+               Next (N);
             end loop;
 
             if Present (Before) then
@@ -598,7 +589,7 @@ package body Nlists is
             loop
                Set_List_Link (N, LC);
                exit when N = L;
-               N := Next (N);
+               Next (N);
             end loop;
 
             if Present (After) then
@@ -700,7 +691,7 @@ package body Nlists is
       Node := First (List);
       while Present (Node) loop
          Result := Result + 1;
-         Node := Next (Node);
+         Next (Node);
       end loop;
 
       return Result;
@@ -721,14 +712,12 @@ package body Nlists is
 
    procedure Lock is
    begin
-      Lists.Locked := True;
       Lists.Release;
-
-      Prev_Node.Locked := True;
-      Next_Node.Locked := True;
-
+      Lists.Locked := True;
       Prev_Node.Release;
+      Prev_Node.Locked := True;
       Next_Node.Release;
+      Next_Node.Locked := True;
    end Lock;
 
    ----------------
@@ -759,7 +748,7 @@ package body Nlists is
 
          while Present (E) loop
             Append (New_Copy (E), NL);
-            E := Next (E);
+            Next (E);
          end loop;
 
          return NL;
@@ -787,7 +776,7 @@ package body Nlists is
                Append (New_Copy (E), NL);
             end if;
 
-            E := Next (E);
+            Next (E);
          end loop;
 
          return NL;
@@ -993,8 +982,8 @@ package body Nlists is
    begin
       N := Node;
       loop
-         N := Next (N);
-         exit when not Nkind_In (N, N_Pragma, N_Null_Statement);
+         Next (N);
+         exit when Nkind (N) not in N_Pragma | N_Null_Statement;
       end loop;
 
       return N;
@@ -1043,7 +1032,7 @@ package body Nlists is
    begin
       Elmt := First (List);
       for J in 1 .. Index - 1 loop
-         Elmt := Next (Elmt);
+         Next (Elmt);
       end loop;
 
       return Elmt;
@@ -1471,29 +1460,6 @@ package body Nlists is
       pragma Assert (not Locked);
       Prev_Node.Table (Node) := To;
    end Set_Prev;
-
-   ---------------
-   -- Tree_Read --
-   ---------------
-
-   procedure Tree_Read is
-   begin
-      pragma Assert (not Locked);
-      Lists.Tree_Read;
-      Next_Node.Tree_Read;
-      Prev_Node.Tree_Read;
-   end Tree_Read;
-
-   ----------------
-   -- Tree_Write --
-   ----------------
-
-   procedure Tree_Write is
-   begin
-      Lists.Tree_Write;
-      Next_Node.Tree_Write;
-      Prev_Node.Tree_Write;
-   end Tree_Write;
 
    ------------
    -- Unlock --

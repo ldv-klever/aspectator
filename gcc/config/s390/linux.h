@@ -1,5 +1,5 @@
 /* Definitions for Linux for S/390.
-   Copyright (C) 1999-2017 Free Software Foundation, Inc.
+   Copyright (C) 1999-2021 Free Software Foundation, Inc.
    Contributed by Hartmut Penner (hpenner@de.ibm.com) and
                   Ulrich Weigand (uweigand@de.ibm.com).
 
@@ -55,7 +55,6 @@ along with GCC; see the file COPYING3.  If not see
 #undef  ASM_SPEC
 #define ASM_SPEC					\
   "%{m31&m64}%{mesa&mzarch}%{march=z*}"			\
-  "%{march=arch3:-march=g5}"				\
   "%{march=arch5:-march=z900}"				\
   "%{march=arch6:-march=z990}"				\
   "%{march=arch7:-march=z9-ec}"				\
@@ -76,16 +75,22 @@ along with GCC; see the file COPYING3.  If not see
 #define GLIBC_DYNAMIC_LINKER32 "/lib/ld.so.1"
 #define GLIBC_DYNAMIC_LINKER64 "/lib/ld64.so.1"
 
+#undef MUSL_DYNAMIC_LINKER32
+#define MUSL_DYNAMIC_LINKER32 "/lib/ld-musl-s390.so.1"
+#undef MUSL_DYNAMIC_LINKER64
+#define MUSL_DYNAMIC_LINKER64 "/lib/ld-musl-s390x.so.1"
+
 #undef  LINK_SPEC
 #define LINK_SPEC \
   "%{m31:-m elf_s390}%{m64:-m elf64_s390} \
    %{shared:-shared} \
    %{!shared: \
       %{static:-static} \
-      %{!static: \
+      %{!static:%{!static-pie: \
 	%{rdynamic:-export-dynamic} \
 	%{m31:-dynamic-linker " GNU_USER_DYNAMIC_LINKER32 "} \
-	%{m64:-dynamic-linker " GNU_USER_DYNAMIC_LINKER64 "}}}"
+	%{m64:-dynamic-linker " GNU_USER_DYNAMIC_LINKER64 "}}}} \
+   %{static-pie:-static -pie --no-dynamic-linker -z text}"
 
 #define CPP_SPEC "%{posix:-D_POSIX_SOURCE} %{pthread:-D_REENTRANT}"
 

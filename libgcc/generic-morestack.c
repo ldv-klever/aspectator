@@ -1,5 +1,5 @@
 /* Library support for -fsplit-stack.  */
-/* Copyright (C) 2009-2017 Free Software Foundation, Inc.
+/* Copyright (C) 2009-2021 Free Software Foundation, Inc.
    Contributed by Ian Lance Taylor <iant@google.com>.
 
 This file is part of GCC.
@@ -23,6 +23,8 @@ a copy of the GCC Runtime Library Exception along with this program;
 see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 <http://www.gnu.org/licenses/>.  */
 
+#pragma GCC optimize ("no-isolate-erroneous-paths-dereference")
+
 /* powerpc 32-bit not supported.  */
 #if !defined __powerpc__ || defined __powerpc64__
 
@@ -32,7 +34,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include "tm.h"
 #include "libgcc_tm.h"
 
-/* If inhibit_libc is defined, we can not compile this file.  The
+/* If inhibit_libc is defined, we cannot compile this file.  The
    effect is that people will not be able to use -fsplit-stack.  That
    is much better than failing the build particularly since people
    will want to define inhibit_libc while building a compiler which
@@ -50,6 +52,62 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include <sys/uio.h>
 
 #include "generic-morestack.h"
+
+/* Some systems use LD_PRELOAD or similar tricks to add hooks to
+   mmap/munmap.  That breaks this code, because when we call mmap
+   there is enough stack space for the system call but there is not,
+   in general, enough stack space to run a hook.  Try to avoid the
+   problem by calling syscall directly.  We only do this on GNU/Linux
+   for now, but it should be easy to add support for more systems with
+   testing.  */
+
+#if defined(__gnu_linux__)
+
+#include <sys/syscall.h>
+
+#if defined(SYS_mmap) || defined(SYS_mmap2)
+
+#ifdef SYS_mmap2
+#define MORESTACK_MMAP SYS_mmap2
+#define MORESTACK_ADJUST_OFFSET(x) ((x) / 4096ULL)
+#else
+#define MORESTACK_MMAP SYS_mmap
+#define MORESTACK_ADJUST_OFFSET(x) (x)
+#endif
+
+static void *
+morestack_mmap (void *addr, size_t length, int prot, int flags, int fd,
+		off_t offset)
+{
+  offset = MORESTACK_ADJUST_OFFSET (offset);
+
+#ifdef __s390__
+  long args[6] = { (long) addr, (long) length, (long) prot, (long) flags,
+		   (long) fd, (long) offset };
+  return (void *) syscall (MORESTACK_MMAP, args);
+#else
+  return (void *) syscall (MORESTACK_MMAP, addr, length, prot, flags, fd,
+			   offset);
+#endif
+}
+
+#define mmap morestack_mmap
+
+#endif /* defined(SYS_MMAP) || defined(SYS_mmap2) */
+
+#if defined(SYS_munmap)
+
+static int
+morestack_munmap (void * addr, size_t length)
+{
+  return (int) syscall (SYS_munmap, addr, length);
+}
+
+#define munmap morestack_munmap
+
+#endif /* defined(SYS_munmap) */
+
+#endif /* defined(__gnu_linux__) */
 
 typedef unsigned uintptr_type __attribute__ ((mode (pointer)));
 
@@ -243,6 +301,12 @@ __thread struct initial_sp __morestack_initial_sp
 
 static sigset_t __morestack_fullmask;
 
+/* Page size, as returned from getpagesize(). Set on startup. */
+static unsigned int static_pagesize;
+
+/* Set on startup to non-zero value if SPLIT_STACK_GUARD env var is set. */
+static int use_guard_page;
+
 /* Convert an integer to a decimal string without using much stack
    space.  Return a pointer to the part of the buffer to use.  We this
    instead of sprintf because sprintf will require too much stack
@@ -320,8 +384,6 @@ __morestack_fail (const char *msg, size_t len, int err)
 static struct stack_segment *
 allocate_segment (size_t frame_size)
 {
-  static unsigned int static_pagesize;
-  static int use_guard_page;
   unsigned int pagesize;
   unsigned int overhead;
   unsigned int allocate;
@@ -329,27 +391,6 @@ allocate_segment (size_t frame_size)
   struct stack_segment *pss;
 
   pagesize = static_pagesize;
-  if (pagesize == 0)
-    {
-      unsigned int p;
-
-      pagesize = getpagesize ();
-
-#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
-      p = __sync_val_compare_and_swap (&static_pagesize, 0, pagesize);
-#else
-      /* Just hope this assignment is atomic.  */
-      static_pagesize = pagesize;
-      p = 0;
-#endif
-
-      use_guard_page = getenv ("SPLIT_STACK_GUARD") != 0;
-
-      /* FIXME: I'm not sure this assert should be in the released
-	 code.  */
-      assert (p == 0 || p == pagesize);
-    }
-
   overhead = sizeof (struct stack_segment);
 
   allocate = pagesize;
@@ -815,7 +856,10 @@ __generic_findstack (void *stack)
 /* This function is called at program startup time to make sure that
    mmap, munmap, and getpagesize are resolved if linking dynamically.
    We want to resolve them while we have enough stack for them, rather
-   than calling into the dynamic linker while low on stack space.  */
+   than calling into the dynamic linker while low on stack space.
+   Similarly, invoke getenv here to check for split-stack related control
+   variables, since doing do as part of the __morestack path can result
+   in unwanted use of SSE/AVX registers (see GCC PR 86213). */
 
 void
 __morestack_load_mmap (void)
@@ -825,7 +869,12 @@ __morestack_load_mmap (void)
      TLS accessor function is resolved.  */
   mmap (__morestack_current_segment, 0, PROT_READ, MAP_ANONYMOUS, -1, 0);
   mprotect (NULL, 0, 0);
-  munmap (0, getpagesize ());
+  munmap (0, static_pagesize);
+
+  /* Initialize these values here, so as to avoid dynamic linker
+     activity as part of a __morestack call. */
+  static_pagesize = getpagesize();
+  use_guard_page = getenv ("SPLIT_STACK_GUARD") != 0;
 }
 
 /* This function may be used to iterate over the stack segments.

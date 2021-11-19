@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -42,15 +42,22 @@ package Exp_Prag is
    --  Subp_Id's body. All generated code is added to list Stmts. If Stmts is
    --  No_List on entry, a new list is created.
 
-   procedure Expand_Pragma_Initial_Condition (Spec_Or_Body : Node_Id);
-   --  Generate a runtime check needed to verify the assumption of introduced
-   --  by pragma Initial_Condition. Spec_Or_Body denotes the spec or body of
-   --  the package where the pragma appears. The check is inserted according
-   --  to the following precedence rules:
-   --    1) If the package has a body with a statement sequence, the check is
-   --       inserted at the end of the statments.
-   --    2) If the package has a body, the check is inserted at the end of the
-   --       body declarations.
-   --    3) The check is inserted at the end of the visible declarations.
+   procedure Expand_Pragma_Initial_Condition
+     (Pack_Id : Entity_Id;
+      N       : Node_Id);
+   --  Verify the run-time semantics of pragma Initial_Condition when it
+   --  applies to package Pack_Id. N denotes the related package spec or
+   --  body.
+
+   procedure Expand_Pragma_Subprogram_Variant
+     (Prag       : Node_Id;
+      Subp_Id    : Entity_Id;
+      Body_Decls : List_Id);
+   --  Given pragma Subprogram_Variant Prag, create the circuitry needed
+   --  to evaluate variant expressions at the subprogram entry and at the
+   --  recursive call. Subp_Id is the related subprogram for which the pragma
+   --  applies and Body_Decls are its body declarations. On exit, the argument
+   --  of Prag is replaced with a reference to procedure with checks for the
+   --  variant expressions.
 
 end Exp_Prag;

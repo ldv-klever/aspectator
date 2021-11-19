@@ -154,7 +154,7 @@ type StructField struct {
 	Name       string
 	Type       Type
 	ByteOffset int64
-	ByteSize   int64
+	ByteSize   int64 // usually zero; use Type.Size() for normal fields
 	BitOffset  int64 // within the ByteSize bytes at ByteOffset
 	BitSize    int64 // zero if not a bit field
 }
@@ -260,6 +260,20 @@ type TypedefType struct {
 func (t *TypedefType) String() string { return t.Name }
 
 func (t *TypedefType) Size() int64 { return t.Type.Size() }
+
+// An UnsupportedType is a placeholder returned in situations where we
+// encounter a type that isn't supported.
+type UnsupportedType struct {
+	CommonType
+	Tag Tag
+}
+
+func (t *UnsupportedType) String() string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return t.Name + "(unsupported type " + t.Tag.String() + ")"
+}
 
 // typeReader is used to read from either the info section or the
 // types section.
@@ -514,48 +528,49 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		var lastFieldType *Type
 		var lastFieldBitOffset int64
 		for kid := next(); kid != nil; kid = next() {
-			if kid.Tag == TagMember {
-				f := new(StructField)
-				if f.Type = typeOf(kid); err != nil {
+			if kid.Tag != TagMember {
+				continue
+			}
+			f := new(StructField)
+			if f.Type = typeOf(kid); err != nil {
+				goto Error
+			}
+			switch loc := kid.Val(AttrDataMemberLoc).(type) {
+			case []byte:
+				// TODO: Should have original compilation
+				// unit here, not unknownFormat.
+				b := makeBuf(d, unknownFormat{}, "location", 0, loc)
+				if b.uint8() != opPlusUconst {
+					err = DecodeError{name, kid.Offset, "unexpected opcode"}
 					goto Error
 				}
-				switch loc := kid.Val(AttrDataMemberLoc).(type) {
-				case []byte:
-					// TODO: Should have original compilation
-					// unit here, not unknownFormat.
-					b := makeBuf(d, unknownFormat{}, "location", 0, loc)
-					if b.uint8() != opPlusUconst {
-						err = DecodeError{name, kid.Offset, "unexpected opcode"}
-						goto Error
-					}
-					f.ByteOffset = int64(b.uint())
-					if b.err != nil {
-						err = b.err
-						goto Error
-					}
-				case int64:
-					f.ByteOffset = loc
+				f.ByteOffset = int64(b.uint())
+				if b.err != nil {
+					err = b.err
+					goto Error
 				}
-
-				haveBitOffset := false
-				f.Name, _ = kid.Val(AttrName).(string)
-				f.ByteSize, _ = kid.Val(AttrByteSize).(int64)
-				f.BitOffset, haveBitOffset = kid.Val(AttrBitOffset).(int64)
-				f.BitSize, _ = kid.Val(AttrBitSize).(int64)
-				t.Field = append(t.Field, f)
-
-				bito := f.BitOffset
-				if !haveBitOffset {
-					bito = f.ByteOffset * 8
-				}
-				if bito == lastFieldBitOffset && t.Kind != "union" {
-					// Last field was zero width. Fix array length.
-					// (DWARF writes out 0-length arrays as if they were 1-length arrays.)
-					zeroArray(lastFieldType)
-				}
-				lastFieldType = &f.Type
-				lastFieldBitOffset = bito
+			case int64:
+				f.ByteOffset = loc
 			}
+
+			haveBitOffset := false
+			f.Name, _ = kid.Val(AttrName).(string)
+			f.ByteSize, _ = kid.Val(AttrByteSize).(int64)
+			f.BitOffset, haveBitOffset = kid.Val(AttrBitOffset).(int64)
+			f.BitSize, _ = kid.Val(AttrBitSize).(int64)
+			t.Field = append(t.Field, f)
+
+			bito := f.BitOffset
+			if !haveBitOffset {
+				bito = f.ByteOffset * 8
+			}
+			if bito == lastFieldBitOffset && t.Kind != "union" {
+				// Last field was zero width. Fix array length.
+				// (DWARF writes out 0-length arrays as if they were 1-length arrays.)
+				zeroArray(lastFieldType)
+			}
+			lastFieldType = &f.Type
+			lastFieldBitOffset = bito
 		}
 		if t.Kind != "union" {
 			b, ok := e.Val(AttrByteSize).(int64)
@@ -678,6 +693,16 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t := new(UnspecifiedType)
 		typ = t
 		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+
+	default:
+		// This is some other type DIE that we're currently not
+		// equipped to handle. Return an abstract "unsupported type"
+		// object in such cases.
+		t := new(UnsupportedType)
+		typ = t
+		typeCache[off] = t
+		t.Tag = e.Tag
 		t.Name, _ = e.Val(AttrName).(string)
 	}
 

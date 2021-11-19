@@ -23,6 +23,9 @@ along with GCC; see the file COPYING3.  If not see
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#ifdef __linux
+#include <sys/prctl.h>
+#endif
 
 /* This is a first cut at checking that debug information matches
    run-time.  The idea is to annotate programs with GUALCHK* macros
@@ -54,6 +57,8 @@ along with GCC; see the file COPYING3.  If not see
    recommended that GUALCHK* macros be by themselves in source lines,
    so that __FILE__ and __LINE__ will be usable to identify them.
 */
+
+#define GUALITY_TEST "guality/guality.h"
 
 /* This is the type we use to pass values to guality_check.  */
 
@@ -212,6 +217,10 @@ main (int argc, char *argv[])
   int i;
   char *argv0 = argv[0];
 
+#if defined(PR_SET_PTRACER_ANY)
+  prctl (PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+#endif
+
   guality_gdb_command = getenv ("GUALITY_GDB");
   if (!guality_gdb_command)
     {
@@ -274,7 +283,7 @@ continue\n\
 
   i = guality_count[INCORRECT];
 
-  fprintf (stderr, "%s: %i PASS, %i FAIL, %i UNRESOLVED\n",
+  fprintf (stderr, "%s: " GUALITY_TEST  ": %i PASS, %i FAIL, %i UNRESOLVED\n",
 	   i ? "FAIL" : "PASS",
 	   guality_count[PASS], guality_count[INCORRECT],
 	   guality_count[INCOMPLETE]);
@@ -361,15 +370,18 @@ continue\n\
     switch (result)
       {
       case PASS:
-	fprintf (stderr, "PASS: %s is %lli\n", name, value);
+	fprintf (stderr, "PASS: " GUALITY_TEST ": %s is %lli\n", name,
+		 (long long int) value);
 	break;
       case INCORRECT:
-	fprintf (stderr, "FAIL: %s is %lli, not %lli\n", name, xvalue, value);
+	fprintf (stderr, "FAIL: " GUALITY_TEST ": %s is %lli, not %lli\n", name,
+		 (long long int) xvalue, (long long int) value);
 	break;
       case INCOMPLETE:
-	fprintf (stderr, "%s: %s is %s, expected %lli\n",
+	fprintf (stderr, "%s: " GUALITY_TEST ": %s is %s, expected %lli\n",
 		 unknown_ok ? "UNRESOLVED" : "FAIL", name,
-		 unavailable < 0 ? "not computable" : "optimized away", value);
+		 unavailable < 0 ? "not computable" : "optimized away",
+		 (long long int) value);
 	result = unknown_ok ? INCOMPLETE : INCORRECT;
 	break;
       default:

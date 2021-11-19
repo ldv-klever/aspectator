@@ -1,5 +1,5 @@
 /* Output routines for Motorola MCore processor
-   Copyright (C) 1993-2017 Free Software Foundation, Inc.
+   Copyright (C) 1993-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -17,6 +17,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -28,6 +30,7 @@
 #include "memmodel.h"
 #include "tm_p.h"
 #include "stringpool.h"
+#include "attribs.h"
 #include "emit-rtl.h"
 #include "diagnostic-core.h"
 #include "stor-layout.h"
@@ -96,7 +99,9 @@ static int        calc_live_regs                (int *);
 static int        try_constant_tricks           (HOST_WIDE_INT, HOST_WIDE_INT *, HOST_WIDE_INT *);
 static const char *     output_inline_const     (machine_mode, rtx *);
 static void       layout_mcore_frame            (struct mcore_frame *);
-static void       mcore_setup_incoming_varargs	(cumulative_args_t, machine_mode, tree, int *, int);
+static void       mcore_setup_incoming_varargs	(cumulative_args_t,
+						 const function_arg_info &,
+						 int *, int);
 static cond_type  is_cond_candidate             (rtx);
 static rtx_insn  *emit_new_cond_insn            (rtx_insn *, int);
 static rtx_insn  *conditionalize_block          (rtx_insn *);
@@ -126,14 +131,11 @@ static bool       mcore_rtx_costs		(rtx, machine_mode, int, int,
 static void       mcore_external_libcall	(rtx);
 static bool       mcore_return_in_memory	(const_tree, const_tree);
 static int        mcore_arg_partial_bytes       (cumulative_args_t,
-						 machine_mode,
-						 tree, bool);
+						 const function_arg_info &);
 static rtx        mcore_function_arg            (cumulative_args_t,
-						 machine_mode,
-						 const_tree, bool);
+						 const function_arg_info &);
 static void       mcore_function_arg_advance    (cumulative_args_t,
-						 machine_mode,
-						 const_tree, bool);
+						 const function_arg_info &);
 static unsigned int mcore_function_arg_boundary (machine_mode,
 						 const_tree);
 static void       mcore_asm_trampoline_template (FILE *);
@@ -143,18 +145,20 @@ static void       mcore_option_override		(void);
 static bool       mcore_legitimate_constant_p   (machine_mode, rtx);
 static bool	  mcore_legitimate_address_p	(machine_mode, rtx, bool,
 						 addr_space_t);
+static bool	  mcore_hard_regno_mode_ok	(unsigned int, machine_mode);
+static bool	  mcore_modes_tieable_p		(machine_mode, machine_mode);
 
 /* MCore specific attributes.  */
 
 static const struct attribute_spec mcore_attribute_table[] =
 {
-  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-       affects_type_identity } */
-  { "dllexport", 0, 0, true,  false, false, NULL, false },
-  { "dllimport", 0, 0, true,  false, false, NULL, false },
-  { "naked",     0, 0, true,  false, false, mcore_handle_naked_attribute,
-    false },
-  { NULL,        0, 0, false, false, false, NULL, false }
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude } */
+  { "dllexport", 0, 0, true,  false, false, false, NULL, NULL },
+  { "dllimport", 0, 0, true,  false, false, false, NULL, NULL },
+  { "naked",     0, 0, true,  false, false, false,
+    mcore_handle_naked_attribute, NULL },
+  { NULL,        0, 0, false, false, false, false, NULL, NULL }
 };
 
 /* Initialize the GCC target structure.  */
@@ -239,6 +243,18 @@ static const struct attribute_spec mcore_attribute_table[] =
 #undef TARGET_WARN_FUNC_RETURN
 #define TARGET_WARN_FUNC_RETURN mcore_warn_func_return
 
+#undef TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK mcore_hard_regno_mode_ok
+
+#undef TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P mcore_modes_tieable_p
+
+#undef TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
+
+#undef  TARGET_HAVE_SPECULATION_SAFE_VALUE
+#define TARGET_HAVE_SPECULATION_SAFE_VALUE speculation_safe_value_not_needed
+
 struct gcc_target targetm = TARGET_INITIALIZER;
 
 /* Adjust the stack and return the number of bytes taken to do it.  */
@@ -300,7 +316,7 @@ calc_live_regs (int * count)
 
   for (reg = 0; reg < FIRST_PSEUDO_REGISTER; reg++)
     {
-      if (df_regs_ever_live_p (reg) && !call_used_regs[reg])
+      if (df_regs_ever_live_p (reg) && !call_used_or_fixed_reg_p (reg))
 	{
 	  (*count)++;
 	  live_regs_mask |= (1 << reg);
@@ -1281,11 +1297,11 @@ mcore_output_move (rtx insn ATTRIBUTE_UNUSED, rtx operands[],
 	  else
 	    switch (GET_MODE (src))		/* r-m */
 	      {
-	      case SImode:
+	      case E_SImode:
 		return "ldw\t%0,%1";
-	      case HImode:
+	      case E_HImode:
 		return "ld.h\t%0,%1";
-	      case QImode:
+	      case E_QImode:
 		return "ld.b\t%0,%1";
 	      default:
 		gcc_unreachable ();
@@ -1312,11 +1328,11 @@ mcore_output_move (rtx insn ATTRIBUTE_UNUSED, rtx operands[],
   else if (GET_CODE (dst) == MEM)               /* m-r */
     switch (GET_MODE (dst))
       {
-      case SImode:
+      case E_SImode:
 	return "stw\t%1,%0";
-      case HImode:
+      case E_HImode:
 	return "st.h\t%1,%0";
-      case QImode:
+      case E_QImode:
 	return "st.b\t%1,%0";
       default:
 	gcc_unreachable ();
@@ -1926,7 +1942,7 @@ mcore_initial_elimination_offset (int from, int to)
 
 static void
 mcore_setup_incoming_varargs (cumulative_args_t args_so_far_v,
-			      machine_mode mode, tree type,
+			      const function_arg_info &arg,
 			      int * ptr_pretend_size ATTRIBUTE_UNUSED,
 			      int second_time ATTRIBUTE_UNUSED)
 {
@@ -1937,7 +1953,8 @@ mcore_setup_incoming_varargs (cumulative_args_t args_so_far_v,
   /* We need to know how many argument registers are used before
      the varargs start, so that we can push the remaining argument
      registers during the prologue.  */
-  number_of_regs_before_varargs = *args_so_far + mcore_num_arg_regs (mode, type);
+  number_of_regs_before_varargs
+    = *args_so_far + mcore_num_arg_regs (arg.mode, arg.type);
   
   /* There is a bug somewhere in the arg handling code.
      Until I can find it this workaround always pushes the
@@ -2696,7 +2713,8 @@ mcore_num_arg_regs (machine_mode mode, const_tree type)
 {
   int size;
 
-  if (targetm.calls.must_pass_in_stack (mode, type))
+  function_arg_info arg (const_cast<tree> (type), mode, /*named=*/true);
+  if (targetm.calls.must_pass_in_stack (arg))
     return 0;
 
   if (type && mode == BLKmode)
@@ -2769,14 +2787,9 @@ mcore_function_value (const_tree valtype, const_tree func)
    Value is zero to push the argument on the stack,
    or a hard register in which to store the argument.
 
-   MODE is the argument's machine mode.
-   TYPE is the data type of the argument (as a tree).
-    This is null for libcalls where that information may
-    not be available.
    CUM is a variable of type CUMULATIVE_ARGS which gives info about
     the preceding args and about the function being called.
-   NAMED is nonzero if this argument is a named parameter
-    (otherwise it is an extra parameter matching an ellipsis).
+   ARG is a description of the argument.
 
    On MCore the first args are normally in registers
    and the rest are pushed.  Any arg that starts within the first
@@ -2784,33 +2797,33 @@ mcore_function_value (const_tree valtype, const_tree func)
    its data type forbids.  */
 
 static rtx
-mcore_function_arg (cumulative_args_t cum, machine_mode mode,
-		    const_tree type, bool named)
+mcore_function_arg (cumulative_args_t cum, const function_arg_info &arg)
 {
   int arg_reg;
   
-  if (! named || mode == VOIDmode)
+  if (!arg.named || arg.end_marker_p ())
     return 0;
 
-  if (targetm.calls.must_pass_in_stack (mode, type))
+  if (targetm.calls.must_pass_in_stack (arg))
     return 0;
 
-  arg_reg = ROUND_REG (*get_cumulative_args (cum), mode);
+  arg_reg = ROUND_REG (*get_cumulative_args (cum), arg.mode);
   
   if (arg_reg < NPARM_REGS)
-    return handle_structs_in_regs (mode, type, FIRST_PARM_REG + arg_reg);
+    return handle_structs_in_regs (arg.mode, arg.type,
+				   FIRST_PARM_REG + arg_reg);
 
   return 0;
 }
 
 static void
-mcore_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
-			    const_tree type, bool named ATTRIBUTE_UNUSED)
+mcore_function_arg_advance (cumulative_args_t cum_v,
+			    const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
 
-  *cum = (ROUND_REG (*cum, mode)
-	  + (int)named * mcore_num_arg_regs (mode, type));
+  *cum = (ROUND_REG (*cum, arg.mode)
+	  + (int) arg.named * mcore_num_arg_regs (arg.mode, arg.type));
 }
 
 static unsigned int
@@ -2824,22 +2837,19 @@ mcore_function_arg_boundary (machine_mode mode,
 }
 
 /* Returns the number of bytes of argument registers required to hold *part*
-   of a parameter of machine mode MODE and type TYPE (which may be NULL if
-   the type is not known).  If the argument fits entirely in the argument
-   registers, or entirely on the stack, then 0 is returned.  CUM is the
-   number of argument registers already used by earlier parameters to
-   the function.  */
+   of argument ARG.  If the argument fits entirely in the argument registers,
+   or entirely on the stack, then 0 is returned.  CUM is the number of
+   argument registers already used by earlier parameters to the function.  */
 
 static int
-mcore_arg_partial_bytes (cumulative_args_t cum, machine_mode mode,
-			 tree type, bool named)
+mcore_arg_partial_bytes (cumulative_args_t cum, const function_arg_info &arg)
 {
-  int reg = ROUND_REG (*get_cumulative_args (cum), mode);
+  int reg = ROUND_REG (*get_cumulative_args (cum), arg.mode);
 
-  if (named == 0)
+  if (!arg.named)
     return 0;
 
-  if (targetm.calls.must_pass_in_stack (mode, type))
+  if (targetm.calls.must_pass_in_stack (arg))
     return 0;
       
   /* REG is not the *hardware* register number of the register that holds
@@ -2854,7 +2864,7 @@ mcore_arg_partial_bytes (cumulative_args_t cum, machine_mode mode,
     return 0;
 
   /* If the argument fits entirely in registers, return 0.  */
-  if (reg + mcore_num_arg_regs (mode, type) <= NPARM_REGS)
+  if (reg + mcore_num_arg_regs (arg.mode, arg.type) <= NPARM_REGS)
     return 0;
 
   /* The argument overflows the number of available argument registers.
@@ -3259,3 +3269,22 @@ mcore_legitimate_address_p (machine_mode mode, rtx x, bool strict_p,
   return false;
 }
 
+/* Implement TARGET_HARD_REGNO_MODE_OK.  We may keep double values in
+   even registers.  */
+
+static bool
+mcore_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
+{
+  if (TARGET_8ALIGN && GET_MODE_SIZE (mode) > UNITS_PER_WORD)
+    return (regno & 1) == 0;
+
+  return regno < 18;
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+mcore_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return mode1 == mode2 || GET_MODE_CLASS (mode1) == GET_MODE_CLASS (mode2);
+}

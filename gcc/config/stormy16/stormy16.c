@@ -1,5 +1,5 @@
 /* Xstormy16 target functions.
-   Copyright (C) 1997-2017 Free Software Foundation, Inc.
+   Copyright (C) 1997-2021 Free Software Foundation, Inc.
    Contributed by Red Hat, Inc.
 
    This file is part of GCC.
@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -25,6 +27,8 @@
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 #include "gimple.h"
 #include "df.h"
 #include "memmodel.h"
@@ -493,7 +497,17 @@ xstormy16_secondary_reload_class (enum reg_class rclass,
 static reg_class_t
 xstormy16_preferred_reload_class (rtx x, reg_class_t rclass)
 {
-  if (rclass == GENERAL_REGS && MEM_P (x))
+  /* Only the first eight registers can be moved to/from memory.
+     So those prefer EIGHT_REGS.
+
+     Similarly reloading an auto-increment address is going to
+     require loads and stores, so we must use EIGHT_REGS for those
+     too.  */
+  if (rclass == GENERAL_REGS
+      && (MEM_P (x)
+	  || GET_CODE (x) == POST_INC
+	  || GET_CODE (x) == PRE_DEC
+	  || GET_CODE (x) == PRE_MODIFY))
     return EIGHT_REGS;
 
   return rclass;
@@ -922,8 +936,8 @@ struct xstormy16_stack_layout
 
 /* Does REGNO need to be saved?  */
 #define REG_NEEDS_SAVE(REGNUM, IFUN)					\
-  ((df_regs_ever_live_p (REGNUM) && ! call_used_regs[REGNUM])		\
-   || (IFUN && ! fixed_regs[REGNUM] && call_used_regs[REGNUM]		\
+  ((df_regs_ever_live_p (REGNUM) && !call_used_or_fixed_reg_p (REGNUM))	\
+   || (IFUN && !fixed_regs[REGNUM] && call_used_or_fixed_reg_p (REGNUM)	\
        && (REGNUM != CARRY_REGNUM)					\
        && (df_regs_ever_live_p (REGNUM) || ! crtl->is_leaf)))
 
@@ -1187,7 +1201,7 @@ xstormy16_expand_epilogue (void)
 int
 xstormy16_epilogue_uses (int regno)
 {
-  if (reload_completed && call_used_regs[regno])
+  if (reload_completed && call_used_or_fixed_reg_p (regno))
     {
       const int ifun = xstormy16_interrupt_function_p ();
       return REG_NEEDS_SAVE (regno, ifun);
@@ -1201,9 +1215,8 @@ xstormy16_function_profiler (void)
   sorry ("function_profiler support");
 }
 
-/* Update CUM to advance past an argument in the argument list.  The
-   values MODE, TYPE and NAMED describe that argument.  Once this is
-   done, the variable CUM is suitable for analyzing the *following*
+/* Update CUM to advance past argument ARG.  Once this is done,
+   the variable CUM is suitable for analyzing the *following*
    argument with `TARGET_FUNCTION_ARG', etc.
 
    This function need not do anything if the argument in question was
@@ -1213,8 +1226,8 @@ xstormy16_function_profiler (void)
    the word count.  */
 
 static void
-xstormy16_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
-				const_tree type, bool named ATTRIBUTE_UNUSED)
+xstormy16_function_arg_advance (cumulative_args_t cum_v,
+				const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
 
@@ -1222,24 +1235,25 @@ xstormy16_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
      and partially on the stack, the whole of it is passed on the
      stack.  */
   if (*cum < NUM_ARGUMENT_REGISTERS
-      && *cum + XSTORMY16_WORD_SIZE (type, mode) > NUM_ARGUMENT_REGISTERS)
+      && (*cum + XSTORMY16_WORD_SIZE (arg.type, arg.mode)
+	  > NUM_ARGUMENT_REGISTERS))
     *cum = NUM_ARGUMENT_REGISTERS;
 
-  *cum += XSTORMY16_WORD_SIZE (type, mode);
+  *cum += XSTORMY16_WORD_SIZE (arg.type, arg.mode);
 }
 
 static rtx
-xstormy16_function_arg (cumulative_args_t cum_v, machine_mode mode,
-			const_tree type, bool named ATTRIBUTE_UNUSED)
+xstormy16_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
 
-  if (mode == VOIDmode)
+  if (arg.end_marker_p ())
     return const0_rtx;
-  if (targetm.calls.must_pass_in_stack (mode, type)
-      || *cum + XSTORMY16_WORD_SIZE (type, mode) > NUM_ARGUMENT_REGISTERS)
+  if (targetm.calls.must_pass_in_stack (arg)
+      || (*cum + XSTORMY16_WORD_SIZE (arg.type, arg.mode)
+	  > NUM_ARGUMENT_REGISTERS))
     return NULL_RTX;
-  return gen_rtx_REG (mode, *cum + FIRST_ARGUMENT_REGISTER);
+  return gen_rtx_REG (arg.mode, *cum + FIRST_ARGUMENT_REGISTER);
 }
 
 /* Build the va_list type.
@@ -1338,7 +1352,7 @@ xstormy16_gimplify_va_arg_expr (tree valist, tree type, gimple_seq *pre_p,
   count = build3 (COMPONENT_REF, TREE_TYPE (f_count), valist, f_count,
 		  NULL_TREE);
 
-  must_stack = targetm.calls.must_pass_in_stack (TYPE_MODE (type), type);
+  must_stack = must_pass_va_arg_in_stack (type);
   size_tree = round_up (size_in_bytes (type), UNITS_PER_WORD);
   gimplify_expr (&size_tree, pre_p, NULL, is_gimple_val, fb_rvalue);
 
@@ -1508,8 +1522,10 @@ xstormy16_asm_output_mi_thunk (FILE *file,
 			       HOST_WIDE_INT vcall_offset ATTRIBUTE_UNUSED,
 			       tree function)
 {
+  const char *fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk_fndecl));
   int regnum = FIRST_ARGUMENT_REGISTER;
 
+  assemble_start_function (thunk_fndecl, fnname);
   /* There might be a hidden first argument for a returned structure.  */
   if (aggregate_value_p (TREE_TYPE (TREE_TYPE (function)), function))
     regnum += 1;
@@ -1518,6 +1534,7 @@ xstormy16_asm_output_mi_thunk (FILE *file,
   fputs ("\tjmpf ", file);
   assemble_name (file, XSTR (XEXP (DECL_RTL (function), 0), 0));
   putc ('\n', file);
+  assemble_end_function (thunk_fndecl, fnname);
 }
 
 /* The purpose of this function is to override the default behavior of
@@ -2187,15 +2204,15 @@ static tree xstormy16_handle_below100_attribute
 
 static const struct attribute_spec xstormy16_attribute_table[] =
 {
-  /* name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-     affects_type_identity.  */
-  { "interrupt", 0, 0, false, true,  true,
-    xstormy16_handle_interrupt_attribute , false },
-  { "BELOW100",  0, 0, false, false, false,
-    xstormy16_handle_below100_attribute, false },
-  { "below100",  0, 0, false, false, false,
-    xstormy16_handle_below100_attribute, false },
-  { NULL,        0, 0, false, false, false, NULL, false }
+  /* name, min_len, max_len, decl_req, type_req, fn_type_req,
+     affects_type_identity, handler, exclude.  */
+  { "interrupt", 0, 0, false, true,  true, false,
+    xstormy16_handle_interrupt_attribute, NULL },
+  { "BELOW100",  0, 0, false, false, false, false,
+    xstormy16_handle_below100_attribute, NULL },
+  { "below100",  0, 0, false, false, false, false,
+    xstormy16_handle_below100_attribute, NULL },
+  { NULL,        0, 0, false, false, false, false, NULL, NULL }
 };
 
 /* Handle an "interrupt" attribute;
@@ -2319,7 +2336,7 @@ xstormy16_expand_builtin (tree exp, rtx target,
 
   fndecl = TREE_OPERAND (TREE_OPERAND (exp, 0), 0);
   argtree = TREE_OPERAND (exp, 1);
-  i = DECL_FUNCTION_CODE (fndecl);
+  i = DECL_MD_FUNCTION_CODE (fndecl);
   code = s16builtins[i].md_code;
 
   for (a = 0; a < 10 && argtree; a++)
@@ -2615,6 +2632,30 @@ xstormy16_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
   const HOST_WIDE_INT size = int_size_in_bytes (type);
   return (size == -1 || size > UNITS_PER_WORD * NUM_ARGUMENT_REGISTERS);
 }
+
+/* Implement TARGET_HARD_REGNO_MODE_OK.  */
+
+static bool
+xstormy16_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
+{
+  return regno != 16 || mode == BImode;
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+xstormy16_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return mode1 != BImode && mode2 != BImode;
+}
+
+/* Implement PUSH_ROUNDING.  */
+
+poly_int64
+xstormy16_push_rounding (poly_int64 bytes)
+{
+  return (bytes + 1) & ~1;
+}
 
 #undef  TARGET_ASM_ALIGNED_HI_OP
 #define TARGET_ASM_ALIGNED_HI_OP "\t.hword\t"
@@ -2691,6 +2732,17 @@ xstormy16_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 
 #undef TARGET_TRAMPOLINE_INIT
 #define TARGET_TRAMPOLINE_INIT xstormy16_trampoline_init
+
+#undef TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK xstormy16_hard_regno_mode_ok
+#undef TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P xstormy16_modes_tieable_p
+
+#undef TARGET_CONSTANT_ALIGNMENT
+#define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
+
+#undef  TARGET_HAVE_SPECULATION_SAFE_VALUE
+#define TARGET_HAVE_SPECULATION_SAFE_VALUE speculation_safe_value_not_needed
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

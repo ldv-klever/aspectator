@@ -1,6 +1,6 @@
 /* PR middle-end/66142 */
 /* { dg-do compile } */
-/* { dg-additional-options "-ffast-math -fopenmp-simd" } */
+/* { dg-additional-options "-ffast-math -fopenmp-simd --param early-inlining-insns=14" } */
 /* { dg-additional-options "-mavx" { target avx_runtime } } */
 
 struct A { float x, y; };
@@ -41,4 +41,4 @@ foo (float *a, float *b, float *c)
   *a = z;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops in function" 1 "vect" { target vect_condition } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 1 loops in function" 1 "vect" { target { vect_condition && vect_float } } } } */

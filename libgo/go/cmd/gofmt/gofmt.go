@@ -14,13 +14,14 @@ import (
 	"go/scanner"
 	"go/token"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
+
+	"cmd/internal/diff"
 )
 
 var (
@@ -36,9 +37,16 @@ var (
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to this file")
 )
 
+// Keep these in sync with go/format/format.go.
 const (
 	tabWidth    = 8
-	printerMode = printer.UseSpaces | printer.TabIndent
+	printerMode = printer.UseSpaces | printer.TabIndent | printerNormalizeNumbers
+
+	// printerNormalizeNumbers means to canonicalize number literal prefixes
+	// and exponents while printing. See https://golang.org/doc/go1.13#gofmt.
+	//
+	// This value is defined in go/printer specifically for go/format and cmd/gofmt.
+	printerNormalizeNumbers = 1 << 30
 )
 
 var (
@@ -65,7 +73,7 @@ func initParserMode() {
 	}
 }
 
-func isGoFile(f os.FileInfo) bool {
+func isGoFile(f fs.DirEntry) bool {
 	// ignore non-Go files
 	name := f.Name()
 	return !f.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
@@ -73,7 +81,7 @@ func isGoFile(f os.FileInfo) bool {
 
 // If in == nil, the source is the contents of the file with the given filename.
 func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error {
-	var perm os.FileMode = 0644
+	var perm fs.FileMode = 0644
 	if in == nil {
 		f, err := os.Open(filename)
 		if err != nil {
@@ -88,7 +96,7 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 		perm = fi.Mode().Perm()
 	}
 
-	src, err := ioutil.ReadAll(in)
+	src, err := io.ReadAll(in)
 	if err != nil {
 		return err
 	}
@@ -128,7 +136,7 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 			if err != nil {
 				return err
 			}
-			err = ioutil.WriteFile(filename, res, perm)
+			err = os.WriteFile(filename, res, perm)
 			if err != nil {
 				os.Rename(bakname, filename)
 				return err
@@ -139,11 +147,11 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 			}
 		}
 		if *doDiff {
-			data, err := diff(src, res)
+			data, err := diffWithReplaceTempFile(src, res, filename)
 			if err != nil {
 				return fmt.Errorf("computing diff: %s", err)
 			}
-			fmt.Printf("diff %s gofmt/%s\n", filename, filename)
+			fmt.Printf("diff -u %s %s\n", filepath.ToSlash(filename+".orig"), filepath.ToSlash(filename))
 			out.Write(data)
 		}
 	}
@@ -155,7 +163,7 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 	return err
 }
 
-func visitFile(path string, f os.FileInfo, err error) error {
+func visitFile(path string, f fs.DirEntry, err error) error {
 	if err == nil && isGoFile(f) {
 		err = processFile(path, nil, os.Stdout, false)
 	}
@@ -168,7 +176,7 @@ func visitFile(path string, f os.FileInfo, err error) error {
 }
 
 func walkDir(path string) {
-	filepath.Walk(path, visitFile)
+	filepath.WalkDir(path, visitFile)
 }
 
 func main() {
@@ -225,32 +233,41 @@ func gofmtMain() {
 	}
 }
 
-func diff(b1, b2 []byte) (data []byte, err error) {
-	f1, err := ioutil.TempFile("", "gofmt")
-	if err != nil {
-		return
-	}
-	defer os.Remove(f1.Name())
-	defer f1.Close()
-
-	f2, err := ioutil.TempFile("", "gofmt")
-	if err != nil {
-		return
-	}
-	defer os.Remove(f2.Name())
-	defer f2.Close()
-
-	f1.Write(b1)
-	f2.Write(b2)
-
-	data, err = exec.Command("diff", "-u", f1.Name(), f2.Name()).CombinedOutput()
+func diffWithReplaceTempFile(b1, b2 []byte, filename string) ([]byte, error) {
+	data, err := diff.Diff("gofmt", b1, b2)
 	if len(data) > 0 {
-		// diff exits with a non-zero status when the files don't match.
-		// Ignore that failure as long as we get output.
-		err = nil
+		return replaceTempFilename(data, filename)
 	}
-	return
+	return data, err
+}
 
+// replaceTempFilename replaces temporary filenames in diff with actual one.
+//
+// --- /tmp/gofmt316145376	2017-02-03 19:13:00.280468375 -0500
+// +++ /tmp/gofmt617882815	2017-02-03 19:13:00.280468375 -0500
+// ...
+// ->
+// --- path/to/file.go.orig	2017-02-03 19:13:00.280468375 -0500
+// +++ path/to/file.go	2017-02-03 19:13:00.280468375 -0500
+// ...
+func replaceTempFilename(diff []byte, filename string) ([]byte, error) {
+	bs := bytes.SplitN(diff, []byte{'\n'}, 3)
+	if len(bs) < 3 {
+		return nil, fmt.Errorf("got unexpected diff for %s", filename)
+	}
+	// Preserve timestamps.
+	var t0, t1 []byte
+	if i := bytes.LastIndexByte(bs[0], '\t'); i != -1 {
+		t0 = bs[0][i:]
+	}
+	if i := bytes.LastIndexByte(bs[1], '\t'); i != -1 {
+		t1 = bs[1][i:]
+	}
+	// Always print filepath with slash separator.
+	f := filepath.ToSlash(filename)
+	bs[0] = []byte(fmt.Sprintf("--- %s%s", f+".orig", t0))
+	bs[1] = []byte(fmt.Sprintf("+++ %s%s", f, t1))
+	return bytes.Join(bs, []byte{'\n'}), nil
 }
 
 const chmodSupported = runtime.GOOS != "windows"
@@ -258,9 +275,9 @@ const chmodSupported = runtime.GOOS != "windows"
 // backupFile writes data to a new file named filename<number> with permissions perm,
 // with <number randomly chosen such that the file name is unique. backupFile returns
 // the chosen file name.
-func backupFile(filename string, data []byte, perm os.FileMode) (string, error) {
+func backupFile(filename string, data []byte, perm fs.FileMode) (string, error) {
 	// create backup file
-	f, err := ioutil.TempFile(filepath.Dir(filename), filepath.Base(filename))
+	f, err := os.CreateTemp(filepath.Dir(filename), filepath.Base(filename))
 	if err != nil {
 		return "", err
 	}
@@ -275,10 +292,7 @@ func backupFile(filename string, data []byte, perm os.FileMode) (string, error) 
 	}
 
 	// write data to backup file
-	n, err := f.Write(data)
-	if err == nil && n < len(data) {
-		err = io.ErrShortWrite
-	}
+	_, err = f.Write(data)
 	if err1 := f.Close(); err == nil {
 		err = err1
 	}

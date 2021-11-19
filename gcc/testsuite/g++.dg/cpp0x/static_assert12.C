@@ -14,7 +14,7 @@ template<>
   };
 
 template<typename T>
-  T
+  void
   float_thing(T __x)
   {
     static_assert(is_float<T>::value, ""); // { dg-error "static assertion failed" }
@@ -27,4 +27,4 @@ main()
   float_thing(1);
 }
 
-// { dg-warning "static_assert without a message only available with " "" { target *-*-* } 21 }
+// { dg-warning "'static_assert' without a message only available with " "" { target *-*-* } 21 }

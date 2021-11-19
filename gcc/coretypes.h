@@ -1,5 +1,5 @@
 /* GCC core type declarations.
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -46,32 +46,46 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 typedef int64_t gcov_type;
 typedef uint64_t gcov_type_unsigned;
 
-struct bitmap_head;
-typedef struct bitmap_head *bitmap;
-typedef const struct bitmap_head *const_bitmap;
+struct bitmap_obstack;
+class bitmap_head;
+typedef class bitmap_head *bitmap;
+typedef const class bitmap_head *const_bitmap;
 struct simple_bitmap_def;
 typedef struct simple_bitmap_def *sbitmap;
 typedef const struct simple_bitmap_def *const_sbitmap;
 struct rtx_def;
 typedef struct rtx_def *rtx;
 typedef const struct rtx_def *const_rtx;
+class scalar_mode;
+class scalar_int_mode;
+class scalar_float_mode;
+class complex_mode;
+class fixed_size_mode;
+template<typename> class opt_mode;
+typedef opt_mode<scalar_mode> opt_scalar_mode;
+typedef opt_mode<scalar_int_mode> opt_scalar_int_mode;
+typedef opt_mode<scalar_float_mode> opt_scalar_float_mode;
+template<typename> struct pod_mode;
+typedef pod_mode<scalar_mode> scalar_mode_pod;
+typedef pod_mode<scalar_int_mode> scalar_int_mode_pod;
+typedef pod_mode<fixed_size_mode> fixed_size_mode_pod;
 
 /* Subclasses of rtx_def, using indentation to show the class
    hierarchy, along with the relevant invariant.
    Where possible, keep this list in the same order as in rtl.def.  */
-class rtx_def;
-  class rtx_expr_list;           /* GET_CODE (X) == EXPR_LIST */
-  class rtx_insn_list;           /* GET_CODE (X) == INSN_LIST */
-  class rtx_sequence;            /* GET_CODE (X) == SEQUENCE */
-  class rtx_insn;
-    class rtx_debug_insn;      /* DEBUG_INSN_P (X) */
-    class rtx_nonjump_insn;    /* NONJUMP_INSN_P (X) */
-    class rtx_jump_insn;       /* JUMP_P (X) */
-    class rtx_call_insn;       /* CALL_P (X) */
-    class rtx_jump_table_data; /* JUMP_TABLE_DATA_P (X) */
-    class rtx_barrier;         /* BARRIER_P (X) */
-    class rtx_code_label;      /* LABEL_P (X) */
-    class rtx_note;            /* NOTE_P (X) */
+struct rtx_def;
+  struct rtx_expr_list;           /* GET_CODE (X) == EXPR_LIST */
+  struct rtx_insn_list;           /* GET_CODE (X) == INSN_LIST */
+  struct rtx_sequence;            /* GET_CODE (X) == SEQUENCE */
+  struct rtx_insn;
+    struct rtx_debug_insn;      /* DEBUG_INSN_P (X) */
+    struct rtx_nonjump_insn;    /* NONJUMP_INSN_P (X) */
+    struct rtx_jump_insn;       /* JUMP_P (X) */
+    struct rtx_call_insn;       /* CALL_P (X) */
+    struct rtx_jump_table_data; /* JUMP_TABLE_DATA_P (X) */
+    struct rtx_barrier;         /* BARRIER_P (X) */
+    struct rtx_code_label;      /* LABEL_P (X) */
+    struct rtx_note;            /* NOTE_P (X) */
 
 struct rtvec_def;
 typedef struct rtvec_def *rtvec;
@@ -121,6 +135,14 @@ struct gomp_single;
 struct gomp_target;
 struct gomp_teams;
 
+/* Subclasses of symtab_node, using indentation to show the class
+   hierarchy.  */
+
+struct symtab_node;
+  struct cgraph_node;
+  struct varpool_node;
+struct cgraph_edge;
+
 union section;
 typedef union section section;
 struct gcc_options;
@@ -130,7 +152,16 @@ struct cl_option;
 struct cl_decoded_option;
 struct cl_option_handlers;
 struct diagnostic_context;
-struct pretty_printer;
+class pretty_printer;
+class diagnostic_event_id_t;
+
+template<typename T> struct array_traits;
+
+/* Provides a read-only bitmap view of a single integer bitmask or an
+   array of integer bitmasks, or of a wrapper around such bitmasks.  */
+template<typename T, typename Traits = array_traits<T>,
+	 bool has_constant_size = Traits::has_constant_size>
+class bitmap_view;
 
 /* Address space number for named address space support.  */
 typedef unsigned char addr_space_t;
@@ -181,6 +212,21 @@ enum profile_update {
   PROFILE_UPDATE_PREFER_ATOMIC
 };
 
+/* Type of profile reproducibility methods.  */
+enum profile_reproducibility {
+    PROFILE_REPRODUCIBILITY_SERIAL,
+    PROFILE_REPRODUCIBILITY_PARALLEL_RUNS,
+    PROFILE_REPRODUCIBILITY_MULTITHREADED
+};
+
+/* Type of -fstack-protector-*.  */
+enum stack_protector {
+  SPCT_FLAG_DEFAULT = 1,
+  SPCT_FLAG_ALL = 2,
+  SPCT_FLAG_STRONG = 3,
+  SPCT_FLAG_EXPLICIT = 4
+};
+
 /* Types of unwind/exception handling info that can be generated.  */
 
 enum unwind_info_type
@@ -217,6 +263,22 @@ enum optimization_type {
 
   /* Prioritize size over speed.  */
   OPTIMIZE_FOR_SIZE
+};
+
+/* Enumerates a padding direction.  */
+enum pad_direction {
+  /* No padding is required.  */
+  PAD_NONE,
+
+  /* Insert padding above the data, i.e. at higher memeory addresses
+     when dealing with memory, and at the most significant end when
+     dealing with registers.  */
+  PAD_UPWARD,
+
+  /* Insert padding below the data, i.e. at lower memeory addresses
+     when dealing with memory, and at the least significant end when
+     dealing with registers.  */
+  PAD_DOWNWARD
 };
 
 /* Possible initialization status of a variable.   When requested
@@ -261,9 +323,9 @@ enum warn_strict_overflow_code
    set yet).  */
 typedef int alias_set_type;
 
-struct edge_def;
-typedef struct edge_def *edge;
-typedef const struct edge_def *const_edge;
+class edge_def;
+typedef class edge_def *edge;
+typedef const class edge_def *const_edge;
 struct basic_block_def;
 typedef struct basic_block_def *basic_block;
 typedef const struct basic_block_def *const_basic_block;
@@ -295,6 +357,15 @@ namespace gcc {
 }
 
 typedef std::pair <tree, tree> tree_pair;
+typedef std::pair <const char *, int> string_int_pair;
+
+/* Define a name->value mapping.  */
+template <typename ValueType>
+struct kv_pair
+{
+  const char *const name;	/* the name of the value */
+  const ValueType value;	/* the value of the name */
+};
 
 #else
 
@@ -310,6 +381,11 @@ union _dont_use_tree_here_;
 #define tree union _dont_use_tree_here_ *
 #define const_tree union _dont_use_tree_here_ *
 
+typedef struct scalar_mode scalar_mode;
+typedef struct scalar_int_mode scalar_int_mode;
+typedef struct scalar_float_mode scalar_float_mode;
+typedef struct complex_mode complex_mode;
+
 #endif
 
 /* Classes of functions that compiler needs to check
@@ -319,7 +395,8 @@ enum function_class {
   function_c99_misc,
   function_c99_math_complex,
   function_sincos,
-  function_c11_misc
+  function_c11_misc,
+  function_c2x_misc
 };
 
 /* Enumerate visibility settings.  This is deliberately ordered from most
@@ -350,6 +427,18 @@ enum excess_precision_type
   EXCESS_PRECISION_TYPE_FAST
 };
 
+/* Level of size optimization.  */
+
+enum optimize_size_level
+{
+  /* Do not optimize for size.  */
+  OPTIMIZE_SIZE_NO,
+  /* Optimize for size but not at extreme performance costs.  */
+  OPTIMIZE_SIZE_BALANCED,
+  /* Optimize for size as much as possible.  */
+  OPTIMIZE_SIZE_MAX
+};
+
 /* Support for user-provided GGC and PCH markers.  The first parameter
    is a pointer to a pointer, the second a cookie.  */
 typedef void (*gt_pointer_operator) (void *, void *);
@@ -358,12 +447,34 @@ typedef void (*gt_pointer_operator) (void *, void *);
 typedef unsigned char uchar;
 #endif
 
-/* Most host source files will require the following headers.  */
-#if !defined (GENERATOR_FILE) && !defined (USED_FOR_TARGET)
-#include "machmode.h"
+/* Most source files will require the following headers.  */
+#if !defined (USED_FOR_TARGET)
+#include "insn-modes.h"
 #include "signop.h"
 #include "wide-int.h" 
+#include "wide-int-print.h"
+
+/* On targets that don't need polynomial offsets, target-specific code
+   should be able to treat poly_int like a normal constant, with a
+   conversion operator going from the former to the latter.  We also
+   allow this for gencondmd.c for all targets, so that we can treat
+   machine_modes as enums without causing build failures.  */
+#if (defined (IN_TARGET_CODE) \
+     && (defined (USE_ENUM_MODES) || NUM_POLY_INT_COEFFS == 1))
+#define POLY_INT_CONVERSION 1
+#else
+#define POLY_INT_CONVERSION 0
+#endif
+
+#include "poly-int.h"
+#include "poly-int-types.h"
+#include "insn-modes-inline.h"
+#include "machmode.h"
 #include "double-int.h"
+#include "align.h"
+/* Most host source files will require the following headers.  */
+#if !defined (GENERATOR_FILE)
+#include "iterator-utils.h"
 #include "real.h"
 #include "fixed-value.h"
 #include "hash-table.h"
@@ -371,6 +482,8 @@ typedef unsigned char uchar;
 #include "input.h"
 #include "is-a.h"
 #include "memory-block.h"
+#include "dumpfile.h"
+#endif
 #endif /* GENERATOR_FILE && !USED_FOR_TARGET */
 
 #endif /* coretypes.h */

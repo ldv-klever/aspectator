@@ -1,6 +1,6 @@
 /* Infrastructure for tracking user variable locations and values
    throughout compilation.
-   Copyright (C) 2010-2017 Free Software Foundation, Inc.
+   Copyright (C) 2010-2021 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva <aoliva@redhat.com>.
 
 This file is part of GCC.
@@ -92,13 +92,15 @@ cleanup_auto_inc_dec (rtx src, machine_mode mem_mode ATTRIBUTE_UNUSED)
 
     case PRE_INC:
     case PRE_DEC:
-      gcc_assert (mem_mode != VOIDmode && mem_mode != BLKmode);
-      return gen_rtx_PLUS (GET_MODE (x),
-			   cleanup_auto_inc_dec (XEXP (x, 0), mem_mode),
-			   gen_int_mode (code == PRE_INC
-					 ? GET_MODE_SIZE (mem_mode)
-					 : -GET_MODE_SIZE (mem_mode),
-					 GET_MODE (x)));
+      {
+	gcc_assert (mem_mode != VOIDmode && mem_mode != BLKmode);
+	poly_int64 offset = GET_MODE_SIZE (mem_mode);
+	if (code == PRE_DEC)
+	  offset = -offset;
+	return gen_rtx_PLUS (GET_MODE (x),
+			     cleanup_auto_inc_dec (XEXP (x, 0), mem_mode),
+			     gen_int_mode (offset, GET_MODE (x)));
+      }
 
     case POST_INC:
     case POST_DEC:
@@ -212,7 +214,7 @@ propagate_for_debug (rtx_insn *insn, rtx_insn *last, rtx dest, rtx src,
     {
       insn = next;
       next = NEXT_INSN (insn);
-      if (DEBUG_INSN_P (insn))
+      if (DEBUG_BIND_INSN_P (insn))
 	{
 	  loc = simplify_replace_fn_rtx (INSN_VAR_LOCATION_LOC (insn),
 					 dest, propagate_for_debug_subst, &p);
@@ -553,7 +555,7 @@ debug_lowpart_subreg (machine_mode outer_mode, rtx expr,
 {
   if (inner_mode == VOIDmode)
     inner_mode = GET_MODE (expr);
-  int offset = subreg_lowpart_offset (outer_mode, inner_mode);
+  poly_int64 offset = subreg_lowpart_offset (outer_mode, inner_mode);
   rtx ret = simplify_gen_subreg (outer_mode, expr, inner_mode, offset);
   if (ret)
     return ret;
@@ -609,10 +611,13 @@ dead_debug_insert_temp (struct dead_debug_local *debug, unsigned int uregno,
 	  usesp = &cur->next;
 	  *tailp = cur->next;
 	  cur->next = NULL;
+	  /* "may" rather than "must" because we want (for example)
+	     N V4SFs to win over plain V4SF even though N might be 1.  */
+	  rtx candidate = *DF_REF_REAL_LOC (cur->use);
 	  if (!reg
-	      || (GET_MODE_BITSIZE (GET_MODE (reg))
-		  < GET_MODE_BITSIZE (GET_MODE (*DF_REF_REAL_LOC (cur->use)))))
-	    reg = *DF_REF_REAL_LOC (cur->use);
+	      || maybe_lt (GET_MODE_BITSIZE (GET_MODE (reg)),
+			   GET_MODE_BITSIZE (GET_MODE (candidate))))
+	    reg = candidate;
 	}
       else
 	tailp = &(*tailp)->next;
@@ -652,22 +657,12 @@ dead_debug_insert_temp (struct dead_debug_local *debug, unsigned int uregno,
 	{
 	  dest = SET_DEST (set);
 	  src = SET_SRC (set);
-	  /* Lose if the REG-setting insn is a CALL.  */
-	  if (GET_CODE (src) == CALL)
-	    {
-	      while (uses)
-		{
-		  cur = uses->next;
-		  XDELETE (uses);
-		  uses = cur;
-		}
-	      return 0;
-	    }
-	  /* Asm in DEBUG_INSN is never useful, we can't emit debug info for
-	     that.  And for volatile_insn_p, it is actually harmful
-	     - DEBUG_INSNs shouldn't have any side-effects.  */
-	  else if (GET_CODE (src) == ASM_OPERANDS
-		   || volatile_insn_p (src))
+	  /* Reset uses if the REG-setting insn is a CALL.  Asm in
+	     DEBUG_INSN is never useful, we can't emit debug info for
+	     that.  And for volatile_insn_p, it is actually harmful -
+	     DEBUG_INSNs shouldn't have any side-effects.  */
+	  if (GET_CODE (src) == CALL || GET_CODE (src) == ASM_OPERANDS
+	      || volatile_insn_p (src))
 	    set = NULL_RTX;
 	}
 
@@ -710,7 +705,7 @@ dead_debug_insert_temp (struct dead_debug_local *debug, unsigned int uregno,
 	     the debug temp to.  */
 	  else if (REGNO (reg) < FIRST_PSEUDO_REGISTER
 		   && (REG_NREGS (reg)
-		       != hard_regno_nregs[REGNO (reg)][GET_MODE (dest)]))
+		       != hard_regno_nregs (REGNO (reg), GET_MODE (dest))))
 	    breg = NULL;
 	  /* Yay, we can use SRC, just adjust its mode.  */
 	  else

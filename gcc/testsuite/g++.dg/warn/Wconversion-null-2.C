@@ -6,6 +6,9 @@
 void g(int) {}
 void g(long) {}
 void g(long long) {}
+#ifdef __MSP430X_LARGE__
+void g(__int20) {}
+#endif
 extern void g(void*);
 
 template <int I>
@@ -24,6 +27,11 @@ void l(long) {}
 
 template <>
 void l(long long) {}
+
+#ifdef __MSP430X_LARGE__
+template <>
+void l(__int20) {}
+#endif
 
 void warn_for_NULL()
 {
@@ -48,7 +56,7 @@ void warn_for_NULL()
   NULL && NULL; // No warning: converting NULL to bool is OK
 }
 
-int warn_for___null()
+void warn_for___null()
 {
   int i = __null; // { dg-warning "" } converting __null to non-pointer type
   float z = __null; // { dg-warning "" } converting __null to non-pointer type

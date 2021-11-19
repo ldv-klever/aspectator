@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2018, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2020, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -73,21 +73,21 @@ do {							 \
 #define TYPE_IS_FAT_POINTER_P(NODE) \
   (TREE_CODE (NODE) == RECORD_TYPE && TYPE_FAT_POINTER_P (NODE))
 
-/* For integral types and array types, nonzero if this is a packed array type
-   used for bit-packed types.  Such types should not be extended to a larger
-   size or validated against a specified size.  */
-#define TYPE_PACKED_ARRAY_TYPE_P(NODE) \
+/* For integral types and array types, nonzero if this is an implementation
+   type for a bit-packed array type.  Such types should not be extended to a
+   larger size or validated against a specified size.  */
+#define TYPE_BIT_PACKED_ARRAY_TYPE_P(NODE) \
   TYPE_LANG_FLAG_0 (TREE_CHECK2 (NODE, INTEGER_TYPE, ARRAY_TYPE))
 
-#define TYPE_IS_PACKED_ARRAY_TYPE_P(NODE) \
+#define BIT_PACKED_ARRAY_TYPE_P(NODE) \
   ((TREE_CODE (NODE) == INTEGER_TYPE || TREE_CODE (NODE) == ARRAY_TYPE) \
-   && TYPE_PACKED_ARRAY_TYPE_P (NODE))
+   && TYPE_BIT_PACKED_ARRAY_TYPE_P (NODE))
 
-/* For FUNCTION_TYPEs, nonzero if the function returns by direct reference,
-   i.e. the callee returns a pointer to a memory location it has allocated
-   and the caller only needs to dereference the pointer.  */
+/* For FUNCTION_TYPE and METHOD_TYPE, nonzero if the function returns by
+   direct reference, i.e. the callee returns a pointer to a memory location
+   it has allocated and the caller only needs to dereference the pointer.  */
 #define TYPE_RETURN_BY_DIRECT_REF_P(NODE) \
-  TYPE_LANG_FLAG_0 (FUNCTION_TYPE_CHECK (NODE))
+  TYPE_LANG_FLAG_0 (FUNC_OR_METHOD_CHECK (NODE))
 
 /* For INTEGER_TYPE, nonzero if this is a modular type with a modulus that
    is not equal to two to the power of its mode's size.  */
@@ -97,10 +97,10 @@ do {							 \
    an Ada array other than the first.  */
 #define TYPE_MULTI_ARRAY_P(NODE) TYPE_LANG_FLAG_1 (ARRAY_TYPE_CHECK (NODE))
 
-/* For FUNCTION_TYPE, nonzero if this denotes a function returning an
-   unconstrained array or record.  */
+/* For FUNCTION_TYPE and METHOD_TYPE, nonzero if function returns an
+   unconstrained array or record type.  */
 #define TYPE_RETURN_UNCONSTRAINED_P(NODE) \
-  TYPE_LANG_FLAG_1 (FUNCTION_TYPE_CHECK (NODE))
+  TYPE_LANG_FLAG_1 (FUNC_OR_METHOD_CHECK (NODE))
 
 /* For RECORD_TYPE, UNION_TYPE, and QUAL_UNION_TYPE, nonzero if this denotes
    a justified modular type (will only be true for RECORD_TYPE).  */
@@ -110,6 +110,9 @@ do {							 \
 /* Nonzero in an arithmetic subtype if this is a subtype not known to the
    front-end.  */
 #define TYPE_EXTRA_SUBTYPE_P(NODE) TYPE_LANG_FLAG_2 (INTEGER_TYPE_CHECK (NODE))
+
+#define TYPE_IS_EXTRA_SUBTYPE_P(NODE) \
+  (TREE_CODE (NODE) == INTEGER_TYPE && TYPE_EXTRA_SUBTYPE_P (NODE))
 
 /* Nonzero for an aggregate type if this is a by-reference type.  We also
    set this on an ENUMERAL_TYPE that is dummy.  */
@@ -193,7 +196,7 @@ do {							 \
    types.  */
 #define TYPE_IMPL_PACKED_ARRAY_P(NODE) \
   ((TREE_CODE (NODE) == ARRAY_TYPE && TYPE_PACKED (NODE)) \
-   || (TREE_CODE (NODE) == INTEGER_TYPE && TYPE_PACKED_ARRAY_TYPE_P (NODE)))
+   || (TREE_CODE (NODE) == INTEGER_TYPE && TYPE_BIT_PACKED_ARRAY_TYPE_P (NODE)))
 
 /* True for types that can hold a debug type.  */
 #define TYPE_CAN_HAVE_DEBUG_TYPE_P(NODE) (!TYPE_IMPL_PACKED_ARRAY_P (NODE))
@@ -209,28 +212,30 @@ do {							 \
    this is a conflict on the minval field, but there doesn't seem to be
    simple fix, so we'll live with this kludge for now.  */
 #define TYPE_OBJECT_RECORD_TYPE(NODE) \
-  (TYPE_MINVAL (TREE_CHECK2 ((NODE), UNCONSTRAINED_ARRAY_TYPE, ENUMERAL_TYPE)))
+  (TYPE_MIN_VALUE_RAW (TREE_CHECK2 ((NODE), UNCONSTRAINED_ARRAY_TYPE, \
+				    ENUMERAL_TYPE)))
 
 /* For numerical types, this is the GCC lower bound of the type.  The GCC
    type system is based on the invariant that an object X of a given type
    cannot hold at run time a value smaller than its lower bound; otherwise
    the behavior is undefined.  The optimizer takes advantage of this and
    considers that the assertion X >= LB is always true.  */
-#define TYPE_GCC_MIN_VALUE(NODE) (TYPE_MINVAL (NUMERICAL_TYPE_CHECK (NODE)))
+#define TYPE_GCC_MIN_VALUE(NODE) \
+  (TYPE_MIN_VALUE_RAW (NUMERICAL_TYPE_CHECK (NODE)))
 
 /* For numerical types, this is the GCC upper bound of the type.  The GCC
    type system is based on the invariant that an object X of a given type
    cannot hold at run time a value larger than its upper bound; otherwise
    the behavior is undefined.  The optimizer takes advantage of this and
    considers that the assertion X <= UB is always true.  */
-#define TYPE_GCC_MAX_VALUE(NODE) (TYPE_MAXVAL (NUMERICAL_TYPE_CHECK (NODE)))
+#define TYPE_GCC_MAX_VALUE(NODE) \
+  (TYPE_MAX_VALUE_RAW (NUMERICAL_TYPE_CHECK (NODE)))
 
-/* For a FUNCTION_TYPE, if the subprogram has parameters passed by copy in/
-   copy out, this is the list of nodes used to specify the return values of
-   the out (or in out) parameters that are passed by copy in/copy out.  For
-   a full description of the copy in/copy out parameter passing mechanism
-   refer to the routine gnat_to_gnu_entity.  */
-#define TYPE_CI_CO_LIST(NODE) TYPE_LANG_SLOT_1 (FUNCTION_TYPE_CHECK (NODE))
+/* For a FUNCTION_TYPE and METHOD_TYPE, if the function has parameters passed
+   by copy in/copy out, this is the list of nodes used to specify the return
+   values of these parameters.  For a full description of the copy in/copy out
+   parameter passing mechanism refer to the routine gnat_to_gnu_entity.  */
+#define TYPE_CI_CO_LIST(NODE) TYPE_LANG_SLOT_1 (FUNC_OR_METHOD_CHECK (NODE))
 
 /* For an ARRAY_TYPE with variable size, this is the padding type built for
    the array type when it is itself the component type of another array.  */
@@ -468,9 +473,17 @@ do {						   \
    a discriminant of a discriminated type without default expression.  */
 #define DECL_INVARIANT_P(NODE) DECL_LANG_FLAG_4 (FIELD_DECL_CHECK (NODE))
 
+/* Nonzero in a FUNCTION_DECL if this is a definition, i.e. if it was created
+   by a call to gnat_to_gnu_entity with definition set to True.  */
+#define DECL_FUNCTION_IS_DEF(NODE) \
+  DECL_LANG_FLAG_4 (FUNCTION_DECL_CHECK (NODE))
+
 /* Nonzero in a VAR_DECL if it is a temporary created to hold the return
    value of a function call or 'reference to a function call.  */
 #define DECL_RETURN_VALUE_P(NODE) DECL_LANG_FLAG_5 (VAR_DECL_CHECK (NODE))
+
+/* Nonzero in a PARM_DECL if its mechanism was forced to by-reference.  */
+#define DECL_FORCED_BY_REF_P(NODE) DECL_LANG_FLAG_5 (PARM_DECL_CHECK (NODE))
 
 /* In a FIELD_DECL corresponding to a discriminant, contains the
    discriminant number.  */
@@ -510,13 +523,6 @@ do {						   \
 #define DECL_INDUCTION_VAR(NODE) \
   GET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))
 #define SET_DECL_INDUCTION_VAR(NODE, X) \
-  SET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE), X)
-
-/* In a VAR_DECL without the DECL_LOOP_PARM_P flag set and that is a renaming
-   pointer, points to the object being renamed, if any.  */
-#define DECL_RENAMED_OBJECT(NODE) \
-  GET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))
-#define SET_DECL_RENAMED_OBJECT(NODE, X) \
   SET_DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE), X)
 
 /* In a TYPE_DECL, points to the parallel type if any, otherwise 0.  */
@@ -572,3 +578,8 @@ do {						   \
 
 #define EXIT_STMT_COND(NODE)     TREE_OPERAND_CHECK_CODE (NODE, EXIT_STMT, 0)
 #define EXIT_STMT_LABEL(NODE)    TREE_OPERAND_CHECK_CODE (NODE, EXIT_STMT, 1)
+
+/* Small kludge to be able to define Ada built-in functions locally.
+   We overload them on top of the HSAIL/BRIG builtin functions.  */
+#define BUILT_IN_LIKELY   BUILT_IN_HSAIL_WORKITEMABSID
+#define BUILT_IN_UNLIKELY BUILT_IN_HSAIL_GRIDSIZE

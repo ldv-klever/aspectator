@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -36,157 +36,10 @@ with Uintp;    use Uintp;
 
 package body Scn is
 
-   use ASCII;
-
    Used_As_Identifier : array (Token_Type) of Boolean;
    --  Flags set True if a given keyword is used as an identifier (used to
    --  make sure that we only post an error message for incorrect use of a
    --  keyword as an identifier once for a given keyword).
-
-   function Determine_License return License_Type;
-   --  Scan header of file and check that it has an appropriate GNAT-style
-   --  header with a proper license statement. Returns GPL, Unrestricted,
-   --  or Modified_GPL depending on header. If none of these, returns Unknown.
-
-   -----------------------
-   -- Determine_License --
-   -----------------------
-
-   function Determine_License return License_Type is
-      GPL_Found : Boolean := False;
-      Result    : License_Type;
-
-      function Contains (S : String) return Boolean;
-      --  See if current comment contains successive non-blank characters
-      --  matching the contents of S. If so leave Scan_Ptr unchanged and
-      --  return True, otherwise leave Scan_Ptr unchanged and return False.
-
-      procedure Skip_EOL;
-      --  Skip to line terminator character
-
-      --------------
-      -- Contains --
-      --------------
-
-      function Contains (S : String) return Boolean is
-         CP : Natural;
-         SP : Source_Ptr;
-         SS : Source_Ptr;
-
-      begin
-         --  Loop to check characters. This loop is terminated by end of
-         --  line, and also we need to check for the EOF case, to take
-         --  care of files containing only comments.
-
-         SP := Scan_Ptr;
-         while Source (SP) /= CR and then
-               Source (SP) /= LF and then
-               Source (SP) /= EOF
-         loop
-            if Source (SP) = S (S'First) then
-               SS := SP;
-               CP := S'First;
-
-               loop
-                  SS := SS + 1;
-                  CP := CP + 1;
-
-                  if CP > S'Last then
-                     return True;
-                  end if;
-
-                  while Source (SS) = ' ' loop
-                     SS := SS + 1;
-                  end loop;
-
-                  exit when Source (SS) /= S (CP);
-               end loop;
-            end if;
-
-            SP := SP + 1;
-         end loop;
-
-         return False;
-      end Contains;
-
-      --------------
-      -- Skip_EOL --
-      --------------
-
-      procedure Skip_EOL is
-      begin
-         while Source (Scan_Ptr) /= CR
-           and then Source (Scan_Ptr) /= LF
-           and then Source (Scan_Ptr) /= EOF
-         loop
-            Scan_Ptr := Scan_Ptr + 1;
-         end loop;
-      end Skip_EOL;
-
-   --  Start of processing for Determine_License
-
-   begin
-      loop
-         if Source (Scan_Ptr) /= '-'
-           or else Source (Scan_Ptr + 1) /= '-'
-         then
-            if GPL_Found then
-               Result := GPL;
-               exit;
-            else
-               Result := Unknown;
-               exit;
-            end if;
-
-         elsif Contains ("Asaspecialexception") then
-            if GPL_Found then
-               Result := Modified_GPL;
-               exit;
-            end if;
-
-         elsif Contains ("GNUGeneralPublicLicense") then
-            GPL_Found := True;
-
-         elsif
-             Contains
-               ("ThisspecificationisadaptedfromtheAdaSemanticInterface")
-           or else
-             Contains
-              ("ThisspecificationisderivedfromtheAdaReferenceManual")
-         then
-            Result := Unrestricted;
-            exit;
-         end if;
-
-         Skip_EOL;
-
-         Scanner.Check_End_Of_Line;
-
-         if Source (Scan_Ptr) /= EOF then
-
-            --  We have to take into account a degenerate case when the source
-            --  file contains only comments and no Ada code.
-
-            declare
-               Physical : Boolean;
-
-            begin
-               Skip_Line_Terminators (Scan_Ptr, Physical);
-
-               --  If we are at start of physical line, update scan pointers
-               --  to reflect the start of the new line.
-
-               if Physical then
-                  Current_Line_Start       := Scan_Ptr;
-                  Start_Column             := Scanner.Set_Start_Column;
-                  First_Non_Blank_Location := Scan_Ptr;
-               end if;
-            end;
-         end if;
-      end loop;
-
-      return Result;
-   end Determine_License;
 
    ----------------------------
    -- Determine_Token_Casing --
@@ -203,35 +56,17 @@ package body Scn is
 
    procedure Initialize_Scanner
      (Unit  : Unit_Number_Type;
-      Index : Source_File_Index)
-   is
-      GNAT_Hedr : constant Text_Buffer (1 .. 78) := (others => '-');
-
+      Index : Source_File_Index) is
    begin
       Scanner.Initialize_Scanner (Index);
-
-      if Index /= Internal_Source_File then
-         Set_Unit (Index, Unit);
-      end if;
+      Set_Unit (Index, Unit);
 
       Current_Source_Unit := Unit;
 
-      --  Set default for Comes_From_Source (except if we are going to process
-      --  an artificial string internally created within the compiler and
-      --  placed into internal source duffer). All nodes built now until we
+      --  Set default for Comes_From_Source. All nodes built now until we
       --  reenter the analyzer will have Comes_From_Source set to True
 
-      if Index /= Internal_Source_File then
-         Set_Comes_From_Source_Default (True);
-      end if;
-
-      --  Check license if GNAT type header possibly present
-
-      if Source_Last (Index) - Scan_Ptr > 80
-        and then Source (Scan_Ptr .. Scan_Ptr + 77) = GNAT_Hedr
-      then
-         Set_License (Current_Source_File, Determine_License);
-      end if;
+      Set_Comes_From_Source_Default (True);
 
       Check_For_BOM;
 
@@ -239,25 +74,11 @@ package body Scn is
       --  call Scan. Scan initial token (note this initializes Prev_Token,
       --  Prev_Token_Ptr).
 
-      --  There are two reasons not to do the Scan step in case if we
-      --  initialize the scanner for the internal source buffer:
-
-      --  - The artificial string may not be created by the compiler in this
-      --    buffer when we call Initialize_Scanner
-
-      --  - For these artificial strings a special way of scanning is used, so
-      --    the standard step of the scanner may just break the algorithm of
-      --    processing these strings.
-
-      if Index /= Internal_Source_File then
-         Scan;
-      end if;
+      Scan;
 
       --  Clear flags for reserved words used as identifiers
 
-      for J in Token_Type loop
-         Used_As_Identifier (J) := False;
-      end loop;
+      Used_As_Identifier := (others => False);
    end Initialize_Scanner;
 
    ---------------
@@ -380,7 +201,8 @@ package body Scn is
    ------------------------------
 
    procedure Scan_Reserved_Identifier (Force_Msg : Boolean) is
-      Token_Chars : constant String := Token_Type'Image (Token);
+      Token_Chars : String  := Token_Type'Image (Token);
+      Len         : Natural := 0;
 
    begin
       --  AI12-0125 : '@' denotes the target_name, i.e. serves as an
@@ -394,16 +216,24 @@ package body Scn is
       --  We have in Token_Chars the image of the Token name, i.e. Tok_xxx.
       --  This code extracts the xxx and makes an identifier out of it.
 
-      Name_Len := 0;
-
       for J in 5 .. Token_Chars'Length loop
-         Name_Len := Name_Len + 1;
-         Name_Buffer (Name_Len) := Fold_Lower (Token_Chars (J));
+         Len := Len + 1;
+         Token_Chars (Len) := Fold_Lower (Token_Chars (J));
       end loop;
 
-      Token_Name := Name_Find;
+      Token_Name := Name_Find (Token_Chars (1 .. Len));
 
-      if not Used_As_Identifier (Token) or else Force_Msg then
+      --  If Inside_Pragma is True, we don't give an error. This is to allow
+      --  things like "pragma Ignore_Pragma (Interface)", where "Interface" is
+      --  a reserved word. There is no danger of missing errors, because any
+      --  misuse must have been preceded by an illegal declaration. For
+      --  example, in "pragma Pack (Begin);", either Begin is not declared,
+      --  which is an error, or it is declared, which will be an error on that
+      --  declaration.
+
+      if (not Used_As_Identifier (Token) or else Force_Msg)
+        and then not Inside_Pragma
+      then
          Error_Msg_Name_1 := Token_Name;
          Error_Msg_SC ("reserved word* cannot be used as identifier!");
          Used_As_Identifier (Token) := True;

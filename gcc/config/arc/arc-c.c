@@ -1,4 +1,4 @@
-/* Copyright (C) 2016-2017 Free Software Foundation, Inc.
+/* Copyright (C) 2016-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -16,6 +16,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.
 */
+
+#define IN_TARGET_CODE 1
 
 #include "config.h"
 #include "system.h"
@@ -62,9 +64,21 @@ arc_cpu_cpp_builtins (cpp_reader * pfile)
   builtin_define_with_int_value ("__ARC_TLS_REGNO__",
 				 arc_tp_regno);
 
+  builtin_define_with_int_value ("__ARC_LPC_WIDTH__", arc_lpcwidth);
+
   builtin_define (TARGET_BIG_ENDIAN
 		  ? "__BIG_ENDIAN__" : "__LITTLE_ENDIAN__");
   if (TARGET_BIG_ENDIAN)
     builtin_define ("__big_endian__");
 
+  if (TARGET_HARD_FLOAT)
+    {
+      builtin_define ("__arc_hard_float__");
+      builtin_define ("__ARC_HARD_FLOAT__");
+    }
+  else
+    {
+      builtin_define ("__arc_soft_float__");
+      builtin_define ("__ARC_SOFT_FLOAT__");
+    }
 }

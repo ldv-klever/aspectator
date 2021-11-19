@@ -1,4 +1,4 @@
-# Copyright (C) 2003-2017 Free Software Foundation, Inc.
+# Copyright (C) 2003-2021 Free Software Foundation, Inc.
 #
 # This file is part of GCC.
 #
@@ -16,9 +16,8 @@
 # along with GCC; see the file COPYING3.  If not see
 # <http://www.gnu.org/licenses/>.
 
-MULTILIB_OPTIONS = \
-  mrtp fPIC \
-  t4/t4be/t4t/t4tbe/t5/t5be/t5t/t5tbe/tstrongarm/txscale/txscalebe
-MULTILIB_MATCHES = fPIC=fpic
-# Don't build -fPIC multilibs for kernel or Thumb code.
-MULTILIB_EXCEPTIONS = fPIC* mrtp/fPIC/*t[45]t*
+# Multilibs for ARM VxWorks.  With the move to VxWorks 7, we only
+# support -mrtp variation on top of the default settings at this
+# stage, without PIC.
+
+MULTILIB_OPTIONS = mrtp

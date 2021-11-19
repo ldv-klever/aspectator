@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// +build !js
+
 package net
 
 import (
 	"fmt"
 	"internal/testenv"
 	"io"
+	"os"
 	"reflect"
 	"runtime"
 	"sync"
@@ -32,28 +35,28 @@ func BenchmarkTCP4PersistentTimeout(b *testing.B) {
 }
 
 func BenchmarkTCP6OneShot(b *testing.B) {
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		b.Skip("ipv6 is not supported")
 	}
 	benchmarkTCP(b, false, false, "[::1]:0")
 }
 
 func BenchmarkTCP6OneShotTimeout(b *testing.B) {
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		b.Skip("ipv6 is not supported")
 	}
 	benchmarkTCP(b, false, true, "[::1]:0")
 }
 
 func BenchmarkTCP6Persistent(b *testing.B) {
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		b.Skip("ipv6 is not supported")
 	}
 	benchmarkTCP(b, true, false, "[::1]:0")
 }
 
 func BenchmarkTCP6PersistentTimeout(b *testing.B) {
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		b.Skip("ipv6 is not supported")
 	}
 	benchmarkTCP(b, true, true, "[::1]:0")
@@ -163,7 +166,7 @@ func BenchmarkTCP4ConcurrentReadWrite(b *testing.B) {
 }
 
 func BenchmarkTCP6ConcurrentReadWrite(b *testing.B) {
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		b.Skip("ipv6 is not supported")
 	}
 	benchmarkTCPConcurrentReadWrite(b, "[::1]:0")
@@ -372,7 +375,7 @@ func TestTCPListenerName(t *testing.T) {
 func TestIPv6LinkLocalUnicastTCP(t *testing.T) {
 	testenv.MustHaveExternalNetwork(t)
 
-	if !supportsIPv6 {
+	if !supportsIPv6() {
 		t.Skip("IPv6 is not supported")
 	}
 
@@ -390,7 +393,7 @@ func TestIPv6LinkLocalUnicastTCP(t *testing.T) {
 		}
 		defer ls.teardown()
 		ch := make(chan error, 1)
-		handler := func(ls *localServer, ln Listener) { transponder(ln, ch) }
+		handler := func(ls *localServer, ln Listener) { ls.transponder(ln, ch) }
 		if err := ls.buildup(handler); err != nil {
 			t.Fatal(err)
 		}
@@ -476,10 +479,6 @@ func TestTCPReadWriteAllocs(t *testing.T) {
 		// The implementation of asynchronous cancelable
 		// I/O on Plan 9 allocates memory.
 		// See net/fd_io_plan9.go.
-		t.Skipf("not supported on %s", runtime.GOOS)
-	case "nacl":
-		// NaCl needs to allocate pseudo file descriptor
-		// stuff. See syscall/fd_nacl.go.
 		t.Skipf("not supported on %s", runtime.GOOS)
 	}
 
@@ -653,7 +652,7 @@ func TestTCPSelfConnect(t *testing.T) {
 		n = 1000
 	}
 	switch runtime.GOOS {
-	case "darwin", "dragonfly", "freebsd", "netbsd", "openbsd", "plan9", "solaris", "windows":
+	case "darwin", "ios", "dragonfly", "freebsd", "netbsd", "openbsd", "plan9", "illumos", "solaris", "windows":
 		// Non-Linux systems take a long time to figure
 		// out that there is nothing listening on localhost.
 		n = 100
@@ -725,5 +724,107 @@ func TestTCPBig(t *testing.T) {
 			c.Close()
 			<-done
 		})
+	}
+}
+
+func TestCopyPipeIntoTCP(t *testing.T) {
+	ln, err := newLocalListener("tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	errc := make(chan error, 1)
+	defer func() {
+		if err := <-errc; err != nil {
+			t.Error(err)
+		}
+	}()
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			errc <- err
+			return
+		}
+		defer c.Close()
+
+		buf := make([]byte, 100)
+		n, err := io.ReadFull(c, buf)
+		if err != io.ErrUnexpectedEOF || n != 2 {
+			errc <- fmt.Errorf("got err=%q n=%v; want err=%q n=2", err, n, io.ErrUnexpectedEOF)
+			return
+		}
+
+		errc <- nil
+	}()
+
+	c, err := Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	errc2 := make(chan error, 1)
+	defer func() {
+		if err := <-errc2; err != nil {
+			t.Error(err)
+		}
+	}()
+
+	defer w.Close()
+
+	go func() {
+		_, err := io.Copy(c, r)
+		errc2 <- err
+	}()
+
+	// Split write into 2 packets. That makes Windows TransmitFile
+	// drop second packet.
+	packet := make([]byte, 1)
+	_, err = w.Write(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	_, err = w.Write(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func BenchmarkSetReadDeadline(b *testing.B) {
+	ln, err := newLocalListener("tcp")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ln.Close()
+	var serv Conn
+	done := make(chan error)
+	go func() {
+		var err error
+		serv, err = ln.Accept()
+		done <- err
+	}()
+	c, err := Dial("tcp", ln.Addr().String())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	if err := <-done; err != nil {
+		b.Fatal(err)
+	}
+	defer serv.Close()
+	c.SetWriteDeadline(time.Now().Add(2 * time.Hour))
+	deadline := time.Now().Add(time.Hour)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c.SetReadDeadline(deadline)
+		deadline = deadline.Add(1)
 	}
 }

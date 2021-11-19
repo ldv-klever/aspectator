@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.
-   Copyright (C) 1992-2017 Free Software Foundation, Inc.
+   Copyright (C) 1992-2021 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
 
@@ -29,7 +29,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "df.h"
 #include "profile.h"
 #include "insn-attr.h"
-#include "params.h"
 #include "cfgrtl.h"
 #include "cfgbuild.h"
 #include "sched-int.h"
@@ -231,11 +230,9 @@ rank (rtx_insn *insn1, rtx_insn *insn2)
   basic_block bb1 = BLOCK_FOR_INSN (insn1);
   basic_block bb2 = BLOCK_FOR_INSN (insn2);
 
-  if (bb1->count > bb2->count
-      || bb1->frequency > bb2->frequency)
+  if (bb1->count > bb2->count)
     return -1;
-  if (bb1->count < bb2->count
-      || bb1->frequency < bb2->frequency)
+  if (bb1->count < bb2->count)
     return 1;
   return 0;
 }
@@ -421,7 +418,7 @@ add_deps_for_risky_insns (rtx_insn *head, rtx_insn *tail)
 	    case PRISKY_CANDIDATE:
 	      /* ??? We could implement better checking PRISKY_CANDIDATEs
 		 analogous to sched-rgn.c.  */
-	      /* We can not change the mode of the backward
+	      /* We cannot change the mode of the backward
 		 dependency because REG_DEP_ANTI has the lowest
 		 rank.  */
 	      if (! sched_insns_conditions_mutex_p (insn, prev))
@@ -474,7 +471,7 @@ basic_block
 schedule_ebb (rtx_insn *head, rtx_insn *tail, bool modulo_scheduling)
 {
   basic_block first_bb, target_bb;
-  struct deps_desc tmp_deps;
+  class deps_desc tmp_deps;
   bool success;
 
   /* Blah.  We should fix the rest of the code not to get confused by
@@ -590,15 +587,14 @@ schedule_ebbs_init (void)
   compute_bb_for_insn ();
 
   /* Initialize DONT_CALC_DEPS and ebb-{start, end} markers.  */
-  bitmap_initialize (&dont_calc_deps, 0);
-  bitmap_clear (&dont_calc_deps);
+  bitmap_initialize (&dont_calc_deps, &bitmap_default_obstack);
 }
 
 /* Perform cleanups after scheduling using schedules_ebbs or schedule_ebb.  */
 void
 schedule_ebbs_finish (void)
 {
-  bitmap_clear (&dont_calc_deps);
+  bitmap_release (&dont_calc_deps);
 
   /* Reposition the prologue and epilogue notes in case we moved the
      prologue/epilogue insns.  */
@@ -622,10 +618,10 @@ schedule_ebbs (void)
   if (n_basic_blocks_for_fn (cfun) == NUM_FIXED_BLOCKS)
     return;
 
-  if (profile_info && flag_branch_probabilities)
-    probability_cutoff = PARAM_VALUE (TRACER_MIN_BRANCH_PROBABILITY_FEEDBACK);
+  if (profile_info && profile_status_for_fn (cfun) == PROFILE_READ)
+    probability_cutoff = param_tracer_min_branch_probability_feedback;
   else
-    probability_cutoff = PARAM_VALUE (TRACER_MIN_BRANCH_PROBABILITY);
+    probability_cutoff = param_tracer_min_branch_probability;
   probability_cutoff = REG_BR_PROB_BASE / 100 * probability_cutoff;
 
   schedule_ebbs_init ();
@@ -648,7 +644,8 @@ schedule_ebbs (void)
 	  e = find_fallthru_edge (bb->succs);
 	  if (! e)
 	    break;
-	  if (e->probability <= probability_cutoff)
+	  if (e->probability.initialized_p ()
+	      && e->probability.to_reg_br_prob_base () <= probability_cutoff)
 	    break;
 	  if (e->dest->flags & BB_DISABLE_SCHEDULE)
  	    break;

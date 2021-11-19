@@ -1,5 +1,5 @@
 /* Target definitions for PowerPC running Darwin (Mac OS X).
-   Copyright (C) 1997-2017 Free Software Foundation, Inc.
+   Copyright (C) 1997-2021 Free Software Foundation, Inc.
    Contributed by Apple Computer Inc.
 
    This file is part of GCC.
@@ -43,8 +43,7 @@
 
 /* We're not ever going to do TOCs.  */
 
-#define TARGET_TOC 0
-#define TARGET_NO_TOC 1
+#define TARGET_HAS_TOC 0
 
 /* Override the default rs6000 definition.  */
 #undef  PTRDIFF_TYPE
@@ -95,6 +94,24 @@
 
 #define RS6000_DEFAULT_LONG_DOUBLE_SIZE 128
 
+/* Machine dependent libraries.
+   Include libmx when targeting Darwin 7.0 and above, but before libSystem,
+   since the functions are actually in libSystem but for 7.x compatibility
+   we want them to be looked for in libmx first.
+   Include libSystemStubs when compiling against 10.3 - 10.5 SDKs (we assume
+   this is the case when targetting these) - but not for 64-bit long double.
+   Don't do either for m64, the library is either a dummy or non-existent.
+*/
+
+#undef LIB_SPEC
+#define LIB_SPEC \
+"%{!static:								\
+  %{!m64:%{!mlong-double-64:						\
+    %{pg:%:version-compare(>< 10.3 10.5 mmacosx-version-min= -lSystemStubs_profile)} \
+    %{!pg:%:version-compare(>< 10.3 10.5 mmacosx-version-min= -lSystemStubs)} \
+     %:version-compare(>< 10.3 10.4 mmacosx-version-min= -lmx)}}	\
+  -lSystem								\
+}"
 
 /* We want -fPIC by default, unless we're using -static to compile for
    the kernel or some such.  The "-faltivec" option should have been
@@ -156,6 +173,18 @@
    %:version-compare(!> 10.4 mmacosx-version-min= crt3_2.o%s) \
   }}"
 
+/* As for crt1, we need to force the dylib crt for 10.6.  */
+#undef DARWIN_DYLIB1_SPEC
+#define DARWIN_DYLIB1_SPEC						\
+  "%:version-compare(!> 10.5 mmacosx-version-min= -ldylib1.o)		\
+   %:version-compare(>< 10.5 10.7 mmacosx-version-min= -ldylib1.10.5.o)"
+
+/* Likewise, the bundle crt.  */
+#undef DARWIN_BUNDLE1_SPEC
+#define DARWIN_BUNDLE1_SPEC \
+"%{!static:%:version-compare(< 10.7 mmacosx-version-min= -lbundle1.o)	\
+	   %{fgnu-tm: -lcrttms.o}}"
+
 /* The PPC regs save/restore functions are leaves and could, conceivably
    be used by the tm destructor.  */
 #undef ENDFILE_SPEC
@@ -184,19 +213,45 @@
 #undef  RS6000_PIC_OFFSET_TABLE_REGNUM
 #define RS6000_PIC_OFFSET_TABLE_REGNUM 31
 
-/* Pad the outgoing args area to 16 bytes instead of the usual 8.  */
+/* Darwin's stack must remain 16-byte aligned for both 32 and 64 bit
+   ABIs.  */
 
-#undef STARTING_FRAME_OFFSET
-#define STARTING_FRAME_OFFSET						\
-  (FRAME_GROWS_DOWNWARD							\
-   ? 0									\
-   : (RS6000_ALIGN (crtl->outgoing_args_size, 16)		\
-      + RS6000_SAVE_AREA))
+#undef  STACK_BOUNDARY
+#define STACK_BOUNDARY 128
+
+/* Offset within stack frame to start allocating local variables at.
+   For supported Darwin versions, FRAME_GROWS_DOWNWARD is true, therefore
+   this value is the offset to the END of the first local allocated.
+
+   On the RS/6000, the frame pointer is the same as the stack pointer,
+   except for dynamic allocations.  So we start after the fixed area and
+   outgoing parameter area.
+
+   If the function uses dynamic stack space (CALLS_ALLOCA is set), that
+   space needs to be aligned to STACK_BOUNDARY, i.e. the sum of the
+   sizes of the fixed area and the parameter area must be a multiple of
+   STACK_BOUNDARY.  */
+
+#undef RS6000_STARTING_FRAME_OFFSET
+#define RS6000_STARTING_FRAME_OFFSET					\
+  (cfun->calls_alloca							\
+   ? RS6000_ALIGN (crtl->outgoing_args_size + RS6000_SAVE_AREA, 16)	\
+   : (RS6000_ALIGN (crtl->outgoing_args_size, 16) + RS6000_SAVE_AREA))
+
+/* Offset from the stack pointer register to an item dynamically
+   allocated on the stack, e.g., by `alloca'.
+
+   The default value for this macro is `STACK_POINTER_OFFSET' plus the
+   length of the outgoing arguments.  The default is correct for most
+   machines.  See `function.c' for details.
+
+   This value must be a multiple of STACK_BOUNDARY (hard coded in
+   `emit-rtl.c').  */
 
 #undef STACK_DYNAMIC_OFFSET
 #define STACK_DYNAMIC_OFFSET(FUNDECL)					\
-  (RS6000_ALIGN (crtl->outgoing_args_size, 16)		\
-   + (STACK_POINTER_OFFSET))
+  RS6000_ALIGN (crtl->outgoing_args_size.to_constant()			\
+		+ STACK_POINTER_OFFSET, 16)
 
 /* Darwin uses a function call if everything needs to be saved/restored.  */
 
@@ -214,29 +269,27 @@
 #undef REGISTER_NAMES
 #define REGISTER_NAMES							\
 {									\
+  /* GPRs */								\
      "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",		\
      "r8",  "r9", "r10", "r11", "r12", "r13", "r14", "r15",		\
     "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23",		\
     "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",		\
+  /* FPRs */								\
      "f0",  "f1",  "f2",  "f3",  "f4",  "f5",  "f6",  "f7",		\
      "f8",  "f9", "f10", "f11", "f12", "f13", "f14", "f15",		\
     "f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23",		\
     "f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31",		\
-     "mq",  "lr", "ctr",  "ap",						\
+  /* VRs */								\
+     "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",		\
+     "v8",  "v9", "v10", "v11", "v12", "v13", "v14", "v15",		\
+    "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",		\
+    "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",		\
+  /* lr ctr ca ap */							\
+     "lr", "ctr", "xer",  "ap",						\
+  /* cr0..cr7 */							\
     "cr0", "cr1", "cr2", "cr3", "cr4", "cr5", "cr6", "cr7",		\
-    "xer",								\
-     "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",             \
-     "v8",  "v9", "v10", "v11", "v12", "v13", "v14", "v15",             \
-    "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",             \
-    "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",             \
-    "vrsave", "vscr",							\
-    "spe_acc", "spefscr",                                               \
-    "sfp",								\
-    "tfhar", "tfiar", "texasr",						\
-    "rh0",  "rh1",  "rh2",  "rh3",  "rh4",  "rh5",  "rh6",  "rh7",	\
-    "rh8",  "rh9",  "rh10", "rh11", "rh12", "rh13", "rh14", "rh15",	\
-    "rh16", "rh17", "rh18", "rh19", "rh20", "rh21", "rh22", "rh23",	\
-    "rh24", "rh25", "rh26", "rh27", "rh28", "rh29", "rh30", "rh31"	\
+  /* vrsave vscr sfp */							\
+    "vrsave", "vscr", "sfp"						\
 }
 
 /* This outputs NAME to FILE.  */
@@ -317,6 +370,9 @@
 #undef  TARGET_IEEEQUAD
 #define TARGET_IEEEQUAD 0
 
+#undef  TARGET_IEEEQUAD_DEFAULT
+#define TARGET_IEEEQUAD_DEFAULT 0
+
 /* Since Darwin doesn't do TOCs, stub this out.  */
 
 #define ASM_OUTPUT_SPECIAL_POOL_ENTRY_P(X, MODE)  ((void)X, (void)MODE, 0)
@@ -343,11 +399,11 @@
   ((CONSTANT_P (X)						\
     && reg_classes_intersect_p ((CLASS), FLOAT_REGS))		\
    ? NO_REGS							\
-   : ((GET_CODE (X) == SYMBOL_REF || GET_CODE (X) == HIGH)	\
+   : ((SYMBOL_REF_P (X) || GET_CODE (X) == HIGH)		\
       && reg_class_subset_p (BASE_REGS, (CLASS)))		\
    ? BASE_REGS							\
    : (GET_MODE_CLASS (GET_MODE (X)) == MODE_INT			\
-      && (CLASS) == NON_SPECIAL_REGS)				\
+      && (CLASS) == GEN_OR_FLOAT_REGS)				\
    ? GENERAL_REGS						\
    : (CLASS))
 
@@ -382,7 +438,7 @@
    registers and memory.  FIRST is nonzero if this is the only
    element.  */
 #define BLOCK_REG_PADDING(MODE, TYPE, FIRST) \
-  (!(FIRST) ? upward : FUNCTION_ARG_PADDING (MODE, TYPE))
+  (!(FIRST) ? PAD_UPWARD : targetm.calls.function_arg_padding (MODE, TYPE))
 
 #define DOUBLE_INT_ASM_OP "\t.quad\t"
 

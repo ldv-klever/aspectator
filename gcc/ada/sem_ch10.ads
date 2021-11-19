@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,10 +34,12 @@ package Sem_Ch10 is
    procedure Analyze_Protected_Body_Stub                (N : Node_Id);
    procedure Analyze_Subunit                            (N : Node_Id);
 
-   procedure Install_Context (N : Node_Id);
+   procedure Install_Context (N : Node_Id; Chain : Boolean := True);
    --  Installs the entities from the context clause of the given compilation
    --  unit into the visibility chains. This is done before analyzing a unit.
-   --  For a child unit, install context of parents as well.
+   --  For a child unit, install context of parents as well. The flag Chain is
+   --  used to control the "chaining" or linking of use-type and use-package
+   --  clauses to avoid circularities when reinstalling context clauses.
 
    procedure Install_Private_With_Clauses (P : Entity_Id);
    --  Install the private with_clauses of a compilation unit, when compiling
@@ -48,6 +50,25 @@ package Sem_Ch10 is
    --  Assuming that type T is an incomplete type coming from a limited with
    --  view, determine whether the package where T resides is imported through
    --  a regular with clause in the current package body.
+
+   function Is_Visible_Through_Renamings
+     (P          : Entity_Id;
+      Error_Node : Node_Id := Empty) return Boolean;
+   --  Check if some package installed though normal with-clauses has a
+   --  renaming declaration of package P. AARM 10.1.2(21/2). Errors are
+   --  reported on Error_Node (if present); otherwise no error is reported.
+
+   procedure Load_Needed_Body
+     (N          : Node_Id;
+      OK         : out Boolean;
+      Do_Analyze : Boolean := True);
+   --  Load and analyze the body of a context unit that is generic, or that
+   --  contains generic units or inlined units. The body becomes part of the
+   --  semantic dependency set of the unit that needs it. The returned result
+   --  in OK is True if the load is successful, and False if the requested file
+   --  cannot be found. If the flag Do_Analyze is false, the unit is loaded and
+   --  parsed only. This allows a selective analysis in some inlining cases
+   --  where a full analysis would lead so circularities in the back-end.
 
    procedure Remove_Context (N : Node_Id);
    --  Removes the entities from the context clause of the given compilation
@@ -63,17 +84,5 @@ package Sem_Ch10 is
    --  the visible part of the enclosing compilation unit. This Ada 2005
    --  rule imposes extra steps in order to install/remove the private_with
    --  clauses of an enclosing unit.
-
-   procedure Load_Needed_Body
-     (N          : Node_Id;
-      OK         : out Boolean;
-      Do_Analyze : Boolean := True);
-   --  Load and analyze the body of a context unit that is generic, or that
-   --  contains generic units or inlined units. The body becomes part of the
-   --  semantic dependency set of the unit that needs it. The returned result
-   --  in OK is True if the load is successful, and False if the requested file
-   --  cannot be found. If the flag Do_Analyze is false, the unit is loaded and
-   --  parsed only. This allows a selective analysis in some inlining cases
-   --  where a full analysis would lead so circularities in the back-end.
 
 end Sem_Ch10;

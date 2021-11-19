@@ -1,5 +1,5 @@
 /* Prototypes for Blackfin functions used in the md file & elsewhere.
-   Copyright (C) 2005-2017 Free Software Foundation, Inc.
+   Copyright (C) 2005-2021 Free Software Foundation, Inc.
 
    This file is part of GNU CC.
 
@@ -71,7 +71,6 @@ extern char *bfin_asm_long (void);
 extern char *bfin_asm_short (void);
 extern int log2constp (unsigned HOST_WIDE_INT);
 
-extern int hard_regno_mode_ok (int, machine_mode);
 extern void init_cumulative_args (CUMULATIVE_ARGS *, tree, rtx);	  
 extern HOST_WIDE_INT bfin_initial_elimination_offset (int, int);
 
@@ -82,7 +81,7 @@ extern bool expand_move (rtx *, machine_mode);
 extern void bfin_expand_call (rtx, rtx, rtx, rtx, int);
 extern bool bfin_longcall_p (rtx, int);
 extern bool bfin_dsp_memref_p (rtx);
-extern bool bfin_expand_movmem (rtx, rtx, rtx, rtx);
+extern bool bfin_expand_cpymem (rtx, rtx, rtx, rtx);
 
 extern enum reg_class secondary_input_reload_class (enum reg_class,
 						    machine_mode,

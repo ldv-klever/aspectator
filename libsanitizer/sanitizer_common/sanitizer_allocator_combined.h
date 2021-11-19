@@ -1,7 +1,8 @@
 //===-- sanitizer_allocator_combined.h --------------------------*- C++ -*-===//
 //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,76 +19,71 @@
 //  When allocating 2^x bytes it should return 2^x aligned chunk.
 // PrimaryAllocator is used via a local AllocatorCache.
 // SecondaryAllocator can allocate anything, but is not efficient.
-template <class PrimaryAllocator, class AllocatorCache,
-          class SecondaryAllocator>  // NOLINT
+template <class PrimaryAllocator,
+          class LargeMmapAllocatorPtrArray = DefaultLargeMmapAllocatorPtrArray>
 class CombinedAllocator {
  public:
-  void InitCommon(bool may_return_null) {
-    primary_.Init();
-    atomic_store(&may_return_null_, may_return_null, memory_order_relaxed);
-  }
+  using AllocatorCache = typename PrimaryAllocator::AllocatorCache;
+  using SecondaryAllocator =
+      LargeMmapAllocator<typename PrimaryAllocator::MapUnmapCallback,
+                         LargeMmapAllocatorPtrArray,
+                         typename PrimaryAllocator::AddressSpaceView>;
 
-  void InitLinkerInitialized(bool may_return_null) {
-    secondary_.InitLinkerInitialized(may_return_null);
+  void InitLinkerInitialized(s32 release_to_os_interval_ms) {
     stats_.InitLinkerInitialized();
-    InitCommon(may_return_null);
+    primary_.Init(release_to_os_interval_ms);
+    secondary_.InitLinkerInitialized();
   }
 
-  void Init(bool may_return_null) {
-    secondary_.Init(may_return_null);
+  void Init(s32 release_to_os_interval_ms) {
     stats_.Init();
-    InitCommon(may_return_null);
+    primary_.Init(release_to_os_interval_ms);
+    secondary_.Init();
   }
 
-  void *Allocate(AllocatorCache *cache, uptr size, uptr alignment,
-                 bool cleared = false, bool check_rss_limit = false) {
+  void *Allocate(AllocatorCache *cache, uptr size, uptr alignment) {
     // Returning 0 on malloc(0) may break a lot of code.
     if (size == 0)
       size = 1;
-    if (size + alignment < size) return ReturnNullOrDieOnBadRequest();
-    if (check_rss_limit && RssLimitIsExceeded()) return ReturnNullOrDieOnOOM();
+    if (size + alignment < size) {
+      Report("WARNING: %s: CombinedAllocator allocation overflow: "
+             "0x%zx bytes with 0x%zx alignment requested\n",
+             SanitizerToolName, size, alignment);
+      return nullptr;
+    }
+    uptr original_size = size;
+    // If alignment requirements are to be fulfilled by the frontend allocator
+    // rather than by the primary or secondary, passing an alignment lower than
+    // or equal to 8 will prevent any further rounding up, as well as the later
+    // alignment check.
     if (alignment > 8)
       size = RoundUpTo(size, alignment);
+    // The primary allocator should return a 2^x aligned allocation when
+    // requested 2^x bytes, hence using the rounded up 'size' when being
+    // serviced by the primary (this is no longer true when the primary is
+    // using a non-fixed base address). The secondary takes care of the
+    // alignment without such requirement, and allocating 'size' would use
+    // extraneous memory, so we employ 'original_size'.
     void *res;
-    bool from_primary = primary_.CanAllocate(size, alignment);
-    if (from_primary)
+    if (primary_.CanAllocate(size, alignment))
       res = cache->Allocate(&primary_, primary_.ClassID(size));
     else
-      res = secondary_.Allocate(&stats_, size, alignment);
+      res = secondary_.Allocate(&stats_, original_size, alignment);
     if (alignment > 8)
       CHECK_EQ(reinterpret_cast<uptr>(res) & (alignment - 1), 0);
-    if (cleared && res && from_primary)
-      internal_bzero_aligned16(res, RoundUpTo(size, 16));
     return res;
   }
 
-  bool MayReturnNull() const {
-    return atomic_load(&may_return_null_, memory_order_acquire);
+  s32 ReleaseToOSIntervalMs() const {
+    return primary_.ReleaseToOSIntervalMs();
   }
 
-  void *ReturnNullOrDieOnBadRequest() {
-    if (MayReturnNull())
-      return nullptr;
-    ReportAllocatorCannotReturnNull(false);
+  void SetReleaseToOSIntervalMs(s32 release_to_os_interval_ms) {
+    primary_.SetReleaseToOSIntervalMs(release_to_os_interval_ms);
   }
 
-  void *ReturnNullOrDieOnOOM() {
-    if (MayReturnNull()) return nullptr;
-    ReportAllocatorCannotReturnNull(true);
-  }
-
-  void SetMayReturnNull(bool may_return_null) {
-    secondary_.SetMayReturnNull(may_return_null);
-    atomic_store(&may_return_null_, may_return_null, memory_order_release);
-  }
-
-  bool RssLimitIsExceeded() {
-    return atomic_load(&rss_limit_is_exceeded_, memory_order_acquire);
-  }
-
-  void SetRssLimitIsExceeded(bool rss_limit_is_exceeded) {
-    atomic_store(&rss_limit_is_exceeded_, rss_limit_is_exceeded,
-                 memory_order_release);
+  void ForceReleaseToOS() {
+    primary_.ForceReleaseToOS();
   }
 
   void Deallocate(AllocatorCache *cache, void *p) {
@@ -191,8 +187,6 @@ class CombinedAllocator {
     primary_.ForceUnlock();
   }
 
-  void ReleaseToOS() { primary_.ReleaseToOS(); }
-
   // Iterate over all existing chunks.
   // The allocator must be locked when calling this function.
   void ForEachChunk(ForEachChunkCallback callback, void *arg) {
@@ -204,6 +198,4 @@ class CombinedAllocator {
   PrimaryAllocator primary_;
   SecondaryAllocator secondary_;
   AllocatorGlobalStats stats_;
-  atomic_uint8_t may_return_null_;
-  atomic_uint8_t rss_limit_is_exceeded_;
 };

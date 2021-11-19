@@ -13,42 +13,42 @@
   end do
   s = foo (b)
   do i = 1, 1024
-    if (a(i).ne.((i - 513) * b(i))) call abort
+    if (a(i).ne.((i - 513) * b(i))) stop 1
     if (i.lt.52.and.modulo (i - 52, 39).ne.0) then
-      if (b(i).ne.(modulo (i - 52, 39) - 39)) call abort
+      if (b(i).ne.(modulo (i - 52, 39) - 39)) stop 2
     else
-      if (b(i).ne.(modulo (i - 52, 39))) call abort
+      if (b(i).ne.(modulo (i - 52, 39))) stop 3
     end if
     a(i) = i - 513
   end do
-  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) call abort
+  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) stop 4
   k = 4
   m = 2
   t = 1
   s = bar (b)
   do i = 1, 1024
-    if (a(i).ne.((i - 513) * b(i))) call abort
+    if (a(i).ne.((i - 513) * b(i))) stop 5
     if (i.lt.52.and.modulo (i - 52, 39).ne.0) then
-      if (b(i).ne.(modulo (i - 52, 39) - 39)) call abort
+      if (b(i).ne.(modulo (i - 52, 39) - 39)) stop 6
     else
-      if (b(i).ne.(modulo (i - 52, 39))) call abort
+      if (b(i).ne.(modulo (i - 52, 39))) stop 7
     end if
     a(i) = i - 513
   end do
-  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) call abort
+  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) stop 8
   k = 4
   m = 2
   t = 1
   s = baz (b)
   do i = 1, 1024
-    if (a(i).ne.((i - 513) * b(i))) call abort
+    if (a(i).ne.((i - 513) * b(i))) stop 9
     if (i.lt.52.and.modulo (i - 52, 39).ne.0) then
-      if (b(i).ne.(modulo (i - 52, 39) - 39)) call abort
+      if (b(i).ne.(modulo (i - 52, 39) - 39)) stop 10
     else
-      if (b(i).ne.(modulo (i - 52, 39))) call abort
+      if (b(i).ne.(modulo (i - 52, 39))) stop 11
     end if
   end do
-  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) call abort
+  if (k.ne.(4 + 3 * 1024).or.s.ne.1596127) stop 12
 contains
   function foo (p)
     integer :: p(1024), u, v, i, s, foo
@@ -62,8 +62,8 @@ contains
       s = s + p(i) + k
     end do
     !$omp end simd
-    if (i.ne.1025) call abort
-    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) call abort
+    if (i.ne.1025) stop 13
+    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) stop 14
     foo = s
   end function foo
   function bar (p)
@@ -78,8 +78,8 @@ contains
       s = s + p(i) + k
     end do
     !$omp end simd
-    if (i.ne.1025) call abort
-    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) call abort
+    if (i.ne.1025) stop 15
+    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) stop 16
     bar = s
   end function bar
   function baz (p)
@@ -94,8 +94,8 @@ contains
       v = p(i) + k
       s = s + p(i) + k
     end do
-    if (i.ne.1025) call abort
-    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) call abort
+    if (i.ne.1025) stop 17
+    if (u.ne.(36 + 4 + 3 * 1023).or.v.ne.(36 + 4 + 3 * 1024)) stop 18
     baz = s
   end function baz
 end

@@ -16,6 +16,8 @@
 #define short           +2 
 #define long            +3
 
+#if !defined(WCHAR_MAX)
+
 #if __WCHAR_TYPE__ == 0
 # define WCHAR_MAX      INT_MAX
 #elif __WCHAR_TYPE__ == 1
@@ -26,6 +28,8 @@
 # define WCHAR_MAX      LONG_MAX
 #else
 # error wacky wchar_t
+#endif
+
 #endif
 
 #undef unsigned
@@ -39,7 +43,7 @@
 #endif
 
 #if WCHAR_MAX >= 0x7ffffff
-# if L'\U1234abcd' != 0x1234abcd
+# if L'\U1234abcd' != 0x1234abcd /* { dg-warning "outside" "" { xfail powerpc-ibm-aix* } } */
 #  error bad long ucs	/* { dg-bogus "bad" "bad U1234abcd evaluation" } */
 # endif
 #endif
@@ -49,12 +53,12 @@ void foo ()
   int c;
 
   c = L'\ubad';		/* { dg-error "incomplete" "incomplete UCN 1" } */
-  c = L"\U1234"[0];	/* { dg-error "incomplete" "incompete UCN 2" } */
+  c = L"\U1234"[0];	/* { dg-error "incomplete" "incomplete UCN 2" } */
 
   c = L'\u000x';	/* { dg-error "incomplete" "non-hex digit in UCN" } */
   /* If sizeof(HOST_WIDE_INT) > sizeof(wchar_t), we can get a multi-character
      constant warning even for wide characters.  */
-  /* { dg-warning "too long|multi-character" "" { target *-*-* } 54 } */
+  /* { dg-warning "too long|multi-character" "" { target *-*-* } .-3 } */
 
   c = '\u0024';		/* { dg-bogus "invalid" "0024 is a valid UCN" } */
   c = "\u0040"[0];	/* { dg-bogus "invalid" "0040 is a valid UCN" } */
@@ -64,4 +68,6 @@ void foo ()
   c = '\u0025';		/* { dg-error "not a valid" "0025 invalid UCN" } */
   c = L"\uD800"[0];	/* { dg-error "not a valid" "D800 invalid UCN" } */
   c = L'\U0000DFFF';	/* { dg-error "not a valid" "DFFF invalid UCN" } */
+
+  c = L'\U00110000';	/* { dg-warning "outside|Invalid" "110000 outside UCS" } */
 }

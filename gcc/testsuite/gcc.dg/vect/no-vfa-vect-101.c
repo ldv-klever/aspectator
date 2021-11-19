@@ -22,6 +22,7 @@ int main1 (int x, int y) {
   p = (struct extraction *) malloc (sizeof (struct extraction));
 
   /* Not vectorizable: different unknown offset.  */
+#pragma GCC unroll 0
   for (i = 0; i < N; i++)
     {
       *((int *)p + x + i) = a[i];
@@ -46,5 +47,5 @@ int main (void)
 
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 0 "vect" } } */
 /* { dg-final { scan-tree-dump-times "can't determine dependence" 1 "vect" { target { ! vect_multiple_sizes } } } } */
-/* { dg-final { scan-tree-dump-times "can't determine dependence" 2 "vect" { target vect_multiple_sizes } } } */
+/* { dg-final { scan-tree-dump "can't determine dependence" "vect" { target vect_multiple_sizes } } } */
 

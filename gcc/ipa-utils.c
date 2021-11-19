@@ -1,5 +1,5 @@
 /* Utilities for ipa analysis.
-   Copyright (C) 2005-2017 Free Software Foundation, Inc.
+   Copyright (C) 2005-2021 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -34,7 +34,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "symbol-summary.h"
 #include "tree-vrp.h"
 #include "ipa-prop.h"
-#include "ipa-inline.h"
+#include "ipa-fnsummary.h"
 
 /* Debugging function for postorder and inorder code. NOTE is a string
    that is printed before the nodes are printed.  ORDER is an array of
@@ -85,7 +85,7 @@ searchc (struct searchc_env* env, struct cgraph_node *v,
 
   /* mark node as old */
   v_info->new_node = false;
-  splay_tree_remove (env->nodes_marked_new, v->uid);
+  splay_tree_remove (env->nodes_marked_new, v->get_uid ());
 
   v_info->dfn_number = env->count;
   v_info->low_link = env->count;
@@ -103,8 +103,7 @@ searchc (struct searchc_env* env, struct cgraph_node *v,
         continue;
 
       if (w->aux
-	  && (avail > AVAIL_INTERPOSABLE
-	      || avail == AVAIL_INTERPOSABLE))
+	  && (avail >= AVAIL_INTERPOSABLE))
 	{
 	  w_info = (struct ipa_dfs_info *) w->aux;
 	  if (w_info->new_node)
@@ -192,7 +191,7 @@ ipa_reduced_postorder (struct cgraph_node **order,
 	  node->aux = info;
 
 	  splay_tree_insert (env.nodes_marked_new,
-			     (splay_tree_key)node->uid,
+			     (splay_tree_key)node->get_uid (),
 			     (splay_tree_value)node);
 	}
       else
@@ -297,8 +296,8 @@ ipa_reverse_postorder (struct cgraph_node **order)
       if (!node->aux
 	  && (pass
 	      || (!node->address_taken
-		  && !node->global.inlined_to
-		  && !node->alias && !node->thunk.thunk_p
+		  && !node->inlined_to
+		  && !node->alias && !node->thunk
 		  && !node->only_called_directly_p ())))
 	{
 	  stack_size = 0;
@@ -372,6 +371,20 @@ get_base_var (tree t)
   return t;
 }
 
+/* Scale function of calls in NODE by ratio ORIG_COUNT/NODE->count.  */
+
+void
+scale_ipa_profile_for_fn (struct cgraph_node *node, profile_count orig_count)
+{
+  profile_count to = node->count;
+  profile_count::adjust_for_ipa_scaling (&to, &orig_count);
+  struct cgraph_edge *e;
+  
+  for (e = node->callees; e; e = e->next_callee)
+    e->count = e->count.apply_scale (to, orig_count);
+  for (e = node->indirect_calls; e; e = e->next_callee)
+    e->count = e->count.apply_scale (to, orig_count);
+}
 
 /* SRC and DST are going to be merged.  Take SRC's profile and merge it into
    DST so it is not going to be lost.  Possibly destroy SRC's body on the way
@@ -385,10 +398,12 @@ ipa_merge_profiles (struct cgraph_node *dst,
   tree oldsrcdecl = src->decl;
   struct function *srccfun, *dstcfun;
   bool match = true;
+  bool copy_counts = false;
 
   if (!src->definition
       || !dst->definition)
     return;
+
   if (src->frequency < dst->frequency)
     src->frequency = dst->frequency;
 
@@ -399,17 +414,58 @@ ipa_merge_profiles (struct cgraph_node *dst,
   if (src->profile_id && !dst->profile_id)
     dst->profile_id = src->profile_id;
 
-  if (!dst->count)
+  /* Merging zero profile to dst is no-op.  */
+  if (src->count.ipa () == profile_count::zero ())
     return;
-  if (!src->count || src->alias)
+
+  /* FIXME when we merge in unknown profile, we ought to set counts as
+     unsafe.  */
+  if (!src->count.initialized_p ()
+      || !(src->count.ipa () == src->count))
     return;
+  profile_count orig_count = dst->count;
+
+  /* Either sum the profiles if both are IPA and not global0, or
+     pick more informative one (that is nonzero IPA if other is
+     uninitialized, guessed or global0).   */
+
+  if ((dst->count.ipa ().nonzero_p ()
+       || src->count.ipa ().nonzero_p ())
+      && dst->count.ipa ().initialized_p ()
+      && src->count.ipa ().initialized_p ())
+    dst->count = dst->count.ipa () + src->count.ipa ();
+  else if (dst->count.ipa ().initialized_p ())
+    ;
+  else if (src->count.ipa ().initialized_p ())
+    {
+      copy_counts = true;
+      dst->count = src->count.ipa ();
+    }
+
+  /* If no updating needed return early.  */
+  if (dst->count == orig_count)
+    return;
+
   if (symtab->dump_file)
     {
-      fprintf (symtab->dump_file, "Merging profiles of %s/%i to %s/%i\n",
-	       xstrdup_for_dump (src->name ()), src->order,
-	       xstrdup_for_dump (dst->name ()), dst->order);
+      fprintf (symtab->dump_file, "Merging profiles of %s count:",
+	       src->dump_name ());
+      src->count.dump (symtab->dump_file);
+      fprintf (symtab->dump_file, " to %s count:",
+	       dst->dump_name ());
+      orig_count.dump (symtab->dump_file);
+      fprintf (symtab->dump_file, " resulting count:");
+      dst->count.dump (symtab->dump_file);
+      fprintf (symtab->dump_file, "\n");
     }
-  dst->count += src->count;
+
+  /* First handle functions with no gimple body.  */
+  if (dst->thunk || dst->alias
+      || src->thunk || src->alias)
+    {
+      scale_ipa_profile_for_fn (dst, orig_count);
+      return;
+    }
 
   /* This is ugly.  We need to get both function bodies into memory.
      If declaration is merged, we need to duplicate it to be able
@@ -468,50 +524,101 @@ ipa_merge_profiles (struct cgraph_node *dst,
   else 
     {
       basic_block srcbb, dstbb;
+      struct cgraph_edge *e, *e2;
 
-      FOR_ALL_BB_FN (srcbb, srccfun)
+      for (e = dst->callees, e2 = src->callees; e && e2 && match;
+	   e2 = e2->next_callee, e = e->next_callee)
 	{
-	  unsigned int i;
-
-	  dstbb = BASIC_BLOCK_FOR_FN (dstcfun, srcbb->index);
-	  if (dstbb == NULL)
+	  if (gimple_bb (e->call_stmt)->index
+	      != gimple_bb (e2->call_stmt)->index)
 	    {
 	      if (symtab->dump_file)
 		fprintf (symtab->dump_file,
-			 "No matching block for bb %i.\n",
-			 srcbb->index);
+			 "Giving up; call stmt mismatch.\n");
 	      match = false;
-	      break;
-	    }
-	  if (EDGE_COUNT (srcbb->succs) != EDGE_COUNT (dstbb->succs))
-	    {
-	      if (symtab->dump_file)
-		fprintf (symtab->dump_file,
-			 "Edge count mistmatch for bb %i.\n",
-			 srcbb->index);
-	      match = false;
-	      break;
-	    }
-	  for (i = 0; i < EDGE_COUNT (srcbb->succs); i++)
-	    {
-	      edge srce = EDGE_SUCC (srcbb, i);
-	      edge dste = EDGE_SUCC (dstbb, i);
-	      if (srce->dest->index != dste->dest->index)
-		{
-		  if (symtab->dump_file)
-		    fprintf (symtab->dump_file,
-			     "Succ edge mistmatch for bb %i.\n",
-			     srce->dest->index);
-		  match = false;
-		  break;
-		}
 	    }
 	}
+      if (e || e2)
+	{
+	  if (symtab->dump_file)
+	    fprintf (symtab->dump_file,
+		     "Giving up; number of calls differs.\n");
+	  match = false;
+	}
+      for (e = dst->indirect_calls, e2 = src->indirect_calls; e && e2 && match;
+	   e2 = e2->next_callee, e = e->next_callee)
+	{
+	  if (gimple_bb (e->call_stmt)->index
+	      != gimple_bb (e2->call_stmt)->index)
+	    {
+	      if (symtab->dump_file)
+		fprintf (symtab->dump_file,
+			 "Giving up; indirect call stmt mismatch.\n");
+	      match = false;
+	    }
+	}
+      if (e || e2)
+	{
+	  if (symtab->dump_file)
+	    fprintf (symtab->dump_file,
+		     "Giving up; number of indirect calls differs.\n");
+	  match=false;
+	}
+
+      if (match)
+	FOR_ALL_BB_FN (srcbb, srccfun)
+	  {
+	    unsigned int i;
+
+	    dstbb = BASIC_BLOCK_FOR_FN (dstcfun, srcbb->index);
+	    if (dstbb == NULL)
+	      {
+		if (symtab->dump_file)
+		  fprintf (symtab->dump_file,
+			   "No matching block for bb %i.\n",
+			   srcbb->index);
+		match = false;
+		break;
+	      }
+	    if (EDGE_COUNT (srcbb->succs) != EDGE_COUNT (dstbb->succs))
+	      {
+		if (symtab->dump_file)
+		  fprintf (symtab->dump_file,
+			   "Edge count mismatch for bb %i.\n",
+			   srcbb->index);
+		match = false;
+		break;
+	      }
+	    for (i = 0; i < EDGE_COUNT (srcbb->succs); i++)
+	      {
+		edge srce = EDGE_SUCC (srcbb, i);
+		edge dste = EDGE_SUCC (dstbb, i);
+		if (srce->dest->index != dste->dest->index)
+		  {
+		    if (symtab->dump_file)
+		      fprintf (symtab->dump_file,
+			       "Succ edge mismatch for bb %i.\n",
+			       srce->dest->index);
+		    match = false;
+		    break;
+		  }
+	      }
+	  }
     }
   if (match)
     {
       struct cgraph_edge *e, *e2;
       basic_block srcbb, dstbb;
+
+      /* Function and global profile may be out of sync.  First scale it same
+	 way as fixup_cfg would.  */
+      profile_count srcnum = src->count;
+      profile_count srcden = ENTRY_BLOCK_PTR_FOR_FN (srccfun)->count;
+      bool srcscale = srcnum.initialized_p () && !(srcnum == srcden);
+      profile_count dstnum = orig_count;
+      profile_count dstden = ENTRY_BLOCK_PTR_FOR_FN (dstcfun)->count;
+      bool dstscale = !copy_counts
+		      && dstnum.initialized_p () && !(dstnum == dstden);
 
       /* TODO: merge also statement histograms.  */
       FOR_ALL_BB_FN (srcbb, srccfun)
@@ -519,16 +626,43 @@ ipa_merge_profiles (struct cgraph_node *dst,
 	  unsigned int i;
 
 	  dstbb = BASIC_BLOCK_FOR_FN (dstcfun, srcbb->index);
-	  dstbb->count += srcbb->count;
-	  for (i = 0; i < EDGE_COUNT (srcbb->succs); i++)
+
+	  profile_count srccount = srcbb->count;
+	  if (srcscale)
+	    srccount = srccount.apply_scale (srcnum, srcden);
+	  if (dstscale)
+	    dstbb->count = dstbb->count.apply_scale (dstnum, dstden);
+
+	  if (copy_counts)
 	    {
-	      edge srce = EDGE_SUCC (srcbb, i);
-	      edge dste = EDGE_SUCC (dstbb, i);
-	      dste->count += srce->count;
+	      dstbb->count = srccount;
+	      for (i = 0; i < EDGE_COUNT (srcbb->succs); i++)
+		{
+		  edge srce = EDGE_SUCC (srcbb, i);
+		  edge dste = EDGE_SUCC (dstbb, i);
+		  if (srce->probability.initialized_p ())
+		    dste->probability = srce->probability;
+		}
+	    }	
+	  else 
+	    {
+	      for (i = 0; i < EDGE_COUNT (srcbb->succs); i++)
+		{
+		  edge srce = EDGE_SUCC (srcbb, i);
+		  edge dste = EDGE_SUCC (dstbb, i);
+		  dste->probability = 
+		    dste->probability * dstbb->count.ipa ().probability_in
+						 (dstbb->count.ipa ()
+						  + srccount.ipa ())
+		    + srce->probability * srcbb->count.ipa ().probability_in
+						 (dstbb->count.ipa ()
+						  + srccount.ipa ());
+		}
+	      dstbb->count = dstbb->count.ipa () + srccount.ipa ();
 	    }
 	}
       push_cfun (dstcfun);
-      counts_to_freqs ();
+      update_max_bb_count ();
       compute_function_frequency ();
       pop_cfun ();
       for (e = dst->callees; e; e = e->next_callee)
@@ -536,102 +670,94 @@ ipa_merge_profiles (struct cgraph_node *dst,
 	  if (e->speculative)
 	    continue;
 	  e->count = gimple_bb (e->call_stmt)->count;
-	  e->frequency = compute_call_stmt_bb_frequency
-			     (dst->decl,
-			      gimple_bb (e->call_stmt));
 	}
       for (e = dst->indirect_calls, e2 = src->indirect_calls; e;
 	   e2 = (e2 ? e2->next_callee : NULL), e = e->next_callee)
 	{
-	  gcov_type count = gimple_bb (e->call_stmt)->count;
-	  int freq = compute_call_stmt_bb_frequency
-			(dst->decl,
-			 gimple_bb (e->call_stmt));
-	  /* When call is speculative, we need to re-distribute probabilities
-	     the same way as they was.  This is not really correct because
-	     in the other copy the speculation may differ; but probably it
-	     is not really worth the effort.  */
-	  if (e->speculative)
+	  if (!e->speculative && !e2->speculative)
 	    {
-	      cgraph_edge *direct, *indirect;
-	      cgraph_edge *direct2 = NULL, *indirect2 = NULL;
-	      ipa_ref *ref;
+	      /* FIXME: we need to also merge ipa-profile histograms
+		 because with LTO merging happens from lto-symtab before
+		 these are converted to indirect edges.  */
+	      e->count = gimple_bb (e->call_stmt)->count;
+	      continue;
+	    }
 
-	      e->speculative_call_info (direct, indirect, ref);
-	      gcc_assert (e == indirect);
-	      if (e2 && e2->speculative)
-	        e2->speculative_call_info (direct2, indirect2, ref);
-	      if (indirect->count || direct->count)
+	  /* When copying just remove all speuclations on dst and then copy
+	     one from src.  */
+	  if (copy_counts)
+	    {
+	      while (e->speculative)
+		cgraph_edge::resolve_speculation (e, NULL);
+	      e->count = gimple_bb (e->call_stmt)->count;
+	      if (e2->speculative)
 		{
-		  /* We should mismatch earlier if there is no matching
-		     indirect edge.  */
-		  if (!e2)
+		  for (cgraph_edge *e3 = e2->first_speculative_call_target ();
+		       e3;
+		       e3 = e3->next_speculative_call_target ())
 		    {
-		      if (dump_file)
-		        fprintf (dump_file,
-				 "Mismatch in merging indirect edges\n");
+		      cgraph_edge *ns;
+		      ns = e->make_speculative
+			 (dyn_cast <cgraph_node *>
+			    (e3->speculative_call_target_ref ()->referred),
+			     e3->count, e3->speculative_id);
+		      /* Target may differ from ref (for example it may be
+			 redirected to local alias.  */
+		      ns->redirect_callee (e3->callee);
 		    }
-		  else if (!e2->speculative)
-		    indirect->count += e2->count;
-		  else if (e2->speculative)
-		    {
-		      if (DECL_ASSEMBLER_NAME (direct2->callee->decl)
-			  != DECL_ASSEMBLER_NAME (direct->callee->decl))
-			{
-			  if (direct2->count >= direct->count)
-			    {
-			      direct->redirect_callee (direct2->callee);
-			      indirect->count += indirect2->count
-						 + direct->count;
-			      direct->count = direct2->count;
-			    }
-			  else
-			    indirect->count += indirect2->count + direct2->count;
-			}
-		      else
-			{
-			   direct->count += direct2->count;
-			   indirect->count += indirect2->count;
-			}
-		    }
-		  int  prob = RDIV (direct->count * REG_BR_PROB_BASE ,
-				    direct->count + indirect->count);
-		  direct->frequency = RDIV (freq * prob, REG_BR_PROB_BASE);
-		  indirect->frequency = RDIV (freq * (REG_BR_PROB_BASE - prob),
-					      REG_BR_PROB_BASE);
 		}
-	      else
-		/* At the moment we should have only profile feedback based
-		   speculations when merging.  */
-		gcc_unreachable ();
+	      continue;
 	    }
-	  else if (e2 && e2->speculative)
-	    {
-	      cgraph_edge *direct, *indirect;
-	      ipa_ref *ref;
 
-	      e2->speculative_call_info (direct, indirect, ref);
-	      e->count = count;
-	      e->frequency = freq;
-	      int prob = RDIV (direct->count * REG_BR_PROB_BASE, e->count);
-	      e->make_speculative (direct->callee, direct->count,
-				   RDIV (freq * prob, REG_BR_PROB_BASE));
-	    }
-	  else
+	  /* Iterate all speculations in SRC, see if corresponding ones exist
+	     int DST and if so, sum the counts.  Otherwise create new
+	     speculation.  */
+	  int max_spec = 0;
+	  for (cgraph_edge *e3 = e->first_speculative_call_target ();
+	       e3;
+	       e3 = e3->next_speculative_call_target ())
+	    if (e3->speculative_id > max_spec)
+	      max_spec = e3->speculative_id;
+	  for (cgraph_edge *e3 = e2->first_speculative_call_target ();
+	       e3;
+	       e3 = e3->next_speculative_call_target ())
 	    {
-	      e->count = count;
-	      e->frequency = freq;
+	      cgraph_edge *te
+		 = e->speculative_call_for_target
+			 (dyn_cast <cgraph_node *>
+			    (e3->speculative_call_target_ref ()->referred));
+	      if (te)
+		te->count = te->count + e3->count;
+	      else
+		{
+		  e->count = e->count + e3->count;
+		  cgraph_edge *ns;
+		  ns = e->make_speculative
+			 (dyn_cast <cgraph_node *>
+			    (e3->speculative_call_target_ref ()
+			     ->referred),
+			  e3->count,
+			  e3->speculative_id + max_spec + 1);
+		  /* Target may differ from ref (for example it may be
+		     redirected to local alias.  */
+		  ns->redirect_callee (e3->callee);
+		}
 	    }
 	}
       if (!preserve_body)
         src->release_body ();
-      inline_update_overall_summary (dst);
+      /* Update summary.  */
+      compute_fn_summary (dst, 0);
     }
-  /* TODO: if there is no match, we can scale up.  */
+  /* We can't update CFG profile, but we can scale IPA profile. CFG
+     will be scaled according to dst->count after IPA passes.  */
+  else
+    scale_ipa_profile_for_fn (dst, orig_count);
   src->decl = oldsrcdecl;
 }
 
-/* Return true if call to DEST is known to be self-recusive call withing FUNC.   */
+/* Return true if call to DEST is known to be self-recusive
+   call withing FUNC.  */
 
 bool
 recursive_call_p (tree func, tree dest)

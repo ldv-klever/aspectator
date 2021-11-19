@@ -1,5 +1,5 @@
 /* Subroutines used for expanding RISC-V builtins.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
    Contributed by Andrew Waterman (andrew@sifive.com).
 
 This file is part of GCC.
@@ -18,6 +18,8 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -27,6 +29,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-expr.h"
 #include "memmodel.h"
 #include "expmed.h"
+#include "profile-count.h"
 #include "optabs.h"
 #include "recog.h"
 #include "diagnostic-core.h"
@@ -35,6 +38,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 
 /* Macros to create an enumeration identifier for a function prototype.  */
+#define RISCV_FTYPE_NAME0(A) RISCV_##A##_FTYPE
 #define RISCV_FTYPE_NAME1(A, B) RISCV_##A##_FTYPE_##B
 
 /* Classifies the prototype of a built-in function.  */
@@ -118,11 +122,13 @@ AVAIL (hard_float, TARGET_HARD_FLOAT)
 
 /* RISCV_FTYPE_ATYPESN takes N RISCV_FTYPES-like type codes and lists
    their associated RISCV_ATYPEs.  */
+#define RISCV_FTYPE_ATYPES0(A) \
+  RISCV_ATYPE_##A
 #define RISCV_FTYPE_ATYPES1(A, B) \
   RISCV_ATYPE_##A, RISCV_ATYPE_##B
 
 static const struct riscv_builtin_description riscv_builtins[] = {
-  DIRECT_BUILTIN (frflags, RISCV_USI_FTYPE_VOID, hard_float),
+  DIRECT_BUILTIN (frflags, RISCV_USI_FTYPE, hard_float),
   DIRECT_NO_TARGET_BUILTIN (fsflags, RISCV_VOID_FTYPE_USI, hard_float)
 };
 
@@ -253,7 +259,7 @@ riscv_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
 		      int ignore ATTRIBUTE_UNUSED)
 {
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
-  unsigned int fcode = DECL_FUNCTION_CODE (fndecl);
+  unsigned int fcode = DECL_MD_FUNCTION_CODE (fndecl);
   const struct riscv_builtin_description *d = &riscv_builtins[fcode];
 
   switch (d->builtin_type)
@@ -280,8 +286,8 @@ riscv_atomic_assign_expand_fenv (tree *hold, tree *clear, tree *update)
   tree fsflags = GET_BUILTIN_DECL (CODE_FOR_riscv_fsflags);
   tree old_flags = create_tmp_var_raw (RISCV_ATYPE_USI);
 
-  *hold = build2 (MODIFY_EXPR, RISCV_ATYPE_USI, old_flags,
-		  build_call_expr (frflags, 0));
+  *hold = build4 (TARGET_EXPR, RISCV_ATYPE_USI, old_flags,
+		  build_call_expr (frflags, 0), NULL_TREE, NULL_TREE);
   *clear = build_call_expr (fsflags, 1, old_flags);
   *update = NULL_TREE;
 }

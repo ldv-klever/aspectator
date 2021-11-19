@@ -1,6 +1,6 @@
 // class template regex -*- C++ -*-
 
-// Copyright (C) 2013-2017 Free Software Foundation, Inc.
+// Copyright (C) 2013-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -30,9 +30,11 @@
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+
 namespace __detail
 {
-_GLIBCXX_BEGIN_NAMESPACE_VERSION
+  /// @cond undocumented
 
   // Result of merging regex_match and regex_search.
   //
@@ -57,8 +59,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       typename match_results<_BiIter, _Alloc>::_Base_type& __res = __m;
       __m._M_begin = __s;
       __m._M_resize(__re._M_automaton->_M_sub_count());
-      for (auto& __it : __res)
-	__it.matched = false;
 
       bool __ret;
       if ((__re.flags() & regex_constants::__polynomial)
@@ -109,20 +109,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	}
       else
 	{
-	  __m._M_resize(0);
-	  for (auto& __it : __res)
-	    {
-	      __it.matched = false;
-	      __it.first = __it.second = __e;
-	    }
+	  __m._M_establish_failed_match(__e);
 	}
       return __ret;
     }
+  /// @endcond
+} // namespace __detail
 
-_GLIBCXX_END_NAMESPACE_VERSION
-}
-
-_GLIBCXX_BEGIN_NAMESPACE_VERSION
+  /// @cond
 
   template<typename _Ch_type>
   template<typename _Fwd_iter>
@@ -356,7 +350,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _Bi_iter, typename _Alloc>
   template<typename _Out_iter>
-    _Out_iter match_results<_Bi_iter, _Alloc>::
+    _Out_iter
+    match_results<_Bi_iter, _Alloc>::
     format(_Out_iter __out,
 	   const match_results<_Bi_iter, _Alloc>::char_type* __fmt_first,
 	   const match_results<_Bi_iter, _Alloc>::char_type* __fmt_last,
@@ -377,22 +372,32 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       if (__flags & regex_constants::format_sed)
 	{
-	  for (; __fmt_first != __fmt_last;)
-	    if (*__fmt_first == '&')
-	      {
-		__output(0);
-		++__fmt_first;
-	      }
-	    else if (*__fmt_first == '\\')
-	      {
-		if (++__fmt_first != __fmt_last
-		    && __fctyp.is(__ctype_type::digit, *__fmt_first))
-		  __output(__traits.value(*__fmt_first++, 10));
-		else
-		  *__out++ = '\\';
-	      }
-	    else
-	      *__out++ = *__fmt_first++;
+	  bool __escaping = false;
+	  for (; __fmt_first != __fmt_last; __fmt_first++)
+	    {
+	      if (__escaping)
+		{
+		  __escaping = false;
+		  if (__fctyp.is(__ctype_type::digit, *__fmt_first))
+		    __output(__traits.value(*__fmt_first, 10));
+		  else
+		    *__out++ = *__fmt_first;
+		  continue;
+		}
+	      if (*__fmt_first == '\\')
+		{
+		  __escaping = true;
+		  continue;
+		}
+	      if (*__fmt_first == '&')
+		{
+		  __output(0);
+		  continue;
+		}
+	      *__out++ = *__fmt_first;
+	    }
+	  if (__escaping)
+	    *__out++ = '\\';
 	}
       else
 	{
@@ -494,7 +499,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _Rx_traits>
     bool
     regex_iterator<_Bi_iter, _Ch_type, _Rx_traits>::
-    operator==(const regex_iterator& __rhs) const
+    operator==(const regex_iterator& __rhs) const noexcept
     {
       if (_M_pregex == nullptr && __rhs._M_pregex == nullptr)
 	return true;
@@ -661,6 +666,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	_M_result = nullptr;
     }
 
+  /// @endcond
+
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
-

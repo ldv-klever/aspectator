@@ -1,7 +1,7 @@
 /* Dependency checks for instruction scheduling, shared between ARM and
    AARCH64.
 
-   Copyright (C) 1991-2017 Free Software Foundation, Inc.
+   Copyright (C) 1991-2021 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -21,52 +21,21 @@
    <http://www.gnu.org/licenses/>.  */
 
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "insn-modes.h"
 #include "tm.h"
 #include "rtl.h"
 #include "rtl-iter.h"
-
-/* In ARMv8-A there's a general expectation that AESE/AESMC
-   and AESD/AESIMC sequences of the form:
-
-   AESE Vn, _
-   AESMC Vn, Vn
-
-   will issue both instructions in a single cycle on super-scalar
-   implementations.  This function identifies such pairs.  */
-
-int
-aarch_crypto_can_dual_issue (rtx_insn *producer_insn, rtx_insn *consumer_insn)
-{
-  rtx producer_set, consumer_set;
-  rtx producer_src, consumer_src;
-
-  producer_set = single_set (producer_insn);
-  consumer_set = single_set (consumer_insn);
-
-  producer_src = producer_set ? SET_SRC (producer_set) : NULL;
-  consumer_src = consumer_set ? SET_SRC (consumer_set) : NULL;
-
-  if (producer_src && consumer_src
-      && GET_CODE (producer_src) == UNSPEC && GET_CODE (consumer_src) == UNSPEC
-      && ((XINT (producer_src, 1) == UNSPEC_AESE
-           && XINT (consumer_src, 1) == UNSPEC_AESMC)
-          || (XINT (producer_src, 1) == UNSPEC_AESD
-              && XINT (consumer_src, 1) == UNSPEC_AESIMC)))
-  {
-    unsigned int regno = REGNO (SET_DEST (producer_set));
-
-    /* Before reload the registers are virtual, so the destination of
-       consumer_set doesn't need to match.  */
-
-    return (REGNO (SET_DEST (consumer_set)) == regno || !reload_completed)
-	    && REGNO (XVECEXP (consumer_src, 0, 0)) == regno;
-  }
-
-  return 0;
-}
+#include "memmodel.h"
+#include "diagnostic.h"
+#include "tree.h"
+#include "expr.h"
+#include "function.h"
+#include "emit-rtl.h"
 
 /* Return TRUE if X is either an arithmetic shift left, or
    is a multiplication by a power of two.  */
@@ -228,6 +197,28 @@ aarch_rev16_p (rtx x)
   return is_rev;
 }
 
+/* Return non-zero if the RTX representing a memory model is a memory model
+   that needs acquire semantics.  */
+bool
+aarch_mm_needs_acquire (rtx const_int)
+{
+  enum memmodel model = memmodel_from_int (INTVAL (const_int));
+  return !(is_mm_relaxed (model)
+	   || is_mm_consume (model)
+	   || is_mm_release (model));
+}
+
+/* Return non-zero if the RTX representing a memory model is a memory model
+   that needs release semantics.  */
+bool
+aarch_mm_needs_release (rtx const_int)
+{
+  enum memmodel model = memmodel_from_int (INTVAL (const_int));
+  return !(is_mm_relaxed (model)
+	   || is_mm_consume (model)
+	   || is_mm_acquire (model));
+}
+
 /* Return nonzero if the CONSUMER instruction (a load) does need
    PRODUCER's value to calculate the address.  */
 int
@@ -239,6 +230,24 @@ arm_early_load_addr_dep (rtx producer, rtx consumer)
     return 0;
 
   return reg_overlap_mentioned_p (value, addr);
+}
+
+/* Return nonzero if the CONSUMER instruction (a load) does need
+   a Pmode PRODUCER's value to calculate the address.  */
+
+int
+arm_early_load_addr_dep_ptr (rtx producer, rtx consumer)
+{
+  rtx value = arm_find_sub_rtx_with_code (PATTERN (producer), SET, false);
+  rtx addr = arm_find_sub_rtx_with_code (PATTERN (consumer), SET, false);
+
+  if (!value || !addr || !MEM_P (SET_SRC (value)))
+    return 0;
+
+  value = SET_DEST (value);
+  addr = SET_SRC (addr);
+
+  return GET_MODE (value) == Pmode && reg_overlap_mentioned_p (value, addr);
 }
 
 /* Return nonzero if the CONSUMER instruction (an ALU op) does not
@@ -254,12 +263,7 @@ arm_no_early_alu_shift_dep (rtx producer, rtx consumer)
     return 0;
 
   if ((early_op = arm_find_shift_sub_rtx (op)))
-    {
-      if (REG_P (early_op))
-	early_op = op;
-
-      return !reg_overlap_mentioned_p (value, early_op);
-    }
+    return !reg_overlap_mentioned_p (value, early_op);
 
   return 0;
 }
@@ -334,6 +338,24 @@ int
 arm_early_store_addr_dep (rtx producer, rtx consumer)
 {
   return !arm_no_early_store_addr_dep (producer, consumer);
+}
+
+/* Return nonzero if the CONSUMER instruction (a store) does need
+   a Pmode PRODUCER's value to calculate the address.  */
+
+int
+arm_early_store_addr_dep_ptr (rtx producer, rtx consumer)
+{
+  rtx value = arm_find_sub_rtx_with_code (PATTERN (producer), SET, false);
+  rtx addr = arm_find_sub_rtx_with_code (PATTERN (consumer), SET, false);
+
+  if (!value || !addr || !MEM_P (SET_SRC (value)))
+    return 0;
+
+  value = SET_DEST (value);
+  addr = SET_DEST (addr);
+
+  return GET_MODE (value) == Pmode && reg_overlap_mentioned_p (value, addr);
 }
 
 /* Return non-zero iff the consumer (a multiply-accumulate or a
@@ -463,45 +485,13 @@ aarch_accumulator_forwarding (rtx_insn *producer, rtx_insn *consumer)
 	return 0;
     }
 
-  if (GET_CODE (accumulator) == SUBREG)
+  if (SUBREG_P (accumulator))
     accumulator = SUBREG_REG (accumulator);
 
   if (!REG_P (accumulator))
     return 0;
 
   return (REGNO (dest) == REGNO (accumulator));
-}
-
-/* Return nonzero if the CONSUMER instruction is some sort of
-   arithmetic or logic + shift operation, and the register we are
-   writing in PRODUCER is not used in a register shift by register
-   operation.  */
-
-int
-aarch_forward_to_shift_is_not_shifted_reg (rtx_insn *producer,
-					   rtx_insn *consumer)
-{
-  rtx value, op;
-  rtx early_op;
-
-  if (!arm_get_set_operands (producer, consumer, &value, &op))
-    return 0;
-
-  if ((early_op = arm_find_shift_sub_rtx (op)))
-    {
-      if (REG_P (early_op))
-	early_op = op;
-
-      /* Any other canonicalisation of a shift is a shift-by-constant
-	 so we don't care.  */
-      if (GET_CODE (early_op) == ASHIFT)
-	return (!REG_P (XEXP (early_op, 0))
-		|| !REG_P (XEXP (early_op, 1)));
-      else
-	return 1;
-    }
-
-  return 0;
 }
 
 /* Return non-zero if the consumer (a multiply-accumulate instruction)
@@ -535,4 +525,135 @@ arm_mac_accumulator_is_mul_result (rtx producer, rtx consumer)
   return (reg_overlap_mentioned_p (mul_result, mac_acc)
           && !reg_overlap_mentioned_p (mul_result, mac_op0)
           && !reg_overlap_mentioned_p (mul_result, mac_op1));
+}
+
+/* Worker function for TARGET_MD_ASM_ADJUST.
+   We implement asm flag outputs.  */
+
+rtx_insn *
+arm_md_asm_adjust (vec<rtx> &outputs, vec<rtx> & /*inputs*/,
+		   vec<machine_mode> & /*input_modes*/,
+		   vec<const char *> &constraints, vec<rtx> & /*clobbers*/,
+		   HARD_REG_SET & /*clobbered_regs*/)
+{
+  bool saw_asm_flag = false;
+
+  start_sequence ();
+  for (unsigned i = 0, n = outputs.length (); i < n; ++i)
+    {
+      const char *con = constraints[i];
+      if (strncmp (con, "=@cc", 4) != 0)
+	continue;
+      con += 4;
+      if (strchr (con, ',') != NULL)
+	{
+	  error ("alternatives not allowed in %<asm%> flag output");
+	  continue;
+	}
+
+      machine_mode mode;
+      rtx_code code;
+      int con01 = 0;
+
+#define C(X, Y)  (unsigned char)(X) * 256 + (unsigned char)(Y)
+
+      /* All of the condition codes are two characters.  */
+      if (con[0] != 0 && con[1] != 0 && con[2] == 0)
+	con01 = C(con[0], con[1]);
+
+      switch (con01)
+	{
+	case C('c', 'c'):
+	case C('l', 'o'):
+	  mode = CC_Cmode, code = GEU;
+	  break;
+	case C('c', 's'):
+	case C('h', 's'):
+	  mode = CC_Cmode, code = LTU;
+	  break;
+	case C('e', 'q'):
+	  mode = CC_NZmode, code = EQ;
+	  break;
+	case C('g', 'e'):
+	  mode = CCmode, code = GE;
+	  break;
+	case C('g', 't'):
+	  mode = CCmode, code = GT;
+	  break;
+	case C('h', 'i'):
+	  mode = CCmode, code = GTU;
+	  break;
+	case C('l', 'e'):
+	  mode = CCmode, code = LE;
+	  break;
+	case C('l', 's'):
+	  mode = CCmode, code = LEU;
+	  break;
+	case C('l', 't'):
+	  mode = CCmode, code = LT;
+	  break;
+	case C('m', 'i'):
+	  mode = CC_NZmode, code = LT;
+	  break;
+	case C('n', 'e'):
+	  mode = CC_NZmode, code = NE;
+	  break;
+	case C('p', 'l'):
+	  mode = CC_NZmode, code = GE;
+	  break;
+	case C('v', 'c'):
+	  mode = CC_Vmode, code = EQ;
+	  break;
+	case C('v', 's'):
+	  mode = CC_Vmode, code = NE;
+	  break;
+	default:
+	  error ("unknown %<asm%> flag output %qs", constraints[i]);
+	  continue;
+	}
+
+#undef C
+
+      rtx dest = outputs[i];
+      machine_mode dest_mode = GET_MODE (dest);
+      if (!SCALAR_INT_MODE_P (dest_mode))
+	{
+	  error ("invalid type for %<asm%> flag output");
+	  continue;
+	}
+
+      if (!saw_asm_flag)
+	{
+	  /* This is the first asm flag output.  Here we put the flags
+	     register in as the real output and adjust the condition to
+	     allow it.  */
+	  constraints[i] = "=c";
+	  outputs[i] = gen_rtx_REG (CCmode, CC_REGNUM);
+	  saw_asm_flag = true;
+	}
+      else
+	{
+	  /* We don't need the flags register as output twice.  */
+	  constraints[i] = "=X";
+	  outputs[i] = gen_rtx_SCRATCH (word_mode);
+	}
+
+      rtx x = gen_rtx_REG (mode, CC_REGNUM);
+      x = gen_rtx_fmt_ee (code, word_mode, x, const0_rtx);
+
+      if (dest_mode == word_mode)
+	emit_insn (gen_rtx_SET (dest, x));
+      else
+	{
+	  rtx tmp = gen_reg_rtx (word_mode);
+	  emit_insn (gen_rtx_SET (tmp, x));
+
+	  tmp = convert_modes (dest_mode, word_mode, tmp, true);
+	  emit_move_insn (dest, tmp);
+	}
+    }
+  rtx_insn *seq = get_insns ();
+  end_sequence ();
+
+  return saw_asm_flag ? seq : NULL;
 }

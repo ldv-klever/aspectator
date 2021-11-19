@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2017 Free Software Foundation, Inc.
+/* Copyright (C) 2008-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -24,6 +24,8 @@
 #ifndef _IMMINTRIN_H_INCLUDED
 #define _IMMINTRIN_H_INCLUDED
 
+#include <x86gprintrin.h>
+
 #include <mmintrin.h>
 
 #include <xmmintrin.h>
@@ -39,6 +41,8 @@
 #include <wmmintrin.h>
 
 #include <avxintrin.h>
+
+#include <avxvnniintrin.h>
 
 #include <avx2intrin.h>
 
@@ -74,13 +78,23 @@
 
 #include <avx512vpopcntdqintrin.h>
 
+#include <avx512vbmi2intrin.h>
+
+#include <avx512vbmi2vlintrin.h>
+
+#include <avx512vnniintrin.h>
+
+#include <avx512vnnivlintrin.h>
+
+#include <avx512vpopcntdqvlintrin.h>
+
+#include <avx512bitalgintrin.h>
+
+#include <avx512vp2intersectintrin.h>
+
+#include <avx512vp2intersectvlintrin.h>
+
 #include <shaintrin.h>
-
-#include <lzcntintrin.h>
-
-#include <bmiintrin.h>
-
-#include <bmi2intrin.h>
 
 #include <fmaintrin.h>
 
@@ -88,130 +102,24 @@
 
 #include <rtmintrin.h>
 
-#include <xtestintrin.h>
+#include <gfniintrin.h>
 
-#ifndef __RDRND__
-#pragma GCC push_options
-#pragma GCC target("rdrnd")
-#define __DISABLE_RDRND__
-#endif /* __RDRND__ */
-extern __inline int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_rdrand16_step (unsigned short *__P)
-{
-  return __builtin_ia32_rdrand16_step (__P);
-}
+#include <vaesintrin.h>
 
-extern __inline int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_rdrand32_step (unsigned int *__P)
-{
-  return __builtin_ia32_rdrand32_step (__P);
-}
-#ifdef __DISABLE_RDRND__
-#undef __DISABLE_RDRND__
-#pragma GCC pop_options
-#endif /* __DISABLE_RDRND__ */
+#include <vpclmulqdqintrin.h>
 
-#ifndef __RDPID__
-#pragma GCC push_options
-#pragma GCC target("rdpid")
-#define __DISABLE_RDPID__
-#endif /* __RDPID__ */
-extern __inline unsigned int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_rdpid_u32 (void)
-{
-  return __builtin_ia32_rdpid ();
-}
-#ifdef __DISABLE_RDPID__
-#undef __DISABLE_RDPID__
-#pragma GCC pop_options
-#endif /* __DISABLE_RDPID__ */
+#include <avx512bf16vlintrin.h>
 
-#ifdef  __x86_64__
+#include <avx512bf16intrin.h>
 
-#ifndef __FSGSBASE__
-#pragma GCC push_options
-#pragma GCC target("fsgsbase")
-#define __DISABLE_FSGSBASE__
-#endif /* __FSGSBASE__ */
-extern __inline unsigned int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_readfsbase_u32 (void)
-{
-  return __builtin_ia32_rdfsbase32 ();
-}
+#include <amxtileintrin.h>
 
-extern __inline unsigned long long
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_readfsbase_u64 (void)
-{
-  return __builtin_ia32_rdfsbase64 ();
-}
+#include <amxint8intrin.h>
 
-extern __inline unsigned int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_readgsbase_u32 (void)
-{
-  return __builtin_ia32_rdgsbase32 ();
-}
+#include <amxbf16intrin.h>
 
-extern __inline unsigned long long
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_readgsbase_u64 (void)
-{
-  return __builtin_ia32_rdgsbase64 ();
-}
+#include <prfchwintrin.h>
 
-extern __inline void
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_writefsbase_u32 (unsigned int __B)
-{
-  __builtin_ia32_wrfsbase32 (__B);
-}
-
-extern __inline void
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_writefsbase_u64 (unsigned long long __B)
-{
-  __builtin_ia32_wrfsbase64 (__B);
-}
-
-extern __inline void
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_writegsbase_u32 (unsigned int __B)
-{
-  __builtin_ia32_wrgsbase32 (__B);
-}
-
-extern __inline void
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_writegsbase_u64 (unsigned long long __B)
-{
-  __builtin_ia32_wrgsbase64 (__B);
-}
-#ifdef __DISABLE_FSGSBASE__
-#undef __DISABLE_FSGSBASE__
-#pragma GCC pop_options
-#endif /* __DISABLE_FSGSBASE__ */
-
-#ifndef __RDRND__
-#pragma GCC push_options
-#pragma GCC target("rdrnd")
-#define __DISABLE_RDRND__
-#endif /* __RDRND__ */
-extern __inline int
-__attribute__((__gnu_inline__, __always_inline__, __artificial__))
-_rdrand64_step (unsigned long long *__P)
-{
-  return __builtin_ia32_rdrand64_step (__P);
-}
-#ifdef __DISABLE_RDRND__
-#undef __DISABLE_RDRND__
-#pragma GCC pop_options
-#endif /* __DISABLE_RDRND__ */
-
-#endif /* __x86_64__  */
+#include <keylockerintrin.h>
 
 #endif /* _IMMINTRIN_H_INCLUDED */

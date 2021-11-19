@@ -1,5 +1,5 @@
 /* FMA steering optimization pass for Cortex-A57.
-   Copyright (C) 2015-2017 Free Software Foundation, Inc.
+   Copyright (C) 2015-2021 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #define INCLUDE_LIST
 #include "system.h"
@@ -35,6 +37,7 @@
 #include "insn-attr.h"
 #include "context.h"
 #include "tree-pass.h"
+#include "function-abi.h"
 #include "regrename.h"
 #include "aarch64-protos.h"
 
@@ -112,6 +115,9 @@ public:
   void dispatch ();
 
 private:
+  /* Prohibit copy construction.  */
+  fma_forest (const fma_forest &);
+
   /* The list of roots that form this forest.  */
   std::list<fma_root_node *> *m_roots;
 
@@ -145,6 +151,10 @@ public:
   void set_head (du_head *);
   void rename (fma_forest *);
   void dump_info (fma_forest *);
+
+private:
+  /* Prohibit copy construction.  */
+  fma_node (const fma_node &);
 
 protected:
   /* Root node that lead to this node.  */
@@ -201,6 +211,9 @@ public:
   void execute_fma_steering ();
 
 private:
+  /* Prohibit copy construction.  */
+  func_fma_steering (const func_fma_steering &);
+
   void dfs (void (*) (fma_forest *), void (*) (fma_forest *, fma_root_node *),
 	    void (*) (fma_forest *, fma_node *), bool);
   void analyze ();
@@ -255,7 +268,7 @@ rename_single_chain (du_head_p head, HARD_REG_SET *unavailable)
       if (DEBUG_INSN_P (tmp->insn))
 	continue;
       n_uses++;
-      IOR_COMPL_HARD_REG_SET (*unavailable, reg_class_contents[tmp->cl]);
+      *unavailable |= ~reg_class_contents[tmp->cl];
       super_class = reg_class_superunion[(int) super_class][(int) tmp->cl];
     }
 
@@ -269,7 +282,7 @@ rename_single_chain (du_head_p head, HARD_REG_SET *unavailable)
     {
       fprintf (dump_file, "Register %s in insn %d", reg_names[reg],
 	       INSN_UID (head->first->insn));
-      if (head->need_caller_save_reg)
+      if (head->call_abis)
 	fprintf (dump_file, " crosses a call");
     }
 
@@ -603,7 +616,7 @@ fma_node::rename (fma_forest *forest)
     {
       rtx_insn *insn = this->m_insn;
       HARD_REG_SET unavailable;
-      enum machine_mode mode;
+      machine_mode mode;
       int reg;
 
       if (dump_file)

@@ -18,12 +18,12 @@ void
 foo (void)
 {
   memcpy (0, 0, 0);
-  bar (0, 0, 0, 0, 0);
-}
+  /* { dg-warning "argument 1 null where non-null expected" "" { target *-*-* } .-1 } */
+  /* { dg-warning "argument 2 null where non-null expected" "" { target *-*-* } .-2 } */
 
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 1" "" { target *-*-* } 20 } */
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 2" "" { target *-*-* } 20 } */
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 1" "" { target *-*-* } 21 } */
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 3" "" { target *-*-* } 21 } */
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 4" "" { target *-*-* } 21 } */
-/* { dg-warning "null argument where non-null required\[^\n\r\]*argument 5" "" { target *-*-* } 21 } */
+  bar (0, 0, 0, 0, 0);
+  /* { dg-warning "argument 1 null where non-null expected" "" { target *-*-* } .-1 } */
+  /* { dg-warning "argument 3 null where non-null expected" "" { target *-*-* } .-2 } */
+  /* { dg-warning "argument 4 null where non-null expected" "" { target *-*-* } .-3 } */
+  /* { dg-warning "argument 5 null where non-null expected" "" { target *-*-* } .-4 } */
+}

@@ -1,5 +1,5 @@
 /* Various declarations for language-independent pretty-print subroutines.
-   Copyright (C) 2003-2017 Free Software Foundation, Inc.
+   Copyright (C) 2003-2021 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -24,22 +24,695 @@ along with GCC; see the file COPYING3.  If not see
 #include "intl.h"
 #include "pretty-print.h"
 #include "diagnostic-color.h"
+#include "diagnostic-event-id.h"
 #include "selftest.h"
 
 #if HAVE_ICONV
 #include <iconv.h>
 #endif
 
+#ifdef __MINGW32__
+
+/* Replacement for fputs() that handles ANSI escape codes on Windows NT.
+   Contributed by: Liu Hao (lh_mouse at 126 dot com)
+
+   XXX: This file is compiled into libcommon.a that will be self-contained.
+	It looks like that these functions can be put nowhere else.  */
+
+#include <io.h>
+#define WIN32_LEAN_AND_MEAN 1
+#include <windows.h>
+
+/* Write all bytes in [s,s+n) into the specified stream.
+   Errors are ignored.  */
+static void
+write_all (HANDLE h, const char *s, size_t n)
+{
+  size_t rem = n;
+  DWORD step;
+
+  while (rem != 0)
+    {
+      if (rem <= UINT_MAX)
+	step = rem;
+      else
+	step = UINT_MAX;
+      if (!WriteFile (h, s + n - rem, step, &step, NULL))
+	break;
+      rem -= step;
+    }
+}
+
+/* Find the beginning of an escape sequence.
+   There are two cases:
+   1. If the sequence begins with an ESC character (0x1B) and a second
+      character X in [0x40,0x5F], returns X and stores a pointer to
+      the third character into *head.
+   2. If the sequence begins with a character X in [0x80,0x9F], returns
+      (X-0x40) and stores a pointer to the second character into *head.
+   Stores the number of ESC character(s) in *prefix_len.
+   Returns 0 if no such sequence can be found.  */
+static int
+find_esc_head (int *prefix_len, const char **head, const char *str)
+{
+  int c;
+  const char *r = str;
+  int escaped = 0;
+
+  for (;;)
+    {
+      c = (unsigned char) *r;
+      if (c == 0)
+	{
+	  /* Not found.  */
+	  return 0;
+	}
+      if (escaped && 0x40 <= c && c <= 0x5F)
+	{
+	  /* Found (case 1).  */
+	  *prefix_len = 2;
+	  *head = r + 1;
+	  return c;
+	}
+      if (0x80 <= c && c <= 0x9F)
+	{
+	  /* Found (case 2).  */
+	  *prefix_len = 1;
+	  *head = r + 1;
+	  return c - 0x40;
+	}
+      ++r;
+      escaped = c == 0x1B;
+    }
+}
+
+/* Find the terminator of an escape sequence.
+   str should be the value stored in *head by a previous successful
+   call to find_esc_head().
+   Returns 0 if no such sequence can be found.  */
+static int
+find_esc_terminator (const char **term, const char *str)
+{
+  int c;
+  const char *r = str;
+
+  for (;;)
+    {
+      c = (unsigned char) *r;
+      if (c == 0)
+	{
+	  /* Not found.  */
+	  return 0;
+	}
+      if (0x40 <= c && c <= 0x7E)
+	{
+	  /* Found.  */
+	  *term = r;
+	  return c;
+	}
+      ++r;
+    }
+}
+
+/* Handle a sequence of codes.  Sequences that are invalid, reserved,
+   unrecognized or unimplemented are ignored silently.
+   There isn't much we can do because of lameness of Windows consoles.  */
+static void
+eat_esc_sequence (HANDLE h, int esc_code,
+		  const char *esc_head, const char *esc_term)
+{
+  /* Numbers in an escape sequence cannot be negative, because
+     a minus sign in the middle of it would have terminated it.  */
+  long n1, n2;
+  char *eptr, *delim;
+  CONSOLE_SCREEN_BUFFER_INFO sb;
+  COORD cr;
+  /* ED and EL parameters.  */
+  DWORD cnt, step;
+  long rows;
+  /* SGR parameters.  */
+  WORD attrib_add, attrib_rm;
+  const char *param;
+
+  switch (MAKEWORD (esc_code, *esc_term))
+    {
+    /* ESC [ n1 'A'
+	 Move the cursor up by n1 characters.  */
+    case MAKEWORD ('[', 'A'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  /* Stop at the topmost boundary.  */
+	  if (cr.Y > n1)
+	    cr.Y -= n1;
+	  else
+	    cr.Y = 0;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'B'
+	 Move the cursor down by n1 characters.  */
+    case MAKEWORD ('[', 'B'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  /* Stop at the bottommost boundary.  */
+	  if (sb.dwSize.Y - cr.Y > n1)
+	    cr.Y += n1;
+	  else
+	    cr.Y = sb.dwSize.Y;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'C'
+	 Move the cursor right by n1 characters.  */
+    case MAKEWORD ('[', 'C'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  /* Stop at the rightmost boundary.  */
+	  if (sb.dwSize.X - cr.X > n1)
+	    cr.X += n1;
+	  else
+	    cr.X = sb.dwSize.X;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'D'
+	 Move the cursor left by n1 characters.  */
+    case MAKEWORD ('[', 'D'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  /* Stop at the leftmost boundary.  */
+	  if (cr.X > n1)
+	    cr.X -= n1;
+	  else
+	    cr.X = 0;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'E'
+	 Move the cursor to the beginning of the n1-th line downwards.  */
+    case MAKEWORD ('[', 'E'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  cr.X = 0;
+	  /* Stop at the bottommost boundary.  */
+	  if (sb.dwSize.Y - cr.Y > n1)
+	    cr.Y += n1;
+	  else
+	    cr.Y = sb.dwSize.Y;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'F'
+	 Move the cursor to the beginning of the n1-th line upwards.  */
+    case MAKEWORD ('[', 'F'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  cr.X = 0;
+	  /* Stop at the topmost boundary.  */
+	  if (cr.Y > n1)
+	    cr.Y -= n1;
+	  else
+	    cr.Y = 0;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'G'
+	 Move the cursor to the (1-based) n1-th column.  */
+    case MAKEWORD ('[', 'G'):
+      if (esc_head == esc_term)
+	n1 = 1;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  n1 -= 1;
+	  /* Stop at the leftmost or rightmost boundary.  */
+	  if (n1 < 0)
+	    cr.X = 0;
+	  else if (n1 > sb.dwSize.X)
+	    cr.X = sb.dwSize.X;
+	  else
+	    cr.X = n1;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 ';' n2 'H'
+       ESC [ n1 ';' n2 'f'
+	 Move the cursor to the (1-based) n1-th row and
+	 (also 1-based) n2-th column.  */
+    case MAKEWORD ('[', 'H'):
+    case MAKEWORD ('[', 'f'):
+      if (esc_head == esc_term)
+	{
+	  /* Both parameters are omitted and set to 1 by default.  */
+	  n1 = 1;
+	  n2 = 1;
+	}
+      else if (!(delim = (char *) memchr (esc_head, ';',
+					  esc_term - esc_head)))
+	{
+	  /* Only the first parameter is given.  The second one is
+	     set to 1 by default.  */
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	  n2 = 1;
+	}
+      else
+	{
+	  /* Both parameters are given.  The first one shall be
+	     terminated by the semicolon.  */
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != delim)
+	    break;
+	  n2 = strtol (delim + 1, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  cr = sb.dwCursorPosition;
+	  n1 -= 1;
+	  n2 -= 1;
+	  /* The cursor position shall be relative to the view coord of
+	     the console window, which is usually smaller than the actual
+	     buffer.  FWIW, the 'appropriate' solution will be shrinking
+	     the buffer to match the size of the console window,
+	     destroying scrollback in the process.  */
+	  n1 += sb.srWindow.Top;
+	  n2 += sb.srWindow.Left;
+	  /* Stop at the topmost or bottommost boundary.  */
+	  if (n1 < 0)
+	    cr.Y = 0;
+	  else if (n1 > sb.dwSize.Y)
+	    cr.Y = sb.dwSize.Y;
+	  else
+	    cr.Y = n1;
+	  /* Stop at the leftmost or rightmost boundary.  */
+	  if (n2 < 0)
+	    cr.X = 0;
+	  else if (n2 > sb.dwSize.X)
+	    cr.X = sb.dwSize.X;
+	  else
+	    cr.X = n2;
+	  SetConsoleCursorPosition (h, cr);
+	}
+      break;
+
+    /* ESC [ n1 'J'
+	 Erase display.  */
+    case MAKEWORD ('[', 'J'):
+      if (esc_head == esc_term)
+	/* This is one of the very few codes whose parameters have
+	   a default value of zero.  */
+	n1 = 0;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  /* The cursor is not necessarily in the console window, which
+	     makes the behavior of this code harder to define.  */
+	  switch (n1)
+	    {
+	    case 0:
+	      /* If the cursor is in or above the window, erase from
+		 it to the bottom of the window; otherwise, do nothing.  */
+	      cr = sb.dwCursorPosition;
+	      cnt = sb.dwSize.X - sb.dwCursorPosition.X;
+	      rows = sb.srWindow.Bottom - sb.dwCursorPosition.Y;
+	      break;
+	    case 1:
+	      /* If the cursor is in or under the window, erase from
+		 it to the top of the window; otherwise, do nothing.  */
+	      cr.X = 0;
+	      cr.Y = sb.srWindow.Top;
+	      cnt = sb.dwCursorPosition.X + 1;
+	      rows = sb.dwCursorPosition.Y - sb.srWindow.Top;
+	      break;
+	    case 2:
+	      /* Erase the entire window.  */
+	      cr.X = sb.srWindow.Left;
+	      cr.Y = sb.srWindow.Top;
+	      cnt = 0;
+	      rows = sb.srWindow.Bottom - sb.srWindow.Top + 1;
+	      break;
+	    default:
+	      /* Erase the entire buffer.  */
+	      cr.X = 0;
+	      cr.Y = 0;
+	      cnt = 0;
+	      rows = sb.dwSize.Y;
+	      break;
+	    }
+	  if (rows < 0)
+	    break;
+	  cnt += rows * sb.dwSize.X;
+	  FillConsoleOutputCharacterW (h, L' ', cnt, cr, &step);
+	  FillConsoleOutputAttribute (h, sb.wAttributes, cnt, cr, &step);
+	}
+      break;
+
+    /* ESC [ n1 'K'
+	 Erase line.  */
+    case MAKEWORD ('[', 'K'):
+      if (esc_head == esc_term)
+	/* This is one of the very few codes whose parameters have
+	   a default value of zero.  */
+	n1 = 0;
+      else
+	{
+	  n1 = strtol (esc_head, &eptr, 10);
+	  if (eptr != esc_term)
+	    break;
+	}
+
+      if (GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  switch (n1)
+	    {
+	    case 0:
+	      /* Erase from the cursor to the end.  */
+	      cr = sb.dwCursorPosition;
+	      cnt = sb.dwSize.X - sb.dwCursorPosition.X;
+	      break;
+	    case 1:
+	      /* Erase from the cursor to the beginning.  */
+	      cr = sb.dwCursorPosition;
+	      cr.X = 0;
+	      cnt = sb.dwCursorPosition.X + 1;
+	      break;
+	    default:
+	      /* Erase the entire line.  */
+	      cr = sb.dwCursorPosition;
+	      cr.X = 0;
+	      cnt = sb.dwSize.X;
+	      break;
+	    }
+	  FillConsoleOutputCharacterW (h, L' ', cnt, cr, &step);
+	  FillConsoleOutputAttribute (h, sb.wAttributes, cnt, cr, &step);
+	}
+      break;
+
+    /* ESC [ n1 ';' n2 'm'
+	 Set SGR parameters.  Zero or more parameters will follow.  */
+    case MAKEWORD ('[', 'm'):
+      attrib_add = 0;
+      attrib_rm = 0;
+      if (esc_head == esc_term)
+	{
+	  /* When no parameter is given, reset the console.  */
+	  attrib_add |= (FOREGROUND_RED | FOREGROUND_GREEN
+			 | FOREGROUND_BLUE);
+	  attrib_rm = -1; /* Removes everything.  */
+	  goto sgr_set_it;
+	}
+      param = esc_head;
+      do
+	{
+	  /* Parse a parameter.  */
+	  n1 = strtol (param, &eptr, 10);
+	  if (*eptr != ';' && eptr != esc_term)
+	    goto sgr_set_it;
+
+	  switch (n1)
+	    {
+	    case 0:
+	      /* Reset.  */
+	      attrib_add |= (FOREGROUND_RED | FOREGROUND_GREEN
+			     | FOREGROUND_BLUE);
+	      attrib_rm = -1; /* Removes everything.  */
+	      break;
+	    case 1:
+	      /* Bold.  */
+	      attrib_add |= FOREGROUND_INTENSITY;
+	      break;
+	    case 4:
+	      /* Underline.  */
+	      attrib_add |= COMMON_LVB_UNDERSCORE;
+	      break;
+	    case 5:
+	      /* Blink.  */
+	      /* XXX: It is not BLINKING at all! */
+	      attrib_add |= BACKGROUND_INTENSITY;
+	      break;
+	    case 7:
+	      /* Reverse.  */
+	      attrib_add |= COMMON_LVB_REVERSE_VIDEO;
+	      break;
+	    case 22:
+	      /* No bold.  */
+	      attrib_add &= ~FOREGROUND_INTENSITY;
+	      attrib_rm |= FOREGROUND_INTENSITY;
+	      break;
+	    case 24:
+	      /* No underline.  */
+	      attrib_add &= ~COMMON_LVB_UNDERSCORE;
+	      attrib_rm |= COMMON_LVB_UNDERSCORE;
+	      break;
+	    case 25:
+	      /* No blink.  */
+	      /* XXX: It is not BLINKING at all! */
+	      attrib_add &= ~BACKGROUND_INTENSITY;
+	      attrib_rm |= BACKGROUND_INTENSITY;
+	      break;
+	    case 27:
+	      /* No reverse.  */
+	      attrib_add &= ~COMMON_LVB_REVERSE_VIDEO;
+	      attrib_rm |= COMMON_LVB_REVERSE_VIDEO;
+	      break;
+	    case 30:
+	    case 31:
+	    case 32:
+	    case 33:
+	    case 34:
+	    case 35:
+	    case 36:
+	    case 37:
+	      /* Foreground color.  */
+	      attrib_add &= ~(FOREGROUND_RED | FOREGROUND_GREEN
+			      | FOREGROUND_BLUE);
+	      n1 -= 30;
+	      if (n1 & 1)
+		attrib_add |= FOREGROUND_RED;
+	      if (n1 & 2)
+		attrib_add |= FOREGROUND_GREEN;
+	      if (n1 & 4)
+		attrib_add |= FOREGROUND_BLUE;
+	      attrib_rm |= (FOREGROUND_RED | FOREGROUND_GREEN
+			    | FOREGROUND_BLUE);
+	      break;
+	    case 38:
+	      /* Reserved for extended foreground color.
+		 Don't know how to handle parameters remaining.
+		 Bail out.  */
+	      goto sgr_set_it;
+	    case 39:
+	      /* Reset foreground color.  */
+	      /* Set to grey.  */
+	      attrib_add |= (FOREGROUND_RED | FOREGROUND_GREEN
+			     | FOREGROUND_BLUE);
+	      attrib_rm |= (FOREGROUND_RED | FOREGROUND_GREEN
+			    | FOREGROUND_BLUE);
+	      break;
+	    case 40:
+	    case 41:
+	    case 42:
+	    case 43:
+	    case 44:
+	    case 45:
+	    case 46:
+	    case 47:
+	      /* Background color.  */
+	      attrib_add &= ~(BACKGROUND_RED | BACKGROUND_GREEN
+			      | BACKGROUND_BLUE);
+	      n1 -= 40;
+	      if (n1 & 1)
+		attrib_add |= BACKGROUND_RED;
+	      if (n1 & 2)
+		attrib_add |= BACKGROUND_GREEN;
+	      if (n1 & 4)
+		attrib_add |= BACKGROUND_BLUE;
+	      attrib_rm |= (BACKGROUND_RED | BACKGROUND_GREEN
+			    | BACKGROUND_BLUE);
+	      break;
+	    case 48:
+	      /* Reserved for extended background color.
+		 Don't know how to handle parameters remaining.
+		 Bail out.  */
+	      goto sgr_set_it;
+	    case 49:
+	      /* Reset background color.  */
+	      /* Set to black.  */
+	      attrib_add &= ~(BACKGROUND_RED | BACKGROUND_GREEN
+			      | BACKGROUND_BLUE);
+	      attrib_rm |= (BACKGROUND_RED | BACKGROUND_GREEN
+			    | BACKGROUND_BLUE);
+	      break;
+	    }
+
+	  /* Prepare the next parameter.  */
+	  param = eptr + 1;
+	}
+      while (param != esc_term);
+
+sgr_set_it:
+      /* 0xFFFF removes everything.  If it is not the case,
+	 care must be taken to preserve old attributes.  */
+      if (attrib_rm != 0xFFFF && GetConsoleScreenBufferInfo (h, &sb))
+	{
+	  attrib_add |= sb.wAttributes & ~attrib_rm;
+	}
+      if (attrib_add & COMMON_LVB_REVERSE_VIDEO)
+	{
+	  /* COMMON_LVB_REVERSE_VIDEO is only effective for DBCS.
+	   * Swap foreground and background colors by hand.
+	   */
+	  attrib_add = (attrib_add & 0xFF00)
+			| ((attrib_add & 0x00F0) >> 4)
+			| ((attrib_add & 0x000F) << 4);
+	  attrib_add &= ~COMMON_LVB_REVERSE_VIDEO;
+	}
+      SetConsoleTextAttribute (h, attrib_add);
+      break;
+    }
+}
+
+int
+mingw_ansi_fputs (const char *str, FILE *fp)
+{
+  const char *read = str;
+  HANDLE h;
+  DWORD mode;
+  int esc_code, prefix_len;
+  const char *esc_head, *esc_term;
+
+  h = (HANDLE) _get_osfhandle (_fileno (fp));
+  if (h == INVALID_HANDLE_VALUE)
+    return EOF;
+
+  /* Don't mess up stdio functions with Windows APIs.  */
+  fflush (fp);
+
+  if (GetConsoleMode (h, &mode))
+    /* If it is a console, translate ANSI escape codes as needed.  */
+    for (;;)
+      {
+	if ((esc_code = find_esc_head (&prefix_len, &esc_head, read)) == 0)
+	  {
+	    /* Write all remaining characters, then exit.  */
+	    write_all (h, read, strlen (read));
+	    break;
+	  }
+	if (find_esc_terminator (&esc_term, esc_head) == 0)
+	  /* Ignore incomplete escape sequences at the moment.
+	     FIXME: The escape state shall be cached for further calls
+		    to this function.  */
+	  break;
+	write_all (h, read, esc_head - prefix_len - read);
+	eat_esc_sequence (h, esc_code, esc_head, esc_term);
+	read = esc_term + 1;
+      }
+  else
+    /* If it is not a console, write everything as-is.  */
+    write_all (h, read, strlen (read));
+
+  return 1;
+}
+
+#endif /* __MINGW32__ */
+
+static int
+decode_utf8_char (const unsigned char *, size_t len, unsigned int *);
 static void pp_quoted_string (pretty_printer *, const char *, size_t = -1);
 
 /* Overwrite the given location/range within this text_info's rich_location.
    For use e.g. when implementing "+" in client format decoders.  */
 
 void
-text_info::set_location (unsigned int idx, location_t loc, bool show_caret_p)
+text_info::set_location (unsigned int idx, location_t loc,
+			 enum range_display_kind range_display_kind)
 {
   gcc_checking_assert (m_richloc);
-  m_richloc->set_range (line_table, idx, loc, show_caret_p);
+  m_richloc->set_range (idx, loc, range_display_kind);
 }
 
 location_t
@@ -135,12 +808,40 @@ pp_clear_state (pretty_printer *pp)
   pp_indentation (pp) = 0;
 }
 
+/* Print X to PP in decimal.  */
+template<unsigned int N, typename T>
+void
+pp_wide_integer (pretty_printer *pp, const poly_int_pod<N, T> &x)
+{
+  if (x.is_constant ())
+    pp_wide_integer (pp, x.coeffs[0]);
+  else
+    {
+      pp_left_bracket (pp);
+      for (unsigned int i = 0; i < N; ++i)
+	{
+	  if (i != 0)
+	    pp_comma (pp);
+	  pp_wide_integer (pp, x.coeffs[i]);
+	}
+      pp_right_bracket (pp);
+    }
+}
+
+template void pp_wide_integer (pretty_printer *, const poly_uint16_pod &);
+template void pp_wide_integer (pretty_printer *, const poly_int64_pod &);
+template void pp_wide_integer (pretty_printer *, const poly_uint64_pod &);
+
 /* Flush the formatted text of PRETTY-PRINTER onto the attached stream.  */
 void
 pp_write_text_to_stream (pretty_printer *pp)
 {
   const char *text = pp_formatted_text (pp);
+#ifdef __MINGW32__
+  mingw_ansi_fputs (text, pp_buffer (pp)->stream);
+#else
   fputs (text, pp_buffer (pp)->stream);
+#endif
   pp_clear_output_area (pp);
 }
 
@@ -202,6 +903,54 @@ pp_write_text_as_dot_label_to_stream (pretty_printer *pp, bool for_record)
 	fputc ('\\', fp);
 
       fputc (*p, fp);
+    }
+
+  pp_clear_output_area (pp);
+}
+
+/* As pp_write_text_to_stream, but for GraphViz HTML-like strings.
+
+   Flush the formatted text of pretty-printer PP onto the attached stream,
+   escaping these characters
+     " & < >
+   using XML escape sequences.
+
+   http://www.graphviz.org/doc/info/lang.html#html states:
+      special XML escape sequences for ", &, <, and > may be necessary in
+      order to embed these characters in attribute values or raw text
+   This doesn't list "'" (which would normally be escaped in XML
+   as "&apos;" or in HTML as "&#39;");.
+
+   Experiments show that escaping "'" doesn't seem to be necessary.  */
+
+void
+pp_write_text_as_html_like_dot_to_stream (pretty_printer *pp)
+{
+  const char *text = pp_formatted_text (pp);
+  const char *p = text;
+  FILE *fp = pp_buffer (pp)->stream;
+
+  for (;*p; p++)
+    {
+      switch (*p)
+	{
+	case '"':
+	  fputs ("&quot;", fp);
+	  break;
+	case '&':
+	  fputs ("&amp;", fp);
+	  break;
+	case '<':
+	  fputs ("&lt;", fp);
+	  break;
+	case '>':
+	  fputs ("&gt;",fp);
+	  break;
+
+	default:
+	  fputc (*p, fp);
+	  break;
+	}
     }
 
   pp_clear_output_area (pp);
@@ -271,6 +1020,8 @@ pp_indent (pretty_printer *pp)
     pp_space (pp);
 }
 
+static const char *get_end_url_string (pretty_printer *);
+
 /* The following format specifiers are recognized as being client independent:
    %d, %i: (signed) integer in base ten.
    %u: unsigned integer in base ten.
@@ -279,6 +1030,7 @@ pp_indent (pretty_printer *pp)
    %ld, %li, %lo, %lu, %lx: long versions of the above.
    %lld, %lli, %llo, %llu, %llx: long long versions.
    %wd, %wi, %wo, %wu, %wx: HOST_WIDE_INT versions.
+   %f: double
    %c: character.
    %s: string.
    %p: pointer (printed in a host-dependent manner).
@@ -288,8 +1040,11 @@ pp_indent (pretty_printer *pp)
    %%: '%'.
    %<: opening quote.
    %>: closing quote.
+   %{: URL start.  Consumes a const char * argument for the URL.
+   %}: URL end.    Does not consume any arguments.
    %': apostrophe (should only be used in untranslated messages;
        translations should use appropriate punctuation directly).
+   %@: diagnostic_event_id_ptr, for which event_id->known_p () must be true.
    %.*s: a substring the length of which is specified by an argument
 	 integer.
    %Ns: likewise, but length specified as constant in the format string.
@@ -300,7 +1055,7 @@ pp_indent (pretty_printer *pp)
    Arguments can be used sequentially, or through %N$ resp. *N$
    notation Nth argument after the format string.  If %N$ / *N$
    notation is used, it must be used for all arguments, except %m, %%,
-   %<, %> and %', which may not have a number, as they do not consume
+   %<, %>, %} and %', which may not have a number, as they do not consume
    an argument.  When %M$.*N$s is used, M must be N + 1.  (This may
    also be written %M$.*s, provided N is not otherwise used.)  The
    format string must have conversion specifiers with argument numbers
@@ -333,7 +1088,7 @@ pp_format (pretty_printer *pp, text_info *text)
   /* Formatting phase 1: split up TEXT->format_spec into chunks in
      pp_buffer (PP)->args[].  Even-numbered chunks are to be output
      verbatim, odd-numbered chunks are format specifiers.
-     %m, %%, %<, %>, and %' are replaced with the appropriate text at
+     %m, %%, %<, %>, %} and %' are replaced with the appropriate text at
      this point.  */
 
   memset (formatters, 0, sizeof formatters);
@@ -379,6 +1134,15 @@ pp_format (pretty_printer *pp, text_info *text)
 	case '\'':
 	  obstack_grow (&buffer->chunk_obstack,
 			close_quote, strlen (close_quote));
+	  p++;
+	  continue;
+
+	case '}':
+	  {
+	    const char *endurlstr = get_end_url_string (pp);
+	    obstack_grow (&buffer->chunk_obstack, endurlstr,
+			  strlen (endurlstr));
+	  }
 	  p++;
 	  continue;
 
@@ -493,6 +1257,7 @@ pp_format (pretty_printer *pp, text_info *text)
   /* Set output to the argument obstack, and switch line-wrapping and
      prefixing off.  */
   buffer->obstack = &buffer->chunk_obstack;
+  const int old_line_length = buffer->line_length;
   old_wrapping_mode = pp_set_verbatim_wrapping (pp);
 
   /* Second phase.  Replace each formatter with the formatted text it
@@ -545,10 +1310,7 @@ pp_format (pretty_printer *pp, text_info *text)
       gcc_assert (!wide || precision == 0);
 
       if (quote)
-	{
-	  pp_string (pp, open_quote);
-	  pp_string (pp, colorize_start (pp_show_color (pp), "quote"));
-	}
+	pp_begin_quote (pp, pp_show_color (pp));
 
       switch (*p)
 	{
@@ -612,6 +1374,10 @@ pp_format (pretty_printer *pp, text_info *text)
 	      (pp, *text->args_ptr, precision, unsigned, "u");
 	  break;
 
+	case 'f':
+	  pp_double (pp, va_arg (*text->args_ptr, double));
+	  break;
+
 	case 'Z':
 	  {
 	    int *v = va_arg (*text->args_ptr, int *);
@@ -667,26 +1433,54 @@ pp_format (pretty_printer *pp, text_info *text)
 	      }
 
 	    s = va_arg (*text->args_ptr, const char *);
-	    pp_append_text (pp, s, s + n);
+
+	    /* Append the lesser of precision and strlen (s) characters
+	       from the array (which need not be a nul-terminated string).
+	       Negative precision is treated as if it were omitted.  */
+	    size_t len = n < 0 ? strlen (s) : strnlen (s, n);
+
+	    pp_append_text (pp, s, s + len);
 	  }
+	  break;
+
+	case '@':
+	  {
+	    /* diagnostic_event_id_t *.  */
+	    diagnostic_event_id_ptr event_id
+	      = va_arg (*text->args_ptr, diagnostic_event_id_ptr);
+	    gcc_assert (event_id->known_p ());
+
+	    pp_string (pp, colorize_start (pp_show_color (pp), "path"));
+	    pp_character (pp, '(');
+	    pp_decimal_int (pp, event_id->one_based ());
+	    pp_character (pp, ')');
+	    pp_string (pp, colorize_stop (pp_show_color (pp)));
+	  }
+	  break;
+
+	case '{':
+	  pp_begin_url (pp, va_arg (*text->args_ptr, const char *));
 	  break;
 
 	default:
 	  {
 	    bool ok;
 
+	    /* Call the format decoder.
+	       Pass the address of "quote" so that format decoders can
+	       potentially disable printing of the closing quote
+	       (e.g. when printing "'TYPEDEF' aka 'TYPE'" in the C family
+	       of frontends).  */
 	    gcc_assert (pp_format_decoder (pp));
 	    ok = pp_format_decoder (pp) (pp, text, p,
-					 precision, wide, plus, hash);
+					 precision, wide, plus, hash, &quote,
+					 formatters[argno]);
 	    gcc_assert (ok);
 	  }
 	}
 
       if (quote)
-	{
-	  pp_string (pp, colorize_stop (pp_show_color (pp)));
-	  pp_string (pp, close_quote);
-	}
+	pp_end_quote (pp, pp_show_color (pp));
 
       obstack_1grow (&buffer->chunk_obstack, '\0');
       *formatters[argno] = XOBFINISH (&buffer->chunk_obstack, const char *);
@@ -696,9 +1490,14 @@ pp_format (pretty_printer *pp, text_info *text)
     for (; argno < PP_NL_ARGMAX; argno++)
       gcc_assert (!formatters[argno]);
 
+  /* If the client supplied a postprocessing object, call its "handle"
+     hook here.  */
+  if (pp->m_format_postprocessor)
+    pp->m_format_postprocessor->handle (pp);
+
   /* Revert to normal obstack and wrapping mode.  */
   buffer->obstack = &buffer->formatted_obstack;
-  buffer->line_length = 0;
+  buffer->line_length = old_line_length;
   pp_wrapping_mode (pp) = old_wrapping_mode;
   pp_clear_state (pp);
 }
@@ -713,7 +1512,6 @@ pp_output_formatted_text (pretty_printer *pp)
   const char **args = chunk_array->args;
 
   gcc_assert (buffer->obstack == &buffer->formatted_obstack);
-  gcc_assert (buffer->line_length == 0);
 
   /* This is a third phase, first 2 phases done in pp_format_args.
      Now we actually print it.  */
@@ -783,14 +1581,29 @@ pp_clear_output_area (pretty_printer *pp)
   pp_buffer (pp)->line_length = 0;
 }
 
-/* Set PREFIX for PRETTY-PRINTER.  */
+/* Set PREFIX for PRETTY-PRINTER, taking ownership of PREFIX, which
+   will eventually be free-ed.  */
+
 void
-pp_set_prefix (pretty_printer *pp, const char *prefix)
+pp_set_prefix (pretty_printer *pp, char *prefix)
 {
+  free (pp->prefix);
   pp->prefix = prefix;
   pp_set_real_maximum_length (pp);
   pp->emitted_prefix = false;
   pp_indentation (pp) = 0;
+}
+
+/* Take ownership of PP's prefix, setting it to NULL.
+   This allows clients to save, override, and then restore an existing
+   prefix, without it being free-ed.  */
+
+char *
+pp_take_prefix (pretty_printer *pp)
+{
+  char *result = pp->prefix;
+  pp->prefix = NULL;
+  return result;
 }
 
 /* Free PRETTY-PRINTER's prefix, a previously malloc()'d string.  */
@@ -799,7 +1612,7 @@ pp_destroy_prefix (pretty_printer *pp)
 {
   if (pp->prefix != NULL)
     {
-      free (CONST_CAST (char *, pp->prefix));
+      free (pp->prefix);
       pp->prefix = NULL;
     }
 }
@@ -836,10 +1649,9 @@ pp_emit_prefix (pretty_printer *pp)
     }
 }
 
-/* Construct a PRETTY-PRINTER with PREFIX and of MAXIMUM_LENGTH
-   characters per line.  */
+/* Construct a PRETTY-PRINTER of MAXIMUM_LENGTH characters per line.  */
 
-pretty_printer::pretty_printer (const char *p, int l)
+pretty_printer::pretty_printer (int maximum_length)
   : buffer (new (XCNEW (output_buffer)) output_buffer ()),
     prefix (),
     padding (pp_none),
@@ -847,21 +1659,60 @@ pretty_printer::pretty_printer (const char *p, int l)
     indent_skip (),
     wrapping (),
     format_decoder (),
+    m_format_postprocessor (NULL),
     emitted_prefix (),
     need_newline (),
     translate_identifiers (true),
-    show_color ()
+    show_color (),
+    url_format (URL_FORMAT_NONE)
 {
-  pp_line_cutoff (this) = l;
+  pp_line_cutoff (this) = maximum_length;
   /* By default, we emit prefixes once per message.  */
   pp_prefixing_rule (this) = DIAGNOSTICS_SHOW_PREFIX_ONCE;
-  pp_set_prefix (this, p);
+  pp_set_prefix (this, NULL);
+}
+
+/* Copy constructor for pretty_printer.  */
+
+pretty_printer::pretty_printer (const pretty_printer &other)
+: buffer (new (XCNEW (output_buffer)) output_buffer ()),
+  prefix (),
+  padding (other.padding),
+  maximum_length (other.maximum_length),
+  indent_skip (other.indent_skip),
+  wrapping (other.wrapping),
+  format_decoder (other.format_decoder),
+  m_format_postprocessor (NULL),
+  emitted_prefix (other.emitted_prefix),
+  need_newline (other.need_newline),
+  translate_identifiers (other.translate_identifiers),
+  show_color (other.show_color),
+  url_format (other.url_format)
+{
+  pp_line_cutoff (this) = maximum_length;
+  /* By default, we emit prefixes once per message.  */
+  pp_prefixing_rule (this) = pp_prefixing_rule (&other);
+  pp_set_prefix (this, NULL);
+
+  if (other.m_format_postprocessor)
+    m_format_postprocessor = other.m_format_postprocessor->clone ();
 }
 
 pretty_printer::~pretty_printer ()
 {
+  if (m_format_postprocessor)
+    delete m_format_postprocessor;
   buffer->~output_buffer ();
   XDELETE (buffer);
+  free (prefix);
+}
+
+/* Base class implementation of pretty_printer::clone vfunc.  */
+
+pretty_printer *
+pretty_printer::clone () const
+{
+  return new pretty_printer (*this);
 }
 
 /* Append a string delimited by START and END to the output area of
@@ -956,6 +1807,8 @@ void
 pp_character (pretty_printer *pp, int c)
 {
   if (pp_is_wrapping_line (pp)
+      /* If printing UTF-8, don't wrap in the middle of a sequence.  */
+      && (((unsigned int) c) & 0xC0) != 0x80
       && pp_remaining_character_count_for_line (pp) <= 0)
     {
       pp_newline (pp);
@@ -996,8 +1849,22 @@ pp_quoted_string (pretty_printer *pp, const char *str, size_t n /* = -1 */)
       if (ISPRINT (*ps))
 	  continue;
 
+      /* Don't escape a valid UTF-8 extended char.  */
+      const unsigned char *ups = (const unsigned char *) ps;
+      if (*ups & 0x80)
+	{
+	  unsigned int extended_char;
+	  const int valid_utf8_len = decode_utf8_char (ups, n, &extended_char);
+	  if (valid_utf8_len > 0)
+	    {
+	      ps += valid_utf8_len - 1;
+	      n -= valid_utf8_len - 1;
+	      continue;
+	    }
+	}
+
       if (last < ps)
-	pp_maybe_wrap_text (pp, last, ps - 1);
+	pp_maybe_wrap_text (pp, last, ps);
 
       /* Append the hexadecimal value of the character.  Allocate a buffer
 	 that's large enough for a 32-bit char plus the hex prefix.  */
@@ -1050,6 +1917,26 @@ pp_separate_with (pretty_printer *pp, char c)
 {
   pp_character (pp, c);
   pp_space (pp);
+}
+
+/* Add a localized open quote, and if SHOW_COLOR is true, begin colorizing
+   using the "quote" color.  */
+
+void
+pp_begin_quote (pretty_printer *pp, bool show_color)
+{
+  pp_string (pp, open_quote);
+  pp_string (pp, colorize_start (show_color, "quote"));
+}
+
+/* If SHOW_COLOR is true, stop colorizing.
+   Add a localized close quote.  */
+
+void
+pp_end_quote (pretty_printer *pp, bool show_color)
+{
+  pp_string (pp, colorize_stop (show_color));
+  pp_string (pp, close_quote);
 }
 
 
@@ -1276,6 +2163,78 @@ identifier_to_locale (const char *ident)
   }
 }
 
+/* Support for encoding URLs.
+   See egmontkob/Hyperlinks_in_Terminal_Emulators.md
+   ( https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda ).
+
+   > A hyperlink is opened upon encountering an OSC 8 escape sequence with
+   > the target URI. The syntax is
+   >
+   >  OSC 8 ; params ; URI ST
+   >
+   > A hyperlink is closed with the same escape sequence, omitting the
+   > parameters and the URI but keeping the separators:
+   >
+   > OSC 8 ; ; ST
+   >
+   > OSC (operating system command) is typically ESC ].
+
+   Use BEL instead of ST, as that is currently rendered better in some
+   terminal emulators that don't support OSC 8, like konsole.  */
+
+/* If URL-printing is enabled, write an "open URL" escape sequence to PP
+   for the given URL.  */
+
+void
+pp_begin_url (pretty_printer *pp, const char *url)
+{
+  switch (pp->url_format)
+    {
+    case URL_FORMAT_NONE:
+      break;
+    case URL_FORMAT_ST:
+      pp_string (pp, "\33]8;;");
+      pp_string (pp, url);
+      pp_string (pp, "\33\\");
+      break;
+    case URL_FORMAT_BEL:
+      pp_string (pp, "\33]8;;");
+      pp_string (pp, url);
+      pp_string (pp, "\a");
+      break;
+    default:
+      gcc_unreachable ();
+    }
+}
+
+/* Helper function for pp_end_url and pp_format, return the "close URL" escape
+   sequence string.  */
+
+static const char *
+get_end_url_string (pretty_printer *pp)
+{
+  switch (pp->url_format)
+    {
+    case URL_FORMAT_NONE:
+      return "";
+    case URL_FORMAT_ST:
+      return "\33]8;;\33\\";
+    case URL_FORMAT_BEL:
+      return "\33]8;;\a";
+    default:
+      gcc_unreachable ();
+    }
+}
+
+/* If URL-printing is enabled, write a "close URL" escape sequence to PP.  */
+
+void
+pp_end_url (pretty_printer *pp)
+{
+  if (pp->url_format != URL_FORMAT_NONE)
+    pp_string (pp, get_end_url_string (pp));
+}
+
 #if CHECKING_P
 
 namespace selftest {
@@ -1380,10 +2339,7 @@ test_pp_format ()
 {
   /* Avoid introducing locale-specific differences in the results
      by hardcoding open_quote and close_quote.  */
-  const char *old_open_quote = open_quote;
-  const char *old_close_quote = close_quote;
-  open_quote = "`";
-  close_quote = "'";
+  auto_fix_quotes fix_quotes;
 
   /* Verify that plain text is passed through unchanged.  */
   assert_pp_format (SELFTEST_LOCATION, "unformatted", "unformatted");
@@ -1416,9 +2372,17 @@ test_pp_format ()
   ASSERT_PP_FORMAT_2 ("17 12345678", "%wo %x", (HOST_WIDE_INT)15, 0x12345678);
   ASSERT_PP_FORMAT_2 ("0xcafebabe 12345678", "%wx %x", (HOST_WIDE_INT)0xcafebabe,
 		      0x12345678);
+  ASSERT_PP_FORMAT_2 ("1.000000 12345678", "%f %x", 1.0, 0x12345678);
   ASSERT_PP_FORMAT_2 ("A 12345678", "%c %x", 'A', 0x12345678);
   ASSERT_PP_FORMAT_2 ("hello world 12345678", "%s %x", "hello world",
 		      0x12345678);
+
+  /* Not nul-terminated.  */
+  char arr[5] = { '1', '2', '3', '4', '5' };
+  ASSERT_PP_FORMAT_3 ("123 12345678", "%.*s %x", 3, arr, 0x12345678);
+  ASSERT_PP_FORMAT_3 ("1234 12345678", "%.*s %x", -1, "1234", 0x12345678);
+  ASSERT_PP_FORMAT_3 ("12345 12345678", "%.*s %x", 7, "12345", 0x12345678);
+
   /* We can't test for %p; the pointer is printed in an implementation-defined
      manner.  */
   ASSERT_PP_FORMAT_2 ("normal colored normal 12345678",
@@ -1442,6 +2406,21 @@ test_pp_format ()
   assert_pp_format_colored (SELFTEST_LOCATION,
 			    "`\33[01m\33[Kfoo\33[m\33[K' 12345678", "%qs %x",
 			    "foo", 0x12345678);
+  /* Verify "%@".  */
+  {
+    diagnostic_event_id_t first (2);
+    diagnostic_event_id_t second (7);
+
+    ASSERT_PP_FORMAT_2 ("first `free' at (3); second `free' at (8)",
+			"first %<free%> at %@; second %<free%> at %@",
+			&first, &second);
+    assert_pp_format_colored
+      (SELFTEST_LOCATION,
+       "first `[01m[Kfree[m[K' at [01;36m[K(3)[m[K;"
+       " second `[01m[Kfree[m[K' at [01;36m[K(8)[m[K",
+       "first %<free%> at %@; second %<free%> at %@",
+       &first, &second);
+  }
 
   /* Verify %Z.  */
   int v[] = { 1, 2, 3 }; 
@@ -1458,10 +2437,177 @@ test_pp_format ()
   assert_pp_format (SELFTEST_LOCATION, "item 3 of 7", "item %i of %i", 3, 7);
   assert_pp_format (SELFTEST_LOCATION, "problem with `bar' at line 10",
 		    "problem with %qs at line %i", "bar", 10);
+}
 
-  /* Restore old values of open_quote and close_quote.  */
-  open_quote = old_open_quote;
-  close_quote = old_close_quote;
+/* A subclass of pretty_printer for use by test_prefixes_and_wrapping.  */
+
+class test_pretty_printer : public pretty_printer
+{
+ public:
+  test_pretty_printer (enum diagnostic_prefixing_rule_t rule,
+		       int max_line_length)
+  {
+    pp_set_prefix (this, xstrdup ("PREFIX: "));
+    wrapping.rule = rule;
+    pp_set_line_maximum_length (this, max_line_length);
+  }
+};
+
+/* Verify that the various values of enum diagnostic_prefixing_rule_t work
+   as expected, with and without line wrapping.  */
+
+static void
+test_prefixes_and_wrapping ()
+{
+  /* Tests of the various prefixing rules, without wrapping.
+     Newlines embedded in pp_string don't affect it; we have to
+     explicitly call pp_newline.  */
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_ONCE, 0);
+    pp_string (&pp, "the quick brown fox");
+    pp_newline (&pp);
+    pp_string (&pp, "jumps over the lazy dog");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "PREFIX: the quick brown fox\n"
+		  "   jumps over the lazy dog\n");
+  }
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_NEVER, 0);
+    pp_string (&pp, "the quick brown fox");
+    pp_newline (&pp);
+    pp_string (&pp, "jumps over the lazy dog");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "the quick brown fox\n"
+		  "jumps over the lazy dog\n");
+  }
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_EVERY_LINE, 0);
+    pp_string (&pp, "the quick brown fox");
+    pp_newline (&pp);
+    pp_string (&pp, "jumps over the lazy dog");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "PREFIX: the quick brown fox\n"
+		  "PREFIX: jumps over the lazy dog\n");
+  }
+
+  /* Tests of the various prefixing rules, with wrapping.  */
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_ONCE, 20);
+    pp_string (&pp, "the quick brown fox jumps over the lazy dog");
+    pp_newline (&pp);
+    pp_string (&pp, "able was I ere I saw elba");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "PREFIX: the quick \n"
+		  "   brown fox jumps \n"
+		  "   over the lazy \n"
+		  "   dog\n"
+		  "   able was I ere I \n"
+		  "   saw elba\n");
+  }
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_NEVER, 20);
+    pp_string (&pp, "the quick brown fox jumps over the lazy dog");
+    pp_newline (&pp);
+    pp_string (&pp, "able was I ere I saw elba");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "the quick brown fox \n"
+		  "jumps over the lazy \n"
+		  "dog\n"
+		  "able was I ere I \n"
+		  "saw elba\n");
+  }
+  {
+    test_pretty_printer pp (DIAGNOSTICS_SHOW_PREFIX_EVERY_LINE, 20);
+    pp_string (&pp, "the quick brown fox jumps over the lazy dog");
+    pp_newline (&pp);
+    pp_string (&pp, "able was I ere I saw elba");
+    pp_newline (&pp);
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "PREFIX: the quick brown fox jumps over the lazy dog\n"
+		  "PREFIX: able was I ere I saw elba\n");
+  }
+
+}
+
+/* Verify that URL-printing works as expected.  */
+
+void
+test_urls ()
+{
+  {
+    pretty_printer pp;
+    pp.url_format = URL_FORMAT_NONE;
+    pp_begin_url (&pp, "http://example.com");
+    pp_string (&pp, "This is a link");
+    pp_end_url (&pp);
+    ASSERT_STREQ ("This is a link",
+		  pp_formatted_text (&pp));
+  }
+
+  {
+    pretty_printer pp;
+    pp.url_format = URL_FORMAT_ST;
+    pp_begin_url (&pp, "http://example.com");
+    pp_string (&pp, "This is a link");
+    pp_end_url (&pp);
+    ASSERT_STREQ ("\33]8;;http://example.com\33\\This is a link\33]8;;\33\\",
+		  pp_formatted_text (&pp));
+  }
+
+  {
+    pretty_printer pp;
+    pp.url_format = URL_FORMAT_BEL;
+    pp_begin_url (&pp, "http://example.com");
+    pp_string (&pp, "This is a link");
+    pp_end_url (&pp);
+    ASSERT_STREQ ("\33]8;;http://example.com\aThis is a link\33]8;;\a",
+		  pp_formatted_text (&pp));
+  }
+}
+
+/* Test multibyte awareness.  */
+static void test_utf8 ()
+{
+
+  /* Check that pp_quoted_string leaves valid UTF-8 alone.  */
+  {
+    pretty_printer pp;
+    const char *s = "\xf0\x9f\x98\x82";
+    pp_quoted_string (&pp, s);
+    ASSERT_STREQ (pp_formatted_text (&pp), s);
+  }
+
+  /* Check that pp_quoted_string escapes non-UTF-8 nonprintable bytes.  */
+  {
+    pretty_printer pp;
+    pp_quoted_string (&pp, "\xf0!\x9f\x98\x82");
+    ASSERT_STREQ (pp_formatted_text (&pp),
+		  "\\xf0!\\x9f\\x98\\x82");
+  }
+
+  /* Check that pp_character will line-wrap at the beginning of a UTF-8
+     sequence, but not in the middle.  */
+  {
+      pretty_printer pp (3);
+      const char s[] = "---\xf0\x9f\x98\x82";
+      for (int i = 0; i != sizeof (s) - 1; ++i)
+	pp_character (&pp, s[i]);
+      pp_newline (&pp);
+      for (int i = 1; i != sizeof (s) - 1; ++i)
+	pp_character (&pp, s[i]);
+      pp_character (&pp, '-');
+      ASSERT_STREQ (pp_formatted_text (&pp),
+		    "---\n"
+		    "\xf0\x9f\x98\x82\n"
+		    "--\xf0\x9f\x98\x82\n"
+		    "-");
+  }
+
 }
 
 /* Run all of the selftests within this file.  */
@@ -1471,6 +2617,9 @@ pretty_print_c_tests ()
 {
   test_basic_printing ();
   test_pp_format ();
+  test_prefixes_and_wrapping ();
+  test_urls ();
+  test_utf8 ();
 }
 
 } // namespace selftest

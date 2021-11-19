@@ -29,10 +29,10 @@
 &	// char (ichar (f(2:2)) + mod (i, 3))
   end do
   do i = 1, 64
-    if (index (c, char (ichar ('0') + i)) .eq. 0) call abort
-    if (index (d, char (ichar ('0') + i)) .eq. 0) call abort
+    if (index (c, char (ichar ('0') + i)) .eq. 0) stop 1
+    if (index (d, char (ichar ('0') + i)) .eq. 0) stop 2
   end do
-  if (e.ne.char (ichar ('0') + 64)) call abort
-  if (f(1:1).ne.char (ichar ('0') + 32)) call abort
-  if (f(2:2).ne.char (ichar ('0') + 64)) call abort
+  if (e.ne.char (ichar ('0') + 64)) stop 3
+  if (f(1:1).ne.char (ichar ('0') + 32)) stop 4
+  if (f(2:2).ne.char (ichar ('0') + 64)) stop 5
 end

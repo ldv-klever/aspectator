@@ -1,7 +1,7 @@
 /* Miscellaneous utilities for GIMPLE streaming.  Things that are used
    in both input and output are here.
 
-   Copyright (C) 2009-2017 Free Software Foundation, Inc.
+   Copyright (C) 2009-2021 Free Software Foundation, Inc.
    Contributed by Doug Kwan <dougkwan@google.com>
 
 This file is part of GCC.
@@ -35,14 +35,11 @@ along with GCC; see the file COPYING3.  If not see
 /* Statistics gathered during LTO, WPA and LTRANS.  */
 struct lto_stats_d lto_stats;
 
-/* LTO uses bitmaps with different life-times.  So use a separate
-   obstack for all LTO bitmaps.  */
-static bitmap_obstack lto_obstack;
-static bool lto_obstack_initialized;
-
 const char *section_name_prefix = LTO_SECTION_NAME_PREFIX;
 /* Set when streaming LTO for offloading compiler.  */
 bool lto_stream_offload_p;
+
+FILE *streamer_dump_file;
 
 /* Return a string representing LTO tag TAG.  */
 
@@ -87,49 +84,13 @@ lto_tag_name (enum LTO_tags tag)
       return "LTO_ert_must_not_throw";
     case LTO_tree_pickle_reference:
       return "LTO_tree_pickle_reference";
-    case LTO_field_decl_ref:
-      return "LTO_field_decl_ref";
-    case LTO_function_decl_ref:
-      return "LTO_function_decl_ref";
-    case LTO_label_decl_ref:
-      return "LTO_label_decl_ref";
-    case LTO_namespace_decl_ref:
-      return "LTO_namespace_decl_ref";
-    case LTO_result_decl_ref:
-      return "LTO_result_decl_ref";
+    case LTO_global_stream_ref:
+      return "LTO_global_sream_ref";
     case LTO_ssa_name_ref:
       return "LTO_ssa_name_ref";
-    case LTO_type_decl_ref:
-      return "LTO_type_decl_ref";
-    case LTO_type_ref:
-      return "LTO_type_ref";
-    case LTO_global_decl_ref:
-      return "LTO_global_decl_ref";
     default:
       return "LTO_UNKNOWN";
     }
-}
-
-
-/* Allocate a bitmap from heap.  Initializes the LTO obstack if necessary.  */
-
-bitmap
-lto_bitmap_alloc (void)
-{
-  if (!lto_obstack_initialized)
-    {
-      bitmap_obstack_initialize (&lto_obstack);
-      lto_obstack_initialized = true;
-    }
-  return BITMAP_ALLOC (&lto_obstack);
-}
-
-/* Free bitmap B.  */
-
-void
-lto_bitmap_free (bitmap b)
-{
-  BITMAP_FREE (b);
 }
 
 
@@ -139,18 +100,24 @@ lto_bitmap_free (bitmap b)
    to free the returned name.  */
 
 char *
-lto_get_section_name (int section_type, const char *name, struct lto_file_decl_data *f)
+lto_get_section_name (int section_type, const char *name,
+		      int node_order, struct lto_file_decl_data *f)
 {
   const char *add;
   char post[32];
   const char *sep;
+  char *buffer = NULL;
 
   if (section_type == LTO_section_function_body)
     {
       gcc_assert (name != NULL);
       if (name[0] == '*')
 	name++;
-      add = name;
+
+      buffer = (char *)xmalloc (strlen (name) + 32);
+      sprintf (buffer, "%s.%d", name, node_order);
+
+      add = buffer;
       sep = "";
     }
   else if (section_type < LTO_N_SECTION_TYPES)
@@ -172,7 +139,10 @@ lto_get_section_name (int section_type, const char *name, struct lto_file_decl_d
     sprintf (post, "." HOST_WIDE_INT_PRINT_HEX_PURE, f->id);
   else
     sprintf (post, "." HOST_WIDE_INT_PRINT_HEX_PURE, get_random_seed (false)); 
-  return concat (section_name_prefix, sep, add, post, NULL);
+  char *res = concat (section_name_prefix, sep, add, post, NULL);
+  if (buffer)
+    free (buffer);
+  return res;
 }
 
 
@@ -257,35 +227,6 @@ print_lto_report (const char *s)
 	     lto_section_name[i], lto_stats.section_size[i]);
 }
 
-
-#ifdef LTO_STREAMER_DEBUG
-struct tree_hash_entry
-{
-  tree key;
-  intptr_t value;
-};
-
-struct tree_entry_hasher : nofree_ptr_hash <tree_hash_entry>
-{
-  static inline hashval_t hash (const tree_hash_entry *);
-  static inline bool equal (const tree_hash_entry *, const tree_hash_entry *);
-};
-
-inline hashval_t
-tree_entry_hasher::hash (const tree_hash_entry *e)
-{
-  return htab_hash_pointer (e->key);
-}
-
-inline bool
-tree_entry_hasher::equal (const tree_hash_entry *e1, const tree_hash_entry *e2)
-{
-  return (e1->key == e2->key);
-}
-
-static hash_table<tree_entry_hasher> *tree_htab;
-#endif
-
 /* Initialization common to the LTO reader and writer.  */
 
 void
@@ -297,10 +238,6 @@ lto_streamer_init (void)
      handle it.  */
   if (flag_checking)
     streamer_check_handled_ts_structures ();
-
-#ifdef LTO_STREAMER_DEBUG
-  tree_htab = new hash_table<tree_entry_hasher> (31);
-#endif
 }
 
 
@@ -313,65 +250,6 @@ gate_lto_out (void)
 	  /* Don't bother doing anything if the program has errors.  */
 	  && !seen_error ());
 }
-
-
-#ifdef LTO_STREAMER_DEBUG
-/* Add a mapping between T and ORIG_T, which is the numeric value of
-   the original address of T as it was seen by the LTO writer.  This
-   mapping is useful when debugging streaming problems.  A debugging
-   session can be started on both reader and writer using ORIG_T
-   as a breakpoint value in both sessions.
-
-   Note that this mapping is transient and only valid while T is
-   being reconstructed.  Once T is fully built, the mapping is
-   removed.  */
-
-void
-lto_orig_address_map (tree t, intptr_t orig_t)
-{
-  struct tree_hash_entry ent;
-  struct tree_hash_entry **slot;
-
-  ent.key = t;
-  ent.value = orig_t;
-  slot = tree_htab->find_slot (&ent, INSERT);
-  gcc_assert (!*slot);
-  *slot = XNEW (struct tree_hash_entry);
-  **slot = ent;
-}
-
-
-/* Get the original address of T as it was seen by the writer.  This
-   is only valid while T is being reconstructed.  */
-
-intptr_t
-lto_orig_address_get (tree t)
-{
-  struct tree_hash_entry ent;
-  struct tree_hash_entry **slot;
-
-  ent.key = t;
-  slot = tree_htab->find_slot (&ent, NO_INSERT);
-  return (slot ? (*slot)->value : 0);
-}
-
-
-/* Clear the mapping of T to its original address.  */
-
-void
-lto_orig_address_remove (tree t)
-{
-  struct tree_hash_entry ent;
-  struct tree_hash_entry **slot;
-
-  ent.key = t;
-  slot = tree_htab->find_slot (&ent, NO_INSERT);
-  gcc_assert (slot);
-  free (*slot);
-  tree_htab->clear_slot (slot);
-}
-#endif
-
 
 /* Check that the version MAJOR.MINOR is the correct version number.  */
 
@@ -398,4 +276,5 @@ lto_streamer_hooks_init (void)
   streamer_hooks.read_tree = lto_input_tree;
   streamer_hooks.input_location = lto_input_location;
   streamer_hooks.output_location = lto_output_location;
+  streamer_hooks.output_location_and_block = lto_output_location_and_block;
 }

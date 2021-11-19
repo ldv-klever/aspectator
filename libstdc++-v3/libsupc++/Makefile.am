@@ -1,6 +1,6 @@
 ## Makefile for the GNU C++ Support library.
 ##
-## Copyright (C) 2000-2017 Free Software Foundation, Inc.
+## Copyright (C) 2000-2021 Free Software Foundation, Inc.
 ##
 ## Process this file with automake to produce Makefile.in.
 ##
@@ -31,7 +31,7 @@ toolexeclib_LTLIBRARIES = libsupc++.la
 noinst_LTLIBRARIES = libsupc++convenience.la
 
 std_HEADERS = \
-	cxxabi.h exception initializer_list new typeinfo
+	compare cxxabi.h exception initializer_list new typeinfo
 
 bits_HEADERS = \
 	atomic_lockfree_defines.h cxxabi_forced.h \
@@ -48,6 +48,7 @@ sources = \
 	array_type_info.cc \
 	atexit_arm.cc \
 	atexit_thread.cc \
+	atomicity.cc \
 	bad_alloc.cc \
 	bad_array_length.cc \
 	bad_array_new.cc \
@@ -127,99 +128,9 @@ cp-demangle.lo: cp-demangle.c
 cp-demangle.o: cp-demangle.c
 	$(C_COMPILE) -DIN_GLIBCPP_V3 -Wno-error -c $<
 
-
-# Use special rules for the C++11 sources so that the proper flags are passed.
-bad_array_length.lo: bad_array_length.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-bad_array_length.o: bad_array_length.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-bad_array_new.lo: bad_array_new.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-bad_array_new.o: bad_array_new.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-eh_aux_runtime.lo: eh_aux_runtime.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-eh_aux_runtime.o: eh_aux_runtime.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-eh_ptr.lo: eh_ptr.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-eh_ptr.o: eh_ptr.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-eh_terminate.lo: eh_terminate.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-eh_terminate.o: eh_terminate.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-eh_throw.lo: eh_throw.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-eh_throw.o: eh_throw.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-guard.lo: guard.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-guard.o: guard.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-atexit_thread.lo: atexit_thread.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-atexit_thread.o: atexit_thread.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-nested_exception.lo: nested_exception.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-nested_exception.o: nested_exception.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-new_handler.lo: new_handler.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-new_handler.o: new_handler.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-new_op.lo: new_op.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-new_op.o: new_op.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-new_opnt.lo: new_opnt.cc
-	$(LTCXXCOMPILE) -std=gnu++11 -c $<
-new_opnt.o: new_opnt.cc
-	$(CXXCOMPILE) -std=gnu++11 -c $<
-
-# Use special rules for the C++14 sources so that the proper flags are passed.
-del_ops.lo: del_ops.cc
-	$(LTCXXCOMPILE) -std=gnu++14 -Wno-sized-deallocation -c $<
-del_ops.o: del_ops.cc
-	$(CXXCOMPILE) -std=gnu++14 -Wno-sized-deallocation -c $<
-del_opvs.lo: del_opvs.cc
-	$(LTCXXCOMPILE) -std=gnu++14 -Wno-sized-deallocation -c $<
-del_opvs.o: del_opvs.cc
-	$(CXXCOMPILE) -std=gnu++14 -Wno-sized-deallocation -c $<
-
-# Use special rules for the C++17 sources so that the proper flags are passed.
-new_opa.lo: new_opa.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-new_opant.lo: new_opant.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-new_opva.lo: new_opva.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-new_opvant.lo: new_opvant.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opa.lo: del_opa.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opant.lo: del_opant.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opsa.lo: del_opsa.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opva.lo: del_opva.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opvant.lo: del_opvant.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
-del_opvsa.lo: del_opvsa.cc
-	$(LTCXXCOMPILE) -std=gnu++1z -c $<
+atomicity_file = ${glibcxx_srcdir}/$(ATOMICITY_SRCDIR)/atomicity.h
+atomicity.cc: ${atomicity_file}
+	$(LN_S) ${atomicity_file} ./atomicity.cc || true
 
 # AM_CXXFLAGS needs to be in each subdirectory so that it can be
 # modified in a per-library or per-sub-library way.  Need to manually
@@ -241,13 +152,13 @@ AM_MAKEFLAGS = \
 C_INCLUDES = -I.. -I$(toplevel_srcdir)/libiberty -I$(toplevel_srcdir)/include
 C_COMPILE = \
 	$(CC) $(DEFS) $(C_INCLUDES) \
-	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
+	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) $(EXTRA_CFLAGS)
 
 # LTCOMPILE is copied from LTCXXCOMPILE below.
 LTCOMPILE = $(LIBTOOL) --tag CC --tag disable-shared $(LIBTOOLFLAGS) --mode=compile \
 	    $(CC) $(DEFS) $(C_INCLUDES) \
 	    $(glibcxx_lt_pic_flag) $(glibcxx_compiler_shared_flag) \
-	    $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
+	    $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) $(EXTRA_CFLAGS)
 
 # Libtool notes
 

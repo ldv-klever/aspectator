@@ -2,7 +2,7 @@
 
 int a[384];
 
-__attribute__((noinline, noclone)) void
+__attribute__((noipa)) void
 foo (int &b, int &c)
 {
   #pragma omp taskloop shared (a) collapse(3)

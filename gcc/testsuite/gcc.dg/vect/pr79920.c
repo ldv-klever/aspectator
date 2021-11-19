@@ -1,5 +1,4 @@
-/* { dg-do run } */
-/* { dg-additional-options "-O3" } */
+/* { dg-additional-options "-O3 -fno-fast-math" } */
 
 #include "tree-vect.h"
 
@@ -15,6 +14,7 @@ compute_integral (double w_1[18])
 
   for (int ip_1 = 0; ip_1 < 2; ++ip_1)
     {
+#pragma GCC unroll 0
       for (int i_0 = 0; i_0 < 6; ++i_0)
 	t33[ip_1][i_0] = ((w_1[i_0*3] * t32[ip_1][0])
 			  + (w_1[i_0*3+2] * t32[ip_1][2]));
@@ -41,4 +41,5 @@ int main()
   return 0;
 }
 
-/* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" { target { vect_double && { vect_perm && vect_hw_misalign } } } } } */
+/* { dg-final { scan-tree-dump-times {using an in-order \(fold-left\) reduction} 1 "vect" { target vect_double } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 2 loops" 1 "vect" { target { vect_double && { vect_perm && vect_hw_misalign } } } } } */

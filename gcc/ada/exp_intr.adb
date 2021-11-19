@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,10 +27,8 @@ with Atree;    use Atree;
 with Checks;   use Checks;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
-with Errout;   use Errout;
 with Expander; use Expander;
 with Exp_Atag; use Exp_Atag;
-with Exp_Ch4;  use Exp_Ch4;
 with Exp_Ch7;  use Exp_Ch7;
 with Exp_Ch11; use Exp_Ch11;
 with Exp_Code; use Exp_Code;
@@ -111,12 +109,6 @@ package body Exp_Intr is
    --  GNAT.Source_Info; see g-souinf.ads for documentation of these
    --  intrinsics.
 
-   procedure Append_Entity_Name (Buf : in out Bounded_String; E : Entity_Id);
-   --  Recursive procedure to construct string for qualified name of enclosing
-   --  program unit. The qualification stops at an enclosing scope has no
-   --  source name (block or loop). If entity is a subprogram instance, skip
-   --  enclosing wrapper package. The name is appended to Buf.
-
    ---------------------
    -- Add_Source_Info --
    ---------------------
@@ -132,7 +124,7 @@ package body Exp_Intr is
             Append (Buf, Nat (Get_Logical_Line_Number (Loc)));
 
          when Name_File =>
-            Append_Decoded (Buf, Reference_Name (Get_Source_File_Index (Loc)));
+            Append (Buf, Reference_Name (Get_Source_File_Index (Loc)));
 
          when Name_Source_Location =>
             Build_Location_String (Buf, Loc);
@@ -145,7 +137,7 @@ package body Exp_Intr is
                Ent : Entity_Id := Current_Scope;
             begin
                while Present (Ent) loop
-                  exit when not Ekind_In (Ent, E_Block, E_Loop);
+                  exit when Ekind (Ent) not in E_Block | E_Loop;
                   Ent := Scope (Ent);
                end loop;
 
@@ -189,98 +181,6 @@ package body Exp_Intr is
       end case;
    end Add_Source_Info;
 
-   -----------------------
-   -- Append_Entity_Name --
-   -----------------------
-
-   procedure Append_Entity_Name (Buf : in out Bounded_String; E : Entity_Id) is
-      Temp : Bounded_String;
-
-      procedure Inner (E : Entity_Id);
-      --  Inner recursive routine, keep outer routine nonrecursive to ease
-      --  debugging when we get strange results from this routine.
-
-      -----------
-      -- Inner --
-      -----------
-
-      procedure Inner (E : Entity_Id) is
-      begin
-         --  If entity has an internal name, skip by it, and print its scope.
-         --  Note that we strip a final R from the name before the test; this
-         --  is needed for some cases of instantiations.
-
-         declare
-            E_Name : Bounded_String;
-
-         begin
-            Append (E_Name, Chars (E));
-
-            if E_Name.Chars (E_Name.Length) = 'R' then
-               E_Name.Length := E_Name.Length - 1;
-            end if;
-
-            if Is_Internal_Name (E_Name) then
-               Inner (Scope (E));
-               return;
-            end if;
-         end;
-
-         --  Just print entity name if its scope is at the outer level
-
-         if Scope (E) = Standard_Standard then
-            null;
-
-         --  If scope comes from source, write scope and entity
-
-         elsif Comes_From_Source (Scope (E)) then
-            Append_Entity_Name (Temp, Scope (E));
-            Append (Temp, '.');
-
-         --  If in wrapper package skip past it
-
-         elsif Is_Wrapper_Package (Scope (E)) then
-            Append_Entity_Name (Temp, Scope (Scope (E)));
-            Append (Temp, '.');
-
-         --  Otherwise nothing to output (happens in unnamed block statements)
-
-         else
-            null;
-         end if;
-
-         --  Output the name
-
-         declare
-            E_Name : Bounded_String;
-
-         begin
-            Append_Unqualified_Decoded (E_Name, Chars (E));
-
-            --  Remove trailing upper-case letters from the name (useful for
-            --  dealing with some cases of internal names generated in the case
-            --  of references from within a generic).
-
-            while E_Name.Length > 1
-              and then E_Name.Chars (E_Name.Length) in 'A' .. 'Z'
-            loop
-               E_Name.Length := E_Name.Length - 1;
-            end loop;
-
-            --  Adjust casing appropriately (gets name from source if possible)
-
-            Adjust_Name_Case (E_Name, Sloc (E));
-            Append (Temp, E_Name);
-         end;
-      end Inner;
-
-   --  Start of processing for Append_Entity_Name
-
-   begin
-      Inner (E);
-      Append (Buf, Temp);
-   end Append_Entity_Name;
-
    ---------------------------------
    -- Expand_Binary_Operator_Call --
    ---------------------------------
@@ -304,12 +204,16 @@ package body Exp_Intr is
          return;
       end if;
 
-      --  Use Unsigned_32 for sizes of 32 or below, else Unsigned_64
+      --  Use the appropriate type for the size
 
-      if Siz > 32 then
-         T3 := RTE (RE_Unsigned_64);
-      else
+      if Siz <= 32 then
          T3 := RTE (RE_Unsigned_32);
+
+      elsif Siz <= 64 then
+         T3 := RTE (RE_Unsigned_64);
+
+      else pragma Assert (Siz <= 128);
+         T3 := RTE (RE_Unsigned_128);
       end if;
 
       --  Copy operator node, and reset type and entity fields, for
@@ -400,7 +304,7 @@ package body Exp_Intr is
         Make_Implicit_If_Statement (N,
           Condition       => Make_Function_Call (Loc,
              Name                   =>
-               New_Occurrence_Of (RTE (RE_Type_Is_Abstract), Loc),
+               New_Occurrence_Of (RTE (RE_Is_Abstract), Loc),
              Parameter_Associations => New_List (New_Copy_Tree (Tag_Arg))),
 
           Then_Statements => New_List (
@@ -421,20 +325,22 @@ package body Exp_Intr is
       Result_Typ := Class_Wide_Type (Etype (Act_Constr));
 
       --  Check that the accessibility level of the tag is no deeper than that
-      --  of the constructor function.
+      --  of the constructor function (unless CodePeer_Mode)
 
-      Insert_Action (N,
-        Make_Implicit_If_Statement (N,
-          Condition       =>
-            Make_Op_Gt (Loc,
-              Left_Opnd  =>
-                Build_Get_Access_Level (Loc, New_Copy_Tree (Tag_Arg)),
-              Right_Opnd =>
-                Make_Integer_Literal (Loc, Scope_Depth (Act_Constr))),
+      if not CodePeer_Mode then
+         Insert_Action (N,
+           Make_Implicit_If_Statement (N,
+             Condition       =>
+               Make_Op_Gt (Loc,
+                 Left_Opnd  =>
+                   Build_Get_Access_Level (Loc, New_Copy_Tree (Tag_Arg)),
+                 Right_Opnd =>
+                   Make_Integer_Literal (Loc, Scope_Depth (Act_Constr))),
 
-          Then_Statements => New_List (
-            Make_Raise_Statement (Loc,
-              New_Occurrence_Of (RTE (RE_Tag_Error), Loc)))));
+             Then_Statements => New_List (
+               Make_Raise_Statement (Loc,
+                 New_Occurrence_Of (RTE (RE_Tag_Error), Loc)))));
+      end if;
 
       if Is_Interface (Etype (Act_Constr)) then
 
@@ -499,16 +405,20 @@ package body Exp_Intr is
       end if;
 
       --  Rewrite and analyze the call to the instance as a class-wide
-      --  conversion of the call to the actual constructor.
+      --  conversion of the call to the actual constructor. When the result
+      --  type is a class-wide interface type this conversion is required to
+      --  force the displacement of the pointer to the object to reference the
+      --  corresponding dispatch table.
 
       Rewrite (N, Convert_To (Result_Typ, Cnstr_Call));
 
       --  Do not generate a run-time check on the built object if tag
       --  checks are suppressed for the result type or tagged type expansion
-      --  is disabled.
+      --  is disabled or if CodePeer_Mode.
 
       if Tag_Checks_Suppressed (Etype (Result_Typ))
         or else not Tagged_Type_Expansion
+        or else CodePeer_Mode
       then
          null;
 
@@ -523,28 +433,21 @@ package body Exp_Intr is
       --  the tag in the table of ancestor tags.
 
       elsif not Is_Interface (Result_Typ) then
-         declare
-            Obj_Tag_Node : Node_Id := New_Copy_Tree (Tag_Arg);
-            CW_Test_Node : Node_Id;
-
-         begin
-            Build_CW_Membership (Loc,
-              Obj_Tag_Node => Obj_Tag_Node,
-              Typ_Tag_Node =>
-                New_Occurrence_Of (
-                   Node (First_Elmt (Access_Disp_Table (
-                                       Root_Type (Result_Typ)))), Loc),
-              Related_Nod => N,
-              New_Node    => CW_Test_Node);
-
-            Insert_Action (N,
-              Make_Implicit_If_Statement (N,
-                Condition =>
-                  Make_Op_Not (Loc, CW_Test_Node),
-                Then_Statements =>
-                  New_List (Make_Raise_Statement (Loc,
-                              New_Occurrence_Of (RTE (RE_Tag_Error), Loc)))));
-         end;
+         Insert_Action (N,
+           Make_Implicit_If_Statement (N,
+             Condition =>
+               Make_Op_Not (Loc,
+                 Make_Function_Call (Loc,
+                    Name => New_Occurrence_Of (RTE (RE_CW_Membership), Loc),
+                    Parameter_Associations => New_List (
+                      New_Copy_Tree (Tag_Arg),
+                      New_Occurrence_Of (
+                        Node (First_Elmt (Access_Disp_Table (
+                                            Root_Type (Result_Typ)))), Loc)))),
+             Then_Statements =>
+               New_List (
+                 Make_Raise_Statement (Loc,
+                   Name => New_Occurrence_Of (RTE (RE_Tag_Error), Loc)))));
 
       --  Call IW_Membership test if the Result_Type is an abstract interface
       --  to look for the tag in the table of interface tags.
@@ -727,9 +630,9 @@ package body Exp_Intr is
       elsif Nam = Name_Generic_Dispatching_Constructor then
          Expand_Dispatching_Constructor_Call (N);
 
-      elsif Nam_In (Nam, Name_Import_Address,
-                         Name_Import_Largest_Value,
-                         Name_Import_Value)
+      elsif Nam in Name_Import_Address
+                 | Name_Import_Largest_Value
+                 | Name_Import_Value
       then
          Expand_Import_Call (N);
 
@@ -763,19 +666,19 @@ package body Exp_Intr is
       elsif Nam = Name_To_Pointer then
          Expand_To_Pointer (N);
 
-      elsif Nam_In (Nam, Name_File,
-                         Name_Line,
-                         Name_Source_Location,
-                         Name_Enclosing_Entity,
-                         Name_Compilation_ISO_Date,
-                         Name_Compilation_Date,
-                         Name_Compilation_Time)
+      elsif Nam in Name_File
+                 | Name_Line
+                 | Name_Source_Location
+                 | Name_Enclosing_Entity
+                 | Name_Compilation_ISO_Date
+                 | Name_Compilation_Date
+                 | Name_Compilation_Time
       then
          Expand_Source_Info (N, Nam);
 
-         --  If we have a renaming, expand the call to the original operation,
-         --  which must itself be intrinsic, since renaming requires matching
-         --  conventions and this has already been checked.
+      --  If we have a renaming, expand the call to the original operation,
+      --  which must itself be intrinsic, since renaming requires matching
+      --  conventions and this has already been checked.
 
       elsif Present (Alias (E)) then
          Expand_Intrinsic_Call (N, Alias (E));
@@ -783,10 +686,10 @@ package body Exp_Intr is
       elsif Nkind (N) in N_Binary_Op then
          Expand_Binary_Operator_Call (N);
 
-         --  The only other case is where an external name was specified, since
-         --  this is the only way that an otherwise unrecognized name could
-         --  escape the checking in Sem_Prag. Nothing needs to be done in such
-         --  a case, since we pass such a call to the back end unchanged.
+      --  The only other case is where an external name was specified, since
+      --  this is the only way that an otherwise unrecognized name could
+      --  escape the checking in Sem_Prag. Nothing needs to be done in such
+      --  a case, since we pass such a call to the back end unchanged.
 
       else
          null;
@@ -953,7 +856,7 @@ package body Exp_Intr is
    ---------------------------
 
    procedure Expand_Unc_Conversion (N : Node_Id; E : Entity_Id) is
-      Func : constant Entity_Id  := Entity (Name (N));
+      Func : constant Entity_Id := Entity (Name (N));
       Conv : Node_Id;
       Ftyp : Entity_Id;
       Ttyp : Entity_Id;
@@ -1004,12 +907,7 @@ package body Exp_Intr is
       end if;
 
       Rewrite (N, Unchecked_Convert_To (Ttyp, Conv));
-      Set_Etype (N, Ttyp);
-      Set_Analyzed (N);
-
-      if Nkind (N) = N_Unchecked_Type_Conversion then
-         Expand_N_Unchecked_Type_Conversion (N);
-      end if;
+      Analyze_And_Resolve (N, Ttyp);
    end Expand_Unc_Conversion;
 
    -----------------------------
@@ -1020,7 +918,8 @@ package body Exp_Intr is
       Arg       : constant Node_Id    := First_Actual (N);
       Loc       : constant Source_Ptr := Sloc (N);
       Typ       : constant Entity_Id  := Etype (Arg);
-      Desig_Typ : constant Entity_Id  := Designated_Type (Typ);
+      Desig_Typ : constant Entity_Id  :=
+                    Available_View (Designated_Type (Typ));
       Needs_Fin : constant Boolean    := Needs_Finalization (Desig_Typ);
       Root_Typ  : constant Entity_Id  := Underlying_Type (Root_Type (Typ));
       Pool      : constant Entity_Id  := Associated_Storage_Pool (Root_Typ);
@@ -1080,9 +979,31 @@ package body Exp_Intr is
       --  are allowed, the generated code may lack block statements.
 
       if Needs_Fin then
-         Obj_Ref :=
-           Make_Explicit_Dereference (Loc,
-             Prefix => Duplicate_Subexpr_No_Checks (Arg));
+
+         --  Ada 2005 (AI-251): In case of abstract interface type we displace
+         --  the pointer to reference the base of the object to deallocate its
+         --  memory, unless we're targetting a VM, in which case no special
+         --  processing is required.
+
+         if Is_Interface (Directly_Designated_Type (Typ))
+           and then Tagged_Type_Expansion
+         then
+            Obj_Ref :=
+              Make_Explicit_Dereference (Loc,
+                Prefix =>
+                  Unchecked_Convert_To (Typ,
+                    Make_Function_Call (Loc,
+                      Name                   =>
+                        New_Occurrence_Of (RTE (RE_Base_Address), Loc),
+                      Parameter_Associations => New_List (
+                        Unchecked_Convert_To (RTE (RE_Address),
+                          Duplicate_Subexpr_No_Checks (Arg))))));
+
+         else
+            Obj_Ref :=
+              Make_Explicit_Dereference (Loc,
+                Prefix => Duplicate_Subexpr_No_Checks (Arg));
+         end if;
 
          --  If the designated type is tagged, the finalization call must
          --  dispatch because the designated type may not be the actual type
@@ -1302,9 +1223,8 @@ package body Exp_Intr is
 
          if Is_Class_Wide_Type (Desig_Typ)
            or else
-            (Is_Array_Type (Desig_Typ)
-              and then not Is_Constrained (Desig_Typ)
-              and then Is_Packed (Desig_Typ))
+            (Is_Packed_Array (Desig_Typ)
+              and then not Is_Constrained (Desig_Typ))
          then
             declare
                Deref    : constant Node_Id :=

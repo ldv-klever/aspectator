@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *          Copyright (C) 1992-2016, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2020, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -54,8 +54,14 @@
 #endif
 
 #ifdef IN_RTS
+
+#ifdef STANDALONE
+#include "runtime.h"
+#else
 #include "tconfig.h"
 #include "tsystem.h"
+#endif
+
 #include <sys/stat.h>
 
 /* We don't have libiberty, so use malloc.  */
@@ -116,6 +122,7 @@ int   __gl_default_stack_size            = -1;
 int   __gl_leap_seconds_support          = 0;
 int   __gl_canonical_streams             = 0;
 char *__gl_bind_env_addr                 = NULL;
+int   __gl_xdr_stream                    = 0;
 
 /* This value is not used anymore, but kept for bootstrapping purpose.  */
 int   __gl_zero_cost_exceptions          = 0;
@@ -463,6 +470,7 @@ void fake_linux_sigemptyset (sigset_t *set)
 void
 __gnat_adjust_context_for_raise (int signo ATTRIBUTE_UNUSED, void *ucontext)
 {
+#ifndef STANDALONE
   mcontext_t *mcontext = &((ucontext_t *) ucontext)->uc_mcontext;
 
   /* On the i386 and x86-64 architectures, stack checking is performed by
@@ -511,6 +519,7 @@ __gnat_adjust_context_for_raise (int signo ATTRIBUTE_UNUSED, void *ucontext)
      mode (arm vs thumb) as the signaling compilation unit, this works.  */
   if (mcontext->arm_cpsr & (1<<CPSR_THUMB_BIT))
     mcontext->arm_pc+=1;
+#endif
 #endif
 #endif
 }
@@ -570,12 +579,8 @@ __gnat_error_handler (int sig, siginfo_t *si ATTRIBUTE_UNUSED, void *ucontext)
 
 #ifndef __ia64__
 #define HAVE_GNAT_ALTERNATE_STACK 1
-/* This must be in keeping with System.OS_Interface.Alternate_Stack_Size.
-   It must be larger than MINSIGSTKSZ and hopefully near 2 * SIGSTKSZ.  */
-# if 16 * 1024 < MINSIGSTKSZ
-#  error "__gnat_alternate_stack too small"
-# endif
-char __gnat_alternate_stack[16 * 1024];
+/* This must be in keeping with System.OS_Interface.Alternate_Stack_Size.  */
+char __gnat_alternate_stack[32 * 1024];
 #endif
 
 #ifdef __XENO__
@@ -1279,7 +1284,7 @@ __gnat_handle_vms_condition (int *sigargs, void *mechargs)
 
   /* If it was a DEC Ada specific condtiion, make it GNAT otherwise
      keep the old facility.  */
-  if (sigargs [1] & FAC_MASK == DECADA_M_FACILITY)
+  if ((sigargs [1] & FAC_MASK) == DECADA_M_FACILITY)
     SYS$PUTMSG (sigargs, copy_msg, &gnat_facility,
 	        (unsigned long long ) message);
   else
@@ -1556,7 +1561,7 @@ int __gl_heap_size = 64;
    operation, drivide by zero, and overflow. This will prevent the VMS runtime
    (specifically OTS$CHECK_FP_MODE) from complaining about inconsistent
    floating point settings in a mixed language program. Ideally the setting
-   would be determined at link time based on setttings in the object files,
+   would be determined at link time based on settings in the object files,
    however the VMS linker seems to take the setting from the first object
    in the link, e.g. pcrt0.o which is float representation neutral.  */
 char __gl_float_format = 'I';
@@ -1725,7 +1730,7 @@ __gnat_install_handler (void)
 #include <iv.h>
 #endif
 
-#if ((defined (ARMEL) && (_WRS_VXWORKS_MAJOR == 6)) || defined (__x86_64__)) && !defined(__RTP__)
+#if ((defined (ARMEL) && (_WRS_VXWORKS_MAJOR == 6))) && !defined(__RTP__)
 #define VXWORKS_FORCE_GUARD_PAGE 1
 #include <vmLib.h>
 extern size_t vxIntStackOverflowSize;
@@ -1937,7 +1942,7 @@ __gnat_map_signal (int sig,
   Raise_From_Signal_Handler (exception, msg);
 }
 
-#if defined (ARMEL) && (_WRS_VXWORKS_MAJOR >= 7)
+#if defined (ARMEL) && (_WRS_VXWORKS_MAJOR >= 7) && !defined (__aarch64__)
 
 /* ARM-vx7 case with arm unwinding exceptions */
 #define HAVE_GNAT_ADJUST_CONTEXT_FOR_RAISE
@@ -2005,7 +2010,7 @@ __gnat_error_handler (int sig, siginfo_t *si, void *sc)
   sigdelset (&mask, sig);
   sigprocmask (SIG_SETMASK, &mask, NULL);
 
-#if defined (__ARMEL__) || defined (__PPC__) || defined (__i386__) || defined (__x86_64__)
+#if defined (__ARMEL__) || defined (__PPC__) || defined (__i386__) || defined (__x86_64__) || defined (__aarch64__)
   /* On certain targets, kernel mode, we process signals through a Call Frame
      Info trampoline, voiding the need for myriads of fallback_frame_state
      variants in the ZCX runtime.  We have no simple way to distinguish ZCX
@@ -2516,6 +2521,108 @@ __gnat_install_handler (void)
   __gnat_handler_installed = 1;
 }
 
+#elif defined(__QNX__)
+
+/***************/
+/* QNX Section */
+/***************/
+
+#include <signal.h>
+#include <unistd.h>
+#include <string.h>
+#include "sigtramp.h"
+
+void
+__gnat_map_signal (int sig,
+		   siginfo_t *si ATTRIBUTE_UNUSED,
+		   void *mcontext ATTRIBUTE_UNUSED)
+{
+  struct Exception_Data *exception;
+  const char *msg;
+
+  switch(sig)
+  {
+    case SIGFPE:
+      exception = &constraint_error;
+      msg = "SIGFPE";
+      break;
+    case SIGILL:
+      exception = &constraint_error;
+      msg = "SIGILL";
+      break;
+    case SIGSEGV:
+      exception = &storage_error;
+      msg = "stack overflow or erroneous memory access";
+      break;
+    case SIGBUS:
+      exception = &constraint_error;
+      msg = "SIGBUS";
+      break;
+    default:
+      exception = &program_error;
+      msg = "unhandled signal";
+    }
+
+    Raise_From_Signal_Handler (exception, msg);
+}
+
+static void
+__gnat_error_handler (int sig, siginfo_t *si, void *ucontext)
+{
+  __gnat_sigtramp (sig, (void *) si, (void *) ucontext,
+		   (__sigtramphandler_t *)&__gnat_map_signal);
+}
+
+/* This must be in keeping with System.OS_Interface.Alternate_Stack_Size.  */
+/* sigaltstack is currently not supported by QNX7 */
+char __gnat_alternate_stack[0];
+
+void
+__gnat_install_handler (void)
+{
+  struct sigaction act;
+  int err;
+
+  act.sa_handler = __gnat_error_handler;
+  act.sa_flags = SA_NODEFER | SA_SIGINFO;
+  sigemptyset (&act.sa_mask);
+
+  /* Do not install handlers if interrupt state is "System" */
+  if (__gnat_get_interrupt_state (SIGFPE) != 's') {
+    err = sigaction (SIGFPE,  &act, NULL);
+    if (err == -1) {
+      err = errno;
+      perror ("error while attaching SIGFPE");
+      perror (strerror (err));
+    }
+  }
+  if (__gnat_get_interrupt_state (SIGILL) != 's') {
+    sigaction (SIGILL,  &act, NULL);
+    if (err == -1) {
+      err = errno;
+      perror ("error while attaching SIGFPE");
+      perror (strerror (err));
+    }
+  }
+  if (__gnat_get_interrupt_state (SIGSEGV) != 's') {
+    sigaction (SIGSEGV, &act, NULL);
+    if (err == -1) {
+      err = errno;
+      perror ("error while attaching SIGFPE");
+      perror (strerror (err));
+    }
+  }
+  if (__gnat_get_interrupt_state (SIGBUS) != 's') {
+    sigaction (SIGBUS,  &act, NULL);
+    if (err == -1) {
+      err = errno;
+      perror ("error while attaching SIGFPE");
+      perror (strerror (err));
+    }
+  }
+  __gnat_handler_installed = 1;
+}
+
 #elif defined (__DJGPP__)
 
 void
@@ -2648,7 +2755,7 @@ __gnat_install_handler (void)
 
 #if defined (_WIN32) || defined (__INTERIX) \
   || defined (__Lynx__) || defined(__NetBSD__) || defined(__FreeBSD__) \
-  || defined (__OpenBSD__) || defined (__DragonFly__)
+  || defined (__OpenBSD__) || defined (__DragonFly__) || defined(__QNX__)
 
 #define HAVE_GNAT_INIT_FLOAT
 

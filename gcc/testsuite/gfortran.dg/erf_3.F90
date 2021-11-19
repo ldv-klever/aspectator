@@ -1,4 +1,3 @@
-! { dg-do run { xfail spu-*-* ia64-*-linux* } }
 ! { dg-options "-fno-range-check -ffree-line-length-none -O0" }
 ! { dg-add-options ieee }
 ! { dg-skip-if "PR libfortran/59313" { hppa*-*-hpux* } }
@@ -6,11 +5,6 @@
 ! Check that simplification functions and runtime library agree on ERF,
 ! ERFC and ERFC_SCALED, for quadruple-precision.
 !
-! XFAILed for SPU targets because our library implementation of
-! the double-precision erf/erfc functions is not accurate enough.
-!
-! XFAILed for IA64 Linux because of a glibc bug:
-! http://gcc.gnu.org/bugzilla/show_bug.cgi?id=59227
 
 program test
   use, intrinsic :: iso_fortran_env
@@ -48,7 +42,7 @@ contains
   subroutine check (a, b)
     real(kind=qp), intent(in) :: a, b
     print *, abs(a-b) / spacing(a)
-    if (abs(a - b) > 10 * spacing(a)) call abort
+    if (abs(a - b) > 10 * spacing(a)) STOP 1
   end subroutine
 
 end program test

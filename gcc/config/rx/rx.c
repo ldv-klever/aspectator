@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on Renesas RX processors.
-   Copyright (C) 2008-2017 Free Software Foundation, Inc.
+   Copyright (C) 2008-2021 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -22,6 +22,8 @@
 
  * Re-enable memory-to-memory copies and fix up reload.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -29,6 +31,8 @@
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 #include "cfghooks.h"
 #include "df.h"
 #include "memmodel.h"
@@ -635,17 +639,17 @@ rx_print_operand (FILE * file, rtx op, int letter)
       switch (INTVAL (op))
 	{
 	case CTRLREG_PSW:   fprintf (file, "psw"); break;
+	case CTRLREG_PC:    fprintf (file, "pc"); break;
 	case CTRLREG_USP:   fprintf (file, "usp"); break;
 	case CTRLREG_FPSW:  fprintf (file, "fpsw"); break;
-	case CTRLREG_CPEN:  fprintf (file, "cpen"); break;
 	case CTRLREG_BPSW:  fprintf (file, "bpsw"); break;
 	case CTRLREG_BPC:   fprintf (file, "bpc"); break;
 	case CTRLREG_ISP:   fprintf (file, "isp"); break;
 	case CTRLREG_FINTV: fprintf (file, "fintv"); break;
 	case CTRLREG_INTB:  fprintf (file, "intb"); break;
 	default:
-	  warning (0, "unrecognized control register number: %d - using 'psw'",
-		   (int) INTVAL (op));
+	  warning (0, "unrecognized control register number: %d"
+		   " - using %<psw%>", (int) INTVAL (op));
 	  fprintf (file, "psw");
 	  break;
 	}
@@ -967,25 +971,25 @@ rx_gen_move_template (rtx * operands, bool is_movu)
   /* Decide which extension, if any, should be given to the move instruction.  */
   switch (CONST_INT_P (src) ? GET_MODE (dest) : GET_MODE (src))
     {
-    case QImode:
+    case E_QImode:
       /* The .B extension is not valid when
 	 loading an immediate into a register.  */
       if (! REG_P (dest) || ! CONST_INT_P (src))
 	extension = ".B";
       break;
-    case HImode:
+    case E_HImode:
       if (! REG_P (dest) || ! CONST_INT_P (src))
 	/* The .W extension is not valid when
 	   loading an immediate into a register.  */
 	extension = ".W";
       break;
-    case DFmode:
-    case DImode:
-    case SFmode:
-    case SImode:
+    case E_DFmode:
+    case E_DImode:
+    case E_SFmode:
+    case E_SImode:
       extension = ".L";
       break;
-    case VOIDmode:
+    case E_VOIDmode:
       /* This mode is used by constants.  */
       break;
     default:
@@ -1060,24 +1064,19 @@ rx_function_arg_size (machine_mode mode, const_tree type)
 #define NUM_ARG_REGS		4
 #define MAX_NUM_ARG_BYTES	(NUM_ARG_REGS * UNITS_PER_WORD)
 
-/* Return an RTL expression describing the register holding a function
-   parameter of mode MODE and type TYPE or NULL_RTX if the parameter should
-   be passed on the stack.  CUM describes the previous parameters to the
-   function and NAMED is false if the parameter is part of a variable
-   parameter list, or the last named parameter before the start of a
-   variable parameter list.  */
+/* Return an RTL expression describing the register holding function
+   argument ARG or NULL_RTX if the parameter should be passed on the
+   stack.  CUM describes the previous parameters to the function.  */
 
 static rtx
-rx_function_arg (cumulative_args_t cum, machine_mode mode,
-		 const_tree type, bool named)
+rx_function_arg (cumulative_args_t cum, const function_arg_info &arg)
 {
   unsigned int next_reg;
   unsigned int bytes_so_far = *get_cumulative_args (cum);
   unsigned int size;
   unsigned int rounded_size;
 
-  /* An exploded version of rx_function_arg_size.  */
-  size = (mode == BLKmode) ? int_size_in_bytes (type) : GET_MODE_SIZE (mode);
+  size = arg.promoted_size_in_bytes ();
   /* If the size is not known it cannot be passed in registers.  */
   if (size < 1)
     return NULL_RTX;
@@ -1091,25 +1090,25 @@ rx_function_arg (cumulative_args_t cum, machine_mode mode,
 
   /* Unnamed arguments and the last named argument in a
      variadic function are always passed on the stack.  */
-  if (!named)
+  if (!arg.named)
     return NULL_RTX;
 
   /* Structures must occupy an exact number of registers,
      otherwise they are passed on the stack.  */
-  if ((type == NULL || AGGREGATE_TYPE_P (type))
+  if ((arg.type == NULL || AGGREGATE_TYPE_P (arg.type))
       && (size % UNITS_PER_WORD) != 0)
     return NULL_RTX;
 
   next_reg = (bytes_so_far / UNITS_PER_WORD) + 1;
 
-  return gen_rtx_REG (mode, next_reg);
+  return gen_rtx_REG (arg.mode, next_reg);
 }
 
 static void
-rx_function_arg_advance (cumulative_args_t cum, machine_mode mode,
-			 const_tree type, bool named ATTRIBUTE_UNUSED)
+rx_function_arg_advance (cumulative_args_t cum,
+			 const function_arg_info &arg)
 {
-  *get_cumulative_args (cum) += rx_function_arg_size (mode, type);
+  *get_cumulative_args (cum) += rx_function_arg_size (arg.mode, arg.type);
 }
 
 static unsigned int
@@ -1434,10 +1433,14 @@ bit_count (unsigned int x)
   return (x + (x >> 16)) & 0x3f;
 }
 
+#if defined(TARGET_SAVE_ACC_REGISTER)
 #define MUST_SAVE_ACC_REGISTER			\
   (TARGET_SAVE_ACC_REGISTER			\
    && (is_interrupt_func (NULL_TREE)		\
        || is_fast_interrupt_func (NULL_TREE)))
+#else
+#define MUST_SAVE_ACC_REGISTER 0
+#endif
 
 /* Returns either the lowest numbered and highest numbered registers that
    occupy the call-saved area of the stack frame, if the registers are
@@ -1480,10 +1483,10 @@ rx_get_stack_layout (unsigned int * lowest,
 	   /* Always save all call clobbered registers inside non-leaf
 	      interrupt handlers, even if they are not live - they may
 	      be used in (non-interrupt aware) routines called from this one.  */
-	   || (call_used_regs[reg]
+	   || (call_used_or_fixed_reg_p (reg)
 	       && is_interrupt_func (NULL_TREE)
 	       && ! crtl->is_leaf))
-	  && (! call_used_regs[reg]
+	  && (! call_used_or_fixed_reg_p (reg)
 	      /* Even call clobbered registered must
 		 be pushed inside interrupt handlers.  */
 	      || is_interrupt_func (NULL_TREE)
@@ -1639,6 +1642,20 @@ mark_frame_related (rtx insn)
 	RTX_FRAME_RELATED_P (XVECEXP (insn, 0, i)) = 1;
     }
 }
+
+/* Create CFI notes for register pops.  */
+static void
+add_pop_cfi_notes (rtx_insn *insn, unsigned int high, unsigned int low)
+{
+  rtx t = plus_constant (Pmode, stack_pointer_rtx,
+                        (high - low + 1) * UNITS_PER_WORD);
+  t = gen_rtx_SET (stack_pointer_rtx, t);
+  add_reg_note (insn, REG_CFA_ADJUST_CFA, t);
+  RTX_FRAME_RELATED_P (insn) = 1;
+  for (unsigned int i = low; i <= high; i++)
+    add_reg_note (insn, REG_CFA_RESTORE, gen_rtx_REG (word_mode, i));
+}
+
 
 static bool
 ok_for_max_constant (HOST_WIDE_INT val)
@@ -1889,8 +1906,7 @@ add_vector_labels (FILE *file, const char *aname)
 }
 
 static void
-rx_output_function_prologue (FILE * file,
-			     HOST_WIDE_INT frame_size ATTRIBUTE_UNUSED)
+rx_output_function_prologue (FILE * file)
 {
   add_vector_labels (file, "interrupt");
   add_vector_labels (file, "vector");
@@ -2026,11 +2042,14 @@ rx_can_use_simple_return (void)
 static void
 pop_regs (unsigned int high, unsigned int low)
 {
+  rtx_insn *insn;
   if (high == low)
-    emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
+    insn = emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
   else
-    emit_insn (gen_stack_popm (GEN_INT (((high - low) + 1) * UNITS_PER_WORD),
-			       gen_rx_popm_vector (low, high)));
+    insn = emit_insn (gen_stack_popm (GEN_INT (((high - low) + 1)
+						* UNITS_PER_WORD),
+				      gen_rx_popm_vector (low, high)));
+  add_pop_cfi_notes (insn, high, low);
 }
 
 void
@@ -2456,6 +2475,13 @@ rx_expand_builtin_mvtc (tree exp)
   if (! REG_P (arg2))
     arg2 = force_reg (SImode, arg2);
 
+  if (INTVAL (arg1) == 1)
+    {
+      warning (0, "invalid control register for mvtc : %d - using 'psw'",
+	       (int) INTVAL (arg1));
+      arg1 = const0_rtx;
+    }
+
   emit_insn (gen_mvtc (arg1, arg2));
 
   return NULL_RTX;
@@ -2573,9 +2599,10 @@ valid_psw_flag (rtx op, const char *which)
 	return 1;
       }
 
-  error ("__builtin_rx_%s takes 'C', 'Z', 'S', 'O', 'I', or 'U'", which);
+  error ("%<__builtin_rx_%s%> takes %<C%>, %<Z%>, %<S%>, %<O%>, %<I%>, "
+	 "or %<U%>", which);
   if (!mvtc_inform_done)
-    error ("use __builtin_rx_mvtc (0, ... ) to write arbitrary values to PSW");
+    error ("use %<__builtin_rx_mvtc%> (0, ... ) to write arbitrary values to PSW");
   mvtc_inform_done = 1;
 
   return 0;
@@ -2591,7 +2618,7 @@ rx_expand_builtin (tree exp,
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
   tree arg    = call_expr_nargs (exp) >= 1 ? CALL_EXPR_ARG (exp, 0) : NULL_TREE;
   rtx  op     = arg ? expand_normal (arg) : NULL_RTX;
-  unsigned int fcode = DECL_FUNCTION_CODE (fndecl);
+  unsigned int fcode = DECL_MD_FUNCTION_CODE (fndecl);
 
   switch (fcode)
     {
@@ -2622,7 +2649,8 @@ rx_expand_builtin (tree exp,
       if (rx_allow_string_insns)
 	emit_insn (gen_rmpa ());
       else
-	error ("-mno-allow-string-insns forbids the generation of the RMPA instruction");
+	error ("%<-mno-allow-string-insns%> forbids the generation "
+	       "of the RMPA instruction");
       return NULL_RTX;
     case RX_BUILTIN_MVFC:    return rx_expand_builtin_mvfc (arg, target);
     case RX_BUILTIN_MVTC:    return rx_expand_builtin_mvtc (exp);
@@ -2733,17 +2761,17 @@ rx_handle_vector_attribute (tree * node,
 /* Table of RX specific attributes.  */
 const struct attribute_spec rx_attribute_table[] =
 {
-  /* Name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-     affects_type_identity.  */
-  { "fast_interrupt", 0, 0, true, false, false, rx_handle_func_attribute,
-    false },
-  { "interrupt",      0, -1, true, false, false, rx_handle_func_attribute,
-    false },
-  { "naked",          0, 0, true, false, false, rx_handle_func_attribute,
-    false },
-  { "vector",         1, -1, true, false, false, rx_handle_vector_attribute,
-    false },
-  { NULL,             0, 0, false, false, false, NULL, false }
+  /* Name, min_len, max_len, decl_req, type_req, fn_type_req,
+     affects_type_identity, handler, exclude.  */
+  { "fast_interrupt", 0, 0, true, false, false, false,
+    rx_handle_func_attribute, NULL },
+  { "interrupt",      0, -1, true, false, false, false,
+    rx_handle_func_attribute, NULL },
+  { "naked",          0, 0, true, false, false, false,
+    rx_handle_func_attribute, NULL },
+  { "vector",         1, -1, true, false, false, false,
+    rx_handle_vector_attribute, NULL },
+  { NULL,             0, 0, false, false, false, false, NULL, NULL }
 };
 
 /* Implement TARGET_OVERRIDE_OPTIONS_AFTER_CHANGE.  */
@@ -2823,12 +2851,18 @@ rx_option_override (void)
   rx_override_options_after_change ();
 
   /* These values are bytes, not log.  */
-  if (align_jumps == 0 && ! optimize_size)
-    align_jumps = ((rx_cpu_type == RX100 || rx_cpu_type == RX200) ? 4 : 8);
-  if (align_loops == 0 && ! optimize_size)
-    align_loops = ((rx_cpu_type == RX100 || rx_cpu_type == RX200) ? 4 : 8);
-  if (align_labels == 0 && ! optimize_size)
-    align_labels = ((rx_cpu_type == RX100 || rx_cpu_type == RX200) ? 4 : 8);
+  if (! optimize_size)
+    {
+      if (flag_align_jumps && !str_align_jumps)
+	str_align_jumps = ((rx_cpu_type == RX100
+			    || rx_cpu_type == RX200) ? "4" : "8");
+      if (flag_align_loops && !str_align_loops)
+	str_align_loops = ((rx_cpu_type == RX100
+			    || rx_cpu_type == RX200) ? "4" : "8");
+      if (flag_align_labels && !str_align_labels)
+	str_align_labels = ((rx_cpu_type == RX100
+			     || rx_cpu_type == RX200) ? "4" : "8");
+    }
 }
 
 
@@ -2973,6 +3007,62 @@ rx_address_cost (rtx addr, machine_mode mode ATTRIBUTE_UNUSED,
 }
 
 static bool
+rx_rtx_costs (rtx x, machine_mode mode, int outer_code ATTRIBUTE_UNUSED,
+	      int opno ATTRIBUTE_UNUSED, int* total, bool speed)
+{
+  if (x == const0_rtx)
+    {
+      *total = 0;
+      return true;
+    }
+
+  switch (GET_CODE (x))
+    {
+    case MULT:
+      if (mode == DImode)
+	{
+	  *total = COSTS_N_INSNS (2);
+	  return true;
+	}
+      /* fall through */
+
+    case PLUS:
+    case MINUS:
+    case AND:
+    case COMPARE:
+    case IOR:
+    case XOR:
+      *total = COSTS_N_INSNS (1);
+      return true;
+
+    case DIV:
+      if (speed)
+	/* This is the worst case for a division.  Pessimize divisions when
+	   not optimizing for size and allow reciprocal optimizations which
+	   produce bigger code.  */
+	*total = COSTS_N_INSNS (20);
+      else
+	*total = COSTS_N_INSNS (3);
+      return true;
+
+    case UDIV:
+      if (speed)
+	/* This is the worst case for a division.  Pessimize divisions when
+	   not optimizing for size and allow reciprocal optimizations which
+	   produce bigger code.  */
+	*total = COSTS_N_INSNS (18);
+      else
+	*total = COSTS_N_INSNS (3);
+      return true;
+
+    default:
+      break;
+    }
+
+  return false;
+}
+
+static bool
 rx_can_eliminate (const int from ATTRIBUTE_UNUSED, const int to)
 {
   /* We can always eliminate to the frame pointer.
@@ -3081,15 +3171,15 @@ flags_from_mode (machine_mode mode)
 {
   switch (mode)
     {
-    case CC_ZSmode:
+    case E_CC_ZSmode:
       return CC_FLAG_S | CC_FLAG_Z;
-    case CC_ZSOmode:
+    case E_CC_ZSOmode:
       return CC_FLAG_S | CC_FLAG_Z | CC_FLAG_O;
-    case CC_ZSCmode:
+    case E_CC_ZSCmode:
       return CC_FLAG_S | CC_FLAG_Z | CC_FLAG_C;
-    case CCmode:
+    case E_CCmode:
       return CC_FLAG_S | CC_FLAG_Z | CC_FLAG_O | CC_FLAG_C;
-    case CC_Fmode:
+    case E_CC_Fmode:
       return CC_FLAG_FP;
     default:
       gcc_unreachable ();
@@ -3208,7 +3298,7 @@ rx_match_ccmode (rtx insn, machine_mode cc_mode)
 
   gcc_checking_assert (XVECLEN (PATTERN (insn), 0) == 2);
 
-  op1 = XVECEXP (PATTERN (insn), 0, 1);
+  op1 = XVECEXP (PATTERN (insn), 0, 0);
   gcc_checking_assert (GET_CODE (SET_SRC (op1)) == COMPARE);
 
   flags = SET_DEST (op1);
@@ -3226,23 +3316,6 @@ rx_match_ccmode (rtx insn, machine_mode cc_mode)
   return true;
 }
 
-int
-rx_align_for_label (rtx lab, int uses_threshold)
-{
-  /* This is a simple heuristic to guess when an alignment would not be useful
-     because the delay due to the inserted NOPs would be greater than the delay
-     due to the misaligned branch.  If uses_threshold is zero then the alignment
-     is always useful.  */
-  if (LABEL_P (lab) && LABEL_NUSES (lab) < uses_threshold)
-    return 0;
-
-  if (optimize_size)
-    return 0;
-  /* These values are log, not bytes.  */
-  if (rx_cpu_type == RX100 || rx_cpu_type == RX200)
-    return 2; /* 4 bytes */
-  return 3;   /* 8 bytes */
-}
 
 static int
 rx_max_skip_for_label (rtx_insn *lab)
@@ -3268,8 +3341,39 @@ rx_max_skip_for_label (rtx_insn *lab)
 
   opsize = get_attr_length (op);
   if (opsize >= 0 && opsize < 8)
-    return opsize - 1;
+    return MAX (0, opsize - 1);
   return 0;
+}
+
+static int
+rx_align_log_for_label (rtx_insn *lab, int uses_threshold)
+{
+  /* This is a simple heuristic to guess when an alignment would not be useful
+     because the delay due to the inserted NOPs would be greater than the delay
+     due to the misaligned branch.  If uses_threshold is zero then the alignment
+     is always useful.  */
+  if (LABEL_P (lab) && LABEL_NUSES (lab) < uses_threshold)
+    return 0;
+
+  if (optimize_size)
+    return 0;
+
+  /* Return zero if max_skip not a positive number.  */
+  int max_skip = rx_max_skip_for_label (lab);
+  if (max_skip <= 0)
+    return 0;
+
+  /* These values are log, not bytes.  */
+  if (rx_cpu_type == RX100 || rx_cpu_type == RX200)
+    return 2; /* 4 bytes */
+  return 3;   /* 8 bytes */
+}
+
+align_flags
+rx_align_for_label (rtx_insn *lab, int uses_threshold)
+{
+  return align_flags (rx_align_log_for_label (lab, uses_threshold),
+		      rx_max_skip_for_label (lab));
 }
 
 /* Compute the real length of the extending load-and-op instructions.  */
@@ -3436,21 +3540,120 @@ rx_atomic_sequence::~rx_atomic_sequence (void)
     emit_insn (gen_mvtc (GEN_INT (CTRLREG_PSW), m_prev_psw_reg));
 }
 
+/* Given an insn and a reg number, tell whether the reg dies or is unused
+   after the insn.  */
+bool
+rx_reg_dead_or_unused_after_insn (const rtx_insn* i, int regno)
+{
+  return find_regno_note (i, REG_DEAD, regno) != NULL
+	 || find_regno_note (i, REG_UNUSED, regno) != NULL;
+}
+
+/* Copy dead and unused notes from SRC to DST for the specified REGNO.  */
+void
+rx_copy_reg_dead_or_unused_notes (rtx reg, const rtx_insn* src, rtx_insn* dst)
+{
+  int regno = REGNO (SUBREG_P (reg) ? SUBREG_REG (reg) : reg);
+
+  if (rtx note = find_regno_note (src, REG_DEAD, regno))
+    add_shallow_copy_of_reg_note (dst, note);
+
+  if (rtx note = find_regno_note (src, REG_UNUSED, regno))
+    add_shallow_copy_of_reg_note (dst, note);
+}
+
+/* Try to fuse the current bit-operation insn with the surrounding memory load
+   and store.  */
+bool
+rx_fuse_in_memory_bitop (rtx* operands, rtx_insn* curr_insn,
+			 rtx (*gen_insn)(rtx, rtx))
+{
+  rtx op2_reg = SUBREG_P (operands[2]) ? SUBREG_REG (operands[2]) : operands[2];
+
+  set_of_reg op2_def = rx_find_set_of_reg (op2_reg, curr_insn,
+					   prev_nonnote_nondebug_insn_bb);
+  if (op2_def.set_src == NULL_RTX
+      || !MEM_P (op2_def.set_src)
+      || GET_MODE (op2_def.set_src) != QImode
+      || !rx_is_restricted_memory_address (XEXP (op2_def.set_src, 0),
+					   GET_MODE (op2_def.set_src))
+      || reg_used_between_p (operands[2], op2_def.insn, curr_insn)
+      || !rx_reg_dead_or_unused_after_insn (curr_insn, REGNO (op2_reg))
+    )
+    return false;
+
+  /* The register operand originates from a memory load and the memory load
+     could be fused with the bitop insn.
+     Look for the following memory store with the same memory operand.  */
+  rtx mem = op2_def.set_src;
+
+  /* If the memory is an auto-mod address, it can't be fused.  */
+  if (GET_CODE (XEXP (mem, 0)) == POST_INC
+      || GET_CODE (XEXP (mem, 0)) == PRE_INC
+      || GET_CODE (XEXP (mem, 0)) == POST_DEC
+      || GET_CODE (XEXP (mem, 0)) == PRE_DEC)
+    return false;
+
+  rtx_insn* op0_use = rx_find_use_of_reg (operands[0], curr_insn,
+					  next_nonnote_nondebug_insn_bb);
+  if (op0_use == NULL
+      || !(GET_CODE (PATTERN (op0_use)) == SET
+	   && RX_REG_P (XEXP (PATTERN (op0_use), 1))
+	   && reg_overlap_mentioned_p (operands[0], XEXP (PATTERN (op0_use), 1))
+	   && rtx_equal_p (mem, XEXP (PATTERN (op0_use), 0)))
+      || !rx_reg_dead_or_unused_after_insn (op0_use, REGNO (operands[0]))
+      || reg_set_between_p (operands[2], curr_insn, op0_use))
+    return false;
+
+  /* If the load-modify-store operation is fused it could potentially modify
+     load/store ordering if there are other memory accesses between the load
+     and the store for this insn.  If there are volatile mems between the load
+     and store it's better not to change the ordering.  If there is a call
+     between the load and store, it's also not safe to fuse it.  */
+  for (rtx_insn* i = next_nonnote_nondebug_insn_bb (op2_def.insn);
+       i != NULL && i != op0_use;
+       i = next_nonnote_nondebug_insn_bb (i))
+    if (volatile_insn_p (PATTERN (i)) || CALL_P (i))
+      return false;
+
+  emit_insn (gen_insn (mem, gen_lowpart (QImode, operands[1])));
+  set_insn_deleted (op2_def.insn);
+  set_insn_deleted (op0_use);
+  return true;
+}
+
+/* Implement TARGET_HARD_REGNO_NREGS.  */
+
+static unsigned int
+rx_hard_regno_nregs (unsigned int, machine_mode mode)
+{
+  return CLASS_MAX_NREGS (0, mode);
+}
+
+/* Implement TARGET_HARD_REGNO_MODE_OK.  */
+
+static bool
+rx_hard_regno_mode_ok (unsigned int regno, machine_mode)
+{
+  return REGNO_REG_CLASS (regno) == GR_REGS;
+}
+
+/* Implement TARGET_MODES_TIEABLE_P.  */
+
+static bool
+rx_modes_tieable_p (machine_mode mode1, machine_mode mode2)
+{
+  return ((GET_MODE_CLASS (mode1) == MODE_FLOAT
+	   || GET_MODE_CLASS (mode1) == MODE_COMPLEX_FLOAT)
+	  == (GET_MODE_CLASS (mode2) == MODE_FLOAT
+	      || GET_MODE_CLASS (mode2) == MODE_COMPLEX_FLOAT));
+}
 
 #undef  TARGET_NARROW_VOLATILE_BITFIELD
 #define TARGET_NARROW_VOLATILE_BITFIELD		rx_narrow_volatile_bitfield
 
 #undef  TARGET_CAN_INLINE_P
 #define TARGET_CAN_INLINE_P			rx_ok_to_inline
-
-#undef  TARGET_ASM_JUMP_ALIGN_MAX_SKIP
-#define TARGET_ASM_JUMP_ALIGN_MAX_SKIP			rx_max_skip_for_label
-#undef  TARGET_ASM_LOOP_ALIGN_MAX_SKIP
-#define TARGET_ASM_LOOP_ALIGN_MAX_SKIP			rx_max_skip_for_label
-#undef  TARGET_LABEL_ALIGN_AFTER_BARRIER_MAX_SKIP
-#define TARGET_LABEL_ALIGN_AFTER_BARRIER_MAX_SKIP	rx_max_skip_for_label
-#undef  TARGET_ASM_LABEL_ALIGN_MAX_SKIP
-#define TARGET_ASM_LABEL_ALIGN_MAX_SKIP			rx_max_skip_for_label
 
 #undef  TARGET_FUNCTION_VALUE
 #define TARGET_FUNCTION_VALUE		rx_function_value
@@ -3589,6 +3792,20 @@ rx_atomic_sequence::~rx_atomic_sequence (void)
 
 #undef  TARGET_LRA_P
 #define TARGET_LRA_P 				rx_enable_lra
+
+#undef  TARGET_HARD_REGNO_NREGS
+#define TARGET_HARD_REGNO_NREGS			rx_hard_regno_nregs
+#undef  TARGET_HARD_REGNO_MODE_OK
+#define TARGET_HARD_REGNO_MODE_OK		rx_hard_regno_mode_ok
+
+#undef  TARGET_MODES_TIEABLE_P
+#define TARGET_MODES_TIEABLE_P			rx_modes_tieable_p
+
+#undef  TARGET_RTX_COSTS
+#define TARGET_RTX_COSTS rx_rtx_costs
+
+#undef  TARGET_HAVE_SPECULATION_SAFE_VALUE
+#define TARGET_HAVE_SPECULATION_SAFE_VALUE speculation_safe_value_not_needed
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

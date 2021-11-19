@@ -1,6 +1,6 @@
 ## Makefile for the doc subdirectory of the GNU C++ Standard library.
 ##
-## Copyright (C) 2008-2017 Free Software Foundation, Inc.
+## Copyright (C) 2008-2021 Free Software Foundation, Inc.
 ##
 ## This file is part of the libstdc++ version 3 distribution.
 ## Process this file with automake to produce Makefile.in.
@@ -267,6 +267,7 @@ stamp-pdf-doxygen: stamp-latex-doxygen ${doxygen_outdir}/pdf
 	else \
 	  echo "... error"; \
 	  grep -F 'LaTeX Error' ${doxygen_outdir}/latex/refman.log; \
+	  grep -F 'TeX capacity exceeded, sorry' ${doxygen_outdir}/latex/refman.log; \
 	  exit 12; \
 	fi
 	$(STAMP) stamp-pdf-doxygen
@@ -336,12 +337,13 @@ xml_sources_manual = \
 	${xml_dir}/manual/policy_data_structures.xml \
 	${xml_dir}/manual/policy_data_structures_biblio.xml \
 	${xml_dir}/manual/prerequisites.xml \
-	${xml_dir}/manual/profile_mode.xml \
 	${xml_dir}/manual/shared_ptr.xml \
 	${xml_dir}/manual/spine.xml \
 	${xml_dir}/manual/status_cxx1998.xml \
 	${xml_dir}/manual/status_cxx2011.xml \
 	${xml_dir}/manual/status_cxx2014.xml \
+	${xml_dir}/manual/status_cxx2017.xml \
+	${xml_dir}/manual/status_cxx2020.xml \
 	${xml_dir}/manual/status_cxxtr1.xml \
 	${xml_dir}/manual/status_cxxtr24733.xml \
 	${xml_dir}/manual/strings.xml \

@@ -14,25 +14,21 @@ import (
 //go:generate go run mkfastlog2table.go
 
 // For gccgo, while we still have C runtime code, use go:linkname to
-// rename some functions to themselves, so that the compiler will
-// export them.
+// export some functions.
 //
-//go:linkname tickspersecond runtime.tickspersecond
+//go:linkname tickspersecond
 
-var ticks struct {
-	lock mutex
-	pad  uint32 // ensure 8-byte alignment of val on 386
-	val  uint64
-}
+var ticksLock mutex
+var ticksVal uint64
 
 // Note: Called by runtime/pprof in addition to runtime code.
 func tickspersecond() int64 {
-	r := int64(atomic.Load64(&ticks.val))
+	r := int64(atomic.Load64(&ticksVal))
 	if r != 0 {
 		return r
 	}
-	lock(&ticks.lock)
-	r = int64(ticks.val)
+	lock(&ticksLock)
+	r = int64(ticksVal)
 	if r == 0 {
 		t0 := nanotime()
 		c0 := cputicks()
@@ -46,23 +42,29 @@ func tickspersecond() int64 {
 		if r == 0 {
 			r++
 		}
-		atomic.Store64(&ticks.val, uint64(r))
+		atomic.Store64(&ticksVal, uint64(r))
 	}
-	unlock(&ticks.lock)
+	unlock(&ticksLock)
 	return r
 }
 
 var envs []string
 var argslice []string
 
-//go:linkname syscall_runtime_envs syscall.runtime_envs
+//go:linkname syscall_runtime_envs syscall.runtime__envs
 func syscall_runtime_envs() []string { return append([]string{}, envs...) }
 
 //go:linkname syscall_Getpagesize syscall.Getpagesize
 func syscall_Getpagesize() int { return int(physPageSize) }
 
-//go:linkname os_runtime_args os.runtime_args
+//go:linkname os_runtime_args os.runtime__args
 func os_runtime_args() []string { return append([]string{}, argslice...) }
+
+//go:linkname syscall_Exit syscall.Exit
+//go:nosplit
+func syscall_Exit(code int) {
+	exit(int32(code))
+}
 
 // Temporary, for the gccgo runtime code written in C.
 //go:linkname get_envs runtime_get_envs

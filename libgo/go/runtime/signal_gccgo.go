@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin dragonfly freebsd linux netbsd openbsd solaris
+// +build aix darwin dragonfly freebsd hurd linux netbsd openbsd solaris
 
 package runtime
 
@@ -13,43 +13,46 @@ import (
 // Functions for gccgo to support signal handling. In the gc runtime
 // these are written in OS-specific files and in assembler.
 
-//extern sigaction
+//go:noescape
+//extern-sysinfo sigaction
 func sigaction(signum uint32, act *_sigaction, oact *_sigaction) int32
 
-//extern sigprocmask
+//go:noescape
+//extern-sysinfo sigprocmask
 func sigprocmask(how int32, set *sigset, oldset *sigset) int32
 
-//extern sigfillset
+//go:noescape
+//extern-sysinfo sigfillset
 func sigfillset(set *sigset) int32
 
-//extern sigemptyset
+//go:noescape
+//extern-sysinfo sigemptyset
 func sigemptyset(set *sigset) int32
 
-//extern sigaddset
+//go:noescape
+//extern-sysinfo sigaddset
 func c_sigaddset(set *sigset, signum uint32) int32
 
-//extern sigdelset
+//go:noescape
+//extern-sysinfo sigdelset
 func c_sigdelset(set *sigset, signum uint32) int32
 
-//extern sigaltstack
+//go:noescape
+//extern-sysinfo sigaltstack
 func sigaltstack(ss *_stack_t, oss *_stack_t) int32
 
-//extern raise
+//extern-sysinfo raise
 func raise(sig uint32) int32
 
-//extern getpid
+//extern-sysinfo getpid
 func getpid() _pid_t
 
-//extern kill
+//extern-sysinfo kill
 func kill(pid _pid_t, sig uint32) int32
 
-//extern setitimer
+//go:noescape
+//extern-sysinfo setitimer
 func setitimer(which int32, new *_itimerval, old *_itimerval) int32
-
-type sigTabT struct {
-	flags int32
-	name  string
-}
 
 type sigctxt struct {
 	info *_siginfo_t
@@ -57,12 +60,7 @@ type sigctxt struct {
 }
 
 func (c *sigctxt) sigcode() uint64 {
-	if c.info == nil {
-		// This can happen on Solaris 10.  We don't know the
-		// code, just avoid a misleading value.
-		return _SI_USER + 1
-	}
-	return uint64(c.info.si_code)
+	return uint64(getSiginfoCode(c.info))
 }
 
 //go:nosplit

@@ -3,7 +3,7 @@
 // Test overload resolution among reference types
 
 // { dg-do compile { target c++11 } }
-// { dg-skip-if "packed attribute missing for struct one/three/five/seven" { "epiphany-*-*" } { "*" } { "" } }
+// { dg-skip-if "packed attribute missing for struct one/three/five/seven" { "epiphany-*-*" } }
 
 template <bool> struct sa;
 template <> struct sa<true> {};
@@ -25,8 +25,8 @@ struct A
 
                A    source();
 const          A  c_source();
-      volatile A  v_source();
-const volatile A cv_source();
+      volatile A  v_source(); // { dg-warning "deprecated" "" { target c++2a } }
+const volatile A cv_source(); // { dg-warning "deprecated" "" { target c++2a } }
 
 // 4 at a time
 

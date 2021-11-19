@@ -1,6 +1,6 @@
 /* elfos.h  --  operating system specific defines to be used when
    targeting GCC for some generic ELF system
-   Copyright (C) 1991-2017 Free Software Foundation, Inc.
+   Copyright (C) 1991-2021 Free Software Foundation, Inc.
    Based on svr4.h contributed by Ron Guilmette (rfg@netcom.com).
 
 This file is part of GCC.
@@ -135,15 +135,15 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #ifndef ASM_OUTPUT_BEFORE_CASE_LABEL
 #define ASM_OUTPUT_BEFORE_CASE_LABEL(FILE, PREFIX, NUM, TABLE) \
-  ASM_OUTPUT_ALIGN ((FILE), 2);
+  ASM_OUTPUT_ALIGN ((FILE), 2)
 #endif
 
 #undef  ASM_OUTPUT_CASE_LABEL
 #define ASM_OUTPUT_CASE_LABEL(FILE, PREFIX, NUM, JUMPTABLE)		\
   do									\
     {									\
-      ASM_OUTPUT_BEFORE_CASE_LABEL (FILE, PREFIX, NUM, JUMPTABLE)	\
-	(*targetm.asm_out.internal_label) (FILE, PREFIX, NUM);			\
+      ASM_OUTPUT_BEFORE_CASE_LABEL (FILE, PREFIX, NUM, JUMPTABLE);	\
+      (*targetm.asm_out.internal_label) (FILE, PREFIX, NUM);		\
     }									\
   while (0)
 
@@ -246,6 +246,17 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
       assemble_name ((FILE), (NAME));	\
       fputc ('\n', (FILE));		\
     }					\
+  while (0)
+
+#define ASM_OUTPUT_SYMVER_DIRECTIVE(FILE, NAME, NAME2)		\
+  do								\
+    {								\
+      fputs ("\t.symver\t", (FILE));				\
+      assemble_name ((FILE), (NAME));				\
+      fputs (", ", (FILE));					\
+      assemble_name ((FILE), (NAME2));				\
+      fputc ('\n', (FILE));					\
+    }								\
   while (0)
 
 /* The following macro defines the format used to output the second
@@ -444,7 +455,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #undef  ASM_OUTPUT_ASCII
 #define ASM_OUTPUT_ASCII(FILE, STR, LENGTH)			\
-  default_elf_asm_output_ascii ((FILE), (STR), (LENGTH));
+  default_elf_asm_output_ascii ((FILE), (STR), (LENGTH))
 
 /* Allow the use of the -frecord-gcc-switches switch via the
    elf_record_gcc_switches function defined in varasm.c.  */
@@ -463,3 +474,9 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #undef TARGET_LIBC_HAS_FUNCTION
 #define TARGET_LIBC_HAS_FUNCTION no_c99_libc_has_function
+
+/* ELF support needed only by D front-end.  */
+
+#define TARGET_D_MINFO_SECTION "minfo"
+#define TARGET_D_MINFO_START_NAME "__start_minfo"
+#define TARGET_D_MINFO_END_NAME "__stop_minfo"

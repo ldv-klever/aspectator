@@ -1,5 +1,5 @@
 # Process this file with autoreconf to produce a configure script.
-#  Copyright (C) 2012-2017 Free Software Foundation, Inc.
+#  Copyright (C) 2012-2021 Free Software Foundation, Inc.
 #
 #  This file is part of the GNU Atomic Library (libatomic).
 #
@@ -22,7 +22,6 @@
 #  see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #  <http://www.gnu.org/licenses/>.
 
-AC_PREREQ(2.59)
 AC_INIT([GNU Atomic Library], 1.0,,[libatomic])
 AC_CONFIG_HEADER(auto-config.h)
 
@@ -85,6 +84,8 @@ target_alias=${target_alias-$host_alias}
 AM_INIT_AUTOMAKE([1.9.0 foreign no-dist -Wall -Wno-portability -Wno-override])
 AM_ENABLE_MULTILIB(, ..)
 
+GCC_WITH_TOOLEXECLIBDIR
+
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
 case ${enable_version_specific_runtime_libs} in
@@ -100,7 +101,14 @@ case ${enable_version_specific_runtime_libs} in
        test x"$with_cross_host" != x"no"; then
       # Install a library built with a cross compiler in tooldir, not libdir.
       toolexecdir='$(exec_prefix)/$(target_alias)'
-      toolexeclibdir='$(toolexecdir)/lib'
+      case ${with_toolexeclibdir} in
+	no)
+	  toolexeclibdir='$(toolexecdir)/lib'
+	  ;;
+	*)
+	  toolexeclibdir=${with_toolexeclibdir}
+	  ;;
+      esac
     else
       toolexecdir='$(libdir)/gcc-lib/$(target_alias)'
       toolexeclibdir='$(libdir)'
@@ -157,11 +165,21 @@ AC_MSG_CHECKING([for thread model used by GCC])
 target_thread_file=`$CC -v 2>&1 | sed -n 's/^Thread model: //p'`
 AC_MSG_RESULT([$target_thread_file])
 
+case "$target" in
+ *aarch64*)
+    ACX_PROG_CC_WARNING_OPTS([-march=armv8-a+lse],[enable_aarch64_lse])
+    ;;
+esac
+
 # Get target configury.
 . ${srcdir}/configure.tgt
 if test -n "$UNSUPPORTED"; then
   AC_MSG_ERROR([Configuration ${target} is unsupported.])
 fi
+
+# Write out the ifunc resolver arg type.
+AC_DEFINE_UNQUOTED(IFUNC_RESOLVER_ARGS, $IFUNC_RESOLVER_ARGS,
+	[Define ifunc resolver function argument.])
 
 # Disable fallbacks to __sync routines from libgcc.  Otherwise we'll
 # make silly decisions about what the cpu can do.
@@ -238,6 +256,10 @@ if test "x$GCC" = "xyes"; then
   XCFLAGS="$XCFLAGS -Wall -Werror"
 fi
 
+# Add CET specific flags if CET is enabled
+GCC_CET_FLAGS(CET_FLAGS)
+XCFLAGS="$XCFLAGS $CET_FLAGS"
+
 XCFLAGS="$XCFLAGS $XPCFLAGS"
 
 AC_SUBST(config_path)
@@ -246,7 +268,22 @@ AC_SUBST(XLDFLAGS)
 AC_SUBST(LIBS)
 AC_SUBST(SIZES)
 
+# Conditionalize the makefile for this target machine.
+tmake_file_=
+for f in ${tmake_file}
+do
+	if test -f ${srcdir}/config/$f
+	then
+		tmake_file_="${tmake_file_} \$(srcdir)/config/$f"
+	fi
+done
+tmake_file="${tmake_file_}"
+AC_SUBST(tmake_file)
+
+
 AM_CONDITIONAL(HAVE_IFUNC, test x$libat_cv_have_ifunc = xyes)
+AM_CONDITIONAL(ARCH_AARCH64_LINUX,
+	       [expr "$config_path" : ".* linux/aarch64 .*" > /dev/null])
 AM_CONDITIONAL(ARCH_ARM_LINUX,
 	       [expr "$config_path" : ".* linux/arm .*" > /dev/null])
 AM_CONDITIONAL(ARCH_I386,
@@ -264,4 +301,5 @@ else
 fi
 
 AC_CONFIG_FILES(Makefile testsuite/Makefile)
+AC_CONFIG_FILES(testsuite/libatomic-site-extra.exp)
 AC_OUTPUT

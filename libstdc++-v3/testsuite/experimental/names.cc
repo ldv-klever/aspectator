@@ -1,4 +1,4 @@
-// Copyright (C) 2017-2019 Free Software Foundation, Inc.
+// Copyright (C) 2017-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-do compile }
+// { dg-do compile { target c++11 } }
 
 // Define macros for some common variables names that we must not use for
 // naming variables, parameters etc. in the library.
@@ -25,6 +25,9 @@
 #if __has_include(<experimental/filesystem>)
 # include <experimental/filesystem>
 #endif
+
+#if __cplusplus >= 201402L
+
 // Library Fundamentals
 #include <experimental/algorithm>
 #include <experimental/any>
@@ -55,3 +58,16 @@
 #include <experimental/unordered_set>
 #include <experimental/utility>
 #include <experimental/vector>
+// Networking
+#ifdef _GLIBCXX_HAS_GTHREADS
+# include <experimental/buffer>
+# include <experimental/internet>
+# include <experimental/io_context>
+# include <experimental/net>
+# include <experimental/netfwd>
+# include <experimental/socket>
+# include <experimental/timer>
+# include <experimental/executor>
+#endif
+
+#endif // C++14

@@ -1,5 +1,5 @@
 /* Passes for transactional memory support.
-   Copyright (C) 2008-2017 Free Software Foundation, Inc.
+   Copyright (C) 2008-2021 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>
    and Aldy Hernandez <aldyh@redhat.com>.
 
@@ -46,11 +46,14 @@
 #include "demangle.h"
 #include "output.h"
 #include "trans-mem.h"
-#include "params.h"
 #include "langhooks.h"
 #include "cfgloop.h"
 #include "tree-ssa-address.h"
-
+#include "stringpool.h"
+#include "attribs.h"
+#include "alloc-pool.h"
+#include "symbol-summary.h"
+#include "symtab-thunks.h"
 
 #define A_RUNINSTRUMENTEDCODE	0x0001
 #define A_RUNUNINSTRUMENTEDCODE	0x0002
@@ -234,8 +237,7 @@ is_tm_irrevocable (tree x)
   if (TREE_CODE (x) == ADDR_EXPR)
     x = TREE_OPERAND (x, 0);
   if (TREE_CODE (x) == FUNCTION_DECL
-      && DECL_BUILT_IN_CLASS (x) == BUILT_IN_NORMAL
-      && DECL_FUNCTION_CODE (x) == BUILT_IN_TM_IRREVOCABLE)
+      && fndecl_built_in_p (x, BUILT_IN_TM_IRREVOCABLE))
     return true;
 
   return false;
@@ -265,20 +267,7 @@ is_tm_safe (const_tree x)
 static bool
 is_tm_pure_call (gimple *call)
 {
-  if (gimple_call_internal_p (call))
-    return (gimple_call_flags (call) & (ECF_CONST | ECF_TM_PURE)) != 0;
-
-  tree fn = gimple_call_fn (call);
-
-  if (TREE_CODE (fn) == ADDR_EXPR)
-    {
-      fn = TREE_OPERAND (fn, 0);
-      gcc_assert (TREE_CODE (fn) == FUNCTION_DECL);
-    }
-  else
-    fn = TREE_TYPE (fn);
-
-  return is_tm_pure (fn);
+  return (gimple_call_flags (call) & (ECF_CONST | ECF_TM_PURE)) != 0;
 }
 
 /* Return true if X has been marked TM_CALLABLE.  */
@@ -357,7 +346,8 @@ is_tm_load (gimple *stmt)
     return false;
 
   fndecl = gimple_call_fndecl (stmt);
-  return (fndecl && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL
+  return (fndecl
+	  && fndecl_built_in_p (fndecl, BUILT_IN_NORMAL)
 	  && BUILTIN_TM_LOAD_P (DECL_FUNCTION_CODE (fndecl)));
 }
 
@@ -373,7 +363,7 @@ is_tm_simple_load (gimple *stmt)
     return false;
 
   fndecl = gimple_call_fndecl (stmt);
-  if (fndecl && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL)
+  if (fndecl && fndecl_built_in_p (fndecl, BUILT_IN_NORMAL))
     {
       enum built_in_function fcode = DECL_FUNCTION_CODE (fndecl);
       return (fcode == BUILT_IN_TM_LOAD_1
@@ -401,7 +391,8 @@ is_tm_store (gimple *stmt)
     return false;
 
   fndecl = gimple_call_fndecl (stmt);
-  return (fndecl && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL
+  return (fndecl
+	  && fndecl_built_in_p (fndecl, BUILT_IN_NORMAL)
 	  && BUILTIN_TM_STORE_P (DECL_FUNCTION_CODE (fndecl)));
 }
 
@@ -417,7 +408,8 @@ is_tm_simple_store (gimple *stmt)
     return false;
 
   fndecl = gimple_call_fndecl (stmt);
-  if (fndecl && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL)
+  if (fndecl
+      && fndecl_built_in_p (fndecl, BUILT_IN_NORMAL))
     {
       enum built_in_function fcode = DECL_FUNCTION_CODE (fndecl);
       return (fcode == BUILT_IN_TM_STORE_1
@@ -439,9 +431,7 @@ is_tm_simple_store (gimple *stmt)
 static bool
 is_tm_abort (tree fndecl)
 {
-  return (fndecl
-	  && DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_NORMAL
-	  && DECL_FUNCTION_CODE (fndecl) == BUILT_IN_TM_ABORT);
+  return (fndecl && fndecl_built_in_p (fndecl, BUILT_IN_TM_ABORT));
 }
 
 /* Build a GENERIC tree for a user abort.  This is called by front ends
@@ -766,10 +756,10 @@ diagnose_tm_1 (gimple_stmt_iterator *gsi, bool *handled_ops_p,
 	 Either that or get the language spec to resurrect __tm_waiver.  */
       if (d->block_flags & DIAG_TM_SAFE)
 	error_at (gimple_location (stmt),
-		  "asm not allowed in atomic transaction");
+		  "%<asm%> not allowed in atomic transaction");
       else if (d->func_flags & DIAG_TM_SAFE)
 	error_at (gimple_location (stmt),
-		  "asm not allowed in %<transaction_safe%> function");
+		  "%<asm%> not allowed in %<transaction_safe%> function");
       break;
 
     case GIMPLE_TRANSACTION:
@@ -1120,7 +1110,7 @@ tm_log_add (basic_block entry_block, tree addr, gimple *stmt)
 	  && TYPE_SIZE_UNIT (type) != NULL
 	  && tree_fits_uhwi_p (TYPE_SIZE_UNIT (type))
 	  && ((HOST_WIDE_INT) tree_to_uhwi (TYPE_SIZE_UNIT (type))
-	      < PARAM_VALUE (PARAM_TM_MAX_AGGREGATE_SIZE))
+	      < param_tm_max_aggregate_size)
 	  /* We must be able to copy this type normally.  I.e., no
 	     special constructors and the like.  */
 	  && !TREE_ADDRESSABLE (type))
@@ -1275,7 +1265,7 @@ tm_log_emit (void)
       if (dump_file)
 	{
 	  fprintf (dump_file, "TM thread private mem logging: ");
-	  print_generic_expr (dump_file, lp->addr, 0);
+	  print_generic_expr (dump_file, lp->addr);
 	  fprintf (dump_file, "\n");
 	}
 
@@ -2006,7 +1996,7 @@ tm_region_init_1 (struct tm_region *region, basic_block bb)
       if (gimple_code (g) == GIMPLE_CALL)
 	{
 	  tree fn = gimple_call_fndecl (g);
-	  if (fn && DECL_BUILT_IN_CLASS (fn) == BUILT_IN_NORMAL)
+	  if (fn && fndecl_built_in_p (fn, BUILT_IN_NORMAL))
 	    {
 	      if ((DECL_FUNCTION_CODE (fn) == BUILT_IN_TM_COMMIT
 		   || DECL_FUNCTION_CODE (fn) == BUILT_IN_TM_COMMIT_EH)
@@ -2043,7 +2033,7 @@ tm_region_init (struct tm_region *region)
   /* We could store this information in bb->aux, but we may get called
      through get_all_tm_blocks() from another pass that may be already
      using bb->aux.  */
-  bb_regions.safe_grow_cleared (last_basic_block_for_fn (cfun));
+  bb_regions.safe_grow_cleared (last_basic_block_for_fn (cfun), true);
 
   all_tm_regions = region;
   bb = single_succ (ENTRY_BLOCK_PTR_FOR_FN (cfun));
@@ -2437,6 +2427,7 @@ expand_assign_tm (struct tm_region *region, gimple_stmt_iterator *gsi)
       if (is_gimple_reg (rhs))
 	{
 	  tree rtmp = create_tmp_var (TREE_TYPE (rhs));
+	  TREE_ADDRESSABLE (rtmp) = 1;
 	  rhs_addr = build_fold_addr_expr (rtmp);
 	  gcall = gimple_build_assign (rtmp, rhs);
 	  gsi_insert_before (gsi, gcall, GSI_SAME_STMT);
@@ -2553,12 +2544,12 @@ expand_call_tm (struct tm_region *region,
 	  gimple_call_set_fndecl (stmt, repl);
 	  update_stmt (stmt);
 	  node = cgraph_node::create (repl);
-	  node->local.tm_may_enter_irr = false;
+	  node->tm_may_enter_irr = false;
 	  return expand_call_tm (region, gsi);
 	}
       gcc_unreachable ();
     }
-  if (node->local.tm_may_enter_irr)
+  if (node->tm_may_enter_irr)
     transaction_subcode_ior (region, GTMA_MAY_ENTER_IRREVOCABLE);
 
   if (is_tm_abort (fn_decl))
@@ -2581,7 +2572,7 @@ expand_call_tm (struct tm_region *region,
       gassign *assign_stmt;
 
       /* Remember if the call was going to throw.  */
-      if (stmt_can_throw_internal (stmt))
+      if (stmt_can_throw_internal (cfun, stmt))
 	{
 	  edge_iterator ei;
 	  edge e;
@@ -2786,7 +2777,7 @@ get_bb_regions_instrumented (bool traverse_clones,
   vec<tm_region *> ret;
 
   ret.create (n);
-  ret.safe_grow_cleared (n);
+  ret.safe_grow_cleared (n, true);
   stuff.bb2reg = &ret;
   stuff.include_uninstrumented_p = include_uninstrumented_p;
   expand_regions (all_tm_regions, collect_bb2reg, &stuff, traverse_clones);
@@ -2931,17 +2922,13 @@ expand_transaction (struct tm_region *region, void *data ATTRIBUTE_UNUSED)
       edge ef = make_edge (test_bb, join_bb, EDGE_FALSE_VALUE);
       redirect_edge_pred (fallthru_edge, join_bb);
 
-      join_bb->frequency = test_bb->frequency = transaction_bb->frequency;
       join_bb->count = test_bb->count = transaction_bb->count;
 
-      ei->probability = PROB_ALWAYS;
-      et->probability = PROB_LIKELY;
-      ef->probability = PROB_UNLIKELY;
-      et->count = apply_probability (test_bb->count, et->probability);
-      ef->count = apply_probability (test_bb->count, ef->probability);
+      ei->probability = profile_probability::always ();
+      et->probability = profile_probability::likely ();
+      ef->probability = profile_probability::unlikely ();
 
-      code_bb->count = et->count;
-      code_bb->frequency = EDGE_FREQUENCY (et);
+      code_bb->count = et->count ();
 
       transaction_bb = join_bb;
     }
@@ -2965,24 +2952,19 @@ expand_transaction (struct tm_region *region, void *data ATTRIBUTE_UNUSED)
       gsi_insert_after (&gsi, stmt, GSI_CONTINUE_LINKING);
 
       edge ei = make_edge (transaction_bb, test_bb, EDGE_FALLTHRU);
-      test_bb->frequency = transaction_bb->frequency;
       test_bb->count = transaction_bb->count;
-      ei->probability = PROB_ALWAYS;
+      ei->probability = profile_probability::always ();
 
       // Not abort edge.  If both are live, chose one at random as we'll
       // we'll be fixing that up below.
       redirect_edge_pred (fallthru_edge, test_bb);
       fallthru_edge->flags = EDGE_FALSE_VALUE;
-      fallthru_edge->probability = PROB_VERY_LIKELY;
-      fallthru_edge->count
-	= apply_probability (test_bb->count, fallthru_edge->probability);
+      fallthru_edge->probability = profile_probability::very_likely ();
 
       // Abort/over edge.
       redirect_edge_pred (abort_edge, test_bb);
       abort_edge->flags = EDGE_TRUE_VALUE;
-      abort_edge->probability = PROB_VERY_UNLIKELY;
-      abort_edge->count
-	= apply_probability (test_bb->count, abort_edge->probability);
+      abort_edge->probability = profile_probability::unlikely ();
 
       transaction_bb = test_bb;
     }
@@ -3010,8 +2992,7 @@ expand_transaction (struct tm_region *region, void *data ATTRIBUTE_UNUSED)
       // out of the fallthru edge.
       edge e = make_edge (transaction_bb, test_bb, fallthru_edge->flags);
       e->probability = fallthru_edge->probability;
-      test_bb->count = e->count = fallthru_edge->count;
-      test_bb->frequency = EDGE_FREQUENCY (e);
+      test_bb->count = fallthru_edge->count ();
 
       // Now update the edges to the inst/uninist implementations.
       // For now assume that the paths are equally likely.  When using HTM,
@@ -3020,15 +3001,11 @@ expand_transaction (struct tm_region *region, void *data ATTRIBUTE_UNUSED)
       // use the uninst path when falling back to serial mode.
       redirect_edge_pred (inst_edge, test_bb);
       inst_edge->flags = EDGE_FALSE_VALUE;
-      inst_edge->probability = REG_BR_PROB_BASE / 2;
-      inst_edge->count
-	= apply_probability (test_bb->count, inst_edge->probability);
+      inst_edge->probability = profile_probability::even ();
 
       redirect_edge_pred (uninst_edge, test_bb);
       uninst_edge->flags = EDGE_TRUE_VALUE;
-      uninst_edge->probability = REG_BR_PROB_BASE / 2;
-      uninst_edge->count
-	= apply_probability (test_bb->count, uninst_edge->probability);
+      uninst_edge->probability = profile_probability::even ();
     }
 
   // If we have no previous special cases, and we have PHIs at the beginning
@@ -3211,7 +3188,9 @@ split_bb_make_tm_edge (gimple *stmt, basic_block dest_bb,
       edge e = split_block (bb, stmt);
       *pnext = gsi_start_bb (e->dest);
     }
-  make_edge (bb, dest_bb, EDGE_ABNORMAL);
+  edge e = make_edge (bb, dest_bb, EDGE_ABNORMAL);
+  if (e)
+    e->probability = profile_probability::guessed_never ();
 
   // Record the need for the edge for the benefit of the rtl passes.
   if (cfun->gimple_df->tm_restart == NULL)
@@ -3261,8 +3240,7 @@ expand_block_edges (struct tm_region *const region, basic_block bb)
 	  || (gimple_call_flags (call_stmt) & ECF_TM_BUILTIN) == 0)
 	continue;
 
-      if (DECL_FUNCTION_CODE (gimple_call_fndecl (call_stmt))
-	  == BUILT_IN_TM_ABORT)
+      if (gimple_call_builtin_p (call_stmt, BUILT_IN_TM_ABORT))
 	{
 	  // If we have a ``_transaction_cancel [[outer]]'', there is only
 	  // one abnormal edge: to the transaction marked OUTER.
@@ -3369,6 +3347,8 @@ pass_tm_edges::execute (function *fun)
      must be rebuilt completely.  Otherwise we'll crash trying to update
      the SSA web in the TODO section following this pass.  */
   free_dominance_info (CDI_DOMINATORS);
+  /* We'ge also wrecked loops badly with inserting of abnormal edges.  */
+  loops_state_set (LOOPS_NEED_FIXUP);
   bitmap_obstack_release (&tm_obstack);
   all_tm_regions = NULL;
 
@@ -3580,7 +3560,7 @@ tm_memopt_accumulate_memops (basic_block bb)
 	  fprintf (dump_file, "TM memopt (%s): value num=%d, BB=%d, addr=",
 		   is_tm_load (stmt) ? "LOAD" : "STORE", loc,
 		   gimple_bb (stmt)->index);
-	  print_generic_expr (dump_file, gimple_call_arg (stmt, 0), 0);
+	  print_generic_expr (dump_file, gimple_call_arg (stmt, 0));
 	  fprintf (dump_file, "\n");
 	}
     }
@@ -3608,7 +3588,7 @@ dump_tm_memopt_set (const char *set_name, bitmap bits)
       gcc_assert (mem->value_id == i);
       fprintf (dump_file, "%s", comma);
       comma = ", ";
-      print_generic_expr (dump_file, mem->addr, 0);
+      print_generic_expr (dump_file, mem->addr);
     }
   fprintf (dump_file, "]\n");
 }
@@ -3730,9 +3710,9 @@ tm_memopt_compute_available (struct tm_region *region,
   /* Allocate a worklist array/queue.  Entries are only added to the
      list if they were not already on the list.  So the size is
      bounded by the number of basic blocks in the region.  */
+  gcc_assert (!blocks.is_empty ());
   qlen = blocks.length () - 1;
-  qin = qout = worklist =
-    XNEWVEC (basic_block, qlen);
+  qin = qout = worklist = XNEWVEC (basic_block, qlen);
 
   /* Put every block in the region on the worklist.  */
   for (i = 0; blocks.iterate (i, &bb); ++i)
@@ -3908,7 +3888,7 @@ dump_tm_memopt_transform (gimple *stmt)
   if (dump_file)
     {
       fprintf (dump_file, "TM memopt: transforming: ");
-      print_gimple_stmt (dump_file, stmt, 0, 0);
+      print_gimple_stmt (dump_file, stmt, 0);
       fprintf (dump_file, "\n");
     }
 }
@@ -4436,7 +4416,8 @@ ipa_tm_scan_irr_block (basic_block bb)
 	    {
 	      tree t = build1 (NOP_EXPR, void_type_node, size_zero_node);
 	      SET_EXPR_LOCATION (t, gimple_location (stmt));
-	      error ("%Kasm not allowed in %<transaction_safe%> function", t);
+	      error ("%K%<asm%> not allowed in %<transaction_safe%> function",
+		     t);
 	    }
 	  return true;
 
@@ -4744,14 +4725,15 @@ ipa_tm_mayenterirr_function (struct cgraph_node *node)
 
   /* We may have previously marked this function as tm_may_enter_irr;
      see pass_diagnose_tm_blocks.  */
-  if (node->local.tm_may_enter_irr)
+  if (node->tm_may_enter_irr)
     return true;
 
   /* Recurse on the main body for aliases.  In general, this will
      result in one of the bits above being set so that we will not
      have to recurse next time.  */
   if (node->alias)
-    return ipa_tm_mayenterirr_function (cgraph_node::get (node->thunk.alias));
+    return ipa_tm_mayenterirr_function
+		 (cgraph_node::get (thunk_info::get (node)->alias));
 
   /* What remains is unmarked local functions without items that force
      the function to go irrevocable.  */
@@ -4768,7 +4750,7 @@ ipa_tm_diagnose_tm_safe (struct cgraph_node *node)
 
   for (e = node->callees; e ; e = e->next_callee)
     if (!is_tm_callable (e->callee->decl)
-	&& e->callee->local.tm_may_enter_irr)
+	&& e->callee->tm_may_enter_irr)
       error_at (gimple_location (e->call_stmt),
 		"unsafe function call %qD within "
 		"%<transaction_safe%> function", e->callee->decl);
@@ -4810,7 +4792,7 @@ ipa_tm_diagnose_transaction (struct cgraph_node *node,
 	      if (gimple_code (stmt) == GIMPLE_ASM)
 		{
 		  error_at (gimple_location (stmt),
-			    "asm not allowed in atomic transaction");
+			    "%<asm%> not allowed in atomic transaction");
 		  continue;
 		}
 
@@ -4836,7 +4818,7 @@ ipa_tm_diagnose_transaction (struct cgraph_node *node,
 	      if (is_tm_callable (fndecl))
 		continue;
 
-	      if (cgraph_node::local_info (fndecl)->tm_may_enter_irr)
+	      if (cgraph_node::local_info_node (fndecl)->tm_may_enter_irr)
 		error_at (gimple_location (stmt),
 			  "unsafe function call %qD within "
 			  "atomic transaction", fndecl);
@@ -4868,7 +4850,7 @@ tm_mangle (tree old_asm_id)
 
   if (dc == NULL)
     {
-      char length[8];
+      char length[12];
 
     do_unencoded:
       sprintf (length, "%u", IDENTIFIER_LENGTH (old_asm_id));
@@ -5011,12 +4993,12 @@ ipa_tm_create_version (struct cgraph_node *old_node)
 
   gcc_assert (!old_node->ipa_transforms_to_apply.exists ());
   new_node = old_node->create_version_clone (new_decl, vNULL, NULL);
-  new_node->local.local = false;
+  new_node->local = false;
   new_node->externally_visible = old_node->externally_visible;
   new_node->lowered = true;
   new_node->tm_clone = 1;
   if (!old_node->implicit_section)
-    new_node->set_section (old_node->get_section ());
+    new_node->set_section (*old_node);
   get_cg_data (&old_node, true)->clone = new_node;
 
   if (old_node->get_availability () >= AVAIL_INTERPOSABLE)
@@ -5031,8 +5013,7 @@ ipa_tm_create_version (struct cgraph_node *old_node)
 	}
 
       tree_function_versioning (old_decl, new_decl,
-				NULL, false, NULL,
-				false, NULL, NULL);
+				NULL,  NULL, false, NULL, NULL);
     }
 
   record_tm_clone_pair (old_decl, new_decl);
@@ -5074,9 +5055,7 @@ ipa_tm_insert_irr_call (struct cgraph_node *node, struct tm_region *region,
 
   node->create_edge (cgraph_node::get_create
 		       (builtin_decl_explicit (BUILT_IN_TM_IRREVOCABLE)),
-		     g, 0,
-		     compute_call_stmt_bb_frequency (node->decl,
-						     gimple_bb (g)));
+		     g, gimple_bb (g)->count);
 }
 
 /* Construct a call to TM_GETTMCLONE and insert it before GSI.  */
@@ -5125,9 +5104,7 @@ ipa_tm_insert_gettmclone_call (struct cgraph_node *node,
 
   gsi_insert_before (gsi, g, GSI_SAME_STMT);
 
-  node->create_edge (cgraph_node::get_create (gettm_fn), g, 0,
-		     compute_call_stmt_bb_frequency (node->decl,
-						     gimple_bb (g)));
+  node->create_edge (cgraph_node::get_create (gettm_fn), g, gimple_bb (g)->count);
 
   /* Cast return value from tm_gettmclone* into appropriate function
      pointer.  */
@@ -5236,7 +5213,7 @@ ipa_tm_transform_calls_redirect (struct cgraph_node *node,
 	 CALLER.  Also note that find_tm_replacement_function also
 	 contains mappings into the TM runtime, e.g. memcpy.  These
 	 we know won't go irrevocable.  */
-      new_node->local.tm_may_enter_irr = 1;
+      new_node->tm_may_enter_irr = 1;
     }
   else
     {
@@ -5444,7 +5421,7 @@ ipa_tm_execute (void)
 	   No need to do this if the function's address can't be taken.  */
 	if (is_tm_pure (node->decl))
 	  {
-	    if (!node->local.local)
+	    if (!node->local)
 	      record_tm_clone_pair (node->decl, node->decl);
 	    continue;
 	  }
@@ -5502,7 +5479,7 @@ ipa_tm_execute (void)
 		 we need not scan the callees now, as the base will do.  */
 	      if (node->alias)
 		{
-		  node = cgraph_node::get (node->thunk.alias);
+		  node = cgraph_node::get (thunk_info::get (node)->alias);
 		  d = get_cg_data (&node, true);
 		  maybe_push_queue (node, &tm_callees, &d->in_callee_queue);
 		  continue;
@@ -5571,14 +5548,14 @@ ipa_tm_execute (void)
       node = irr_worklist[i];
       d = get_cg_data (&node, true);
       d->in_worklist = false;
-      node->local.tm_may_enter_irr = true;
+      node->tm_may_enter_irr = true;
 
       /* Propagate back to normal callers.  */
       for (e = node->callers; e ; e = e->next_caller)
 	{
 	  caller = e->caller;
 	  if (!is_tm_safe_or_pure (caller->decl)
-	      && !caller->local.tm_may_enter_irr)
+	      && !caller->tm_may_enter_irr)
 	    {
 	      d = get_cg_data (&caller, true);
 	      maybe_push_queue (caller, &irr_worklist, &d->in_worklist);
@@ -5589,7 +5566,7 @@ ipa_tm_execute (void)
       FOR_EACH_ALIAS (node, ref)
 	{
 	  caller = dyn_cast<cgraph_node *> (ref->referring);
-	  if (!caller->local.tm_may_enter_irr)
+	  if (!caller->tm_may_enter_irr)
 	    {
 	      /* ?? Do not traverse aliases here.  */
 	      d = get_cg_data (&caller, false);

@@ -1,5 +1,5 @@
 ;; Marvell ARM Processor Pipeline Description
-;; Copyright (C) 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2021 Free Software Foundation, Inc.
 ;; Contributed by Marvell.
 
 ;; This file is part of GCC.
@@ -73,7 +73,7 @@
 
 (define_insn_reservation "pj4_shift" 1
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "alu_shift_imm,logic_shift_imm,\
+       (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,logic_shift_imm,\
                         alus_shift_imm,logics_shift_imm,\
                         alu_shift_reg,logic_shift_reg,\
                         alus_shift_reg,logics_shift_reg,\
@@ -84,7 +84,7 @@
 
 (define_insn_reservation "pj4_shift_conds" 4
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "alu_shift_imm,logic_shift_imm,\
+       (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,logic_shift_imm,\
                         alus_shift_imm,logics_shift_imm,\
                         alu_shift_reg,logic_shift_reg,\
                         alus_shift_reg,logics_shift_reg,\
@@ -96,7 +96,7 @@
 (define_insn_reservation "pj4_alu_shift" 1
   (and (eq_attr "tune" "marvell_pj4")
        (not (eq_attr "conds" "set"))
-       (eq_attr "type" "alu_shift_imm,logic_shift_imm,\
+       (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,logic_shift_imm,\
                         alus_shift_imm,logics_shift_imm,\
                         alu_shift_reg,logic_shift_reg,\
                         alus_shift_reg,logics_shift_reg,\
@@ -107,7 +107,7 @@
 (define_insn_reservation "pj4_alu_shift_conds" 4
   (and (eq_attr "tune" "marvell_pj4")
        (eq_attr "conds" "set")
-       (eq_attr "type" "alu_shift_imm,logic_shift_imm,alus_shift_imm,logics_shift_imm,\
+       (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,logic_shift_imm,alus_shift_imm,logics_shift_imm,\
                         alu_shift_reg,logic_shift_reg,alus_shift_reg,logics_shift_reg,\
                         extend,\
                         mov_shift,mvn_shift,mov_shift_reg,mvn_shift_reg"))
@@ -119,8 +119,8 @@
 (define_insn_reservation "pj4_ir_mul" 3
   (and (eq_attr "tune" "marvell_pj4")
        (ior (eq_attr "mul32" "yes")
-            (eq_attr "mul64" "yes")))
-                     "pj4_is,pj4_mul,nothing*2,pj4_cp")
+	    (eq_attr "widen_mul64" "yes")))
+		     "pj4_is,pj4_mul,nothing*2,pj4_cp")
 
 (define_insn_reservation "pj4_ir_div" 20
   (and (eq_attr "tune" "marvell_pj4") 
@@ -138,31 +138,31 @@
 
 (define_insn_reservation "pj4_ldr"  3
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "load_byte,load1"))
+       (eq_attr "type" "load_byte,load_4"))
                        "pj4_is,pj4_alu1,nothing*2,pj4_cp")
 
 (define_insn_reservation "pj4_ldrd" 3
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "load2"))
+       (eq_attr "type" "load_8"))
                        "pj4_is,pj4_alu1,nothing*2,pj4_cpb")
 
 (define_insn_reservation "pj4_str"  1
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "store1"))
+       (eq_attr "type" "store_4"))
                        "pj4_is,pj4_alu1,nothing*2,pj4_cp")
 
 (define_insn_reservation "pj4_strd" 1
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "store2"))
+       (eq_attr "type" "store_8"))
                        "pj4_is,pj4_alu1,nothing*2,pj4_cpb")
 
 (define_insn_reservation "pj4_ldm" 4
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "load3,load4")) "pj4_isb,pj4_isb+pj4_alu1,pj4_alu1,nothing,pj4_cp,pj4_cp")
+       (eq_attr "type" "load_12,load_16")) "pj4_isb,pj4_isb+pj4_alu1,pj4_alu1,nothing,pj4_cp,pj4_cp")
 
 (define_insn_reservation "pj4_stm" 2
   (and (eq_attr "tune" "marvell_pj4")
-       (eq_attr "type" "store3,store4")) "pj4_isb,pj4_isb+pj4_alu1,pj4_alu1,nothing,pj4_cp,pj4_cp")
+       (eq_attr "type" "store_12,store_16")) "pj4_isb,pj4_isb+pj4_alu1,pj4_alu1,nothing,pj4_cp,pj4_cp")
 
 ;; Loads forward at WR-stage to ALU pipes
 (define_bypass 2 "pj4_ldr,pj4_ldrd" "pj4_alu")

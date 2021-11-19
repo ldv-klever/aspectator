@@ -1,6 +1,6 @@
 /* Code to analyze doloop loops in order for targets to perform late
    optimizations converting doloops to other forms of hardware loops.
-   Copyright (C) 2011-2017 Free Software Foundation, Inc.
+   Copyright (C) 2011-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -141,7 +141,7 @@ scan_loop (hwloop_info loop)
 	    CLEAR_HARD_REG_BIT (set_this_insn, REGNO (loop->iter_reg));
 	  else if (reg_mentioned_p (loop->iter_reg, PATTERN (insn)))
 	    loop->iter_reg_used = true;
-	  IOR_HARD_REG_SET (loop->regs_set_in_loop, set_this_insn);
+	  loop->regs_set_in_loop |= set_this_insn;
 	}
     }
 }
@@ -581,7 +581,7 @@ optimize_loop (hwloop_info loop, struct hw_doloop_hooks *hooks)
 	inner_depth = inner->depth;
       /* The set of registers may be changed while optimizing the inner
 	 loop.  */
-      IOR_HARD_REG_SET (loop->regs_set_in_loop, inner->regs_set_in_loop);
+      loop->regs_set_in_loop |= inner->regs_set_in_loop;
     }
 
   loop->depth = inner_depth + 1;
@@ -634,7 +634,7 @@ reorg_loops (bool do_reorder, struct hw_doloop_hooks *hooks)
 
   /* We can't enter cfglayout mode anymore if basic block partitioning
      already happened.  */
-  if (do_reorder && !flag_reorder_blocks_and_partition)
+  if (do_reorder && !crtl->has_bb_partition)
     {
       reorder_loops (loops);
       free_loops (loops);

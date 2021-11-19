@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,6 +23,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Debug;    use Debug;
 with Elists;   use Elists;
@@ -52,6 +53,7 @@ with Snames;   use Snames;
 with Sinfo;    use Sinfo;
 with Tbuild;   use Tbuild;
 with Uintp;    use Uintp;
+with Warnsw;   use Warnsw;
 
 package body Sem_Disp is
 
@@ -105,14 +107,23 @@ package body Sem_Disp is
       --  for the construction of function wrappers). The list of primitive
       --  operations must not contain duplicates.
 
-      Append_Unique_Elmt (New_Op, List);
+      --  The Default_Initial_Condition and invariant procedures are not added
+      --  to the list of primitives even when they are generated for a tagged
+      --  type. These routines must not be targets of dispatching calls and
+      --  therefore must not appear in the dispatch table because they already
+      --  utilize class-wide-precondition semantics to handle inheritance and
+      --  overriding.
+
+      if Is_Suitable_Primitive (New_Op) then
+         Append_Unique_Elmt (New_Op, List);
+      end if;
    end Add_Dispatching_Operation;
 
-   ---------------------------
-   -- Covers_Some_Interface --
-   ---------------------------
+   --------------------------
+   -- Covered_Interface_Op --
+   --------------------------
 
-   function Covers_Some_Interface (Prim : Entity_Id) return Boolean is
+   function Covered_Interface_Op (Prim : Entity_Id) return Entity_Id is
       Tagged_Type : constant Entity_Id := Find_Dispatching_Type (Prim);
       Elmt        : Elmt_Id;
       E           : Entity_Id;
@@ -138,14 +149,14 @@ package body Sem_Disp is
                if Present (Interface_Alias (E))
                  and then Alias (E) = Prim
                then
-                  return True;
+                  return Interface_Alias (E);
                end if;
 
                Next_Elmt (Elmt);
             end loop;
 
          --  Otherwise we must collect all the interface primitives and check
-         --  if the Prim will override some interface primitive.
+         --  if the Prim overrides (implements) some interface primitive.
 
          else
             declare
@@ -164,11 +175,11 @@ package body Sem_Disp is
                   while Present (Elmt) loop
                      Iface_Prim := Node (Elmt);
 
-                     if Chars (Iface) = Chars (Prim)
+                     if Chars (Iface_Prim) = Chars (Prim)
                        and then Is_Interface_Conformant
                                   (Tagged_Type, Iface_Prim, Prim)
                      then
-                        return True;
+                        return Iface_Prim;
                      end if;
 
                      Next_Elmt (Elmt);
@@ -180,8 +191,8 @@ package body Sem_Disp is
          end if;
       end if;
 
-      return False;
-   end Covers_Some_Interface;
+      return Empty;
+   end Covered_Interface_Op;
 
    -------------------------------
    -- Check_Controlling_Formals --
@@ -200,6 +211,15 @@ package body Sem_Disp is
          Ctrl_Type := Check_Controlling_Type (Etype (Formal), Subp);
 
          if Present (Ctrl_Type) then
+
+            --  Obtain the full type in case we are looking at an incomplete
+            --  view.
+
+            if Ekind (Ctrl_Type) = E_Incomplete_Type
+              and then Present (Full_View (Ctrl_Type))
+            then
+               Ctrl_Type := Full_View (Ctrl_Type);
+            end if;
 
             --  When controlling type is concurrent and declared within a
             --  generic or inside an instance use corresponding record type.
@@ -273,7 +293,7 @@ package body Sem_Disp is
          Next_Formal (Formal);
       end loop;
 
-      if Ekind_In (Subp, E_Function, E_Generic_Function) then
+      if Ekind (Subp) in E_Function | E_Generic_Function then
          Ctrl_Type := Check_Controlling_Type (Etype (Subp), Subp);
 
          if Present (Ctrl_Type) then
@@ -403,7 +423,7 @@ package body Sem_Disp is
       Func                   : Entity_Id;
       Subp_Entity            : Entity_Id;
       Indeterm_Ancestor_Call : Boolean := False;
-      Indeterm_Ctrl_Type     : Entity_Id;
+      Indeterm_Ctrl_Type     : Entity_Id := Empty; -- init to avoid warning
 
       Static_Tag : Node_Id := Empty;
       --  If a controlling formal has a statically tagged actual, the tag of
@@ -426,29 +446,6 @@ package body Sem_Disp is
 
       procedure Check_Direct_Call is
          Typ : Entity_Id := Etype (Control);
-
-         function Is_User_Defined_Equality (Id : Entity_Id) return Boolean;
-         --  Determine whether an entity denotes a user-defined equality
-
-         ------------------------------
-         -- Is_User_Defined_Equality --
-         ------------------------------
-
-         function Is_User_Defined_Equality (Id : Entity_Id) return Boolean is
-         begin
-            return
-              Ekind (Id) = E_Function
-                and then Chars (Id) = Name_Op_Eq
-                and then Comes_From_Source (Id)
-
-               --  Internally generated equalities have a full type declaration
-               --  as their parent.
-
-                and then Nkind (Parent (Id)) = N_Function_Specification;
-         end Is_User_Defined_Equality;
-
-      --  Start of processing for Check_Direct_Call
-
       begin
          --  Predefined primitives do not receive wrappers since they are built
          --  from scratch for the corresponding record of synchronized types.
@@ -548,12 +545,19 @@ package body Sem_Disp is
       --  Start of processing for Check_Dispatching_Context
 
       begin
+         --  If the called subprogram is a private overriding, replace it
+         --  with its alias, which has the correct body. Verify that the
+         --  two subprograms have the same controlling type (this is not the
+         --  case for an inherited subprogram that has become abstract).
+
          if Is_Abstract_Subprogram (Subp)
            and then No (Controlling_Argument (Call))
          then
             if Present (Alias (Subp))
               and then not Is_Abstract_Subprogram (Alias (Subp))
               and then No (DTC_Entity (Subp))
+              and then Find_Dispatching_Type (Subp) =
+                         Find_Dispatching_Type (Alias (Subp))
             then
                --  Private overriding of inherited abstract operation, call is
                --  legal.
@@ -571,14 +575,16 @@ package body Sem_Disp is
             --  Similarly, if this is a pre/postcondition for an abstract
             --  subprogram, it may call another abstract function which is
             --  a primitive of an abstract type. The call is non-dispatching
-            --  but will be legal in overridings of the operation.
+            --  but will be legal in overridings of the operation. However,
+            --  if the call is tag-indeterminate we want to continue with
+            --  with the error checking below, as this case is illegal even
+            --  for abstract subprograms (see AI12-0170).
 
-            elsif In_Spec_Expression
+            elsif (Is_Subprogram (Scop)
+                    or else Chars (Scop) = Name_Postcondition)
               and then
-                (Is_Subprogram (Scop)
-                  or else Chars (Scop) = Name_Postcondition)
-              and then
-                (Is_Abstract_Subprogram (Scop)
+                ((Is_Abstract_Subprogram (Scop)
+                   and then not Is_Tag_Indeterminate (N))
                   or else
                     (Nkind (Parent (Scop)) = N_Procedure_Specification
                       and then Null_Present (Parent (Scop))))
@@ -595,7 +601,7 @@ package body Sem_Disp is
                --  We need to determine whether the context of the call
                --  provides a tag to make the call dispatching. This requires
                --  the call to be the actual in an enclosing call, and that
-               --  actual must be controlling.  If the call is an operand of
+               --  actual must be controlling. If the call is an operand of
                --  equality, the other operand must not ve abstract.
 
                if not Is_Tagged_Type (Typ)
@@ -619,7 +625,7 @@ package body Sem_Disp is
                   Par := Parent (Par);
                end if;
 
-               if Nkind_In (Par, N_Function_Call, N_Procedure_Call_Statement)
+               if Nkind (Par) in N_Subprogram_Call
                  and then Is_Entity_Name (Name (Par))
                then
                   declare
@@ -682,7 +688,7 @@ package body Sem_Disp is
                --  For equality operators, one of the operands must be
                --  statically or dynamically tagged.
 
-               elsif Nkind_In (Par, N_Op_Eq, N_Op_Ne) then
+               elsif Nkind (Par) in N_Op_Eq | N_Op_Ne then
                   if N = Right_Opnd (Par)
                     and then Is_Tag_Indeterminate (Left_Opnd (Par))
                   then
@@ -932,13 +938,66 @@ package body Sem_Disp is
    ---------------------------------
 
    procedure Check_Dispatching_Operation (Subp, Old_Subp : Entity_Id) is
+      procedure Warn_On_Late_Primitive_After_Private_Extension
+        (Typ  : Entity_Id;
+         Prim : Entity_Id);
+      --  Prim is a dispatching primitive of the tagged type Typ. Warn on Prim
+      --  if it is a public primitive defined after some private extension of
+      --  the tagged type.
+
+      ----------------------------------------------------
+      -- Warn_On_Late_Primitive_After_Private_Extension --
+      ----------------------------------------------------
+
+      procedure Warn_On_Late_Primitive_After_Private_Extension
+        (Typ  : Entity_Id;
+         Prim : Entity_Id)
+      is
+         E : Entity_Id;
+
+      begin
+         if Warn_On_Late_Primitives
+           and then Comes_From_Source (Prim)
+           and then Has_Private_Extension (Typ)
+           and then Is_Package_Or_Generic_Package (Current_Scope)
+           and then not In_Private_Part (Current_Scope)
+         then
+            E := Next_Entity (Typ);
+
+            while E /= Prim loop
+               if Ekind (E) = E_Record_Type_With_Private
+                 and then Etype (E) = Typ
+               then
+                  Error_Msg_Name_1 := Chars (Typ);
+                  Error_Msg_Name_2 := Chars (E);
+                  Error_Msg_Sloc := Sloc (E);
+                  Error_Msg_N
+                    ("?j?primitive of type % defined after private extension "
+                     & "% #?", Prim);
+                  Error_Msg_Name_1 := Chars (Prim);
+                  Error_Msg_Name_2 := Chars (E);
+                  Error_Msg_N
+                    ("\spec of % should appear before declaration of type %!",
+                     Prim);
+                  exit;
+               end if;
+
+               Next_Entity (E);
+            end loop;
+         end if;
+      end Warn_On_Late_Primitive_After_Private_Extension;
+
+      --  Local variables
+
       Body_Is_Last_Primitive : Boolean   := False;
       Has_Dispatching_Parent : Boolean   := False;
       Ovr_Subp               : Entity_Id := Empty;
       Tagged_Type            : Entity_Id;
 
+   --  Start of processing for Check_Dispatching_Operation
+
    begin
-      if not Ekind_In (Subp, E_Function, E_Procedure) then
+      if Ekind (Subp) not in E_Function | E_Procedure then
          return;
 
       --  The Default_Initial_Condition procedure is not a primitive subprogram
@@ -1028,8 +1087,8 @@ package body Sem_Disp is
                then
                   Error_Msg_N ("??declaration of& is too late!", Subp);
                   Error_Msg_NE -- CODEFIX??
-                    ("\??spec should appear immediately after declaration "
-                     & "of & !", Subp, Typ);
+                    ("\??spec should appear immediately after declaration of "
+                     & "& !", Subp, Typ);
                   exit;
                end if;
 
@@ -1057,8 +1116,8 @@ package body Sem_Disp is
                then
                   Error_Msg_N ("??declaration of& is too late!", Subp);
                   Error_Msg_NE
-                    ("\??spec should appear immediately after declaration "
-                     & "of & !", Subp, Typ);
+                    ("\??spec should appear immediately after declaration of "
+                     & "& !", Subp, Typ);
                end if;
             end if;
          end;
@@ -1090,6 +1149,15 @@ package body Sem_Disp is
          --  3. Subprograms associated with stream attributes (built by
          --     New_Stream_Subprogram)
 
+         --  4. Wrappers built for inherited operations with inherited class-
+         --     wide conditions, where the conditions include calls to other
+         --     overridden primitives. The wrappers include checks on these
+         --     modified conditions. (AI12-113).
+
+         --  5. Declarations built for subprograms without separate specs that
+         --     are eligible for inlining in GNATprove (inside
+         --     Sem_Ch6.Analyze_Subprogram_Body_Helper).
+
          if Present (Old_Subp)
            and then Present (Overridden_Operation (Subp))
            and then Is_Dispatching_Operation (Old_Subp)
@@ -1098,14 +1166,20 @@ package body Sem_Disp is
               ((Ekind (Subp) = E_Function
                  and then Is_Dispatching_Operation (Old_Subp)
                  and then Is_Null_Extension (Base_Type (Etype (Subp))))
+
               or else
                (Ekind (Subp) = E_Procedure
                  and then Is_Dispatching_Operation (Old_Subp)
                  and then Present (Alias (Old_Subp))
                  and then Is_Null_Interface_Primitive
                              (Ultimate_Alias (Old_Subp)))
+
               or else Get_TSS_Name (Subp) = TSS_Stream_Read
-              or else Get_TSS_Name (Subp) = TSS_Stream_Write);
+              or else Get_TSS_Name (Subp) = TSS_Stream_Write
+
+              or else Present (Contract (Overridden_Operation (Subp)))
+
+              or else GNATprove_Mode);
 
             Check_Controlling_Formals (Tagged_Type, Subp);
             Override_Dispatching_Operation (Tagged_Type, Old_Subp, Subp);
@@ -1339,7 +1413,7 @@ package body Sem_Disp is
          --  visible operation that may be declared in a partial view when
          --  the full view is controlled.
 
-         if Nam_In (Chars (Subp), Name_Initialize, Name_Adjust, Name_Finalize)
+         if Chars (Subp) in Name_Initialize | Name_Adjust | Name_Finalize
            and then Is_Controlled (Tagged_Type)
            and then not Is_Visibly_Controlled (Tagged_Type)
            and then not Is_Inherited_Public_Operation (Ovr_Subp)
@@ -1412,22 +1486,6 @@ package body Sem_Disp is
                end;
             end if;
          end if;
-
-      --  If the tagged type is a concurrent type then we must be compiling
-      --  with no code generation (we are either compiling a generic unit or
-      --  compiling under -gnatc mode) because we have previously tested that
-      --  no serious errors has been reported. In this case we do not add the
-      --  primitive to the list of primitives of Tagged_Type but we leave the
-      --  primitive decorated as a dispatching operation to be able to analyze
-      --  and report errors associated with the Object.Operation notation.
-
-      elsif Is_Concurrent_Type (Tagged_Type) then
-         pragma Assert (not Expander_Active);
-
-         --  Attach operation to list of primitives of the synchronized type
-         --  itself, for ASIS use.
-
-         Append_Elmt (Subp, Direct_Primitive_Operations (Tagged_Type));
 
       --  If no old subprogram, then we add this as a dispatching operation,
       --  but we avoid doing this if an error was posted, to prevent annoying
@@ -1515,10 +1573,10 @@ package body Sem_Disp is
          Set_DT_Position_Value (Subp, No_Uint);
 
       elsif Has_Controlled_Component (Tagged_Type)
-        and then Nam_In (Chars (Subp), Name_Initialize,
-                                       Name_Adjust,
-                                       Name_Finalize,
-                                       Name_Finalize_Address)
+        and then Chars (Subp) in Name_Initialize
+                               | Name_Adjust
+                               | Name_Finalize
+                               | Name_Finalize_Address
       then
          declare
             F_Node   : constant Node_Id := Freeze_Node (Tagged_Type);
@@ -1582,6 +1640,49 @@ package body Sem_Disp is
             end if;
          end;
       end if;
+
+      --  AI12-0279: If the Yield aspect is specified for a dispatching
+      --  subprogram that inherits the aspect, the specified value shall
+      --  be confirming.
+
+      if Is_Dispatching_Operation (Subp)
+        and then Is_Primitive_Wrapper (Subp)
+        and then Present (Wrapped_Entity (Subp))
+        and then Comes_From_Source (Wrapped_Entity (Subp))
+        and then Present (Overridden_Operation (Subp))
+        and then Has_Yield_Aspect (Overridden_Operation (Subp))
+                   /= Has_Yield_Aspect (Wrapped_Entity (Subp))
+      then
+         declare
+            W_Ent  : constant Entity_Id := Wrapped_Entity (Subp);
+            W_Decl : constant Node_Id := Parent (W_Ent);
+            Asp    : Node_Id;
+
+         begin
+            if Present (Aspect_Specifications (W_Decl)) then
+               Asp := First (Aspect_Specifications (W_Decl));
+               while Present (Asp) loop
+                  if Chars (Identifier (Asp)) = Name_Yield then
+                     Error_Msg_Name_1 := Name_Yield;
+                     Error_Msg_N
+                       ("specification of inherited aspect% can only confirm "
+                        & "parent value", Asp);
+                  end if;
+
+                  Next (Asp);
+               end loop;
+            end if;
+
+            Set_Has_Yield_Aspect (Wrapped_Entity (Subp));
+         end;
+      end if;
+
+      --  For similarity with record extensions, in Ada 9X the language should
+      --  have disallowed adding visible operations to a tagged type after
+      --  deriving a private extension from it. Report a warning if this
+      --  primitive is defined after a private extension of Tagged_Type.
+
+      Warn_On_Late_Primitive_After_Private_Extension (Tagged_Type, Subp);
    end Check_Dispatching_Operation;
 
    ------------------------------------------
@@ -1731,7 +1832,7 @@ package body Sem_Disp is
          --  Add Old_Subp to primitive operations if not already present
 
          if Present (Tagged_Type) and then Is_Tagged_Type (Tagged_Type) then
-            Append_Unique_Elmt (Old_Subp, Primitive_Operations (Tagged_Type));
+            Add_Dispatching_Operation (Tagged_Type, Old_Subp);
 
             --  If Old_Subp isn't already marked as dispatching then this is
             --  the case of an operation of an untagged private type fulfilled
@@ -1913,7 +2014,7 @@ package body Sem_Disp is
       Ctrl_Type : Entity_Id;
 
    begin
-      if Ekind_In (Subp, E_Function, E_Procedure)
+      if Ekind (Subp) in E_Function | E_Procedure
         and then Present (DTC_Entity (Subp))
       then
          return Scope (DTC_Entity (Subp));
@@ -2140,6 +2241,169 @@ package body Sem_Disp is
    end Find_Primitive_Covering_Interface;
 
    ---------------------------
+   -- Inheritance_Utilities --
+   ---------------------------
+
+   package body Inheritance_Utilities is
+
+      ---------------------------
+      -- Inherited_Subprograms --
+      ---------------------------
+
+      function Inherited_Subprograms
+        (S               : Entity_Id;
+         No_Interfaces   : Boolean := False;
+         Interfaces_Only : Boolean := False;
+         One_Only        : Boolean := False) return Subprogram_List
+      is
+         Result : Subprogram_List (1 .. 6000);
+         --  6000 here is intended to be infinity. We could use an expandable
+         --  table, but it would be awfully heavy, and there is no way that we
+         --  could reasonably exceed this value.
+
+         N : Nat := 0;
+         --  Number of entries in Result
+
+         Parent_Op : Entity_Id;
+         --  Traverses the Overridden_Operation chain
+
+         procedure Store_IS (E : Entity_Id);
+         --  Stores E in Result if not already stored
+
+         --------------
+         -- Store_IS --
+         --------------
+
+         procedure Store_IS (E : Entity_Id) is
+         begin
+            for J in 1 .. N loop
+               if E = Result (J) then
+                  return;
+               end if;
+            end loop;
+
+            N := N + 1;
+            Result (N) := E;
+         end Store_IS;
+
+      --  Start of processing for Inherited_Subprograms
+
+      begin
+         pragma Assert (not (No_Interfaces and Interfaces_Only));
+
+         --  When used from backends, visibility can be handled differently
+         --  resulting in no dispatching type being found.
+
+         if Present (S)
+           and then Is_Dispatching_Operation (S)
+           and then Present (Find_DT (S))
+         then
+            --  Deal with direct inheritance
+
+            if not Interfaces_Only then
+               Parent_Op := S;
+               loop
+                  Parent_Op := Overridden_Operation (Parent_Op);
+                  exit when No (Parent_Op)
+                    or else (No_Interfaces
+                              and then Is_Interface (Find_DT (Parent_Op)));
+
+                  if Is_Subprogram_Or_Generic_Subprogram (Parent_Op) then
+                     Store_IS (Parent_Op);
+
+                     if One_Only then
+                        goto Done;
+                     end if;
+                  end if;
+               end loop;
+            end if;
+
+            --  Now deal with interfaces
+
+            if not No_Interfaces then
+               declare
+                  Tag_Typ : Entity_Id;
+                  Prim    : Entity_Id;
+                  Elmt    : Elmt_Id;
+
+               begin
+                  Tag_Typ := Find_DT (S);
+
+                  --  In the presence of limited views there may be no visible
+                  --  dispatching type. Primitives will be inherited when non-
+                  --  limited view is frozen.
+
+                  if No (Tag_Typ) then
+                     return Result (1 .. 0);
+                  end if;
+
+                  if Is_Concurrent_Type (Tag_Typ) then
+                     Tag_Typ := Corresponding_Record_Type (Tag_Typ);
+                  end if;
+
+                  --  Search primitive operations of dispatching type
+
+                  if Present (Tag_Typ)
+                    and then Present (Primitive_Operations (Tag_Typ))
+                  then
+                     Elmt := First_Elmt (Primitive_Operations (Tag_Typ));
+                     while Present (Elmt) loop
+                        Prim := Node (Elmt);
+
+                        --  The following test eliminates some odd cases in
+                        --  which Ekind (Prim) is Void, to be investigated
+                        --  further ???
+
+                        if not Is_Subprogram_Or_Generic_Subprogram (Prim) then
+                           null;
+
+                           --  For [generic] subprogram, look at interface
+                           --  alias.
+
+                        elsif Present (Interface_Alias (Prim))
+                          and then Alias (Prim) = S
+                        then
+                           --  We have found a primitive covered by S
+
+                           Store_IS (Interface_Alias (Prim));
+
+                           if One_Only then
+                              goto Done;
+                           end if;
+                        end if;
+
+                        Next_Elmt (Elmt);
+                     end loop;
+                  end if;
+               end;
+            end if;
+         end if;
+
+         <<Done>>
+
+         return Result (1 .. N);
+      end Inherited_Subprograms;
+
+      ------------------------------
+      -- Is_Overriding_Subprogram --
+      ------------------------------
+
+      function Is_Overriding_Subprogram (E : Entity_Id) return Boolean is
+         Inherited : constant Subprogram_List :=
+           Inherited_Subprograms (E, One_Only => True);
+      begin
+         return Inherited'Length > 0;
+      end Is_Overriding_Subprogram;
+   end Inheritance_Utilities;
+
+   --------------------------------
+   -- Inheritance_Utilities_Inst --
+   --------------------------------
+
+   package Inheritance_Utilities_Inst is new
+     Inheritance_Utilities (Find_Dispatching_Type);
+
+   ---------------------------
    -- Inherited_Subprograms --
    ---------------------------
 
@@ -2147,130 +2411,8 @@ package body Sem_Disp is
      (S               : Entity_Id;
       No_Interfaces   : Boolean := False;
       Interfaces_Only : Boolean := False;
-      One_Only        : Boolean := False) return Subprogram_List
-   is
-      Result : Subprogram_List (1 .. 6000);
-      --  6000 here is intended to be infinity. We could use an expandable
-      --  table, but it would be awfully heavy, and there is no way that we
-      --  could reasonably exceed this value.
-
-      N : Nat := 0;
-      --  Number of entries in Result
-
-      Parent_Op : Entity_Id;
-      --  Traverses the Overridden_Operation chain
-
-      procedure Store_IS (E : Entity_Id);
-      --  Stores E in Result if not already stored
-
-      --------------
-      -- Store_IS --
-      --------------
-
-      procedure Store_IS (E : Entity_Id) is
-      begin
-         for J in 1 .. N loop
-            if E = Result (J) then
-               return;
-            end if;
-         end loop;
-
-         N := N + 1;
-         Result (N) := E;
-      end Store_IS;
-
-   --  Start of processing for Inherited_Subprograms
-
-   begin
-      pragma Assert (not (No_Interfaces and Interfaces_Only));
-
-      if Present (S) and then Is_Dispatching_Operation (S) then
-
-         --  Deal with direct inheritance
-
-         if not Interfaces_Only then
-            Parent_Op := S;
-            loop
-               Parent_Op := Overridden_Operation (Parent_Op);
-               exit when No (Parent_Op)
-                 or else
-                   (No_Interfaces
-                     and then
-                       Is_Interface (Find_Dispatching_Type (Parent_Op)));
-
-               if Is_Subprogram_Or_Generic_Subprogram (Parent_Op) then
-                  Store_IS (Parent_Op);
-
-                  if One_Only then
-                     goto Done;
-                  end if;
-               end if;
-            end loop;
-         end if;
-
-         --  Now deal with interfaces
-
-         if not No_Interfaces then
-            declare
-               Tag_Typ : Entity_Id;
-               Prim    : Entity_Id;
-               Elmt    : Elmt_Id;
-
-            begin
-               Tag_Typ := Find_Dispatching_Type (S);
-
-               --  In the presence of limited views there may be no visible
-               --  dispatching type. Primitives will be inherited when non-
-               --  limited view is frozen.
-
-               if No (Tag_Typ) then
-                  return Result (1 .. 0);
-               end if;
-
-               if Is_Concurrent_Type (Tag_Typ) then
-                  Tag_Typ := Corresponding_Record_Type (Tag_Typ);
-               end if;
-
-               --  Search primitive operations of dispatching type
-
-               if Present (Tag_Typ)
-                 and then Present (Primitive_Operations (Tag_Typ))
-               then
-                  Elmt := First_Elmt (Primitive_Operations (Tag_Typ));
-                  while Present (Elmt) loop
-                     Prim := Node (Elmt);
-
-                     --  The following test eliminates some odd cases in which
-                     --  Ekind (Prim) is Void, to be investigated further ???
-
-                     if not Is_Subprogram_Or_Generic_Subprogram (Prim) then
-                        null;
-
-                     --  For [generic] subprogram, look at interface alias
-
-                     elsif Present (Interface_Alias (Prim))
-                       and then Alias (Prim) = S
-                     then
-                        --  We have found a primitive covered by S
-
-                        Store_IS (Interface_Alias (Prim));
-
-                        if One_Only then
-                           goto Done;
-                        end if;
-                     end if;
-
-                     Next_Elmt (Elmt);
-                  end loop;
-               end if;
-            end;
-         end if;
-      end if;
-
-      <<Done>>
-
-      return Result (1 .. N);
-   end Inherited_Subprograms;
+      One_Only        : Boolean := False) return Subprogram_List renames
+     Inheritance_Utilities_Inst.Inherited_Subprograms;
 
    ---------------------------
    -- Is_Dynamically_Tagged --
@@ -2319,16 +2461,26 @@ package body Sem_Disp is
    -----------------------------------
 
    function Is_Inherited_Public_Operation (Op : Entity_Id) return Boolean is
-      Prim      : constant Entity_Id := Alias (Op);
-      Scop      : constant Entity_Id := Scope (Prim);
       Pack_Decl : Node_Id;
+      Prim      : Entity_Id := Op;
+      Scop      : Entity_Id := Prim;
 
    begin
+      --  Locate the ultimate non-hidden alias entity
+
+      while Present (Alias (Prim)) and then not Is_Hidden (Alias (Prim)) loop
+         pragma Assert (Alias (Prim) /= Prim);
+         Prim := Alias (Prim);
+         Scop := Scope (Prim);
+      end loop;
+
       if Comes_From_Source (Prim) and then Ekind (Scop) = E_Package then
          Pack_Decl := Unit_Declaration_Node (Scop);
-         return Nkind (Pack_Decl) = N_Package_Declaration
-           and then List_Containing (Unit_Declaration_Node (Prim)) =
-                            Visible_Declarations (Specification (Pack_Decl));
+
+         return
+           Nkind (Pack_Decl) = N_Package_Declaration
+             and then List_Containing (Unit_Declaration_Node (Prim)) =
+                        Visible_Declarations (Specification (Pack_Decl));
 
       else
          return False;
@@ -2339,12 +2491,8 @@ package body Sem_Disp is
    -- Is_Overriding_Subprogram --
    ------------------------------
 
-   function Is_Overriding_Subprogram (E : Entity_Id) return Boolean is
-      Inherited : constant Subprogram_List :=
-                    Inherited_Subprograms (E, One_Only => True);
-   begin
-      return Inherited'Length > 0;
-   end Is_Overriding_Subprogram;
+   function Is_Overriding_Subprogram (E : Entity_Id) return Boolean renames
+     Inheritance_Utilities_Inst.Is_Overriding_Subprogram;
 
    --------------------------
    -- Is_Tag_Indeterminate --
@@ -2441,14 +2589,6 @@ package body Sem_Disp is
       Prim : Node_Id;
 
    begin
-      --  Diagnose failure to match No_Return in parent (Ada-2005, AI-414, but
-      --  we do it unconditionally in Ada 95 now, since this is our pragma).
-
-      if No_Return (Prev_Op) and then not No_Return (New_Op) then
-         Error_Msg_N ("procedure & must have No_Return pragma", New_Op);
-         Error_Msg_N ("\since overridden procedure has No_Return", New_Op);
-      end if;
-
       --  If there is no previous operation to override, the type declaration
       --  was malformed, and an error must have been emitted already.
 
@@ -2479,7 +2619,7 @@ package body Sem_Disp is
                         Find_Dispatching_Type (Alias (Prev_Op)))
       then
          Remove_Elmt (Primitive_Operations (Tagged_Type), Elmt);
-         Append_Elmt (New_Op, Primitive_Operations (Tagged_Type));
+         Add_Dispatching_Operation (Tagged_Type, New_Op);
 
       --  The new primitive replaces the overridden entity. Required to ensure
       --  that overriding primitive is assigned the same dispatch table slot.
@@ -2559,7 +2699,6 @@ package body Sem_Disp is
          Set_Alias (Prev_Op, New_Op);
          Set_DTC_Entity (Prev_Op, Empty);
          Set_Has_Controlling_Result (New_Op, Has_Controlling_Result (Prev_Op));
-         return;
       end if;
    end Override_Dispatching_Operation;
 

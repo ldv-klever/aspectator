@@ -1,5 +1,5 @@
 /* Generate code to allocate RTL structures.
-   Copyright (C) 1997-2017 Free Software Foundation, Inc.
+   Copyright (C) 1997-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -53,6 +53,9 @@ type_from_format (int c)
 
     case 'w':
       return "HOST_WIDE_INT ";
+
+    case 'p':
+      return "poly_uint16 ";
 
     case 's':
       return "const char *";
@@ -156,6 +159,7 @@ excluded_rtx (int idx)
   return (strcmp (defs[idx].enumname, "VAR_LOCATION") == 0
 	  || strcmp (defs[idx].enumname, "CONST_DOUBLE") == 0
 	  || strcmp (defs[idx].enumname, "CONST_WIDE_INT") == 0
+	  || strcmp (defs[idx].enumname, "CONST_POLY_INT") == 0
 	  || strcmp (defs[idx].enumname, "CONST_FIXED") == 0);
 }
 
@@ -227,8 +231,7 @@ genmacro (int idx)
   puts (")");
 }
 
-/* Generate the code for the function to generate RTL whose
-   format is FORMAT.  */
+/* Generate the code for functions to generate RTL whose format is FORMAT.  */
 
 static void
 gendef (const char *format)
@@ -236,40 +239,75 @@ gendef (const char *format)
   const char *p;
   int i, j;
 
-  /* Start by writing the definition of the function name and the types
+  /* Write the definition of the init function name and the types
      of the arguments.  */
 
-  printf ("static inline rtx\ngen_rtx_fmt_%s_stat (RTX_CODE code, machine_mode mode", format);
+  puts ("static inline rtx");
+  printf ("init_rtx_fmt_%s (rtx rt, machine_mode mode", format);
   for (p = format, i = 0; *p != 0; p++)
     if (*p != '0')
       printf (",\n\t%sarg%d", type_from_format (*p), i++);
+  puts (")");
 
+  /* Now write out the body of the init function itself.  */
+  puts ("{");
+  puts ("  PUT_MODE_RAW (rt, mode);");
+
+  for (p = format, i = j = 0; *p ; ++p, ++i)
+    if (*p == '0')
+      printf ("  X0EXP (rt, %d) = NULL_RTX;\n", i);
+    else if (*p == 'p')
+      printf ("  SUBREG_BYTE (rt) = arg%d;\n", j++);
+    else
+      printf ("  %s (rt, %d) = arg%d;\n", accessor_from_format (*p), i, j++);
+
+  puts ("  return rt;\n}\n");
+
+  /* Write the definition of the gen function name and the types
+     of the arguments.  */
+
+  puts ("static inline rtx");
+  printf ("gen_rtx_fmt_%s_stat (RTX_CODE code, machine_mode mode", format);
+  for (p = format, i = 0; *p != 0; p++)
+    if (*p != '0')
+      printf (",\n\t%sarg%d", type_from_format (*p), i++);
   puts (" MEM_STAT_DECL)");
 
   /* Now write out the body of the function itself, which allocates
      the memory and initializes it.  */
   puts ("{");
-  puts ("  rtx rt;");
-  puts ("  rt = rtx_alloc_stat (code PASS_MEM_STAT);\n");
+  puts ("  rtx rt;\n");
 
-  puts ("  PUT_MODE_RAW (rt, mode);");
-
-  for (p = format, i = j = 0; *p ; ++p, ++i)
+  puts ("  rt = rtx_alloc (code PASS_MEM_STAT);");
+  printf ("  return init_rtx_fmt_%s (rt, mode", format);
+  for (p = format, i = 0; *p != 0; p++)
     if (*p != '0')
-      printf ("  %s (rt, %d) = arg%d;\n", accessor_from_format (*p), i, j++);
-    else
-      printf ("  X0EXP (rt, %d) = NULL_RTX;\n", i);
+      printf (", arg%d", i++);
+  puts (");\n}\n");
 
-  puts ("\n  return rt;\n}\n");
+  /* Write the definition of gen macro.  */
+
   printf ("#define gen_rtx_fmt_%s(c, m", format);
   for (p = format, i = 0; *p != 0; p++)
     if (*p != '0')
-      printf (", p%i",i++);
-  printf (")\\\n        gen_rtx_fmt_%s_stat (c, m", format);
+      printf (", arg%d", i++);
+  printf (") \\\n  gen_rtx_fmt_%s_stat ((c), (m)", format);
   for (p = format, i = 0; *p != 0; p++)
     if (*p != '0')
-      printf (", p%i",i++);
+      printf (", (arg%d)", i++);
   printf (" MEM_STAT_INFO)\n\n");
+
+  /* Write the definition of alloca macro.  */
+
+  printf ("#define alloca_rtx_fmt_%s(c, m", format);
+  for (p = format, i = 0; *p != 0; p++)
+    if (*p != '0')
+      printf (", arg%d", i++);
+  printf (") \\\n  init_rtx_fmt_%s (rtx_alloca ((c)), (m)", format);
+  for (p = format, i = 0; *p != 0; p++)
+    if (*p != '0')
+      printf (", (arg%d)", i++);
+  printf (")\n\n");
 }
 
 /* Generate the documentation header for files we write.  */

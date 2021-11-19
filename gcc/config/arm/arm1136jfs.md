@@ -1,5 +1,5 @@
 ;; ARM 1136J[F]-S Pipeline Description
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2021 Free Software Foundation, Inc.
 ;; Written by CodeSourcery, LLC.
 ;;
 ;; This file is part of GCC.
@@ -81,13 +81,13 @@
                        adr,bfm,rev,\
                        shift_imm,shift_reg,\
                        mov_imm,mov_reg,mvn_imm,mvn_reg,\
-                       multiple,no_insn"))
+                       multiple"))
  "e_1,e_2,e_3,e_wb")
 
 ;; ALU operations with a shift-by-constant operand
 (define_insn_reservation "11_alu_shift_op" 2
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "alu_shift_imm,alus_shift_imm,\
+      (eq_attr "type" "alu_shift_imm_lsl_1to4,alu_shift_imm_other,alus_shift_imm,\
                        logic_shift_imm,logics_shift_imm,\
                        extend,mov_shift,mvn_shift"))
  "e_1,e_2,e_3,e_wb")
@@ -294,7 +294,7 @@
 
 (define_insn_reservation "11_load1" 3
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "load1"))
+      (eq_attr "type" "load_4"))
  "l_a+e_1,l_dc1,l_dc2,l_wb")
 
 ;; Load byte results are not available until the writeback stage, where
@@ -307,7 +307,7 @@
 
 (define_insn_reservation "11_store1" 0
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "store1"))
+      (eq_attr "type" "store_4"))
  "l_a+e_1,l_dc1,l_dc2,l_wb")
 
 ;; Load/store double words into adjacent registers.  The timing and
@@ -315,12 +315,12 @@
 ;; aligned.  This model assumes that it is.
 (define_insn_reservation "11_load2" 3
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "load2"))
+      (eq_attr "type" "load_8"))
  "l_a+e_1,l_dc1,l_dc2,l_wb")
 
 (define_insn_reservation "11_store2" 0
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "store2"))
+      (eq_attr "type" "store_8"))
  "l_a+e_1,l_dc1,l_dc2,l_wb")
 
 ;; Load/store multiple registers.  Two registers are stored per cycle.
@@ -328,12 +328,12 @@
 ;; optimistically schedule a low latency.
 (define_insn_reservation "11_load34" 4
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "load3,load4"))
+      (eq_attr "type" "load_12,load_16"))
  "l_a+e_1,l_dc1*2,l_dc2,l_wb")
 
 (define_insn_reservation "11_store34" 0
  (and (eq_attr "tune" "arm1136js,arm1136jfs")
-      (eq_attr "type" "store3,store4"))
+      (eq_attr "type" "store_12,store_16"))
  "l_a+e_1,l_dc1*2,l_dc2,l_wb")
 
 ;; A store can start immediately after an alu op, if that alu op does

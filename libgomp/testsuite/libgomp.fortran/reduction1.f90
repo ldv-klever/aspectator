@@ -55,14 +55,14 @@
     ca = cmplx (-1, 0)
   end if
 !$omp end parallel
-  if (v) call abort
+  if (v) stop 1
   if (cnt .eq. 3) then
-    if (i .ne. 8 .or. any (ia .ne. (/3, 3, 1, 6, 6, 8/))) call abort
-    if (r .ne. 8 .or. any (ra .ne. (/9.5, 8.0, 1.5, 1.5/))) call abort
-    if (d .ne. 12.5 .or. any (da .ne. (/8.0, 16.5, 16.5, 14.0, 5.5/))) call abort
-    if (c .ne. cmplx (11.5, -5)) call abort
-    if (ca(1) .ne. cmplx (12, 2)) call abort
-    if (ca(2) .ne. cmplx (6.5, 3) .or. ca(2) .ne. ca(3)) call abort
+    if (i .ne. 8 .or. any (ia .ne. (/3, 3, 1, 6, 6, 8/))) stop 2
+    if (r .ne. 8 .or. any (ra .ne. (/9.5, 8.0, 1.5, 1.5/))) stop 3
+    if (d .ne. 12.5 .or. any (da .ne. (/8.0, 16.5, 16.5, 14.0, 5.5/))) stop 4
+    if (c .ne. cmplx (11.5, -5)) stop 5
+    if (ca(1) .ne. cmplx (12, 2)) stop 6
+    if (ca(2) .ne. cmplx (6.5, 3) .or. ca(2) .ne. ca(3)) stop 7
   end if
 
   i = 1
@@ -113,14 +113,14 @@
     ca = cmplx (-1, 0)
   end if
 !$omp end parallel
-  if (v) call abort
+  if (v) stop 8
   if (cnt .eq. 3) then
-    if (i .ne. 8 .or. any (ia .ne. (/3, 3, 1, 6, 6, 8/))) call abort
-    if (r .ne. 8 .or. any (ra .ne. (/9.5, 8.0, 1.5, 1.5/))) call abort
-    if (d .ne. 12.5 .or. any (da .ne. (/8.0, 16.5, 16.5, 14.0, 5.5/))) call abort
-    if (c .ne. cmplx (11.5, -5)) call abort
-    if (ca(1) .ne. cmplx (12, 2)) call abort
-    if (ca(2) .ne. cmplx (6.5, 3) .or. ca(2) .ne. ca(3)) call abort
+    if (i .ne. 8 .or. any (ia .ne. (/3, 3, 1, 6, 6, 8/))) stop 9
+    if (r .ne. 8 .or. any (ra .ne. (/9.5, 8.0, 1.5, 1.5/))) stop 10
+    if (d .ne. 12.5 .or. any (da .ne. (/8.0, 16.5, 16.5, 14.0, 5.5/))) stop 11
+    if (c .ne. cmplx (11.5, -5)) stop 12
+    if (ca(1) .ne. cmplx (12, 2)) stop 13
+    if (ca(2) .ne. cmplx (6.5, 3) .or. ca(2) .ne. ca(3)) stop 14
   end if
 
   i = 1
@@ -169,13 +169,13 @@
     ca = cmplx (-1, 0)
   end if
 !$omp end parallel
-  if (v) call abort
+  if (v) stop 15
   if (cnt .eq. 3) then
-    if (i .ne. 6 .or. any (ia .ne. (/4, 4, 8, -16, -16, -8/))) call abort
-    if (r .ne. 8 .or. any (ra .ne. (/4., -2., -1., -1./))) call abort
-    if (d .ne. -40 .or. any (da .ne. (/32., -64., -64., 64., -32./))) call abort
-    if (c .ne. cmplx (0, 15)) call abort
-    if (ca(1) .ne. cmplx (0, 10)) call abort
-    if (ca(2) .ne. cmplx (-2, 0) .or. ca(2) .ne. ca(3)) call abort
+    if (i .ne. 6 .or. any (ia .ne. (/4, 4, 8, -16, -16, -8/))) stop 16
+    if (r .ne. 8 .or. any (ra .ne. (/4., -2., -1., -1./))) stop 17
+    if (d .ne. -40 .or. any (da .ne. (/32., -64., -64., 64., -32./))) stop 18
+    if (c .ne. cmplx (0, 15)) stop 19
+    if (ca(1) .ne. cmplx (0, 10)) stop 20
+    if (ca(2) .ne. cmplx (-2, 0) .or. ca(2) .ne. ca(3)) stop 21
   end if
 end

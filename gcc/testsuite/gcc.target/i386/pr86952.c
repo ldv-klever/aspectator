@@ -1,9 +1,9 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -mindirect-branch=thunk" } */
+/* { dg-options "-O2 -mindirect-branch=thunk -fdump-tree-switchlower1" } */
 
 int global;
 
-int
+int 
 foo (int x)
 {
   switch (x & 7)
@@ -20,4 +20,4 @@ foo (int x)
     }
 }
 
-/* { dg-final { scan-assembler-not "jmp\[ \t\]\\*" } } */
+/* { dg-final { scan-tree-dump ";; GIMPLE switch case clusters: 1 2 3 4 5 6 7" "switchlower1" } } */

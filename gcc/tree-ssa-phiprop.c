@@ -1,5 +1,5 @@
 /* Backward propagation of indirect loads through PHIs.
-   Copyright (C) 2007-2017 Free Software Foundation, Inc.
+   Copyright (C) 2007-2021 Free Software Foundation, Inc.
    Contributed by Richard Guenther <rguenther@suse.de>
 
 This file is part of GCC.
@@ -119,7 +119,7 @@ phivn_valid_p (struct phiprop_d *phivn, tree name, basic_block bb)
 	  && !dominated_by_p (CDI_DOMINATORS, gimple_bb (use_stmt), bb))
 	{
 	  ok = false;
-	  BREAK_FROM_IMM_USE_STMT (ui2);
+	  break;
 	}
     }
 
@@ -150,7 +150,7 @@ phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
       fprintf (dump_file, "Inserting PHI for result of load ");
-      print_gimple_stmt (dump_file, use_stmt, 0, 0);
+      print_gimple_stmt (dump_file, use_stmt, 0);
     }
 
   /* Add PHI arguments for each edge inserting loads of the
@@ -159,7 +159,7 @@ phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
     {
       tree old_arg, new_var;
       gassign *tmp;
-      source_location locus;
+      location_t locus;
 
       old_arg = PHI_ARG_DEF_FROM_EDGE (phi, e);
       locus = gimple_phi_arg_location_from_edge (phi, e);
@@ -177,10 +177,10 @@ phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
 	  if (dump_file && (dump_flags & TDF_DETAILS))
 	    {
 	      fprintf (dump_file, "  for edge defining ");
-	      print_generic_expr (dump_file, PHI_ARG_DEF_FROM_EDGE (phi, e), 0);
+	      print_generic_expr (dump_file, PHI_ARG_DEF_FROM_EDGE (phi, e));
 	      fprintf (dump_file, " reusing PHI result ");
 	      print_generic_expr (dump_file,
-				  phivn[SSA_NAME_VERSION (old_arg)].value, 0);
+				  phivn[SSA_NAME_VERSION (old_arg)].value);
 	      fprintf (dump_file, "\n");
 	    }
 	  /* Reuse a formerly created dereference.  */
@@ -210,9 +210,9 @@ phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
 	  if (dump_file && (dump_flags & TDF_DETAILS))
 	    {
 	      fprintf (dump_file, "  for edge defining ");
-	      print_generic_expr (dump_file, PHI_ARG_DEF_FROM_EDGE (phi, e), 0);
+	      print_generic_expr (dump_file, PHI_ARG_DEF_FROM_EDGE (phi, e));
 	      fprintf (dump_file, " inserting load ");
-	      print_gimple_stmt (dump_file, tmp, 0, 0);
+	      print_gimple_stmt (dump_file, tmp, 0);
 	    }
 	}
 
@@ -225,7 +225,7 @@ phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
       update_stmt (new_phi);
 
       if (dump_file && (dump_flags & TDF_DETAILS))
-	print_gimple_stmt (dump_file, new_phi, 0, 0);
+	print_gimple_stmt (dump_file, new_phi, 0);
     }
 
   return res;
@@ -345,7 +345,7 @@ propagate_with_phi (basic_block bb, gphi *phi, struct phiprop_d *phivn,
 	       if we guard against that appropriately.  For loads that can
 	       throw we could relax things if the moved loads all are
 	       known to not throw.  */
-	    && !stmt_can_throw_internal (use_stmt)
+	    && !stmt_can_throw_internal (cfun, use_stmt)
 	    && !gimple_has_volatile_ops (use_stmt)))
 	continue;
 

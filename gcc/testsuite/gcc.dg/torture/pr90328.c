@@ -5,7 +5,7 @@ void g(int*__restrict x, int*y)
   *x = *y;
 }
 
-void __attribute__((noinline,noclone)) f(int* a,int* b)
+void __attribute__((noipa)) f(int* a,int* b)
 {
   for(int i=0;i<1024;++i)
     g(a+i,b+i);

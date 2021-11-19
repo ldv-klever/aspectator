@@ -1,6 +1,6 @@
 /* Handle modules, which amounts to loading and saving symbols and
    their attendant structures.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -84,7 +84,7 @@ along with GCC; see the file COPYING3.  If not see
 
 /* Don't put any single quote (') in MOD_VERSION, if you want it to be
    recognized.  */
-#define MOD_VERSION "14"
+#define MOD_VERSION "15"
 
 
 /* Structure that describes a position within a module file.  */
@@ -143,7 +143,7 @@ enum gfc_wsym_state
 typedef struct pointer_info
 {
   BBT_HEADER (pointer_info);
-  int integer;
+  HOST_WIDE_INT integer;
   pointer_t type;
 
   /* The first component of each member of the union is the pointer
@@ -187,6 +187,8 @@ pointer_info;
 /* The gzFile for the module we're reading or writing.  */
 static gzFile module_fp;
 
+/* Fully qualified module path */
+static char *module_fullpath = NULL;
 
 /* The name of the module we're reading (USE'ing) or writing.  */
 static const char *module_name;
@@ -368,7 +370,7 @@ get_pointer (void *gp)
    creating the node if not found.  */
 
 static pointer_info *
-get_integer (int integer)
+get_integer (HOST_WIDE_INT integer)
 {
   pointer_info *p, t;
   int c;
@@ -468,7 +470,7 @@ associate_integer_pointer (pointer_info *p, void *gp)
    sometime later.  Returns the pointer_info structure.  */
 
 static pointer_info *
-add_fixup (int integer, void *gp)
+add_fixup (HOST_WIDE_INT integer, void *gp)
 {
   pointer_info *p;
   fixup_t *f;
@@ -525,6 +527,8 @@ gfc_match_use (void)
   gfc_intrinsic_op op;
   match m;
   gfc_use_list *use_list;
+  gfc_symtree *st;
+  locus loc;
 
   use_list = gfc_get_use_list ();
 
@@ -632,6 +636,8 @@ gfc_match_use (void)
 	case INTERFACE_USER_OP:
 	case INTERFACE_GENERIC:
 	case INTERFACE_DTIO:
+	  loc = gfc_current_locus;
+
 	  m = gfc_match (" =>");
 
 	  if (type == INTERFACE_USER_OP && m == MATCH_YES
@@ -671,6 +677,20 @@ gfc_match_use (void)
 		goto syntax;
 	      if (m == MATCH_ERROR)
 		goto cleanup;
+	    }
+
+	  st = gfc_find_symtree (gfc_current_ns->sym_root, name);
+	  if (st && type != INTERFACE_USER_OP
+	      && (st->n.sym->module != use_list->module_name
+		  || strcmp (st->n.sym->name, new_use->use_name) != 0))
+	    {
+	      if (m == MATCH_YES)
+		gfc_error ("Symbol %qs at %L conflicts with the rename symbol "
+			   "at %L", name, &st->n.sym->declared_at, &loc);
+	      else
+		gfc_error ("Symbol %qs at %L conflicts with the symbol "
+			   "at %L", name, &st->n.sym->declared_at, &loc);
+	      goto cleanup;
 	    }
 
 	  if (strcmp (new_use->use_name, use_list->module_name) == 0
@@ -725,7 +745,7 @@ cleanup:
    ordered pair whose first element is the ancestor module name and
    whose second element is the submodule name. 'Submodule_name' is
    used for the submodule filename and uses '@' as a separator, whilst
-   the name of the symbol for the module uses '.' as a a separator.
+   the name of the symbol for the module uses '.' as a separator.
    The reasons for these choices are:
    (i) To follow another leading brand in the submodule filenames;
    (ii) Since '.' is not particularly visible in the filenames; and
@@ -1085,6 +1105,8 @@ gzopen_included_file_1 (const char *name, gfc_directorylist *list,
          if (gfc_cpp_makedep ())
            gfc_cpp_add_dep (fullname, system);
 
+	 free (module_fullpath);
+	 module_fullpath = xstrdup (fullname);
          return f;
        }
     }
@@ -1100,8 +1122,14 @@ gzopen_included_file (const char *name, bool include_cwd, bool module)
   if (IS_ABSOLUTE_PATH (name) || include_cwd)
     {
       f = gzopen (name, "r");
-      if (f && gfc_cpp_makedep ())
-       gfc_cpp_add_dep (name, false);
+      if (f)
+	{
+	  if (gfc_cpp_makedep ())
+	    gfc_cpp_add_dep (name, false);
+
+	  free (module_fullpath);
+	  module_fullpath = xstrdup (name);
+	}
     }
 
   if (!f)
@@ -1118,8 +1146,14 @@ gzopen_intrinsic_module (const char* name)
   if (IS_ABSOLUTE_PATH (name))
     {
       f = gzopen (name, "r");
-      if (f && gfc_cpp_makedep ())
-        gfc_cpp_add_dep (name, true);
+      if (f)
+	{
+	  if (gfc_cpp_makedep ())
+	    gfc_cpp_add_dep (name, true);
+
+	  free (module_fullpath);
+	  module_fullpath = xstrdup (name);
+	}
     }
 
   if (!f)
@@ -1145,7 +1179,7 @@ static atom_type last_atom;
 
 #define MAX_ATOM_SIZE 100
 
-static int atom_int;
+static HOST_WIDE_INT atom_int;
 static char *atom_string, atom_name[MAX_ATOM_SIZE];
 
 
@@ -1165,7 +1199,7 @@ bad_module (const char *msgid)
     {
     case IO_INPUT:
       gfc_fatal_error ("Reading module %qs at line %d column %d: %s",
-	  	       module_name, module_line, module_column, msgid);
+	  	       module_fullpath, module_line, module_column, msgid);
       break;
     case IO_OUTPUT:
       gfc_fatal_error ("Writing module %qs at line %d column %d: %s",
@@ -1200,6 +1234,13 @@ get_module_locus (module_locus *m)
   m->pos = module_pos;
 }
 
+/* Peek at the next character in the module.  */
+
+static int
+module_peek_char (void)
+{
+  return module_content[module_pos];
+}
 
 /* Get the next character in the module, updating our reckoning of
    where we are.  */
@@ -1275,12 +1316,24 @@ parse_string (void)
 }
 
 
-/* Parse a small integer.  */
+/* Parse an integer. Should fit in a HOST_WIDE_INT.  */
 
 static void
 parse_integer (int c)
 {
-  atom_int = c - '0';
+  int sign = 1;
+
+  atom_int = 0;
+  switch (c)
+    {
+    case ('-'):
+      sign = -1;
+    case ('+'):
+      break;
+    default:
+      atom_int = c - '0';
+      break;
+    }
 
   for (;;)
     {
@@ -1292,10 +1345,9 @@ parse_integer (int c)
 	}
 
       atom_int = 10 * atom_int + c - '0';
-      if (atom_int > 99999999)
-	bad_module ("Integer overflow");
     }
 
+  atom_int *= sign; 
 }
 
 
@@ -1368,6 +1420,16 @@ parse_atom (void)
     case '9':
       parse_integer (c);
       return ATOM_INTEGER;
+
+    case '+':
+    case '-':
+      if (ISDIGIT (module_peek_char ()))
+	{
+	  parse_integer (c);
+	  return ATOM_INTEGER;
+	}
+      else
+	bad_module ("Bad name");
 
     case 'a':
     case 'b':
@@ -1471,6 +1533,16 @@ peek_atom (void)
     case '9':
       module_unget_char ();
       return ATOM_INTEGER;
+
+    case '+':
+    case '-':
+      if (ISDIGIT (module_peek_char ()))
+	{
+	  module_unget_char ();
+	  return ATOM_INTEGER;
+	}
+      else
+	bad_module ("Bad name");
 
     case 'a':
     case 'b':
@@ -1635,11 +1707,12 @@ write_char (char out)
 static void
 write_atom (atom_type atom, const void *v)
 {
-  char buffer[20];
+  char buffer[32];
 
   /* Workaround -Wmaybe-uninitialized false positive during
      profiledbootstrap by initializing them.  */
-  int i = 0, len;
+  int len;
+  HOST_WIDE_INT i = 0;
   const char *p;
 
   switch (atom)
@@ -1658,11 +1731,9 @@ write_atom (atom_type atom, const void *v)
       break;
 
     case ATOM_INTEGER:
-      i = *((const int *) v);
-      if (i < 0)
-	gfc_internal_error ("write_atom(): Writing negative integer");
+      i = *((const HOST_WIDE_INT *) v);
 
-      sprintf (buffer, "%d", i);
+      snprintf (buffer, sizeof (buffer), HOST_WIDE_INT_PRINT_DEC, i);
       p = buffer;
       break;
 
@@ -1770,11 +1841,26 @@ static void
 mio_integer (int *ip)
 {
   if (iomode == IO_OUTPUT)
-    write_atom (ATOM_INTEGER, ip);
+    {
+      HOST_WIDE_INT hwi = *ip;
+      write_atom (ATOM_INTEGER, &hwi);
+    }
   else
     {
       require_atom (ATOM_INTEGER);
       *ip = atom_int;
+    }
+}
+
+static void
+mio_hwi (HOST_WIDE_INT *hwi)
+{
+  if (iomode == IO_OUTPUT)
+    write_atom (ATOM_INTEGER, hwi);
+  else
+    {
+      require_atom (ATOM_INTEGER);
+      *hwi = atom_int;
     }
 }
 
@@ -1787,7 +1873,7 @@ mio_intrinsic_op (gfc_intrinsic_op* op)
   /* FIXME: Would be nicer to do this via the operators symbolic name.  */
   if (iomode == IO_OUTPUT)
     {
-      int converted = (int) *op;
+      HOST_WIDE_INT converted = (HOST_WIDE_INT) *op;
       write_atom (ATOM_INTEGER, &converted);
     }
   else
@@ -1998,7 +2084,15 @@ enum ab_attribute
   AB_ARRAY_OUTER_DEPENDENCY, AB_MODULE_PROCEDURE, AB_OACC_DECLARE_CREATE,
   AB_OACC_DECLARE_COPYIN, AB_OACC_DECLARE_DEVICEPTR,
   AB_OACC_DECLARE_DEVICE_RESIDENT, AB_OACC_DECLARE_LINK,
-  AB_OMP_DECLARE_TARGET_LINK
+  AB_OMP_DECLARE_TARGET_LINK, AB_PDT_KIND, AB_PDT_LEN, AB_PDT_TYPE,
+  AB_PDT_TEMPLATE, AB_PDT_ARRAY, AB_PDT_STRING,
+  AB_OACC_ROUTINE_LOP_GANG, AB_OACC_ROUTINE_LOP_WORKER,
+  AB_OACC_ROUTINE_LOP_VECTOR, AB_OACC_ROUTINE_LOP_SEQ,
+  AB_OMP_REQ_REVERSE_OFFLOAD, AB_OMP_REQ_UNIFIED_ADDRESS,
+  AB_OMP_REQ_UNIFIED_SHARED_MEMORY, AB_OMP_REQ_DYNAMIC_ALLOCATORS,
+  AB_OMP_REQ_MEM_ORDER_SEQ_CST, AB_OMP_REQ_MEM_ORDER_ACQ_REL,
+  AB_OMP_REQ_MEM_ORDER_RELAXED, AB_OMP_DEVICE_TYPE_NOHOST,
+  AB_OMP_DEVICE_TYPE_HOST, AB_OMP_DEVICE_TYPE_ANY
 };
 
 static const mstring attr_bits[] =
@@ -2062,6 +2156,26 @@ static const mstring attr_bits[] =
     minit ("OACC_DECLARE_DEVICE_RESIDENT", AB_OACC_DECLARE_DEVICE_RESIDENT),
     minit ("OACC_DECLARE_LINK", AB_OACC_DECLARE_LINK),
     minit ("OMP_DECLARE_TARGET_LINK", AB_OMP_DECLARE_TARGET_LINK),
+    minit ("PDT_KIND", AB_PDT_KIND),
+    minit ("PDT_LEN", AB_PDT_LEN),
+    minit ("PDT_TYPE", AB_PDT_TYPE),
+    minit ("PDT_TEMPLATE", AB_PDT_TEMPLATE),
+    minit ("PDT_ARRAY", AB_PDT_ARRAY),
+    minit ("PDT_STRING", AB_PDT_STRING),
+    minit ("OACC_ROUTINE_LOP_GANG", AB_OACC_ROUTINE_LOP_GANG),
+    minit ("OACC_ROUTINE_LOP_WORKER", AB_OACC_ROUTINE_LOP_WORKER),
+    minit ("OACC_ROUTINE_LOP_VECTOR", AB_OACC_ROUTINE_LOP_VECTOR),
+    minit ("OACC_ROUTINE_LOP_SEQ", AB_OACC_ROUTINE_LOP_SEQ),
+    minit ("OMP_REQ_REVERSE_OFFLOAD", AB_OMP_REQ_REVERSE_OFFLOAD),
+    minit ("OMP_REQ_UNIFIED_ADDRESS", AB_OMP_REQ_UNIFIED_ADDRESS),
+    minit ("OMP_REQ_UNIFIED_SHARED_MEMORY", AB_OMP_REQ_UNIFIED_SHARED_MEMORY),
+    minit ("OMP_REQ_DYNAMIC_ALLOCATORS", AB_OMP_REQ_DYNAMIC_ALLOCATORS),
+    minit ("OMP_REQ_MEM_ORDER_SEQ_CST", AB_OMP_REQ_MEM_ORDER_SEQ_CST),
+    minit ("OMP_REQ_MEM_ORDER_ACQ_REL", AB_OMP_REQ_MEM_ORDER_ACQ_REL),
+    minit ("OMP_REQ_MEM_ORDER_RELAXED", AB_OMP_REQ_MEM_ORDER_RELAXED),
+    minit ("OMP_DEVICE_TYPE_HOST", AB_OMP_DEVICE_TYPE_HOST),
+    minit ("OMP_DEVICE_TYPE_NOHOST", AB_OMP_DEVICE_TYPE_NOHOST),
+    minit ("OMP_DEVICE_TYPE_ANYHOST", AB_OMP_DEVICE_TYPE_ANY),
     minit (NULL, -1)
 };
 
@@ -2106,7 +2220,17 @@ DECL_MIO_NAME (procedure_type)
 DECL_MIO_NAME (ref_type)
 DECL_MIO_NAME (sym_flavor)
 DECL_MIO_NAME (sym_intent)
+DECL_MIO_NAME (inquiry_type)
 #undef DECL_MIO_NAME
+
+/* Verify OACC_ROUTINE_LOP_NONE.  */
+
+static void
+verify_OACC_ROUTINE_LOP_NONE (enum oacc_routine_lop lop)
+{
+  if (lop != OACC_ROUTINE_LOP_NONE)
+    bad_module ("Unsupported: multiple OpenACC 'routine' levels of parallelism");
+}
 
 /* Symbol attributes are stored in list with the first three elements
    being the enumerated fields, while the remaining elements (if any)
@@ -2260,9 +2384,80 @@ mio_symbol_attribute (symbol_attribute *attr)
 	MIO_NAME (ab_attribute) (AB_OACC_DECLARE_LINK, attr_bits);
       if (attr->omp_declare_target_link)
 	MIO_NAME (ab_attribute) (AB_OMP_DECLARE_TARGET_LINK, attr_bits);
+      if (attr->pdt_kind)
+	MIO_NAME (ab_attribute) (AB_PDT_KIND, attr_bits);
+      if (attr->pdt_len)
+	MIO_NAME (ab_attribute) (AB_PDT_LEN, attr_bits);
+      if (attr->pdt_type)
+	MIO_NAME (ab_attribute) (AB_PDT_TYPE, attr_bits);
+      if (attr->pdt_template)
+	MIO_NAME (ab_attribute) (AB_PDT_TEMPLATE, attr_bits);
+      if (attr->pdt_array)
+	MIO_NAME (ab_attribute) (AB_PDT_ARRAY, attr_bits);
+      if (attr->pdt_string)
+	MIO_NAME (ab_attribute) (AB_PDT_STRING, attr_bits);
+      switch (attr->oacc_routine_lop)
+	{
+	case OACC_ROUTINE_LOP_NONE:
+	  /* This is the default anyway, and for maintaining compatibility with
+	     the current MOD_VERSION, we're not emitting anything in that
+	     case.  */
+	  break;
+	case OACC_ROUTINE_LOP_GANG:
+	  MIO_NAME (ab_attribute) (AB_OACC_ROUTINE_LOP_GANG, attr_bits);
+	  break;
+	case OACC_ROUTINE_LOP_WORKER:
+	  MIO_NAME (ab_attribute) (AB_OACC_ROUTINE_LOP_WORKER, attr_bits);
+	  break;
+	case OACC_ROUTINE_LOP_VECTOR:
+	  MIO_NAME (ab_attribute) (AB_OACC_ROUTINE_LOP_VECTOR, attr_bits);
+	  break;
+	case OACC_ROUTINE_LOP_SEQ:
+	  MIO_NAME (ab_attribute) (AB_OACC_ROUTINE_LOP_SEQ, attr_bits);
+	  break;
+	case OACC_ROUTINE_LOP_ERROR:
+	  /* ... intentionally omitted here; it's only unsed internally.  */
+	default:
+	  gcc_unreachable ();
+	}
 
+      if (attr->flavor == FL_MODULE && gfc_current_ns->omp_requires)
+	{
+	  if (gfc_current_ns->omp_requires & OMP_REQ_REVERSE_OFFLOAD)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_REVERSE_OFFLOAD, attr_bits);
+	  if (gfc_current_ns->omp_requires & OMP_REQ_UNIFIED_ADDRESS)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_UNIFIED_ADDRESS, attr_bits);
+	  if (gfc_current_ns->omp_requires & OMP_REQ_UNIFIED_SHARED_MEMORY)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_UNIFIED_SHARED_MEMORY, attr_bits);
+	  if (gfc_current_ns->omp_requires & OMP_REQ_DYNAMIC_ALLOCATORS)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_DYNAMIC_ALLOCATORS, attr_bits);
+	  if ((gfc_current_ns->omp_requires & OMP_REQ_ATOMIC_MEM_ORDER_MASK)
+	      == OMP_REQ_ATOMIC_MEM_ORDER_SEQ_CST)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_MEM_ORDER_SEQ_CST, attr_bits);
+	  if ((gfc_current_ns->omp_requires & OMP_REQ_ATOMIC_MEM_ORDER_MASK)
+	      == OMP_REQ_ATOMIC_MEM_ORDER_ACQ_REL)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_MEM_ORDER_ACQ_REL, attr_bits);
+	  if ((gfc_current_ns->omp_requires & OMP_REQ_ATOMIC_MEM_ORDER_MASK)
+	      == OMP_REQ_ATOMIC_MEM_ORDER_RELAXED)
+	    MIO_NAME (ab_attribute) (AB_OMP_REQ_MEM_ORDER_RELAXED, attr_bits);
+	}
+      switch (attr->omp_device_type)
+	{
+	case OMP_DEVICE_TYPE_UNSET:
+	  break;
+	case OMP_DEVICE_TYPE_HOST:
+	  MIO_NAME (ab_attribute) (AB_OMP_DEVICE_TYPE_HOST, attr_bits);
+	  break;
+	case OMP_DEVICE_TYPE_NOHOST:
+	  MIO_NAME (ab_attribute) (AB_OMP_DEVICE_TYPE_NOHOST, attr_bits);
+	  break;
+	case OMP_DEVICE_TYPE_ANY:
+	  MIO_NAME (ab_attribute) (AB_OMP_DEVICE_TYPE_ANY, attr_bits);
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
       mio_rparen ();
-
     }
   else
     {
@@ -2452,6 +2647,88 @@ mio_symbol_attribute (symbol_attribute *attr)
 	      break;
 	    case AB_OACC_DECLARE_LINK:
 	      attr->oacc_declare_link = 1;
+	      break;
+	    case AB_PDT_KIND:
+	      attr->pdt_kind = 1;
+	      break;
+	    case AB_PDT_LEN:
+	      attr->pdt_len = 1;
+	      break;
+	    case AB_PDT_TYPE:
+	      attr->pdt_type = 1;
+	      break;
+	    case AB_PDT_TEMPLATE:
+	      attr->pdt_template = 1;
+	      break;
+	    case AB_PDT_ARRAY:
+	      attr->pdt_array = 1;
+	      break;
+	    case AB_PDT_STRING:
+	      attr->pdt_string = 1;
+	      break;
+	    case AB_OACC_ROUTINE_LOP_GANG:
+	      verify_OACC_ROUTINE_LOP_NONE (attr->oacc_routine_lop);
+	      attr->oacc_routine_lop = OACC_ROUTINE_LOP_GANG;
+	      break;
+	    case AB_OACC_ROUTINE_LOP_WORKER:
+	      verify_OACC_ROUTINE_LOP_NONE (attr->oacc_routine_lop);
+	      attr->oacc_routine_lop = OACC_ROUTINE_LOP_WORKER;
+	      break;
+	    case AB_OACC_ROUTINE_LOP_VECTOR:
+	      verify_OACC_ROUTINE_LOP_NONE (attr->oacc_routine_lop);
+	      attr->oacc_routine_lop = OACC_ROUTINE_LOP_VECTOR;
+	      break;
+	    case AB_OACC_ROUTINE_LOP_SEQ:
+	      verify_OACC_ROUTINE_LOP_NONE (attr->oacc_routine_lop);
+	      attr->oacc_routine_lop = OACC_ROUTINE_LOP_SEQ;
+	      break;
+	    case AB_OMP_REQ_REVERSE_OFFLOAD:
+	      gfc_omp_requires_add_clause (OMP_REQ_REVERSE_OFFLOAD,
+					   "reverse_offload",
+					   &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_UNIFIED_ADDRESS:
+	      gfc_omp_requires_add_clause (OMP_REQ_UNIFIED_ADDRESS,
+					   "unified_address",
+					   &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_UNIFIED_SHARED_MEMORY:
+	      gfc_omp_requires_add_clause (OMP_REQ_UNIFIED_SHARED_MEMORY,
+					   "unified_shared_memory",
+					   &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_DYNAMIC_ALLOCATORS:
+	      gfc_omp_requires_add_clause (OMP_REQ_DYNAMIC_ALLOCATORS,
+					   "dynamic_allocators",
+					   &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_MEM_ORDER_SEQ_CST:
+	      gfc_omp_requires_add_clause (OMP_REQ_ATOMIC_MEM_ORDER_SEQ_CST,
+					   "seq_cst", &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_MEM_ORDER_ACQ_REL:
+	      gfc_omp_requires_add_clause (OMP_REQ_ATOMIC_MEM_ORDER_ACQ_REL,
+					   "acq_rel", &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_REQ_MEM_ORDER_RELAXED:
+	      gfc_omp_requires_add_clause (OMP_REQ_ATOMIC_MEM_ORDER_RELAXED,
+					   "relaxed", &gfc_current_locus,
+					   module_name);
+	      break;
+	    case AB_OMP_DEVICE_TYPE_HOST:
+	      attr->omp_device_type = OMP_DEVICE_TYPE_HOST;
+	      break;
+	    case AB_OMP_DEVICE_TYPE_NOHOST:
+	      attr->omp_device_type = OMP_DEVICE_TYPE_NOHOST;
+	      break;
+	    case AB_OMP_DEVICE_TYPE_ANY:
+	      attr->omp_device_type = OMP_DEVICE_TYPE_ANY;
 	      break;
 	    }
 	}
@@ -2682,7 +2959,7 @@ mio_array_ref (gfc_array_ref *ar)
     {
       for (i = 0; i < ar->dimen; i++)
 	{
-	  int tmp = (int)ar->dimen_type[i];
+	  HOST_WIDE_INT tmp = (HOST_WIDE_INT)ar->dimen_type[i];
 	  write_atom (ATOM_INTEGER, &tmp);
 	}
     }
@@ -2719,7 +2996,8 @@ mio_pointer_ref (void *gp)
   if (iomode == IO_OUTPUT)
     {
       p = get_pointer (*((char **) gp));
-      write_atom (ATOM_INTEGER, &p->integer);
+      HOST_WIDE_INT hwi = p->integer;
+      write_atom (ATOM_INTEGER, &hwi);
     }
   else
     {
@@ -2751,23 +3029,24 @@ mio_component_ref (gfc_component **cp)
 static void mio_namespace_ref (gfc_namespace **nsp);
 static void mio_formal_arglist (gfc_formal_arglist **formal);
 static void mio_typebound_proc (gfc_typebound_proc** proc);
+static void mio_actual_arglist (gfc_actual_arglist **ap, bool pdt);
 
 static void
 mio_component (gfc_component *c, int vtype)
 {
   pointer_info *p;
-  int n;
 
   mio_lparen ();
 
   if (iomode == IO_OUTPUT)
     {
       p = get_pointer (c);
-      mio_integer (&p->integer);
+      mio_hwi (&p->integer);
     }
   else
     {
-      mio_integer (&n);
+      HOST_WIDE_INT n;
+      mio_hwi (&n);
       p = get_integer (n);
       associate_integer_pointer (p, c);
     }
@@ -2778,6 +3057,12 @@ mio_component (gfc_component *c, int vtype)
   mio_pool_string (&c->name);
   mio_typespec (&c->ts);
   mio_array_spec (&c->as);
+
+  /* PDT templates store the expression for the kind of a component here.  */
+  mio_expr (&c->kind_expr);
+
+  /* PDT types store the component specification list here. */
+  mio_actual_arglist (&c->param_list, true);
 
   mio_symbol_attribute (&c->attr);
   if (c->ts.type == BT_CLASS)
@@ -2836,17 +3121,19 @@ mio_component_list (gfc_component **cp, int vtype)
 
 
 static void
-mio_actual_arg (gfc_actual_arglist *a)
+mio_actual_arg (gfc_actual_arglist *a, bool pdt)
 {
   mio_lparen ();
   mio_pool_string (&a->name);
   mio_expr (&a->expr);
+  if (pdt)
+    mio_integer ((int *)&a->spec_type);
   mio_rparen ();
 }
 
 
 static void
-mio_actual_arglist (gfc_actual_arglist **ap)
+mio_actual_arglist (gfc_actual_arglist **ap, bool pdt)
 {
   gfc_actual_arglist *a, *tail;
 
@@ -2855,7 +3142,7 @@ mio_actual_arglist (gfc_actual_arglist **ap)
   if (iomode == IO_OUTPUT)
     {
       for (a = *ap; a; a = a->next)
-	mio_actual_arg (a);
+	mio_actual_arg (a, pdt);
 
     }
   else
@@ -2875,7 +3162,7 @@ mio_actual_arglist (gfc_actual_arglist **ap)
 	    tail->next = a;
 
 	  tail = a;
-	  mio_actual_arg (a);
+	  mio_actual_arg (a, pdt);
 	}
     }
 
@@ -3081,6 +3368,15 @@ static const mstring ref_types[] = {
     minit ("ARRAY", REF_ARRAY),
     minit ("COMPONENT", REF_COMPONENT),
     minit ("SUBSTRING", REF_SUBSTRING),
+    minit ("INQUIRY", REF_INQUIRY),
+    minit (NULL, -1)
+};
+
+static const mstring inquiry_types[] = {
+    minit ("RE", INQUIRY_RE),
+    minit ("IM", INQUIRY_IM),
+    minit ("KIND", INQUIRY_KIND),
+    minit ("LEN", INQUIRY_LEN),
     minit (NULL, -1)
 };
 
@@ -3110,6 +3406,10 @@ mio_ref (gfc_ref **rp)
       mio_expr (&r->u.ss.start);
       mio_expr (&r->u.ss.end);
       mio_charlen (&r->u.ss.length);
+      break;
+
+    case REF_INQUIRY:
+      r->u.i = MIO_NAME (inquiry_type) (r->u.i, inquiry_types);
       break;
     }
 
@@ -3183,7 +3483,7 @@ mio_gmp_integer (mpz_t *integer)
 static void
 mio_gmp_real (mpfr_t *real)
 {
-  mp_exp_t exponent;
+  mpfr_exp_t exponent;
   char *p;
 
   if (iomode == IO_INPUT)
@@ -3386,6 +3686,7 @@ fix_mio_expr (gfc_expr *e)
 static void
 mio_expr (gfc_expr **ep)
 {
+  HOST_WIDE_INT hwi;
   gfc_expr *e;
   atom_type t;
   int flag;
@@ -3500,7 +3801,7 @@ mio_expr (gfc_expr **ep)
 
     case EXPR_FUNCTION:
       mio_symtree_ref (&e->symtree);
-      mio_actual_arglist (&e->value.function.actual);
+      mio_actual_arglist (&e->value.function.actual, false);
 
       if (iomode == IO_OUTPUT)
 	{
@@ -3600,7 +3901,9 @@ mio_expr (gfc_expr **ep)
 	  break;
 
 	case BT_CHARACTER:
-	  mio_integer (&e->value.character.length);
+	  hwi = e->value.character.length;
+	  mio_hwi (&hwi);
+	  e->value.character.length = hwi;
 	  e->value.character.string
 	    = CONST_CAST (gfc_char_t *,
 			  mio_allocated_wide_string (e->value.character.string,
@@ -3618,9 +3921,13 @@ mio_expr (gfc_expr **ep)
 
     case EXPR_COMPCALL:
     case EXPR_PPC:
+    case EXPR_UNKNOWN:
       gcc_unreachable ();
       break;
     }
+
+  /* PDT types store the expression specification list here. */
+  mio_actual_arglist (&e->param_list, true);
 
   mio_rparen ();
 }
@@ -3988,7 +4295,24 @@ mio_full_f2k_derived (gfc_symbol *sym)
     {
       if (peek_atom () != ATOM_RPAREN)
 	{
+	  gfc_namespace *ns;
+
 	  sym->f2k_derived = gfc_get_namespace (NULL, 0);
+
+	  /* PDT templates make use of the mechanisms for formal args
+	     and so the parameter symbols are stored in the formal
+	     namespace.  Transfer the sym_root to f2k_derived and then
+	     free the formal namespace since it is uneeded.  */
+	  if (sym->attr.pdt_template && sym->formal && sym->formal->sym)
+	    {
+	      ns = sym->formal->sym->ns;
+	      sym->f2k_derived->sym_root = ns->sym_root;
+	      ns->sym_root = NULL;
+	      ns->refs++;
+	      gfc_free_namespace (ns);
+	      ns = NULL;
+	    }
+
 	  mio_f2k_derived (sym->f2k_derived);
 	}
       else
@@ -4151,7 +4475,7 @@ mio_omp_udr_expr (gfc_omp_udr *udr, gfc_symbol **sym1, gfc_symbol **sym2,
 	  int flag;
 	  mio_name (1, omp_declare_reduction_stmt);
 	  mio_symtree_ref (&ns->code->symtree);
-	  mio_actual_arglist (&ns->code->ext.actual);
+	  mio_actual_arglist (&ns->code->ext.actual, false);
 
 	  flag = ns->code->resolved_isym != NULL;
 	  mio_integer (&flag);
@@ -4193,7 +4517,7 @@ mio_omp_udr_expr (gfc_omp_udr *udr, gfc_symbol **sym1, gfc_symbol **sym2,
 	  int flag;
 	  ns->code = gfc_get_code (EXEC_CALL);
 	  mio_symtree_ref (&ns->code->symtree);
-	  mio_actual_arglist (&ns->code->ext.actual);
+	  mio_actual_arglist (&ns->code->ext.actual, false);
 
 	  mio_integer (&flag);
 	  if (flag)
@@ -4224,6 +4548,9 @@ mio_symbol (gfc_symbol *sym)
   mio_lparen ();
 
   mio_symbol_attribute (&sym->attr);
+
+  if (sym->attr.pdt_type)
+    sym->name = gfc_dt_upper_string (sym->name);
 
   /* Note that components are always saved, even if they are supposed
      to be private.  Component access is checked during searching.  */
@@ -4262,6 +4589,9 @@ mio_symbol (gfc_symbol *sym)
 
   /* Load/save the f2k_derived namespace of a derived-type symbol.  */
   mio_full_f2k_derived (sym);
+
+  /* PDT types store the symbol specification list here. */
+  mio_actual_arglist (&sym->param_list, true);
 
   mio_namelist (sym);
 
@@ -4381,7 +4711,9 @@ static void
 load_operator_interfaces (void)
 {
   const char *p;
-  char name[GFC_MAX_SYMBOL_LEN + 1], module[GFC_MAX_SYMBOL_LEN + 1];
+  /* "module" must be large enough for the case of submodules in which the name
+     has the form module.submodule */
+  char name[GFC_MAX_SYMBOL_LEN + 1], module[2 * GFC_MAX_SYMBOL_LEN + 2];
   gfc_user_op *uop;
   pointer_info *pi = NULL;
   int n, i;
@@ -4437,7 +4769,9 @@ static void
 load_generic_interfaces (void)
 {
   const char *p;
-  char name[GFC_MAX_SYMBOL_LEN + 1], module[GFC_MAX_SYMBOL_LEN + 1];
+  /* "module" must be large enough for the case of submodules in which the name
+     has the form module.submodule */
+  char name[GFC_MAX_SYMBOL_LEN + 1], module[2 * GFC_MAX_SYMBOL_LEN + 2];
   gfc_symbol *sym;
   gfc_interface *generic = NULL, *gen = NULL;
   int n, i, renamed;
@@ -4462,9 +4796,6 @@ load_generic_interfaces (void)
 	  /* Decide if we need to load this one or not.  */
 	  p = find_use_name_n (name, &i, false);
 
-	  st = find_symbol (gfc_current_ns->sym_root,
-			    name, module_name, 1);
-
 	  if (!p || gfc_find_symbol (p, NULL, 0, &sym))
 	    {
 	      /* Skip the specific names for these cases.  */
@@ -4472,6 +4803,9 @@ load_generic_interfaces (void)
 
 	      continue;
 	    }
+
+	  st = find_symbol (gfc_current_ns->sym_root,
+			    name, module_name, 1);
 
 	  /* If the symbol exists already and is being USEd without being
 	     in an ONLY clause, do not load a new symtree(11.3.2).  */
@@ -4574,7 +4908,7 @@ load_commons (void)
 
   while (peek_atom () != ATOM_RPAREN)
     {
-      int flags;
+      int flags = 0;
       char* label;
       mio_lparen ();
       mio_internal_string (name);
@@ -4587,6 +4921,7 @@ load_commons (void)
 	p->saved = 1;
       if (flags & 2)
 	p->threadprivate = 1;
+      p->omp_device_type = (gfc_omp_device_type) ((flags >> 2) & 3);
       p->use_assoc = 1;
 
       /* Get whether this was a bind(c) common or not.  */
@@ -4694,7 +5029,7 @@ load_omp_udrs (void)
       mio_pool_string (&name);
       gfc_clear_ts (&ts);
       mio_typespec (&ts);
-      if (strncmp (name, "operator ", sizeof ("operator ") - 1) == 0)
+      if (gfc_str_startswith (name, "operator "))
 	{
 	  const char *p = name + sizeof ("operator ") - 1;
 	  if (strcmp (p, "+") == 0)
@@ -4853,7 +5188,7 @@ load_needed (pointer_info *p)
   sym->attr.use_assoc = 1;
 
   /* Unliked derived types, a STRUCTURE may share names with other symbols.
-     We greedily converted the the symbol name to lowercase before we knew its
+     We greedily converted the symbol name to lowercase before we knew its
      type, so now we must fix it. */
   if (sym->attr.flavor == FL_STRUCT)
     sym->name = gfc_dt_upper_string (sym->name);
@@ -5072,8 +5407,8 @@ read_module (void)
 	  for (c = sym->components; c; c = c->next)
 	    {
 	      pointer_info *p;
-	      const char *comp_name;
-	      int n;
+	      const char *comp_name = NULL;
+	      int n = 0;
 
 	      mio_lparen (); /* component opening.  */
 	      mio_integer (&n);
@@ -5081,7 +5416,13 @@ read_module (void)
 	      if (p->u.pointer == NULL)
 		associate_integer_pointer (p, c);
 	      mio_pool_string (&comp_name);
-	      gcc_assert (comp_name == c->name);
+	      if (comp_name != c->name)
+		{
+		  gfc_fatal_error ("Mismatch in components of derived type "
+				   "%qs from %qs at %C: expecting %qs, "
+				   "but got %qs", sym->name, sym->module,
+				   c->name, comp_name);
+		}
 	      skip_list (1); /* component end.  */
 	    }
 	  mio_rparen (); /* component list closing.  */
@@ -5136,8 +5477,8 @@ read_module (void)
 
 	  /* Exception: Always import vtabs & vtypes.  */
 	  if (p == NULL && name[0] == '_'
-	      && (strncmp (name, "__vtab_", 5) == 0
-		  || strncmp (name, "__vtype_", 6) == 0))
+	      && (gfc_str_startswith (name, "__vtab_")
+		  || gfc_str_startswith (name, "__vtype_")))
 	    p = name;
 
 	  /* Skip symtree nodes not in an ONLY clause, unless there
@@ -5222,8 +5563,8 @@ read_module (void)
 		sym->attr.use_rename = 1;
 
 	      if (name[0] != '_'
-		  || (strncmp (name, "__vtab_", 5) != 0
-		      && strncmp (name, "__vtype_", 6) != 0))
+		  || (!gfc_str_startswith (name, "__vtab_")
+		      && !gfc_str_startswith (name, "__vtype_")))
 		sym->attr.use_only = only_flag;
 
 	      /* Store the symtree pointing to this symbol.  */
@@ -5445,6 +5786,7 @@ write_common_0 (gfc_symtree *st, bool this_module)
       flags = p->saved ? 1 : 0;
       if (p->threadprivate)
 	flags |= 2;
+      flags |= p->omp_device_type << 2;
       mio_integer (&flags);
 
       /* Write out whether the common block is bind(c) or not.  */
@@ -5876,13 +6218,24 @@ write_symtree (gfc_symtree *st)
   if (check_unique_name (st->name))
     return;
 
+  /* From F2003 onwards, intrinsic procedures are no longer subject to
+     the restriction, "that an elemental intrinsic function here be of
+     type integer or character and each argument must be an initialization
+     expr of type integer or character" is lifted so that intrinsic
+     procedures can be over-ridden. This requires that the intrinsic
+     symbol not appear in the module file, thereby preventing ambiguity
+     when USEd.  */
+  if (strcmp (sym->module, "(intrinsic)") == 0
+      && (gfc_option.allow_std & GFC_STD_F2003))
+    return;
+
   p = find_pointer (sym);
   if (p == NULL)
     gfc_internal_error ("write_symtree(): Symbol not written");
 
   mio_pool_string (&st->name);
   mio_integer (&st->ambiguous);
-  mio_integer (&p->integer);
+  mio_hwi (&p->integer);
 }
 
 
@@ -5891,6 +6244,9 @@ write_module (void)
 {
   int i;
 
+  /* Initialize the column counter. */
+  module_column = 1;
+  
   /* Write the operator interfaces.  */
   mio_lparen ();
 
@@ -6065,7 +6421,7 @@ dump_module (const char *name, int dump_flag)
   /* Write the module to the temporary file.  */
   module_fp = gzopen (filename_tmp, "w");
   if (module_fp == NULL)
-    gfc_fatal_error ("Can't open module file %qs for writing at %C: %s",
+    gfc_fatal_error ("Cannot open module file %qs for writing at %C: %s",
 		     filename_tmp, xstrerror (errno));
 
   /* Use lbasename to ensure module files are reproducible regardless
@@ -6097,16 +6453,16 @@ dump_module (const char *name, int dump_flag)
     {
       /* Module file have changed, replace the old one.  */
       if (remove (filename) && errno != ENOENT)
-	gfc_fatal_error ("Can't delete module file %qs: %s", filename,
+	gfc_fatal_error ("Cannot delete module file %qs: %s", filename,
 			 xstrerror (errno));
       if (rename (filename_tmp, filename))
-	gfc_fatal_error ("Can't rename module file %qs to %qs: %s",
+	gfc_fatal_error ("Cannot rename module file %qs to %qs: %s",
 			 filename_tmp, filename, xstrerror (errno));
     }
   else
     {
       if (remove (filename_tmp))
-	gfc_fatal_error ("Can't delete temporary module file %qs: %s",
+	gfc_fatal_error ("Cannot delete temporary module file %qs: %s",
 			 filename_tmp, xstrerror (errno));
     }
 }
@@ -6691,7 +7047,7 @@ use_iso_fortran_env_module (void)
 				   "standard", symbol[i].name, &u->where))
 	        continue;
 
-	      if ((flag_default_integer || flag_default_real)
+	      if ((flag_default_integer || flag_default_real_8)
 		  && symbol[i].id == ISOFORTRANENV_NUMERIC_STORAGE_SIZE)
 		gfc_warning_now (0, "Use of the NUMERIC_STORAGE_SIZE named "
 				 "constant from intrinsic module "
@@ -6758,7 +7114,7 @@ use_iso_fortran_env_module (void)
 	  if ((gfc_option.allow_std & symbol[i].standard) == 0)
 	    continue;
 
-	  if ((flag_default_integer || flag_default_real)
+	  if ((flag_default_integer || flag_default_real_8)
 	      && symbol[i].id == ISOFORTRANENV_NUMERIC_STORAGE_SIZE)
 	    gfc_warning_now (0,
 			     "Use of the NUMERIC_STORAGE_SIZE named constant "
@@ -6895,7 +7251,7 @@ gfc_use_module (gfc_use_list *module)
       module_fp = gzopen_intrinsic_module (filename);
 
       if (module_fp == NULL && module->intrinsic)
-	gfc_fatal_error ("Can't find an intrinsic module named %qs at %C",
+	gfc_fatal_error ("Cannot find an intrinsic module named %qs at %C",
 			 module_name);
 
       /* Check for the IEEE modules, so we can mark their symbols
@@ -6923,7 +7279,7 @@ gfc_use_module (gfc_use_list *module)
     {
       if (gfc_state_stack->state != COMP_SUBMODULE
 	  && module->submodule_name == NULL)
-	gfc_fatal_error ("Can't open module file %qs for reading at %C: %s",
+	gfc_fatal_error ("Cannot open module file %qs for reading at %C: %s",
 			 filename, xstrerror (errno));
       else
 	gfc_fatal_error ("Module file %qs has not been generated, either "
@@ -6961,7 +7317,7 @@ gfc_use_module (gfc_use_list *module)
       if ((start == 1 && strcmp (atom_name, "GFORTRAN") != 0)
 	  || (start == 2 && strcmp (atom_name, " module") != 0))
 	gfc_fatal_error ("File %qs opened at %C is not a GNU Fortran"
-			 " module file", filename);
+			 " module file", module_fullpath);
       if (start == 3)
 	{
 	  if (strcmp (atom_name, " version") != 0
@@ -6970,7 +7326,7 @@ gfc_use_module (gfc_use_list *module)
 	      || strcmp (atom_string, MOD_VERSION))
 	    gfc_fatal_error ("Cannot read module file %qs opened at %C,"
 			     " because it was created by a different"
-			     " version of GNU Fortran", filename);
+			     " version of GNU Fortran", module_fullpath);
 
 	  free (atom_string);
 	}
@@ -6983,8 +7339,12 @@ gfc_use_module (gfc_use_list *module)
   for (p = gfc_state_stack; p; p = p->previous)
     if ((p->state == COMP_MODULE || p->state == COMP_SUBMODULE)
 	 && strcmp (p->sym->name, module_name) == 0)
-      gfc_fatal_error ("Can't USE the same %smodule we're building!",
-		       p->state == COMP_SUBMODULE ? "sub" : "");
+      {
+	if (p->state == COMP_SUBMODULE)
+	  gfc_fatal_error ("Cannot USE a submodule that is currently built");
+	else
+	  gfc_fatal_error ("Cannot USE a module that is currently built");
+      }
 
   init_pi_tree ();
   init_true_name_tree ();

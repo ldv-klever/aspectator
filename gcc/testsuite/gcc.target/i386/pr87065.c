@@ -1,6 +1,6 @@
 /* PR rtl-optimization/87065 */
 /* { dg-do compile } */
-/* { dg-options "-O3 -mxop -mprefer-avx128" } */
+/* { dg-options "-O3 -mxop -mprefer-vector-width=128" } */
 
 int a, c, d, e;
 short *b;

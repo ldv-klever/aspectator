@@ -1,6 +1,6 @@
 /* Declarations for insn-output.c and other code to write to asm_out_file.
    These functions are defined in final.c, and varasm.c.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -96,11 +96,7 @@ extern int insn_current_reference_address (rtx_insn *);
 
 /* Find the alignment associated with a CODE_LABEL.
    Defined in final.c.  */
-extern int label_to_alignment (rtx);
-
-/* Find the alignment maximum skip associated with a CODE_LABEL.
-   Defined in final.c.  */
-extern int label_to_max_skip (rtx);
+extern align_flags label_to_alignment (rtx);
 
 /* Output a LABEL_REF, or a bare CODE_LABEL, as an assembler symbol.  */
 extern void output_asm_label (rtx);
@@ -149,7 +145,7 @@ extern int only_leaf_regs_used (void);
 extern void leaf_renumber_regs_insn (rtx);
 
 /* Locate the proper template for the given insn-code.  */
-extern const char *get_insn_template (int, rtx);
+extern const char *get_insn_template (int, rtx_insn *);
 
 /* Functions in varasm.c.  */
 
@@ -171,6 +167,7 @@ extern int decode_reg_name (const char *);
 extern int decode_reg_name_and_count (const char *, int *);
 
 extern void do_assemble_alias (tree, tree);
+extern void do_assemble_symver (tree, tree);
 
 extern void default_assemble_visibility (tree, int);
 
@@ -223,7 +220,7 @@ extern void assemble_external (tree);
 extern void assemble_zeros (unsigned HOST_WIDE_INT);
 
 /* Assemble an alignment pseudo op for an ALIGN-bit boundary.  */
-extern void assemble_align (int);
+extern void assemble_align (unsigned int);
 
 /* Assemble a string constant with the specified C string as contents.  */
 extern void assemble_string (const char *, int);
@@ -239,6 +236,12 @@ extern void assemble_label (FILE *, const char *);
    NAME is transformed in a target-specific way (usually by the
    addition of an underscore).  */
 extern void assemble_name_raw (FILE *, const char *);
+
+/* Return NAME that should actually be emitted, looking through
+   transparent aliases.  If NAME refers to an entity that is also
+   represented as a tree (like a function or variable), mark the entity
+   as referenced.  */
+extern const char *assemble_name_resolve (const char *);
 
 /* Like assemble_name_raw, but should be used when NAME might refer to
    an entity that is also represented as a tree (like a function or
@@ -281,7 +284,7 @@ extern section *get_named_text_section (tree, const char *, const char *);
 /* Assemble the floating-point constant D into an object of size MODE.  ALIGN
    is the alignment of the constant in bits.  If REVERSE is true, D is output
    in reverse storage order.  */
-extern void assemble_real (REAL_VALUE_TYPE, machine_mode, unsigned,
+extern void assemble_real (REAL_VALUE_TYPE, scalar_float_mode, unsigned,
 			   bool = false);
 
 /* Write the address of the entity given by SYMBOL to SEC.  */
@@ -307,11 +310,6 @@ extern void output_quoted_string (FILE *, const char *);
 
    This variable is defined  in final.c.  */
 extern rtx_sequence *final_sequence;
-
-/* The line number of the beginning of the current function.  Various
-   md code needs this so that it can output relative linenumbers.  */
-
-extern int sdb_begin_function_line;
 
 /* File in which assembler code is being written.  */
 
@@ -355,7 +353,7 @@ extern int compute_reloc_for_constant (tree);
 extern const char *user_label_prefix;
 
 /* Default target function prologue and epilogue assembler output.  */
-extern void default_function_pro_epilogue (FILE *, HOST_WIDE_INT);
+extern void default_function_pro_epilogue (FILE *);
 
 /* Default target function switched text sections.  */
 extern void default_function_switched_text_sections (FILE *, tree, bool);
@@ -383,7 +381,12 @@ extern void no_asm_to_stream (FILE *);
 #define SECTION_COMMON   0x800000	/* contains common data */
 #define SECTION_RELRO	 0x1000000	/* data is readonly after relocation processing */
 #define SECTION_EXCLUDE  0x2000000	/* discarded by the linker */
-#define SECTION_MACH_DEP 0x4000000	/* subsequent bits reserved for target */
+#define SECTION_RETAIN	 0x4000000	/* retained by the linker.  */
+#define SECTION_LINK_ORDER 0x8000000	/* section needs link-order.  */
+
+/* NB: The maximum SECTION_MACH_DEP is 0x10000000 since AVR needs 4 bits
+   in SECTION_MACH_DEP.  */
+#define SECTION_MACH_DEP 0x10000000	/* subsequent bits reserved for target */
 
 /* This SECTION_STYLE is used for unnamed sections that we can switch
    to using a special assembler directive.  */
@@ -525,7 +528,8 @@ extern GTY(()) bool in_cold_section_p;
 
 extern section *get_unnamed_section (unsigned int, void (*) (const void *),
 				     const void *);
-extern section *get_section (const char *, unsigned int, tree);
+extern section *get_section (const char *, unsigned int, tree,
+			     bool not_existing = false);
 extern section *get_named_section (tree, const char *, int);
 extern section *get_variable_section (tree, bool);
 extern void place_block_symbol (rtx);
@@ -537,13 +541,14 @@ extern section *mergeable_constant_section (machine_mode,
 extern section *function_section (tree);
 extern section *unlikely_text_section (void);
 extern section *current_function_section (void);
+extern void switch_to_other_text_partition (void);
 
 /* Return the numbered .ctors.N (if CONSTRUCTOR_P) or .dtors.N (if
    not) section for PRIORITY.  */
 extern section *get_cdtor_priority_section (int, bool);
 
 extern bool unlikely_text_section_p (section *);
-extern void switch_to_section (section *);
+extern void switch_to_section (section *, tree = nullptr);
 extern void output_section_asm_op (const void *);
 
 extern void record_tm_clone_pair (tree, tree);
@@ -556,7 +561,7 @@ extern void output_file_directive (FILE *, const char *);
 extern unsigned int default_section_type_flags (tree, const char *, int);
 
 extern bool have_global_bss_p (void);
-extern bool bss_initializer_p (const_tree);
+extern bool bss_initializer_p (const_tree, bool = false);
 
 extern void default_no_named_section (const char *, unsigned int, tree);
 extern void default_elf_asm_named_section (const char *, unsigned int, tree);
@@ -572,8 +577,8 @@ extern void default_ctor_section_asm_out_constructor (rtx, int);
 extern section *default_select_section (tree, int, unsigned HOST_WIDE_INT);
 extern section *default_elf_select_section (tree, int, unsigned HOST_WIDE_INT);
 extern void default_unique_section (tree, int);
-extern section *default_function_rodata_section (tree);
-extern section *default_no_function_rodata_section (tree);
+extern section *default_function_rodata_section (tree, bool);
+extern section *default_no_function_rodata_section (tree, bool);
 extern section *default_clone_table_section (void);
 extern section *default_select_rtx_section (machine_mode, rtx,
 					    unsigned HOST_WIDE_INT);
@@ -612,7 +617,7 @@ extern int maybe_assemble_visibility (tree);
 
 extern int default_address_cost (rtx, machine_mode, addr_space_t, bool);
 
-/* Output stack usage information.  */
+/* Stack usage.  */
 extern void output_stack_usage (void);
 
 #endif /* ! GCC_OUTPUT_H */

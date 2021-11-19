@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler,
    for IBM RS/6000 POWER running AIX.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -23,14 +23,16 @@
 #undef  TARGET_AIX
 #define TARGET_AIX 1
 
+/* System headers are not C++-aware.  */
+#define SYSTEM_IMPLICIT_EXTERN_C 1
+
 /* Linux64.h wants to redefine TARGET_AIX based on -m64, but it can't be used
    in the #if conditional in options-default.h, so provide another macro.  */
 #undef  TARGET_AIX_OS
 #define TARGET_AIX_OS 1
 
 /* AIX always has a TOC.  */
-#define TARGET_NO_TOC 0
-#define TARGET_TOC 1
+#define TARGET_HAS_TOC 1
 #define FIXED_R2 1
 
 /* AIX allows r13 to be used in 32-bit mode.  */
@@ -54,13 +56,11 @@
    sizes of the fixed area and the parameter area must be a multiple of
    STACK_BOUNDARY.  */
 
-#undef STARTING_FRAME_OFFSET
-#define STARTING_FRAME_OFFSET						\
-  (FRAME_GROWS_DOWNWARD							\
-   ? 0									\
-   : (cfun->calls_alloca						\
-      ? RS6000_ALIGN (crtl->outgoing_args_size + RS6000_SAVE_AREA, 16)	\
-      : (RS6000_ALIGN (crtl->outgoing_args_size, 16) + RS6000_SAVE_AREA)))
+#undef RS6000_STARTING_FRAME_OFFSET
+#define RS6000_STARTING_FRAME_OFFSET					\
+  (cfun->calls_alloca							\
+   ? RS6000_ALIGN (crtl->outgoing_args_size + RS6000_SAVE_AREA, 16)	\
+   : (RS6000_ALIGN (crtl->outgoing_args_size, 16) + RS6000_SAVE_AREA))
 
 /* Offset from the stack pointer register to an item dynamically
    allocated on the stack, e.g., by `alloca'.
@@ -73,10 +73,14 @@
    `emit-rtl.c').  */
 #undef STACK_DYNAMIC_OFFSET
 #define STACK_DYNAMIC_OFFSET(FUNDECL)					\
-   RS6000_ALIGN (crtl->outgoing_args_size + STACK_POINTER_OFFSET, 16)
+   RS6000_ALIGN (crtl->outgoing_args_size.to_constant ()		\
+		 + STACK_POINTER_OFFSET, 16)
 
 #undef  TARGET_IEEEQUAD
 #define TARGET_IEEEQUAD 0
+
+#undef  TARGET_IEEEQUAD_DEFAULT
+#define TARGET_IEEEQUAD_DEFAULT 0
 
 /* The AIX linker will discard static constructors in object files before
    collect has a chance to see them, so scan the object files directly.  */
@@ -219,9 +223,8 @@
 /* This now supports a natural alignment mode.  */
 /* AIX word-aligns FP doubles but doubleword-aligns 64-bit ints.  */
 #define ADJUST_FIELD_ALIGN(FIELD, TYPE, COMPUTED) \
-  ((TARGET_ALIGN_NATURAL == 0						\
-    && TYPE_MODE (strip_array_types (TYPE)) == DFmode)			\
-   ? MIN ((COMPUTED), 32)						\
+  (TARGET_ALIGN_NATURAL == 0						\
+   ? rs6000_special_adjust_field_align (TYPE, COMPUTED)			\
    : (COMPUTED))
 
 /* AIX increases natural record alignment to doubleword if the first
@@ -248,7 +251,7 @@
    registers and memory.  FIRST is nonzero if this is the only
    element.  */
 #define BLOCK_REG_PADDING(MODE, TYPE, FIRST) \
-  (!(FIRST) ? upward : FUNCTION_ARG_PADDING (MODE, TYPE))
+  (!(FIRST) ? PAD_UPWARD : targetm.calls.function_arg_padding (MODE, TYPE))
 
 /* Indicate that jump tables go in the text section.  */
 
@@ -276,3 +279,10 @@
 /* Use standard DWARF numbering for DWARF debugging information.  */
 #define RS6000_USE_DWARF_NUMBERING
 
+#define TARGET_PRECOMPUTE_TLS_P rs6000_aix_precompute_tls_p
+
+/* Replace -m64 with -maix64 and -m32 with -maix32.  */
+#undef SUBTARGET_DRIVER_SELF_SPECS
+#define SUBTARGET_DRIVER_SELF_SPECS	\
+"%{m64:-maix64} %<m64",			\
+"%{m32:-maix32} %<m32"

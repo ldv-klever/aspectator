@@ -1,5 +1,5 @@
 # configure.ac -- Backtrace configure script.
-# Copyright (C) 2012-2017 Free Software Foundation, Inc.
+# Copyright (C) 2012-2021 Free Software Foundation, Inc.
 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -29,7 +29,6 @@
 # IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-AC_PREREQ(2.64)
 AC_INIT(package-unused, version-unused,, libbacktrace)
 AC_CONFIG_SRCDIR(backtrace.h)
 AC_CONFIG_HEADER(config.h)
@@ -79,8 +78,13 @@ case "$AWK" in
 "") AC_MSG_ERROR([can't build without awk]) ;;
 esac
 
+AC_CHECK_PROG(DWZ, dwz, dwz)
+AM_CONDITIONAL(HAVE_DWZ, test "$DWZ" != "")
+
 LT_INIT
 AM_PROG_LIBTOOL
+
+AC_SYS_LARGEFILE
 
 backtrace_supported=yes
 
@@ -128,6 +132,12 @@ else
     EXTRA_FLAGS="$EXTRA_FLAGS -frandom-seed=\$@"
   fi
 fi
+
+if test -n "${with_target_subdir}"; then
+  # Add CET specific flags is Intel CET is enabled.
+  GCC_CET_FLAGS(CET_FLAGS)
+  EXTRA_FLAGS="$EXTRA_FLAGS $CET_FLAGS"
+fi
 AC_SUBST(EXTRA_FLAGS)
 
 ACX_PROG_CC_WARNING_OPTS([-W -Wall -Wwrite-strings -Wstrict-prototypes \
@@ -167,6 +177,17 @@ AC_ARG_ENABLE(host-shared,
 		[build host code as shared libraries])],
 [PIC_FLAG=-fPIC], [PIC_FLAG=])
 AC_SUBST(PIC_FLAG)
+
+# Enable Intel CET on Intel CET enabled host if jit is enabled.
+GCC_CET_HOST_FLAGS(CET_HOST_FLAGS)
+case x$enable_languages in
+*jit*)
+  ;;
+*)
+  CET_HOST_FLAGS=
+  ;;
+esac
+AC_SUBST(CET_HOST_FLAGS)
 
 # Test for __sync support.
 AC_CACHE_CHECK([__sync extensions],
@@ -228,9 +249,13 @@ FORMAT_FILE=
 backtrace_supports_data=yes
 case "$libbacktrace_cv_sys_filetype" in
 elf*) FORMAT_FILE="elf.lo" ;;
+macho) FORMAT_FILE="macho.lo" ;;
 pecoff) FORMAT_FILE="pecoff.lo"
         backtrace_supports_data=no
 	;;
+xcoff*) FORMAT_FILE="xcoff.lo"
+        backtrace_supports_data=no
+        ;;
 *) AC_MSG_WARN([could not determine output file type])
    FORMAT_FILE="unknown.lo"
    backtrace_supported=no
@@ -246,6 +271,16 @@ elf64) elfsize=64 ;;
 *)     elfsize=unused
 esac
 AC_DEFINE_UNQUOTED([BACKTRACE_ELF_SIZE], [$elfsize], [ELF size: 32 or 64])
+AM_CONDITIONAL(HAVE_ELF, test "$FORMAT_FILE" = "elf.lo")
+
+# XCOFF defines.
+xcoffsize=
+case "$libbacktrace_cv_sys_filetype" in
+xcoff32) xcoffsize=32 ;;
+xcoff64) xcoffsize=64 ;;
+*)       xcoffsize=unused
+esac
+AC_DEFINE_UNQUOTED([BACKTRACE_XCOFF_SIZE], [$xcoffsize], [XCOFF size: 32 or 64])
 
 BACKTRACE_SUPPORTED=0
 if test "$backtrace_supported" = "yes"; then
@@ -270,10 +305,8 @@ else
     # simply assume that if we have mman.h, we have mmap.
     have_mmap=yes
     case "${host}" in
-    spu-*-*|*-*-msdosdjgpp)
-        # The SPU does not have mmap, but it has a sys/mman.h header file
-        # containing "mmap_eaddr" and the mmap flags, confusing the test.
-        # DJGPP also has sys/man.h, but no mmap
+    *-*-msdosdjgpp)
+        # DJGPP has sys/man.h, but no mmap
 	have_mmap=no ;;
     esac
   else
@@ -285,12 +318,12 @@ if test "$have_mmap" = "no"; then
   ALLOC_FILE=alloc.lo
 else
   VIEW_FILE=mmapio.lo
-  AC_PREPROC_IFELSE([
+  AC_PREPROC_IFELSE([AC_LANG_SOURCE([
 #include <sys/mman.h>
 #if !defined(MAP_ANONYMOUS) && !defined(MAP_ANON)
   #error no MAP_ANONYMOUS
 #endif
-], [ALLOC_FILE=mmap.lo], [ALLOC_FILE=alloc.lo])
+])], [ALLOC_FILE=mmap.lo], [ALLOC_FILE=alloc.lo])
 fi
 AC_SUBST(VIEW_FILE)
 AC_SUBST(ALLOC_FILE)
@@ -310,12 +343,6 @@ else
     # When built as a GCC target library, we can't do a link test.
     AC_EGREP_HEADER([dl_iterate_phdr], [link.h], [have_dl_iterate_phdr=yes],
 		    [have_dl_iterate_phdr=no])
-    case "${host}" in
-    *-*-solaris2.10*)
-        # Avoid dl_iterate_phdr on Solaris 10, where it is in the
-    	# header file but is only in -ldl.
-	have_dl_iterate_phdr=no ;;
-    esac
   else
     AC_CHECK_FUNC([dl_iterate_phdr], [have_dl_iterate_phdr=yes],
 		  [have_dl_iterate_phdr=no])
@@ -325,11 +352,31 @@ if test "$have_dl_iterate_phdr" = "yes"; then
   AC_DEFINE(HAVE_DL_ITERATE_PHDR, 1, [Define if dl_iterate_phdr is available.])
 fi
 
+# Check for header file for Mach-O image functions.
+AC_CHECK_HEADERS(mach-o/dyld.h)
+
+# Check for loadquery.
+AC_CHECK_HEADERS(sys/ldr.h)
+if test "$ac_cv_header_sys_ldr_h" = "no"; then
+  have_loadquery=no
+else
+  if test -n "${with_target_subdir}"; then
+    # When built as a GCC target library, we can't do a link test.
+    AC_EGREP_HEADER([loadquery], [sys/ldr.h], [have_loadquery=yes],
+		    [have_loadquery=no])
+  else
+    AC_CHECK_FUNC([loadquery], [have_loadquery=yes],
+		  [have_loadquery=no])
+  fi
+fi
+if test "$have_loadquery" = "yes"; then
+  AC_DEFINE(HAVE_LOADQUERY, 1, [Define if AIX loadquery is available.])
+fi
+
 # Check for the fcntl function.
 if test -n "${with_target_subdir}"; then
    case "${host}" in
    *-*-mingw*) have_fcntl=no ;;
-   spu-*-*) have_fcntl=no ;;
    *) have_fcntl=yes ;;
    esac
 else
@@ -340,7 +387,8 @@ if test "$have_fcntl" = "yes"; then
 	    [Define to 1 if you have the fcntl function])
 fi
 
-AC_CHECK_DECLS(strnlen)
+AC_CHECK_DECLS([strnlen, getpagesize])
+AC_CHECK_FUNCS(lstat readlink)
 
 # Check for getexecname function.
 if test -n "${with_target_subdir}"; then
@@ -354,6 +402,129 @@ fi
 if test "$have_getexecname" = "yes"; then
   AC_DEFINE(HAVE_GETEXECNAME, 1, [Define if getexecname is available.])
 fi
+
+# Check for sysctl definitions.
+
+AC_CACHE_CHECK([for KERN_PROC],
+[libbacktrace_cv_proc],
+[AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([
+#include <sys/types.h>
+#include <sys/sysctl.h>
+], [int mib0 = CTL_KERN; int mib1 = KERN_PROC; int mib2 = KERN_PROC_PATHNAME;])],
+  [libbacktrace_cv_proc=yes],
+  [libbacktrace_cv_proc=no])])
+if test "$libbacktrace_cv_proc" = "yes"; then
+  AC_DEFINE([HAVE_KERN_PROC], 1,
+            [Define to 1 if you have KERN_PROC and KERN_PROC_PATHNAME in <sys/sysctl.h>.])
+fi
+
+AC_CACHE_CHECK([for KERN_PROG_ARGS],
+[libbacktrace_cv_procargs],
+[AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([
+#include <sys/types.h>
+#include <sys/sysctl.h>
+], [int mib0 = CTL_KERN; int mib1 = KERN_PROC_ARGS; int mib2 = KERN_PROC_PATHNAME;])],
+  [libbacktrace_cv_procargs=yes],
+  [libbacktrace_cv_procargs=no])])
+if test "$libbacktrace_cv_procargs" = "yes"; then
+  AC_DEFINE([HAVE_KERN_PROC_ARGS], 1,
+            [Define to 1 if you have KERN_PROCARGS and KERN_PROC_PATHNAME in <sys/sysctl.h>.])
+fi
+
+# Check for the clock_gettime function.
+AC_CHECK_FUNCS(clock_gettime)
+clock_gettime_link=
+# At least for glibc, clock_gettime is in librt.  But don't
+# pull that in if it still doesn't give us the function we want.  This
+# test is copied from libgomp, and modified to not link in -lrt as
+# we're using this for test timing only.
+if test "$ac_cv_func_clock_gettime" = no; then
+  AC_CHECK_LIB(rt, clock_gettime,
+    [CLOCK_GETTIME_LINK=-lrt
+     AC_DEFINE(HAVE_CLOCK_GETTIME, 1,
+	       [Define to 1 if you have the `clock_gettime' function.])])
+fi
+AC_SUBST(CLOCK_GETTIME_LINK)
+
+dnl Test whether the compiler supports the -pthread option.
+AC_CACHE_CHECK([whether -pthread is supported],
+[libgo_cv_lib_pthread],
+[CFLAGS_hold=$CFLAGS
+CFLAGS="$CFLAGS -pthread"
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([int i;])],
+[libgo_cv_lib_pthread=yes],
+[libgo_cv_lib_pthread=no])
+CFLAGS=$CFLAGS_hold])
+PTHREAD_CFLAGS=
+if test "$libgo_cv_lib_pthread" = yes; then
+  PTHREAD_CFLAGS=-pthread
+fi
+AC_SUBST(PTHREAD_CFLAGS)
+
+AM_CONDITIONAL(HAVE_PTHREAD, test "$libgo_cv_lib_pthread" = yes)
+
+dnl Test whether the compiler and the linker support the -gdwarf-5 option.
+AC_CACHE_CHECK([whether -gdwarf-5 is supported],
+[libbacktrace_cv_lib_dwarf5],
+[CFLAGS_hold=$CFLAGS
+CFLAGS="$CFLAGS -gdwarf-5"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([int i;], [return 0;])],
+[libbacktrace_cv_lib_dwarf5=yes],
+[libbacktrace_cv_lib_dwarf5=no])
+CFLAGS=$CFLAGS_hold])
+AM_CONDITIONAL(HAVE_DWARF5, test "$libbacktrace_cv_lib_dwarf5" = yes)
+
+AC_CHECK_LIB([z], [compress],
+    [AC_DEFINE(HAVE_ZLIB, 1, [Define if -lz is available.])])
+AM_CONDITIONAL(HAVE_ZLIB, test "$ac_cv_lib_z_compress" = yes)
+
+dnl Test whether the linker supports the --compress_debug_sections option.
+AC_CACHE_CHECK([whether --compress-debug-sections is supported],
+[libgo_cv_ld_compress],
+[LDFLAGS_hold=$LDFLAGS
+LDFLAGS="$LDFLAGS -Wl,--compress-debug-sections=zlib-gnu"
+AC_LINK_IFELSE([AC_LANG_PROGRAM(,)],
+[libgo_cv_ld_compress=yes],
+[libgo_cv_ld_compress=no])
+LDFLAGS=$LDFLAGS_hold])
+AM_CONDITIONAL(HAVE_COMPRESSED_DEBUG, test "$libgo_cv_ld_compress" = yes)
+
+AC_ARG_VAR(OBJCOPY, [location of objcopy])
+AC_CHECK_PROG(OBJCOPY, objcopy, objcopy,)
+AC_CHECK_PROG(READELF, readelf, readelf)
+AC_CACHE_CHECK([whether objcopy supports debuglink],
+[libbacktrace_cv_objcopy_debuglink],
+[if test -n "${with_target_subdir}"; then
+  libbacktrace_cv_objcopy_debuglink=no
+elif ! test -n "${OBJCOPY}"; then
+  libbacktrace_cv_objcopy_debuglink=no
+elif ${OBJCOPY} --help | fgrep add-gnu-debuglink >/dev/null 2>&1; then
+  libbacktrace_cv_objcopy_debuglink=yes
+else
+  libbacktrace_cv_objcopy_debuglink=no
+fi])
+AM_CONDITIONAL(HAVE_OBJCOPY_DEBUGLINK, test "$libbacktrace_cv_objcopy_debuglink" = yes)
+
+AC_ARG_VAR(DSYMUTIL, [location of dsymutil])
+AC_CHECK_PROG(DSYMUTIL, dsymutil, dsymutil)
+AM_CONDITIONAL(USE_DSYMUTIL, test -n "${DSYMUTIL}" -a "$FORMAT_FILE" = "macho.lo")
+
+AC_ARG_VAR(NM, [location of nm])
+AC_CHECK_PROG(NM, nm, nm)
+
+AC_CHECK_PROG(XZ, xz, xz)
+AM_CONDITIONAL(HAVE_XZ, test "$XZ" != "")
+AC_CHECK_PROG(COMM, comm, comm)
+AM_CONDITIONAL(HAVE_COMM, test "$COMM" != "")
+
+AM_CONDITIONAL(HAVE_MINIDEBUG,
+  test "${with_target_subdir}" = "" -a "$FORMAT_FILE" = "elf.lo" -a "${OBJCOPY}" != "" -a "${NM}" != "" -a "${XZ}" != "" -a "${COMM}" != "")
+
+AC_CHECK_LIB([lzma], [lzma_auto_decoder],
+    [AC_DEFINE(HAVE_LIBLZMA, 1, [Define if -llzma is available.])])
+AM_CONDITIONAL(HAVE_LIBLZMA, test "$ac_cv_lib_lzma_lzma_auto_decoder" = yes)
 
 AC_CACHE_CHECK([whether tests can run],
   [libbacktrace_cv_sys_native],
@@ -370,6 +541,7 @@ else
 fi
 
 AC_CONFIG_FILES(Makefile backtrace-supported.h)
+AC_CONFIG_FILES(install-debuginfo-for-buildid.sh, chmod +x install-debuginfo-for-buildid.sh)
 
 # We need multilib support, but only if configuring for the target.
 AC_CONFIG_COMMANDS([default],

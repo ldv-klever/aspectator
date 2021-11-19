@@ -1,4 +1,4 @@
-/* Copyright (C) 2012-2017 Free Software Foundation, Inc.
+/* Copyright (C) 2012-2021 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Atomic Library (libatomic).
@@ -109,9 +109,11 @@ typedef unsigned UWORD __attribute__((mode(word)));
 #define MASK_1		((UWORD)0xff)
 #define MASK_2		((UWORD)0xffff)
 #define MASK_4		((UWORD)0xffffffff)
+#define MASK_8		((UWORD)0xffffffffffffffff)
 #define INVERT_MASK_1	((UWORD)WORDS_BIGENDIAN << ((WORDSIZE - 1) * CHAR_BIT))
 #define INVERT_MASK_2	((UWORD)WORDS_BIGENDIAN << ((WORDSIZE - 2) * CHAR_BIT))
 #define INVERT_MASK_4	((UWORD)WORDS_BIGENDIAN << ((WORDSIZE - 4) * CHAR_BIT))
+#define INVERT_MASK_8	((UWORD)WORDS_BIGENDIAN << ((WORDSIZE - 8) * CHAR_BIT))
 
 /* Most of the files in this library are compiled multiple times with
    N defined to be a power of 2 between 1 and 16.  The SIZE macro is
@@ -240,7 +242,7 @@ bool libat_is_lock_free (size_t, void *) MAN(is_lock_free);
 # if IFUNC_NCOND(N) == 1
 #  define GEN_SELECTOR(X)					\
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i1) HIDDEN;	\
-	static void * C2(select_,X) (void)			\
+	static typeof(C2(libat_,X)) * C2(select_,X) (IFUNC_RESOLVER_ARGS) \
 	{							\
 	  if (IFUNC_COND_1)					\
 	    return C3(libat_,X,_i1);				\
@@ -250,7 +252,7 @@ bool libat_is_lock_free (size_t, void *) MAN(is_lock_free);
 #  define GEN_SELECTOR(X)					\
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i1) HIDDEN;	\
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i2) HIDDEN;	\
-	static void * C2(select_,X) (void)			\
+	static typeof(C2(libat_,X)) * C2(select_,X) (IFUNC_RESOLVER_ARGS) \
 	{							\
 	  if (IFUNC_COND_1)					\
 	    return C3(libat_,X,_i1);				\
@@ -263,7 +265,7 @@ bool libat_is_lock_free (size_t, void *) MAN(is_lock_free);
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i1) HIDDEN;	\
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i2) HIDDEN;	\
 	extern typeof(C2(libat_,X)) C3(libat_,X,_i3) HIDDEN;	\
-	static void * C2(select_,X) (void)			\
+	static typeof(C2(libat_,X)) * C2(select_,X) (IFUNC_RESOLVER_ARGS) \
 	{							\
 	  if (IFUNC_COND_1)					\
 	    return C3(libat_,X,_i1);				\

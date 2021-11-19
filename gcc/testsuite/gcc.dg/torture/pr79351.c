@@ -5,7 +5,7 @@ static struct state {
     int dummy;
 } states[256];
 
-__attribute((noinline))
+__attribute((noipa))
 static void
 ismatch(int n)
 {

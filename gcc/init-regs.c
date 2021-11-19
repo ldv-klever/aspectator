@@ -1,5 +1,5 @@
 /* Initialization of uninitialized regs.
-   Copyright (C) 2007-2017 Free Software Foundation, Inc.
+   Copyright (C) 2007-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -48,7 +48,7 @@ static void
 initialize_uninitialized_regs (void)
 {
   basic_block bb;
-  bitmap already_genned = BITMAP_ALLOC (NULL);
+  auto_bitmap already_genned;
 
   if (optimize == 1)
     {
@@ -105,7 +105,10 @@ initialize_uninitialized_regs (void)
 
 		  start_sequence ();
 		  emit_clobber (reg);
-		  emit_move_insn (reg, CONST0_RTX (GET_MODE (reg)));
+		  /* PR98872: Only emit an initialization if MODE has a
+		     CONST0_RTX defined.  */
+		  if (CONST0_RTX (GET_MODE (reg)))
+		    emit_move_insn (reg, CONST0_RTX (GET_MODE (reg)));
 		  move_insn = get_insns ();
 		  end_sequence ();
 		  emit_insn_before (move_insn, insn);
@@ -125,8 +128,6 @@ initialize_uninitialized_regs (void)
 	df_dump (dump_file);
       df_remove_problem (df_live);
     }
-
-  BITMAP_FREE (already_genned);
 }
 
 namespace {

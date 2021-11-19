@@ -47,7 +47,7 @@ contains
     real :: diff, a(*), b(*)
     do i = 1, n
       diff = a(i) - b(i)
-      if (diff > EPS .or. -diff > EPS) call abort
+      if (diff > EPS .or. -diff > EPS) stop 1
     end do
   end subroutine
 

@@ -1,5 +1,5 @@
 /* Maintain binary trees of symbols.
-   Copyright (C) 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 2000-2021 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -107,7 +107,7 @@ gfc_namespace *gfc_global_ns_list;
 
 gfc_gsymbol *gfc_gsym_root = NULL;
 
-gfc_dt_list *gfc_derived_types;
+gfc_symbol *gfc_derived_types;
 
 static gfc_undo_change_set default_undo_chgset_var = { vNULL, vNULL, NULL };
 static gfc_undo_change_set *latest_undo_chgset = &default_undo_chgset_var;
@@ -245,6 +245,44 @@ gfc_get_default_type (const char *name, gfc_namespace *ns)
 }
 
 
+/* Recursively append candidate SYM to CANDIDATES.  Store the number of
+   candidates in CANDIDATES_LEN.  */
+
+static void
+lookup_symbol_fuzzy_find_candidates (gfc_symtree *sym,
+				     char **&candidates,
+				     size_t &candidates_len)
+{
+  gfc_symtree *p;
+
+  if (sym == NULL)
+    return;
+
+  if (sym->n.sym->ts.type != BT_UNKNOWN && sym->n.sym->ts.type != BT_PROCEDURE)
+    vec_push (candidates, candidates_len, sym->name);
+  p = sym->left;
+  if (p)
+    lookup_symbol_fuzzy_find_candidates (p, candidates, candidates_len);
+
+  p = sym->right;
+  if (p)
+    lookup_symbol_fuzzy_find_candidates (p, candidates, candidates_len);
+}
+
+
+/* Lookup symbol SYM_NAME fuzzily, taking names in SYMBOL into account.  */
+
+static const char*
+lookup_symbol_fuzzy (const char *sym_name, gfc_symbol *symbol)
+{
+  char **candidates = NULL;
+  size_t candidates_len = 0;
+  lookup_symbol_fuzzy_find_candidates (symbol->ns->sym_root, candidates,
+				       candidates_len);
+  return gfc_closest_fuzzy_match (sym_name, candidates);
+}
+
+
 /* Given a pointer to a symbol, set its type according to the first
    letter of its name.  Fails if the letter in question has no default
    type.  */
@@ -263,8 +301,14 @@ gfc_set_default_type (gfc_symbol *sym, int error_flag, gfc_namespace *ns)
     {
       if (error_flag && !sym->attr.untyped)
 	{
-	  gfc_error ("Symbol %qs at %L has no IMPLICIT type",
-		     sym->name, &sym->declared_at);
+	  const char *guessed = lookup_symbol_fuzzy (sym->name, sym);
+	  if (guessed)
+	    gfc_error ("Symbol %qs at %L has no IMPLICIT type"
+		       "; did you mean %qs?",
+		       sym->name, &sym->declared_at, guessed);
+	  else
+	    gfc_error ("Symbol %qs at %L has no IMPLICIT type",
+		       sym->name, &sym->declared_at);
 	  sym->attr.untyped = 1; /* Ensure we only give an error once.  */
 	}
 
@@ -308,7 +352,7 @@ gfc_set_default_type (gfc_symbol *sym, int error_flag, gfc_namespace *ns)
           sym->ts.f90_type = sym->ts.type;
         }
     }
-  
+
   return true;
 }
 
@@ -363,8 +407,8 @@ gfc_check_function_type (gfc_namespace *ns)
                                 goto conflict_std;\
                               }
 
-static bool
-check_conflict (symbol_attribute *attr, const char *name, locus *where)
+bool
+gfc_check_conflict (symbol_attribute *attr, const char *name, locus *where)
 {
   static const char *dummy = "DUMMY", *save = "SAVE", *pointer = "POINTER",
     *target = "TARGET", *external = "EXTERNAL", *intent = "INTENT",
@@ -382,7 +426,8 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
     *is_bind_c = "BIND(C)", *procedure = "PROCEDURE",
     *proc_pointer = "PROCEDURE POINTER", *abstract = "ABSTRACT",
     *asynchronous = "ASYNCHRONOUS", *codimension = "CODIMENSION",
-    *contiguous = "CONTIGUOUS", *generic = "GENERIC", *automatic = "AUTOMATIC";
+    *contiguous = "CONTIGUOUS", *generic = "GENERIC", *automatic = "AUTOMATIC",
+    *pdt_len = "LEN", *pdt_kind = "KIND";
   static const char *threadprivate = "THREADPRIVATE";
   static const char *omp_declare_target = "OMP DECLARE TARGET";
   static const char *omp_declare_target_link = "OMP DECLARE TARGET LINK";
@@ -394,6 +439,9 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
 
   const char *a1, *a2;
   int standard;
+
+  if (attr->artificial)
+    return true;
 
   if (where == NULL)
     where = &gfc_current_locus;
@@ -464,7 +512,7 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
 	  case FL_NAMELIST:
 	    gfc_error ("Namelist group name at %L cannot have the "
 		       "SAVE attribute", where);
-	    return false; 
+	    return false;
 	  case FL_PROCEDURE:
 	    /* Conflicts between SAVE and PROCEDURE will be checked at
 	       resolution stage, see "resolve_fl_procedure".  */
@@ -496,7 +544,6 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
   conf (allocatable, elemental);
 
   conf (in_common, automatic);
-  conf (in_equivalence, automatic);
   conf (result, automatic);
   conf (use_assoc, automatic);
   conf (dummy, automatic);
@@ -514,7 +561,7 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
   if ((attr->if_source == IFSRC_DECL && !attr->procedure) || attr->contained)
     conf (external, subroutine);
 
-  if (attr->proc_pointer && !gfc_notify_std (GFC_STD_F2003, 
+  if (attr->proc_pointer && !gfc_notify_std (GFC_STD_F2003,
 					     "Procedure pointer at %C"))
     return false;
 
@@ -522,7 +569,7 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
   conf_std (allocatable, dummy, GFC_STD_F2003);
   conf_std (allocatable, function, GFC_STD_F2003);
   conf_std (allocatable, result, GFC_STD_F2003);
-  conf (elemental, recursive);
+  conf_std (elemental, recursive, GFC_STD_F2018);
 
   conf (in_common, dummy);
   conf (in_common, allocatable);
@@ -664,6 +711,23 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
   conf (entry, oacc_declare_deviceptr)
   conf (entry, oacc_declare_device_resident)
 
+  conf (pdt_kind, allocatable)
+  conf (pdt_kind, pointer)
+  conf (pdt_kind, dimension)
+  conf (pdt_kind, codimension)
+
+  conf (pdt_len, allocatable)
+  conf (pdt_len, pointer)
+  conf (pdt_len, dimension)
+  conf (pdt_len, codimension)
+
+  if (attr->access == ACCESS_PRIVATE)
+    {
+      a1 = privat;
+      conf2 (pdt_kind);
+      conf2 (pdt_len);
+    }
+
   a1 = gfc_code2string (flavors, attr->flavor);
 
   if (attr->in_namelist
@@ -748,7 +812,9 @@ check_conflict (symbol_attribute *attr, const char *name, locus *where)
 	    conf2 (threadprivate);
 	}
 
-      if (!attr->proc_pointer)
+      /* Procedure pointers in COMMON blocks are allowed in F03,
+       * but forbidden per F08:C5100.  */
+      if (!attr->proc_pointer || (gfc_option.allow_std & GFC_STD_F2008))
 	conf2 (in_common);
 
       conf2 (omp_declare_target_link);
@@ -846,13 +912,13 @@ conflict:
 conflict_std:
   if (name == NULL)
     {
-      return gfc_notify_std (standard, "%s attribute "
+      return gfc_notify_std (standard, "%s attribute conflicts "
                              "with %s attribute at %L", a1, a2,
                              where);
     }
   else
     {
-      return gfc_notify_std (standard, "%s attribute "
+      return gfc_notify_std (standard, "%s attribute conflicts "
 			     "with %s attribute in %qs at %L",
                              a1, a2, name, where);
     }
@@ -937,7 +1003,7 @@ gfc_add_attribute (symbol_attribute *attr, locus *where)
   if (check_used (attr, NULL, where))
     return false;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -948,7 +1014,7 @@ gfc_add_allocatable (symbol_attribute *attr, locus *where)
   if (check_used (attr, NULL, where))
     return false;
 
-  if (attr->allocatable)
+  if (attr->allocatable && ! gfc_submodule_procedure(attr))
     {
       duplicate_attr ("ALLOCATABLE", where);
       return false;
@@ -963,7 +1029,7 @@ gfc_add_allocatable (symbol_attribute *attr, locus *where)
     }
 
   attr->allocatable = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -978,7 +1044,7 @@ gfc_add_automatic (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->automatic = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1004,7 +1070,7 @@ gfc_add_codimension (symbol_attribute *attr, const char *name, locus *where)
     }
 
   attr->codimension = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1015,7 +1081,7 @@ gfc_add_dimension (symbol_attribute *attr, const char *name, locus *where)
   if (check_used (attr, name, where))
     return false;
 
-  if (attr->dimension)
+  if (attr->dimension && ! gfc_submodule_procedure(attr))
     {
       duplicate_attr ("DIMENSION", where);
       return false;
@@ -1030,7 +1096,7 @@ gfc_add_dimension (symbol_attribute *attr, const char *name, locus *where)
     }
 
   attr->dimension = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1042,7 +1108,7 @@ gfc_add_contiguous (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->contiguous = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1067,7 +1133,7 @@ gfc_add_external (symbol_attribute *attr, locus *where)
 
   attr->external = 1;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1086,7 +1152,7 @@ gfc_add_intrinsic (symbol_attribute *attr, locus *where)
 
   attr->intrinsic = 1;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1104,7 +1170,33 @@ gfc_add_optional (symbol_attribute *attr, locus *where)
     }
 
   attr->optional = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
+}
+
+bool
+gfc_add_kind (symbol_attribute *attr, locus *where)
+{
+  if (attr->pdt_kind)
+    {
+      duplicate_attr ("KIND", where);
+      return false;
+    }
+
+  attr->pdt_kind = 1;
+  return gfc_check_conflict (attr, NULL, where);
+}
+
+bool
+gfc_add_len (symbol_attribute *attr, locus *where)
+{
+  if (attr->pdt_len)
+    {
+      duplicate_attr ("LEN", where);
+      return false;
+    }
+
+  attr->pdt_len = 1;
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1116,7 +1208,8 @@ gfc_add_pointer (symbol_attribute *attr, locus *where)
     return false;
 
   if (attr->pointer && !(attr->if_source == IFSRC_IFBODY
-      && !gfc_find_state (COMP_INTERFACE)))
+      && !gfc_find_state (COMP_INTERFACE))
+      && ! gfc_submodule_procedure(attr))
     {
       duplicate_attr ("POINTER", where);
       return false;
@@ -1129,7 +1222,7 @@ gfc_add_pointer (symbol_attribute *attr, locus *where)
   else
     attr->pointer = 1;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1141,7 +1234,7 @@ gfc_add_cray_pointer (symbol_attribute *attr, locus *where)
     return false;
 
   attr->cray_pointer = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1160,7 +1253,7 @@ gfc_add_cray_pointee (symbol_attribute *attr, locus *where)
     }
 
   attr->cray_pointee = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1172,14 +1265,14 @@ gfc_add_protected (symbol_attribute *attr, const char *name, locus *where)
 
   if (attr->is_protected)
     {
-	if (!gfc_notify_std (GFC_STD_LEGACY, 
-			     "Duplicate PROTECTED attribute specified at %L", 
+	if (!gfc_notify_std (GFC_STD_LEGACY,
+			     "Duplicate PROTECTED attribute specified at %L",
 			     where))
 	  return false;
     }
 
   attr->is_protected = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1191,7 +1284,7 @@ gfc_add_result (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->result = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1214,16 +1307,17 @@ gfc_add_save (symbol_attribute *attr, save_state s, const char *name,
   if (s == SAVE_EXPLICIT)
     gfc_unset_implicit_pure (NULL);
 
-  if (s == SAVE_EXPLICIT && attr->save == SAVE_EXPLICIT)
+  if (s == SAVE_EXPLICIT && attr->save == SAVE_EXPLICIT
+      && (flag_automatic || pedantic))
     {
-	if (!gfc_notify_std (GFC_STD_LEGACY, 
-			     "Duplicate SAVE attribute specified at %L", 
+	if (!gfc_notify_std (GFC_STD_LEGACY,
+			     "Duplicate SAVE attribute specified at %L",
 			     where))
 	  return false;
     }
 
   attr->save = s;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1236,14 +1330,14 @@ gfc_add_value (symbol_attribute *attr, const char *name, locus *where)
 
   if (attr->value)
     {
-	if (!gfc_notify_std (GFC_STD_LEGACY, 
-			     "Duplicate VALUE attribute specified at %L", 
+	if (!gfc_notify_std (GFC_STD_LEGACY,
+			     "Duplicate VALUE attribute specified at %L",
 			     where))
 	  return false;
     }
 
   attr->value = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1255,8 +1349,8 @@ gfc_add_volatile (symbol_attribute *attr, const char *name, locus *where)
      given a VOLATILE attribute - unless it is a coarray (F2008, C560).  */
 
   if (attr->volatile_ && attr->volatile_ns == gfc_current_ns)
-    if (!gfc_notify_std (GFC_STD_LEGACY, 
-			 "Duplicate VOLATILE attribute specified at %L", 
+    if (!gfc_notify_std (GFC_STD_LEGACY,
+			 "Duplicate VOLATILE attribute specified at %L",
 			 where))
       return false;
 
@@ -1276,7 +1370,7 @@ gfc_add_volatile (symbol_attribute *attr, const char *name, locus *where)
 
   attr->volatile_ = 1;
   attr->volatile_ns = gfc_current_ns;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1288,14 +1382,14 @@ gfc_add_asynchronous (symbol_attribute *attr, const char *name, locus *where)
      given a ASYNCHRONOUS attribute.  */
 
   if (attr->asynchronous && attr->asynchronous_ns == gfc_current_ns)
-    if (!gfc_notify_std (GFC_STD_LEGACY, 
-			 "Duplicate ASYNCHRONOUS attribute specified at %L", 
+    if (!gfc_notify_std (GFC_STD_LEGACY,
+			 "Duplicate ASYNCHRONOUS attribute specified at %L",
 			 where))
       return false;
 
   attr->asynchronous = 1;
   attr->asynchronous_ns = gfc_current_ns;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1313,7 +1407,7 @@ gfc_add_threadprivate (symbol_attribute *attr, const char *name, locus *where)
     }
 
   attr->threadprivate = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1329,7 +1423,7 @@ gfc_add_omp_declare_target (symbol_attribute *attr, const char *name,
     return true;
 
   attr->omp_declare_target = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1345,7 +1439,7 @@ gfc_add_omp_declare_target_link (symbol_attribute *attr, const char *name,
     return true;
 
   attr->omp_declare_target_link = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1360,7 +1454,7 @@ gfc_add_oacc_declare_create (symbol_attribute *attr, const char *name,
     return true;
 
   attr->oacc_declare_create = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1375,7 +1469,7 @@ gfc_add_oacc_declare_copyin (symbol_attribute *attr, const char *name,
     return true;
 
   attr->oacc_declare_copyin = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1390,7 +1484,7 @@ gfc_add_oacc_declare_deviceptr (symbol_attribute *attr, const char *name,
     return true;
 
   attr->oacc_declare_deviceptr = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1405,7 +1499,7 @@ gfc_add_oacc_declare_device_resident (symbol_attribute *attr, const char *name,
     return true;
 
   attr->oacc_declare_device_resident = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1423,7 +1517,7 @@ gfc_add_target (symbol_attribute *attr, locus *where)
     }
 
   attr->target = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1436,7 +1530,7 @@ gfc_add_dummy (symbol_attribute *attr, const char *name, locus *where)
 
   /* Duplicate dummy arguments are allowed due to ENTRY statements.  */
   attr->dummy = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1449,7 +1543,7 @@ gfc_add_in_common (symbol_attribute *attr, const char *name, locus *where)
 
   /* Duplicate attribute already checked for.  */
   attr->in_common = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1459,7 +1553,7 @@ gfc_add_in_equivalence (symbol_attribute *attr, const char *name, locus *where)
 
   /* Duplicate attribute already checked for.  */
   attr->in_equivalence = 1;
-  if (!check_conflict (attr, name, where))
+  if (!gfc_check_conflict (attr, name, where))
     return false;
 
   if (attr->flavor == FL_VARIABLE)
@@ -1477,7 +1571,7 @@ gfc_add_data (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->data = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1486,7 +1580,7 @@ gfc_add_in_namelist (symbol_attribute *attr, const char *name, locus *where)
 {
 
   attr->in_namelist = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1498,7 +1592,7 @@ gfc_add_sequence (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->sequence = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1516,7 +1610,7 @@ gfc_add_elemental (symbol_attribute *attr, locus *where)
     }
 
   attr->elemental = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1534,7 +1628,7 @@ gfc_add_pure (symbol_attribute *attr, locus *where)
     }
 
   attr->pure = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1552,7 +1646,7 @@ gfc_add_recursive (symbol_attribute *attr, locus *where)
     }
 
   attr->recursive = 1;
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1570,7 +1664,7 @@ gfc_add_entry (symbol_attribute *attr, const char *name, locus *where)
     }
 
   attr->entry = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1583,7 +1677,7 @@ gfc_add_function (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->function = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1602,7 +1696,7 @@ gfc_add_subroutine (symbol_attribute *attr, const char *name, locus *where)
      compiler-generated), do not check. See PR 84394.  */
 
   if (name && *name != '_' && gfc_current_state () != COMP_BLOCK_DATA)
-    return check_conflict (attr, name, where);
+    return gfc_check_conflict (attr, name, where);
   else
     return true;
 }
@@ -1617,7 +1711,7 @@ gfc_add_generic (symbol_attribute *attr, const char *name, locus *where)
     return false;
 
   attr->generic = 1;
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1640,7 +1734,7 @@ gfc_add_proc (symbol_attribute *attr, const char *name, locus *where)
 
   attr->procedure = 1;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1655,7 +1749,7 @@ gfc_add_abstract (symbol_attribute* attr, locus* where)
 
   attr->abstract = 1;
 
-  return check_conflict (attr, NULL, where);
+  return gfc_check_conflict (attr, NULL, where);
 }
 
 
@@ -1678,8 +1772,8 @@ gfc_add_flavor (symbol_attribute *attr, sym_flavor f, const char *name,
   /* Copying a procedure dummy argument for a module procedure in a
      submodule results in the flavor being copied and would result in
      an error without this.  */
-  if (gfc_new_block && gfc_new_block->abr_modproc_decl
-      && attr->flavor == f && f == FL_PROCEDURE)
+  if (attr->flavor == f && f == FL_PROCEDURE
+      && gfc_new_block && gfc_new_block->abr_modproc_decl)
     return true;
 
   if (attr->flavor != FL_UNKNOWN)
@@ -1701,7 +1795,7 @@ gfc_add_flavor (symbol_attribute *attr, sym_flavor f, const char *name,
 
   attr->flavor = f;
 
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1748,7 +1842,7 @@ gfc_add_procedure (symbol_attribute *attr, procedure_type t,
 	  || attr->dimension))
     return false;
 
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1762,7 +1856,7 @@ gfc_add_intent (symbol_attribute *attr, sym_intent intent, locus *where)
   if (attr->intent == INTENT_UNKNOWN)
     {
       attr->intent = intent;
-      return check_conflict (attr, NULL, where);
+      return gfc_check_conflict (attr, NULL, where);
     }
 
   if (where == NULL)
@@ -1787,7 +1881,7 @@ gfc_add_access (symbol_attribute *attr, gfc_access access,
 	|| (attr->use_assoc && attr->access != ACCESS_PRIVATE))
     {
       attr->access = access;
-      return check_conflict (attr, name, where);
+      return gfc_check_conflict (attr, name, where);
     }
 
   if (where == NULL)
@@ -1812,14 +1906,14 @@ gfc_add_is_bind_c (symbol_attribute *attr, const char *name, locus *where,
     gfc_error_now ("Duplicate BIND attribute specified at %L", where);
   else
     attr->is_bind_c = 1;
-  
+
   if (where == NULL)
     where = &gfc_current_locus;
-   
+
   if (!gfc_notify_std (GFC_STD_F2003, "BIND(C) at %L", where))
     return false;
 
-  return check_conflict (attr, name, where);
+  return gfc_check_conflict (attr, name, where);
 }
 
 
@@ -1910,9 +2004,12 @@ gfc_add_type (gfc_symbol *sym, gfc_typespec *ts, locus *where)
 	gfc_error ("Symbol %qs at %L conflicts with symbol from module %qs, "
 		   "use-associated at %L", sym->name, where, sym->module,
 		   &sym->declared_at);
+      else if (sym->attr.function && sym->attr.result)
+	gfc_error ("Symbol %qs at %L already has basic type of %s",
+		   sym->ns->proc_name->name, where, gfc_basic_typename (type));
       else
 	gfc_error ("Symbol %qs at %L already has basic type of %s", sym->name,
-		 where, gfc_basic_typename (type));
+		   where, gfc_basic_typename (type));
       return false;
     }
 
@@ -1930,7 +2027,9 @@ gfc_add_type (gfc_symbol *sym, gfc_typespec *ts, locus *where)
       || (flavor == FL_PROCEDURE && sym->attr.subroutine)
       || flavor == FL_DERIVED || flavor == FL_NAMELIST)
     {
-      gfc_error ("Symbol %qs at %L cannot have a type", sym->name, where);
+      gfc_error ("Symbol %qs at %L cannot have a type",
+		 sym->ns->proc_name ? sym->ns->proc_name->name : sym->name,
+		 where);
       return false;
     }
 
@@ -1968,7 +2067,7 @@ bool
 gfc_copy_attr (symbol_attribute *dest, symbol_attribute *src, locus *where)
 {
   int is_proc_lang_bind_spec;
-  
+
   /* In line with the other attributes, we only add bits but do not remove
      them; cf. also PR 41034.  */
   dest->ext_attr |= src->ext_attr;
@@ -2079,7 +2178,7 @@ gfc_copy_attr (symbol_attribute *dest, symbol_attribute *src, locus *where)
     dest->is_c_interop = 1;
   if (src->is_iso_c)
     dest->is_iso_c = 1;
-  
+
   if (src->external && !gfc_add_external (dest, where))
     goto fail;
   if (src->intrinsic && !gfc_add_intrinsic (dest, where))
@@ -2334,12 +2433,38 @@ find_union_component (gfc_symbol *un, const char *name,
 }
 
 
+/* Recursively append candidate COMPONENT structures to CANDIDATES.  Store
+   the number of total candidates in CANDIDATES_LEN.  */
+
+static void
+lookup_component_fuzzy_find_candidates (gfc_component *component,
+					char **&candidates,
+					size_t &candidates_len)
+{
+  for (gfc_component *p = component; p; p = p->next)
+    vec_push (candidates, candidates_len, p->name);
+}
+
+
+/* Lookup component MEMBER fuzzily, taking names in COMPONENT into account.  */
+
+static const char*
+lookup_component_fuzzy (const char *member, gfc_component *component)
+{
+  char **candidates = NULL;
+  size_t candidates_len = 0;
+  lookup_component_fuzzy_find_candidates (component, candidates,
+					  candidates_len);
+  return gfc_closest_fuzzy_match (member, candidates);
+}
+
+
 /* Given a derived type node and a component name, try to locate the
    component structure.  Returns the NULL pointer if the component is
    not found or the components are private.  If noaccess is set, no access
    checks are done.  If silent is set, an error will not be generated if
    the component cannot be found or accessed.
-   
+
    If ref is not NULL, *ref is set to represent the chain of components
    required to get to the ultimate component.
 
@@ -2431,8 +2556,16 @@ gfc_find_component (gfc_symbol *sym, const char *name,
     }
 
   if (p == NULL && !silent)
-    gfc_error ("%qs at %C is not a member of the %qs structure",
-	       name, sym->name);
+    {
+      const char *guessed = lookup_component_fuzzy (name, sym->components);
+      if (guessed)
+	gfc_error ("%qs at %C is not a member of the %qs structure"
+		   "; did you mean %qs?",
+		   name, sym->name, guessed);
+      else
+	gfc_error ("%qs at %C is not a member of the %qs structure",
+		   name, sym->name);
+    }
 
   /* Component was found; build the ultimate component reference. */
   if (p != NULL && ref)
@@ -2471,6 +2604,10 @@ free_components (gfc_component *p)
 
       gfc_free_array_spec (p->as);
       gfc_free_expr (p->initializer);
+      if (p->kind_expr)
+	gfc_free_expr (p->kind_expr);
+      if (p->param_list)
+	gfc_free_actual_arglist (p->param_list);
       free (p->tb);
 
       free (p);
@@ -2524,7 +2661,7 @@ free_st_labels (gfc_st_label *label)
 
   free_st_labels (label->left);
   free_st_labels (label->right);
-  
+
   if (label->format != NULL)
     gfc_free_expr (label->format);
   free (label);
@@ -2617,9 +2754,9 @@ gfc_define_st_label (gfc_st_label *lp, gfc_sl_type type, locus *label_locus)
 	    lp->defined = type;
 
 	  if (lp->referenced == ST_LABEL_DO_TARGET && type != ST_LABEL_DO_TARGET
-      	      && !gfc_notify_std (GFC_STD_F95_OBS, "DO termination statement "
-				  "which is not END DO or CONTINUE with "
-				  "label %d at %C", labelno))
+      	      && !gfc_notify_std (GFC_STD_F95_OBS | GFC_STD_F2018_DEL,
+				  "DO termination statement which is not END DO"
+				  " or CONTINUE with label %d at %C", labelno))
 	    return;
 	  break;
 
@@ -2674,8 +2811,13 @@ gfc_reference_st_label (gfc_st_label *lp, gfc_sl_type type)
     }
 
   if (lp->referenced == ST_LABEL_DO_TARGET && type == ST_LABEL_DO_TARGET
-      && !gfc_notify_std (GFC_STD_F95_OBS, "Shared DO termination label %d "
-			  "at %C", labelno))
+      && !gfc_notify_std (GFC_STD_F95_OBS | GFC_STD_F2018_DEL,
+			  "Shared DO termination label %d at %C", labelno))
+    return false;
+
+  if (type == ST_LABEL_DO_TARGET
+      && !gfc_notify_std (GFC_STD_F2018_OBS, "Labeled DO statement "
+			  "at %L", &gfc_current_locus))
     return false;
 
   if (lp->referenced != ST_LABEL_DO_TARGET)
@@ -2761,9 +2903,6 @@ gfc_get_namespace (gfc_namespace *parent, int parent_types)
 	  ts->kind = gfc_default_real_kind;
 	}
     }
-
-  if (parent_types && ns->parent != NULL)
-    ns->has_implicit_none_export = ns->parent->has_implicit_none_export;
 
   ns->refs = 1;
 
@@ -2953,6 +3092,9 @@ gfc_free_symbol (gfc_symbol *sym)
 
   set_symbol_common_block (sym, NULL);
 
+  if (sym->param_list)
+    gfc_free_actual_arglist (sym->param_list);
+
   free (sym);
 }
 
@@ -2996,33 +3138,22 @@ gfc_new_symbol (const char *name, gfc_namespace *ns)
   gfc_clear_ts (&p->ts);
   gfc_clear_attr (&p->attr);
   p->ns = ns;
-
   p->declared_at = gfc_current_locus;
-
-  if (strlen (name) > GFC_MAX_SYMBOL_LEN)
-    gfc_internal_error ("new_symbol(): Symbol name too long");
-
   p->name = gfc_get_string ("%s", name);
 
-  /* Make sure flags for symbol being C bound are clear initially.  */
-  p->attr.is_bind_c = 0;
-  p->attr.is_iso_c = 0;
-
-  /* Clear the ptrs we may need.  */
-  p->common_block = NULL;
-  p->f2k_derived = NULL;
-  p->assoc = NULL;
-  p->fn_result_spec = 0;
-  
   return p;
 }
 
 
-/* Generate an error if a symbol is ambiguous.  */
+/* Generate an error if a symbol is ambiguous, and set the error flag
+   on it.  */
 
 static void
 ambiguous_symbol (const char *name, gfc_symtree *st)
 {
+
+  if (st->n.sym->error)
+    return;
 
   if (st->n.sym->module)
     gfc_error ("Name %qs at %C is an ambiguous reference to %qs "
@@ -3030,6 +3161,8 @@ ambiguous_symbol (const char *name, gfc_symtree *st)
   else
     gfc_error ("Name %qs at %C is an ambiguous reference to %qs "
 	       "from current program unit", name, st->n.sym->name);
+
+  st->n.sym->error = 1;
 }
 
 
@@ -3115,7 +3248,25 @@ gfc_find_sym_tree (const char *name, gfc_namespace *ns, int parent_flag,
     }
   while (ns != NULL);
 
+  if (gfc_current_state() == COMP_DERIVED
+      && gfc_current_block ()->attr.pdt_template)
+    {
+      gfc_symbol *der = gfc_current_block ();
+      for (; der; der = gfc_get_derived_super_type (der))
+	{
+	  if (der->f2k_derived && der->f2k_derived->sym_root)
+	    {
+	      st = gfc_find_symtree (der->f2k_derived->sym_root, name);
+	      if (st)
+		break;
+	    }
+	}
+      *result = st;
+      return 0;
+    }
+
   *result = NULL;
+
   return 0;
 }
 
@@ -3352,31 +3503,15 @@ find_common_symtree (gfc_symtree *st, gfc_common_head *head)
     return st;
 
   result = find_common_symtree (st->left, head);
-  if (!result)  
+  if (!result)
     result = find_common_symtree (st->right, head);
 
   return result;
 }
 
 
-/* Clear the given storage, and make it the current change set for registering
-   changed symbols.  Its contents are freed after a call to
-   gfc_restore_last_undo_checkpoint or gfc_drop_last_undo_checkpoint, but
-   it is up to the caller to free the storage itself.  It is usually a local
-   variable, so there is nothing to do anyway.  */
-
-void
-gfc_new_undo_checkpoint (gfc_undo_change_set &chg_syms)
-{
-  chg_syms.syms = vNULL;
-  chg_syms.tbps = vNULL;
-  chg_syms.previous = latest_undo_chgset;
-  latest_undo_chgset = &chg_syms;
-}
-
-
 /* Restore previous state of symbol.  Just copy simple stuff.  */
-  
+
 static void
 restore_old_symbol (gfc_symbol *p)
 {
@@ -3618,10 +3753,10 @@ free_old_symbol (gfc_symbol *sym)
   if (sym->old_symbol == NULL)
     return;
 
-  if (sym->old_symbol->as != sym->as) 
+  if (sym->old_symbol->as != sym->as)
     gfc_free_array_spec (sym->old_symbol->as);
 
-  if (sym->old_symbol->value != sym->value) 
+  if (sym->old_symbol->value != sym->value)
     gfc_free_expr (sym->old_symbol->value);
 
   if (sym->old_symbol->formal != sym->formal)
@@ -3714,7 +3849,7 @@ free_common_tree (gfc_symtree * common_tree)
   free_common_tree (common_tree->right);
 
   free (common_tree);
-}  
+}
 
 
 /* Recursive function that deletes an entire tree and all the common
@@ -3766,23 +3901,6 @@ free_sym_tree (gfc_symtree *sym_tree)
 
   gfc_release_symbol (sym_tree->n.sym);
   free (sym_tree);
-}
-
-
-/* Free the derived type list.  */
-
-void
-gfc_free_dt_list (void)
-{
-  gfc_dt_list *dt, *n;
-
-  for (dt = gfc_derived_types; dt; dt = n)
-    {
-      n = dt->next;
-      free (dt);
-    }
-
-  gfc_derived_types = NULL;
 }
 
 
@@ -3863,7 +3981,7 @@ gfc_new_charlen (gfc_namespace *ns, gfc_charlen *old_cl)
 }
 
 
-/* Free the charlen list from cl to end (end is not freed). 
+/* Free the charlen list from cl to end (end is not freed).
    Free the whole list if end is NULL.  */
 
 void
@@ -3907,6 +4025,7 @@ gfc_free_namespace (gfc_namespace *ns)
 {
   gfc_namespace *p, *q;
   int i;
+  gfc_was_finalized *f;
 
   if (ns == NULL)
     return;
@@ -3914,6 +4033,7 @@ gfc_free_namespace (gfc_namespace *ns)
   ns->refs--;
   if (ns->refs > 0)
     return;
+
   gcc_assert (ns->refs == 0);
 
   gfc_free_statements (ns->code);
@@ -3938,6 +4058,17 @@ gfc_free_namespace (gfc_namespace *ns)
     gfc_free_interface (ns->op[i]);
 
   gfc_free_data (ns->data);
+
+  /* Free all the expr + component combinations that have been
+     finalized.  */
+  f = ns->was_finalized;
+  while (f)
+    {
+      gfc_was_finalized* current = f;
+      f = f->next;
+      free (current);
+    }
+
   p = ns->contained;
   free (ns);
 
@@ -3962,9 +4093,15 @@ gfc_symbol_init_2 (void)
 void
 gfc_symbol_done_2 (void)
 {
-  gfc_free_namespace (gfc_current_ns);
-  gfc_current_ns = NULL;
-  gfc_free_dt_list ();
+  if (gfc_current_ns != NULL)
+    {
+      /* free everything from the root.  */
+      while (gfc_current_ns->parent != NULL)
+	gfc_current_ns = gfc_current_ns->parent;
+      gfc_free_namespace (gfc_current_ns);
+      gfc_current_ns = NULL;
+    }
+  gfc_derived_types = NULL;
 
   enforce_single_undo_checkpoint ();
   free_undo_change_set_data (*latest_undo_chgset);
@@ -4019,7 +4156,7 @@ do_traverse_symtree (gfc_symtree *st, void (*st_func) (gfc_symtree *),
   gcc_assert ((st_func && !sym_func) || (!st_func && sym_func));
   nodes = count_st_nodes (st);
   st_vec = XALLOCAVEC (gfc_symtree *, nodes);
-  node_cntr = 0; 
+  node_cntr = 0;
   fill_st_vector (st, st_vec, node_cntr);
 
   if (sym_func)
@@ -4111,6 +4248,7 @@ save_symbol (gfc_symbol *sym)
     return;
 
   if (sym->attr.in_common
+      || sym->attr.in_equivalence
       || sym->attr.dummy
       || sym->attr.result
       || sym->attr.flavor != FL_VARIABLE)
@@ -4167,6 +4305,29 @@ gfc_find_gsymbol (gfc_gsymbol *symbol, const char *name)
 }
 
 
+/* Case insensitive search a tree for the global symbol.  */
+
+gfc_gsymbol *
+gfc_find_case_gsymbol (gfc_gsymbol *symbol, const char *name)
+{
+  int c;
+
+  if (symbol == NULL)
+    return NULL;
+
+  while (symbol)
+    {
+      c = strcasecmp (name, symbol->name);
+      if (!c)
+	return symbol;
+
+      symbol = (c < 0) ? symbol->left : symbol->right;
+    }
+
+  return NULL;
+}
+
+
 /* Compare two global symbols. Used for managing the BB tree.  */
 
 static int
@@ -4201,24 +4362,38 @@ gfc_get_gsymbol (const char *name, bool bind_c)
   return s;
 }
 
+void
+gfc_traverse_gsymbol (gfc_gsymbol *gsym,
+		      void (*do_something) (gfc_gsymbol *, void *),
+		      void *data)
+{
+  if (gsym->left)
+    gfc_traverse_gsymbol (gsym->left, do_something, data);
+
+  (*do_something) (gsym, data);
+
+  if (gsym->right)
+    gfc_traverse_gsymbol (gsym->right, do_something, data);
+}
 
 static gfc_symbol *
 get_iso_c_binding_dt (int sym_id)
 {
-  gfc_dt_list *dt_list;
-
-  dt_list = gfc_derived_types;
+  gfc_symbol *dt_list = gfc_derived_types;
 
   /* Loop through the derived types in the name list, searching for
      the desired symbol from iso_c_binding.  Search the parent namespaces
      if necessary and requested to (parent_flag).  */
-  while (dt_list != NULL)
+  if (dt_list)
     {
-      if (dt_list->derived->from_intmod != INTMOD_NONE
-	  && dt_list->derived->intmod_sym_id == sym_id)
-        return dt_list->derived;
+      while (dt_list->dt_next != gfc_derived_types)
+	{
+	  if (dt_list->from_intmod != INTMOD_NONE
+	      && dt_list->intmod_sym_id == sym_id)
+	    return dt_list;
 
-      dt_list = dt_list->next;
+	  dt_list = dt_list->dt_next;
+	}
     }
 
   return NULL;
@@ -4238,7 +4413,7 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
   gfc_component *curr_comp = NULL;
   bool is_c_interop = false;
   bool retval = true;
-   
+
   if (derived_sym == NULL)
     gfc_internal_error ("verify_bind_c_derived_type(): Given symbol is "
                         "unexpectedly NULL");
@@ -4247,7 +4422,7 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
      so we don't repeat warnings/errors.  */
   if (derived_sym->ts.is_c_interop)
     return true;
-  
+
   /* The derived type must have the BIND attribute to be interoperable
      J3/04-007, Section 15.2.3.  */
   if (derived_sym->attr.is_bind_c != 1)
@@ -4258,7 +4433,7 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
                      &(derived_sym->declared_at));
       retval = false;
     }
-  
+
   curr_comp = derived_sym->components;
 
   /* Fortran 2003 allows an empty derived type.  C99 appears to disallow an
@@ -4283,12 +4458,12 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
   /* Initialize the derived type as being C interoperable.
      If we find an error in the components, this will be set false.  */
   derived_sym->ts.is_c_interop = 1;
-  
+
   /* Loop through the list of components to verify that the kind of
      each is a C interoperable type.  */
   do
     {
-      /* The components cannot be pointers (fortran sense).  
+      /* The components cannot be pointers (fortran sense).
          J3/04-007, Section 15.2.3, C1505.	*/
       if (curr_comp->attr.pointer != 0)
         {
@@ -4320,13 +4495,13 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
                      derived_sym->name, &(derived_sym->declared_at));
           retval = false;
         }
-      
+
       /* BIND(C) derived types must have interoperable components.  */
       if (curr_comp->ts.type == BT_DERIVED
-	  && curr_comp->ts.u.derived->ts.is_iso_c != 1 
+	  && curr_comp->ts.u.derived->ts.is_iso_c != 1
           && curr_comp->ts.u.derived != derived_sym)
         {
-          /* This should be allowed; the draft says a derived-type can not
+          /* This should be allowed; the draft says a derived-type cannot
              have type parameters if it is has the BIND attribute.  Type
              parameters seem to be for making parameterized derived types.
              There's no need to verify the type if it is c_ptr/c_funptr.  */
@@ -4334,9 +4509,9 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
 	}
       else
 	{
-	  /* Grab the typespec for the given component and test the kind.  */ 
+	  /* Grab the typespec for the given component and test the kind.  */
 	  is_c_interop = gfc_verify_c_interop (&(curr_comp->ts));
-	  
+
 	  if (!is_c_interop)
 	    {
 	      /* Report warning and continue since not fatal.  The
@@ -4368,19 +4543,9 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
                              &(curr_comp->loc));
 	    }
 	}
-      
+
       curr_comp = curr_comp->next;
-    } while (curr_comp != NULL); 
-
-
-  /* Make sure we don't have conflicts with the attributes.  */
-  if (derived_sym->attr.access == ACCESS_PRIVATE)
-    {
-      gfc_error ("Derived type %qs at %L cannot be declared with both "
-                 "PRIVATE and BIND(C) attributes", derived_sym->name,
-                 &(derived_sym->declared_at));
-      retval = false;
-    }
+    } while (curr_comp != NULL);
 
   if (derived_sym->attr.sequence != 0)
     {
@@ -4395,7 +4560,7 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
      it's interoperable.  */
   if (!retval)
     derived_sym->ts.is_c_interop = 0;
-  
+
   return retval;
 }
 
@@ -4418,7 +4583,7 @@ gen_special_c_interop_ptr (gfc_symbol *tmp_sym, gfc_symtree *dt_symtree)
   tmp_sym->ts.f90_type = BT_VOID;
   tmp_sym->attr.flavor = FL_PARAMETER;
   tmp_sym->ts.u.derived = dt_symtree->n.sym;
-  
+
   /* Set the c_address field of c_null_ptr and c_null_funptr to
      the value of NULL.	 */
   tmp_sym->value = gfc_get_expr ();
@@ -4453,10 +4618,10 @@ add_formal_arg (gfc_formal_arglist **head,
       (*tail)->next = formal_arg;
       (*tail) = formal_arg;
     }
-   
+
   (*tail)->sym = param_sym;
   (*tail)->next = NULL;
-   
+
   return;
 }
 
@@ -4480,12 +4645,13 @@ add_proc_interface (gfc_symbol *sym, ifsrc source, gfc_formal_arglist *formal)
    declaration statement (see match_proc_decl()) to create the formal
    args based on the args of a given named interface.
 
-   When an actual argument list is provided, skip the absent arguments.
+   When an actual argument list is provided, skip the absent arguments
+   unless copy_type is true.
    To be used together with gfc_se->ignore_optional.  */
 
 void
 gfc_copy_formal_args_intr (gfc_symbol *dest, gfc_intrinsic_sym *src,
-			   gfc_actual_arglist *actual)
+			   gfc_actual_arglist *actual, bool copy_type)
 {
   gfc_formal_arglist *head = NULL;
   gfc_formal_arglist *tail = NULL;
@@ -4512,13 +4678,27 @@ gfc_copy_formal_args_intr (gfc_symbol *dest, gfc_intrinsic_sym *src,
 	      act_arg = act_arg->next;
 	      continue;
 	    }
-	  act_arg = act_arg->next;
 	}
       formal_arg = gfc_get_formal_arglist ();
       gfc_get_symbol (curr_arg->name, gfc_current_ns, &(formal_arg->sym));
 
       /* May need to copy more info for the symbol.  */
-      formal_arg->sym->ts = curr_arg->ts;
+      if (copy_type && act_arg->expr != NULL)
+	{
+	  formal_arg->sym->ts = act_arg->expr->ts;
+	  if (act_arg->expr->rank > 0)
+	    {
+	      formal_arg->sym->attr.dimension = 1;
+	      formal_arg->sym->as = gfc_get_array_spec();
+	      formal_arg->sym->as->rank = -1;
+	      formal_arg->sym->as->type = AS_ASSUMED_RANK;
+	    }
+	  if (act_arg->name && strcmp (act_arg->name, "%VAL") == 0)
+	    formal_arg->sym->pass_as_value = 1;
+	}
+      else
+	formal_arg->sym->ts = curr_arg->ts;
+
       formal_arg->sym->attr.optional = curr_arg->optional;
       formal_arg->sym->attr.value = curr_arg->value;
       formal_arg->sym->attr.intent = curr_arg->intent;
@@ -4543,6 +4723,8 @@ gfc_copy_formal_args_intr (gfc_symbol *dest, gfc_intrinsic_sym *src,
 
       /* Validate changes.  */
       gfc_commit_symbol (formal_arg->sym);
+      if (actual)
+	act_arg = act_arg->next;
     }
 
   /* Add the interface to the symbol.  */
@@ -4624,11 +4806,16 @@ generate_isocbinding_symbol (const char *mod_name, iso_c_binding_symbol s,
       if (tmp_sym->attr.flavor == FL_DERIVED
 	  && !get_iso_c_binding_dt (tmp_sym->intmod_sym_id))
 	{
-	  gfc_dt_list *dt_list;
-	  dt_list = gfc_get_dt_list ();
-	  dt_list->derived = tmp_sym;
-	  dt_list->next = gfc_derived_types;
-  	  gfc_derived_types = dt_list;
+	  if (gfc_derived_types)
+	    {
+	      tmp_sym->dt_next = gfc_derived_types->dt_next;
+	      gfc_derived_types->dt_next = tmp_sym;
+	    }
+	  else
+	    {
+	      tmp_sym->dt_next = tmp_sym;
+	    }
+	  gfc_derived_types = tmp_sym;
         }
 
       return tmp_symtree;
@@ -4669,7 +4856,7 @@ generate_isocbinding_symbol (const char *mod_name, iso_c_binding_symbol s,
   switch (s)
     {
 
-#define NAMED_INTCST(a,b,c,d) case a : 
+#define NAMED_INTCST(a,b,c,d) case a :
 #define NAMED_REALCST(a,b,c,d) case a :
 #define NAMED_CMPXCST(a,b,c,d) case a :
 #define NAMED_LOGCST(a,b,c) case a :
@@ -4710,7 +4897,7 @@ generate_isocbinding_symbol (const char *mod_name, iso_c_binding_symbol s,
 	tmp_sym->value->value.character.string[0]
 	  = (gfc_char_t) c_interop_kinds_table[s].value;
 	tmp_sym->ts.u.cl = gfc_new_charlen (gfc_current_ns, NULL);
-	tmp_sym->ts.u.cl->length = gfc_get_int_expr (gfc_default_integer_kind,
+	tmp_sym->ts.u.cl->length = gfc_get_int_expr (gfc_charlen_int_kind,
 						     NULL, 1);
 
 	/* May not need this in both attr and ts, but do need in
@@ -4736,7 +4923,6 @@ generate_isocbinding_symbol (const char *mod_name, iso_c_binding_symbol s,
       case ISOCBINDING_FUNPTR:
 	{
 	  gfc_symbol *dt_sym;
-	  gfc_dt_list **dt_list_ptr = NULL;
 	  gfc_component *tmp_comp = NULL;
 
 	  /* Generate real derived type.  */
@@ -4798,17 +4984,16 @@ generate_isocbinding_symbol (const char *mod_name, iso_c_binding_symbol s,
 	  dt_sym->ts.u.derived = dt_sym;
 
 	  /* Add the symbol created for the derived type to the current ns.  */
-	  dt_list_ptr = &(gfc_derived_types);
-	  while (*dt_list_ptr != NULL && (*dt_list_ptr)->next != NULL)
-	    dt_list_ptr = &((*dt_list_ptr)->next);
-
-	  /* There is already at least one derived type in the list, so append
-	     the one we're currently building for c_ptr or c_funptr.  */
-	  if (*dt_list_ptr != NULL)
-	    dt_list_ptr = &((*dt_list_ptr)->next);
-	  (*dt_list_ptr) = gfc_get_dt_list ();
-	  (*dt_list_ptr)->derived = dt_sym;
-	  (*dt_list_ptr)->next = NULL;
+	  if (gfc_derived_types)
+	    {
+	      dt_sym->dt_next = gfc_derived_types->dt_next;
+	      gfc_derived_types->dt_next = dt_sym;
+	    }
+	  else
+	    {
+	      dt_sym->dt_next = dt_sym;
+	    }
+	  gfc_derived_types = dt_sym;
 
 	  gfc_add_component (dt_sym, "c_address", &tmp_comp);
 	  if (tmp_comp == NULL)
@@ -5025,6 +5210,12 @@ gfc_is_associate_pointer (gfc_symbol* sym)
     return false;
 
   if (sym->ts.type == BT_CLASS)
+    return true;
+
+  if (sym->ts.type == BT_CHARACTER
+      && sym->ts.deferred
+      && sym->assoc->target
+      && sym->assoc->target->expr_type == EXPR_FUNCTION)
     return true;
 
   if (!sym->assoc->variable)

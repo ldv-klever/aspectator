@@ -1,4 +1,4 @@
-##  Copyright (C) 2012-2017 Free Software Foundation, Inc.
+##  Copyright (C) 2012-2021 Free Software Foundation, Inc.
 ##  Contributed by Richard Henderson <rth@redhat.com>.
 ##
 ##  This file is part of the GNU Atomic Library (libatomic).
@@ -101,7 +101,9 @@ PAT_S		= $(word 3,$(PAT_SPLIT))
 IFUNC_DEF	= -DIFUNC_ALT=$(PAT_S)
 IFUNC_OPT	= $(word $(PAT_S),$(IFUNC_OPTIONS))
 
-M_DEPS		= -MT $@ -MD -MP -MF $(DEPDIR)/$(@F).Ppo
+@AMDEP_TRUE@M_DEPS		= -MT $@ -MD -MP -MF $(DEPDIR)/$(@F).Ppo
+@AMDEP_FALSE@M_DEPS		=
+
 M_SIZE		= -DN=$(PAT_N)
 M_IFUNC		= $(if $(PAT_S),$(IFUNC_DEF) $(IFUNC_OPT))
 M_FILE		= $(PAT_BASE)_n.c
@@ -122,8 +124,12 @@ libatomic_la_LIBADD = $(foreach s,$(SIZES),$(addsuffix _$(s)_.lo,$(SIZEOBJS)))
 
 ## On a target-specific basis, include alternates to be selected by IFUNC.
 if HAVE_IFUNC
+if ARCH_AARCH64_LINUX
+IFUNC_OPTIONS	     = -march=armv8-a+lse
+libatomic_la_LIBADD += $(foreach s,$(SIZES),$(addsuffix _$(s)_1_.lo,$(SIZEOBJS)))
+endif
 if ARCH_ARM_LINUX
-IFUNC_OPTIONS	     = -march=armv7-a -DHAVE_KERNEL64
+IFUNC_OPTIONS	     = -march=armv7-a+fp -DHAVE_KERNEL64
 libatomic_la_LIBADD += $(foreach s,$(SIZES),$(addsuffix _$(s)_1_.lo,$(SIZEOBJS)))
 libatomic_la_LIBADD += $(addsuffix _8_2_.lo,$(SIZEOBJS))
 endif
@@ -146,3 +152,8 @@ libatomic_convenience_la_LIBADD = $(libatomic_la_LIBADD)
 # when it is reloaded during the build of all-multi.
 all-multi: $(libatomic_la_LIBADD)
 	$(MULTIDO) $(AM_MAKEFLAGS) DO=all multi-do # $(MAKE)
+
+# target overrides
+-include $(tmake_file)
+
+include $(top_srcdir)/../multilib.am

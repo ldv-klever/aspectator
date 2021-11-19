@@ -26,17 +26,34 @@ struct caller
   String file;
   intgo line;
   intgo index;
+  intgo frames;
+  bool more;
 };
 
 /* Collect file/line information for a PC value.  If this is called
-   more than once, due to inlined functions, we use the last call, as
-   that is usually the most useful one.  */
+   more than once, due to inlined functions, we record the number of
+   inlined frames but return file/func/line for the last call, as
+   that is usually the most useful one.   */
 
 static int
 callback (void *data, uintptr_t pc __attribute__ ((unused)),
 	  const char *filename, int lineno, const char *function)
 {
   struct caller *c = (struct caller *) data;
+
+  /* We want to make sure we return at least one frame.  If we already
+     have at least one frame, see if we should skip this one.  */
+  if (c->frames > 0
+      && function != NULL
+      && runtime_skipInCallback (function, NULL))
+    return 0;
+
+  /* If we already have a frame, don't increment frames if we should
+     skip that one.  */
+  if (c->frames == 0
+      || c->fn.len == 0
+      || !runtime_skipInCallback ((const char *) c->fn.str, NULL))
+    c->frames++;
 
   /* The libbacktrace library says that these strings might disappear,
      but with the current implementation they won't.  We can't easily
@@ -47,7 +64,15 @@ callback (void *data, uintptr_t pc __attribute__ ((unused)),
   c->line = lineno;
 
   if (c->index == 0)
-    return 1;
+    {
+      /* If we should skip the frame we have, then see if we can get
+	 another one.  */
+      if (c->fn.len > 0
+	  && runtime_skipInCallback((const char *) c->fn.str, NULL))
+	return 0;
+
+      return 1;
+    }
 
   if (c->index > 0)
     --c->index;
@@ -74,7 +99,7 @@ static void *back_state;
 
 /* A lock to control creating back_state.  */
 
-static Lock back_state_lock;
+static uint32 back_state_lock;
 
 /* The program arguments.  */
 
@@ -85,7 +110,15 @@ extern Slice runtime_get_args(void);
 struct backtrace_state *
 __go_get_backtrace_state ()
 {
-  runtime_lock (&back_state_lock);
+  uint32 set;
+
+  /* We may not have a g here, so we can't use runtime_lock.  */
+  set = 0;
+  while (!__atomic_compare_exchange_n (&back_state_lock, &set, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+    {
+      runtime_osyield ();
+      set = 0;
+    }
   if (back_state == NULL)
     {
       Slice args;
@@ -108,31 +141,46 @@ __go_get_backtrace_state ()
 	 argv[0] (http://gcc.gnu.org/PR61895).  It would be nice to
 	 have a better check for whether this file is the real
 	 executable.  */
-      if (stat (filename, &s) < 0 || s.st_size < 1024)
+      if (filename != NULL && (stat (filename, &s) < 0 || s.st_size < 1024))
 	filename = NULL;
 
       back_state = backtrace_create_state (filename, 1, error_callback, NULL);
     }
-  runtime_unlock (&back_state_lock);
+  __atomic_store_n (&back_state_lock, 0, __ATOMIC_RELEASE);
   return back_state;
 }
 
-/* Return function/file/line information for PC.  The index parameter
-   is the entry on the stack of inlined functions; -1 means the last
-   one.  */
+/* Return function/file/line/nframes information for PC.  The index
+   parameter is the entry on the stack of inlined functions; -1 means
+   the last one, with *nframes set to the count of inlined frames for
+   this PC.  If index is not -1, more is whether there are more frames
+   after this one.  */
 
-_Bool
-__go_file_line (uintptr pc, int index, String *fn, String *file, intgo *line)
+static _Bool
+__go_file_line (uintptr pc, int index, bool more, String *fn, String *file, intgo *line, intgo *nframes)
 {
   struct caller c;
+  struct backtrace_state *state;
 
   runtime_memclr (&c, sizeof c);
   c.index = index;
-  backtrace_pcinfo (__go_get_backtrace_state (), pc, callback,
-		    error_callback, &c);
+  c.more = more;
+  c.frames = 0;
+  runtime_xadd (&__go_runtime_in_callers, 1);
+  state = __go_get_backtrace_state ();
+  runtime_xadd (&__go_runtime_in_callers, -1);
+  backtrace_pcinfo (state, pc, callback, error_callback, &c);
   *fn = c.fn;
   *file = c.file;
   *line = c.line;
+  *nframes = c.frames;
+
+  // If backtrace_pcinfo didn't get the function name from the debug
+  // info, try to get it from the symbol table.
+  if (fn->len == 0)
+    backtrace_syminfo (state, pc, __go_syminfo_fnname_callback,
+		       error_callback, fn);
+
   return c.file.len > 0;
 }
 
@@ -151,10 +199,15 @@ syminfo_callback (void *data, uintptr_t pc __attribute__ ((unused)),
 /* Set *VAL to the value of the symbol for PC.  */
 
 static _Bool
-__go_symbol_value (uintptr_t pc, uintptr_t *val)
+__go_symbol_value (uintptr pc, uintptr *val)
 {
+  struct backtrace_state *state;
+
   *val = 0;
-  backtrace_syminfo (__go_get_backtrace_state (), pc, syminfo_callback,
+  runtime_xadd (&__go_runtime_in_callers, 1);
+  state = __go_get_backtrace_state ();
+  runtime_xadd (&__go_runtime_in_callers, -1);
+  backtrace_syminfo (state, pc, syminfo_callback,
 		     error_callback, val);
   return *val != 0;
 }
@@ -169,12 +222,12 @@ struct caller_ret
   _Bool ok;
 };
 
-struct caller_ret Caller (int n) __asm__ (GOSYM_PREFIX "runtime.Caller");
+struct caller_ret Caller (intgo n) __asm__ (GOSYM_PREFIX "runtime.Caller");
 
 /* Implement runtime.Caller.  */
 
 struct caller_ret
-Caller (int skip)
+Caller (intgo skip)
 {
   struct caller_ret ret;
   Location loc;
@@ -194,23 +247,12 @@ Caller (int skip)
 /* Look up the function name, file name, and line number for a PC.  */
 
 struct funcfileline_return
-{
-  String retfn;
-  String retfile;
-  intgo retline;
-};
-
-struct funcfileline_return
-runtime_funcfileline (uintptr targetpc, int32 index)
-  __asm__ (GOSYM_PREFIX "runtime.funcfileline");
-
-struct funcfileline_return
-runtime_funcfileline (uintptr targetpc, int32 index)
+runtime_funcfileline (uintptr targetpc, int32 index, bool more)
 {
   struct funcfileline_return ret;
 
-  if (!__go_file_line (targetpc, index, &ret.retfn, &ret.retfile,
-		       &ret.retline))
+  if (!__go_file_line (targetpc, index, more, &ret.retfn, &ret.retfile,
+		       &ret.retline, &ret.retframes))
     runtime_memclr (&ret, sizeof ret);
   return ret;
 }

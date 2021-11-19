@@ -1,7 +1,8 @@
 // { dg-do compile { target c++11 } }
 // { dg-require-normal-mode "" }
+// { dg-require-normal-namespace "" }
 
-// Copyright (C) 2008-2017 Free Software Foundation, Inc.
+// Copyright (C) 2008-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -48,5 +49,6 @@ namespace std {
 		    const forward_list<T,Allocator>&);
 
   template <class T, class Allocator>
-    void swap(forward_list<T,Allocator>& x, forward_list<T,Allocator>& y);
+    void swap(forward_list<T,Allocator>& x, forward_list<T,Allocator>& y)
+      noexcept(noexcept(x.swap(y)));
 }
