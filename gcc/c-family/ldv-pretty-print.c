@@ -4585,9 +4585,9 @@ ldv_print_unary_expr (unsigned int indent_level, ldv_unary_expr_ptr unary_expr)
         ldv_print_line_directive (LDV_C_BACKEND_LINES_LEVEL_EXPR, location);
 
       if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_SECOND)
-        ldv_c_backend_print (indent_level, true, "++");
+        ldv_c_backend_print (indent_level, false, "++");
       else if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_THIRD)
-        ldv_c_backend_print (indent_level, true, "--");
+        ldv_c_backend_print (indent_level, false, "--");
 
       if (LDV_UNARY_EXPR_KIND (unary_expr) == LDV_UNARY_EXPR_FOURTH)
         {
