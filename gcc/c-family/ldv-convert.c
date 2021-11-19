@@ -3534,6 +3534,8 @@ ldv_convert_jump_statement (tree t)
 
   jump_statement = XCNEW (struct ldv_jump_statement);
 
+  LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
+
   switch (TREE_CODE (t))
     {
     case GOTO_EXPR:
@@ -3554,14 +3556,11 @@ ldv_convert_jump_statement (tree t)
       else
         LDV_ERROR ("can't find goto destination");
 
-      LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
-
       break;
 
     case BREAK_STMT:
     case CONTINUE_STMT:
       LDV_JUMP_STATEMENT_KIND (jump_statement) = TREE_CODE (t) == BREAK_STMT ? LDV_JUMP_STATEMENT_BREAK : LDV_JUMP_STATEMENT_CONTINUE;
-      LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
 
       break;
 
@@ -3582,8 +3581,6 @@ ldv_convert_jump_statement (tree t)
           else
               LDV_JUMP_STATEMENT_EXPR (jump_statement) = ldv_convert_expr (ret_val_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
         }
-
-      LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
 
       break;
 
@@ -3611,6 +3608,8 @@ ldv_convert_iteration_statement (tree t) {
   ldv_iteration_statement_ptr iteration_statement = XCNEW (struct ldv_iteration_statement);
   tree cond_expr, body_stmt, for_expr, init_stmt;
 
+  LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
+
   switch (TREE_CODE (t)) {
     case WHILE_STMT:
       LDV_ITERATION_STATEMENT_KIND (iteration_statement) = LDV_ITERATION_STATEMENT_WHILE;
@@ -3624,8 +3623,6 @@ ldv_convert_iteration_statement (tree t) {
         LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
       else
         LDV_ERROR ("can not find body statement");
-
-      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
 
       break;
 
@@ -3641,8 +3638,6 @@ ldv_convert_iteration_statement (tree t) {
         LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
       else
         LDV_ERROR ("can not find body statement");
-
-      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
 
       break;
     case FOR_STMT:
@@ -3661,8 +3656,6 @@ ldv_convert_iteration_statement (tree t) {
         LDV_ITERATION_STATEMENT_BODY (iteration_statement) = ldv_convert_statement (body_stmt);
       else
         LDV_ERROR ("can not find body statement");
-
-      LDV_ITERATION_STATEMENT_LOCATION (iteration_statement) = ldv_convert_location (t);
 
       break;
 
