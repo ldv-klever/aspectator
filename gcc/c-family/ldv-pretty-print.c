@@ -2537,6 +2537,15 @@ ldv_print_jump_statement (unsigned int indent_level, ldv_jump_statement_ptr jump
 
         break;
 
+      case LDV_JUMP_STATEMENT_BREAK:
+        ldv_c_backend_print (indent_level, true, "break");
+
+          if ((expr = LDV_JUMP_STATEMENT_EXPR (jump_statement)))
+            ldv_print_expr (indent_level, expr);
+
+        break;
+
+
       default:
         LDV_PRETTY_PRINT_ERROR (indent_level, "jump statement was not printed");
     }

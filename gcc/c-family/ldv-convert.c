@@ -3558,6 +3558,13 @@ ldv_convert_jump_statement (tree t)
 
       break;
 
+    case BREAK_STMT:
+      LDV_JUMP_STATEMENT_KIND (jump_statement) = LDV_JUMP_STATEMENT_BREAK;
+      LDV_JUMP_STATEMENT_LOCATION (jump_statement) = ldv_convert_location (t);
+
+      break;
+
+
     case RETURN_EXPR:
       LDV_JUMP_STATEMENT_KIND (jump_statement) = LDV_JUMP_STATEMENT_RETURN;
 
@@ -4766,14 +4773,15 @@ ldv_convert_selection_statement (tree t)
       break;
 
     case SWITCH_EXPR:
+    case SWITCH_STMT:
       LDV_SELECTION_STATEMENT_KIND (selection_statement) = LDV_SELECTION_STATEMENT_SWITCH;
 
-      if ((cond_expr = SWITCH_COND (t)))
+      if ((cond_expr = TREE_CODE (t) == SWITCH_STMT ? SWITCH_STMT_COND (t) : SWITCH_COND (t)))
         LDV_SELECTION_STATEMENT_EXPR (selection_statement) = ldv_convert_expr (cond_expr, LDV_CONVERT_EXPR_RECURSION_LIMIT);
       else
         LDV_ERROR ("can't find conditional expression");
 
-      if ((switch_statement = SWITCH_BODY (t)))
+      if ((switch_statement = TREE_CODE (t) == SWITCH_STMT ? SWITCH_STMT_BODY (t) : SWITCH_BODY (t)))
         LDV_SELECTION_STATEMENT_STATEMENT1 (selection_statement) = ldv_convert_statement (switch_statement);
       else
         LDV_ERROR ("can't find switch statement");
@@ -4971,6 +4979,7 @@ ldv_convert_statement (tree t)
 
     case COND_EXPR:
     case SWITCH_EXPR:
+    case SWITCH_STMT:
       /* In this case we have conditional expression (... ? ... : ...). */
       if (TREE_CODE (t) == COND_EXPR
         && TREE_TYPE (t) && TREE_TYPE (t) != void_type_node)
@@ -4988,6 +4997,7 @@ ldv_convert_statement (tree t)
 
     case RETURN_EXPR:
     case GOTO_EXPR:
+    case BREAK_STMT:
       LDV_STATEMENT_KIND (statement) = LDV_JUMP_STATEMENT;
       LDV_STATEMENT_JUMP_STATEMENT (statement) = ldv_convert_jump_statement (t);
 

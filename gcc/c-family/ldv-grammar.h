@@ -1106,8 +1106,7 @@ typedef struct ldv_labeled_statement *ldv_labeled_statement_ptr;
 #define LDV_LABELED_STATEMENT_CONST_EXPR2(labeled_statement) (labeled_statement->const_expr2)
 #define LDV_LABELED_STATEMENT_LOCATION(labeled_statement)    (labeled_statement->location)
 
-/* Gcc replaces 'continue' and 'break' statements with 'goto'.
-jump-statement:
+/* jump-statement:
     goto identifier ;
     continue ;
     break ;
@@ -1116,7 +1115,9 @@ jump-statement:
 enum ldv_jump_statement_kind
 {
   LDV_JUMP_STATEMENT_GOTO = 1,
-  LDV_JUMP_STATEMENT_RETURN
+  LDV_JUMP_STATEMENT_CONTINUE,
+  LDV_JUMP_STATEMENT_BREAK,
+  LDV_JUMP_STATEMENT_RETURN,
 };
 struct ldv_jump_statement
 {
