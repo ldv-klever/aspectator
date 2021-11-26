@@ -522,7 +522,7 @@ ldv_print_to_awfile (void)
       isline_beginning_printed = false;
       symbol_printed_numb = 0;
 
-      /* Peform special actions in case when a special preprocessor directive
+      /* Perform special actions in case when a special preprocessor directive
          switch a source code file and a line in it. The special directive has
          the following form: '# (\d+) "([^"]+)"...' where $2 is an absolute
          file path, $1 is a line in this file (a next line from a scanned file
@@ -572,10 +572,10 @@ ldv_print_to_awfile (void)
             {
               decl_for_print = (ldv_decl_for_print_ptr) ldv_list_get_data (decl_for_print_list);
 
-              /* Peform following actions if file names are coinside. */
+              /* Perform following actions if file names are coinside. */
               if (!strcmp (ldv_get_file_name (file), decl_for_print->file))
                 {
-                  /* Peform following actions if line numbers are coinside. */
+                  /* Perform following actions if line numbers are coinside. */
                   if (line_numb == decl_for_print->line)
                     {
                       /* Print the beginning of a source line and an addtional
