@@ -2254,8 +2254,8 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
           func_decl_for_print_new->line = (*close_brace).line;
           aspect_func_decl_for_print_new->line = (*close_brace).line;
           /* Print declaration just after the close brace. */
-          func_decl_for_print_new->column = (*close_brace).column + 1;
-          aspect_func_decl_for_print_new->column = (*close_brace).column + 1;
+          func_decl_for_print_new->column = (*close_brace).column;
+          aspect_func_decl_for_print_new->column = (*close_brace).column;
 
           /* Create a function declaration. */
           ldv_text_printed = ldv_create_text ();
