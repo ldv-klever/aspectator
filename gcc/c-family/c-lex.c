@@ -31,13 +31,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 #include "attribs.h"
 
-/* LDV extension beginning. */
-
-#include "ldv-opts.h"
-#include "ldv-cbe-core.h"
-
-/* LDV extension end. */
-
 /* We may keep statistics about how long which files took to compile.  */
 static int header_time, body_time;
 static splay_tree file_info_tree;
@@ -1210,47 +1203,6 @@ interpret_fixed (const cpp_token *token, unsigned int flags)
   return value;
 }
 
-/* LDV extension beginning. */
-
-static hashval_t
-ldv_htab_hash_tree_string (const void *p)
-{
-  return htab_hash_pointer (((const struct ldv_hash_tree_string *)p)->value);
-}
-
-static int
-ldv_htab_eq_tree_string (const void *p, const void *q)
-{
-  return ((const struct ldv_hash_tree_string *)p)->value == (const_tree)q;
-}
-
-static void
-ldv_keep_original_string (tree value, cpp_string *strs)
-{
-  if (!ldv_tree_string_htab)
-   ldv_tree_string_htab = htab_create (127, ldv_htab_hash_tree_string, ldv_htab_eq_tree_string, NULL);
-
-  void **slot = htab_find_slot_with_hash (ldv_tree_string_htab, value, htab_hash_pointer (value), INSERT);
-
-  if (slot == NULL)
-    internal_error ("Can't allocate memory");
-
-  /* Assign a given string to a hash element. */
-  if (*slot == NULL)
-    {
-      struct ldv_hash_tree_string *v;
-      v = XCNEW (struct ldv_hash_tree_string);
-      v->value = value;
-      v->str = XCNEWVEC (char, strs[0].len + 1);
-      memcpy (v->str, strs[0].text, strs[0].len);
-      v->str[strs[0].len] = '\0';
-
-      *slot = v;
-    }
-}
-
-/* LDV extension end. */
-
 /* Convert a series of STRING, WSTRING, STRING16, STRING32 and/or
    UTF8STRING tokens into a tree, performing string constant
    concatenation.  TOK is the first of these.  VALP is the location to
@@ -1365,21 +1317,6 @@ lex_string (const cpp_token *tok, tree *valp, bool objc_string, bool translate)
       (parse_in, strs, concats + 1, &istr, type))
     {
       value = build_string (istr.len, (const char *) istr.text);
-
-      /* LDV extension beginning. */
-
-      /* GCC converts wide character strings from sources (which are assumed to
-         be UTF-8 encoded always) into UTF-16/UTF-32. We need to keep original
-         representation to print these strings easily since there is no inverse
-         conversion functions. This is necessary for instrumentation as well
-         since it requests C back-end for initializers that also can contain
-         strings. */
-      if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
-	ldv_keep_original_string (value, strs);
-
-      /* LDV extension end. */
-
-
       free (CONST_CAST (unsigned char *, istr.text));
       if (concats)
 	{
