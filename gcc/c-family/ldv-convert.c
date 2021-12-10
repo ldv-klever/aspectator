@@ -1312,6 +1312,26 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
           else
             LDV_CAST_EXPR_TYPE_NAME (cast_expr) = ldv_convert_type_name (type);
 
+          if ((op1 = LDV_OP_FIRST (t)))
+            LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
+          else
+            LDV_ERROR ("can't find the first operand of cast expression");
+
+          LDV_CAST_EXPR_LOCATION (cast_expr) = ldv_convert_location (t);
+
+          break;
+        }
+
+      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+      t = LDV_OP_FIRST (t);
+      LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (t, recursion_limit);
+
+      break;
+
+    /* Just ignore NOP_EXPR and do not introduce a corresponding cast. */
+    case NOP_EXPR:
+      if ((type = TREE_TYPE (t)))
+        {
           /* Avoid casts to internal GCC structure __va_list_tag. */
           if (TREE_CODE (type) == POINTER_TYPE)
             {
@@ -1335,25 +1355,8 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
                     }
                 }
             }
-
-          if ((op1 = LDV_OP_FIRST (t)))
-            LDV_CAST_EXPR_CAST_EXPR (cast_expr) = ldv_convert_cast_expr (op1, recursion_limit);
-          else
-            LDV_ERROR ("can't find the first operand of cast expression");
-
-          LDV_CAST_EXPR_LOCATION (cast_expr) = ldv_convert_location (t);
-
-          break;
         }
 
-      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
-      t = LDV_OP_FIRST (t);
-      LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (t, recursion_limit);
-
-      break;
-
-    /* Just ignore NOP_EXPR and do not introduce a corresponding cast. */
-    case NOP_EXPR:
       LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
       LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (LDV_OP_FIRST (t), recursion_limit);
 
