@@ -1282,7 +1282,6 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
   switch (TREE_CODE (t))
     {
     case CONVERT_EXPR:
-    case NOP_EXPR:
     case FLOAT_EXPR:
     case FIX_TRUNC_EXPR:
     case VIEW_CONVERT_EXPR:
@@ -1350,6 +1349,13 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
       LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
       t = LDV_OP_FIRST (t);
       LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (t, recursion_limit);
+
+      break;
+
+    /* Just ignore NOP_EXPR and do not introduce a corresponding cast. */
+    case NOP_EXPR:
+      LDV_CAST_EXPR_KIND (cast_expr) = LDV_CAST_EXPR_FIRST;
+      LDV_CAST_EXPR_UNARY_EXPR (cast_expr) = ldv_convert_unary_expr (LDV_OP_FIRST (t), recursion_limit);
 
       break;
 
