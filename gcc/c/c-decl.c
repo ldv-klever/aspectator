@@ -73,6 +73,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "ldv-opts.h"
 #include "ldv-pointcut-matcher.h"
 
+#include "ldv-cbe-core.h"
+
 /* LDV extension end. */
 
 /* In grokdeclarator, distinguish syntactic contexts of declarators.  */
@@ -5432,10 +5434,17 @@ finish_decl (tree decl, location_t init_loc, tree init,
       relayout_decl (decl);
     }
 
+  /* LDV extension begin. */
+
+  /* Let's avoid replacement of char array initializers to strings. */
+  if (!ldv() && !ldv_is_c_backend_enabled ())
+
   /* Look for braced array initializers for character arrays and
      recursively convert them into STRING_CSTs.  */
   if (tree init = DECL_INITIAL (decl))
     DECL_INITIAL (decl) = braced_lists_to_strings (type, init);
+
+  /* LDV extension end. */
 
   if (VAR_P (decl))
     {
