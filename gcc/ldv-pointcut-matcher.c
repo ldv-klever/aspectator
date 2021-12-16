@@ -631,6 +631,37 @@ ldv_match_expr (tree t, tree context)
 
           break;
 
+        /* Almost like SWITCH_EXPR. */
+        case SWITCH_STMT:
+          ldv_match_expr (SWITCH_STMT_COND (t), t);
+          ldv_match_expr (SWITCH_STMT_BODY (t), t);
+          break;
+
+        /* Traverse condition and body of "while" statement. */
+        case WHILE_STMT:
+          ldv_match_expr (WHILE_COND (t), t);
+          ldv_match_expr (WHILE_BODY (t), t);
+          break;
+
+        /* Traverse condition and body of "do" statement. */
+        case DO_STMT:
+          ldv_match_expr (DO_COND (t), t);
+          ldv_match_expr (DO_BODY (t), t);
+          break;
+
+        /* Traverse initialization, condition, expression and body of "for" statement. */
+        case FOR_STMT:
+          ldv_match_expr (FOR_INIT_STMT (t), t);
+          ldv_match_expr (FOR_COND (t), t);
+          ldv_match_expr (FOR_EXPR (t), t);
+          ldv_match_expr (FOR_BODY (t), t);
+          break;
+
+        /* Nothing to consider for "break" and "continue". */
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+          break;
+
         default:
           LDV_CONVERT_WARN (t);
         }
