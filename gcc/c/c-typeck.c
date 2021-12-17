@@ -53,6 +53,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "asan.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-cbe-core.h"
+
+/* LDV extension end. */
+
 /* Possible cases of implicit bad conversions.  Used to select
    diagnostic messages in convert_for_assignment.  */
 enum impl_conv {
@@ -2170,9 +2176,19 @@ convert_lvalue_to_rvalue (location_t loc, struct c_expr exp,
       exp.value = build4 (TARGET_EXPR, nonatomic_type, tmp, func_call,
 			  NULL_TREE, NULL_TREE);
     }
+
+
+  /* LDV extension begin. */
+
+  /* Avoid adding this type casts since they can miss type qualifiers. */
+  if (!ldv_is_c_backend_enabled ())
+
   if (convert_p && !error_operand_p (exp.value)
       && (TREE_CODE (TREE_TYPE (exp.value)) != ARRAY_TYPE))
     exp.value = convert (build_qualified_type (TREE_TYPE (exp.value), TYPE_UNQUALIFIED), exp.value);
+
+  /* LDV extension end. */
+
   return exp;
 }
 
