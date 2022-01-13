@@ -2109,9 +2109,9 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
   a_kind = ldv_i_match->a_definition->a_declaration->a_kind;
   pp_kind = ldv_i_match->p_pointcut->pp_kind;
 
-  /* In case of information request do not perform weaving just "print" advice
+  /* In case of source code queries do not perform weaving just "print" advice
      body that implicitly invokes evaluation of all $fprintf. */
-  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_USE_VAR))
+  if (a_kind == LDV_A_QUERY && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_USE_VAR))
     {
       ldv_text_printed = ldv_create_text ();
 
@@ -2137,7 +2137,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       return;
     }
-  else if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION|| pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC))
+  else if (a_kind == LDV_A_QUERY && (pp_kind == LDV_PP_DECLARE_FUNC || pp_kind == LDV_PP_EXECUTION|| pp_kind == LDV_PP_CALL || pp_kind == LDV_PP_CALLP || pp_kind == LDV_PP_USE_FUNC))
     {
       ldv_text_printed = ldv_create_text ();
 
@@ -2178,7 +2178,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
       return;
     }
-  if (a_kind == LDV_A_INFO && pp_kind == LDV_PP_INTRODUCE)
+  if (a_kind == LDV_A_QUERY && pp_kind == LDV_PP_INTRODUCE)
     {
       ldv_text_printed = ldv_create_text ();
 

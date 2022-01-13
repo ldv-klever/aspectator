@@ -176,7 +176,7 @@ ldv_process_aspect_pattern_fprintf (ldv_list_ptr aspect_pattern_params, LDV_EVAL
   ldv_aspect_pattern_param_ptr param1 = NULL, param2 = NULL;
   ldv_list_ptr evaluated_aspect_patter_params = NULL;
 
-  /* First parameter specifies file where information request result to be
+  /* First parameter specifies file where source code query result to be
      printed. */
   param1 = ldv_consume_aspect_pattern_param (&aspect_pattern_params, evaluate_aspect_pattern_func);
   /* Second parameter specifies format string like for standard printf
@@ -421,7 +421,7 @@ ldv_cpp_weave (void)
 
   /* Now here is supported just printing information on macro expansions or definitions.
    * Weaving macrodefinitions are implemented in ldv_cpp_define/undef. */
-  if (a_kind == LDV_A_INFO && (pp_kind == LDV_PP_EXPAND || pp_kind == LDV_PP_DEFINE))
+  if (a_kind == LDV_A_QUERY && (pp_kind == LDV_PP_EXPAND || pp_kind == LDV_PP_DEFINE))
     {
       for (body_patterns = body->patterns
         ; body_patterns

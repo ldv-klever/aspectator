@@ -5669,9 +5669,9 @@ finish_decl (tree decl, location_t init_loc, tree init,
 
   if (ldv ())
     {
-      /* Variable declarations are considered just for information request
-         purposes since it's unclear how to instrument them. Information
-         requests are executed at instrumentation stage. */
+      /* Variable declarations are considered just for source code query
+         purposes since it's unclear how to instrument them. Source code
+         queries are executed at instrumentation stage. */
       if (ldv_instrumentation () && TREE_CODE (decl) == VAR_DECL && DECL_INITIAL (decl))
 	{
 	  /* Try to match a variable declaration. */

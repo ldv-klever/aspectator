@@ -399,12 +399,13 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
         a_declaration->a_kind = LDV_A_AROUND;
       else if (!strcmp ("new", a_kind))
         a_declaration->a_kind = LDV_A_NEW;
-      else if (!strcmp ("info", a_kind))
-        a_declaration->a_kind = LDV_A_INFO;
+      /* Support "info" for backward compatibility. It is an alias for "query". */
+      else if (!strcmp ("query", a_kind) || !strcmp ("info", a_kind))
+        a_declaration->a_kind = LDV_A_QUERY;
       else
         {
           ldv_print_info_location (@1, LDV_ERROR_BISON, "incorrect advice declaration kind \"%s\" was used", a_kind);
-          internal_error ("use \"after\", \"around\", \"before\", \"new\", \"info\" advice declaration kind");
+          internal_error ("use \"after\", \"around\", \"before\", \"new\", \"query\" advice declaration kind");
         }
 
       /* Set a composite pointcut from a corresponding rule. */
