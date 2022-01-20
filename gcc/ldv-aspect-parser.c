@@ -4278,6 +4278,8 @@ ldv_parse_aspect_pattern (void)
       /* Parse aspect pattern parameters if so. */
       if ((params = ldv_parse_aspect_pattern_params ()))
         pattern->params = params;
+      else if (!strcmp (pattern->name, "fprintf"))
+        internal_error ("aspect pattern \"frpintf\" requires parameters \"<...>\" to be specified");
 
       /* Evaluate environment variables immediately after parsing. */
       if (!strcmp (pattern->name, "env"))
