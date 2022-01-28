@@ -307,9 +307,16 @@ ldv_convert_typedecl_signature_to_internal (ldv_pps_decl_ptr pps_typedecl)
 
           return i_typedecl;
         }
-     }
+    }
+  else
+    {
+      /* This partially duplicates code from ldv_convert_declspecs_declarator_to_internal(). */
+      i_typedecl->type = ldv_create_info_type ();
+      i_typedecl->type->it_kind = LDV_IT_PRIMITIVE;
+      i_typedecl->type->primitive_type = ldv_copy_declspecs (pps_typedecl->pps_declspecs);
+    }
 
-  LDV_CPP_FATAL_ERROR ("can't convert type signature from declaration form to the internal type representation");
+  return i_typedecl;
 }
 
 ldv_i_var_ptr

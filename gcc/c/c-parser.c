@@ -3378,9 +3378,9 @@ c_parser_enum_specifier (c_parser *parser)
 	  /* Type declaration matching and weaving are needed just on the third ldv stage. */
 	  if (ldv_instrumentation ())
 	    {
-	      /* Try to match an enumeral typedecl. Note that a context of a typedecl is
+	      /* Try to match an enumeration typedecl. Note that a context of a typedecl is
 	         defined by its open brace location. */
-	      /* Does not work any more: ldv_match_typedecl (type, ldv_open_brace.file); */
+	      ldv_match_typedecl (type, ldv_open_brace.file, LDV_PP_INTRODUCE);
 
 	      /* Weave a matched advice. */
 	      ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);
@@ -3649,7 +3649,7 @@ c_parser_struct_or_union_specifier (c_parser *parser)
             {
               /* Try to match a struct or union typedecl. Note that a context of
                  a typedecl is defined by its open brace location. */
-              /* Does not work any more: ldv_match_typedecl (type, ldv_open_brace.file); */
+              ldv_match_typedecl (type, ldv_open_brace.file, LDV_PP_INTRODUCE);
 
               /* Weave a matched advice. */
               ldv_weave_advice (&ldv_open_brace, &ldv_close_brace);

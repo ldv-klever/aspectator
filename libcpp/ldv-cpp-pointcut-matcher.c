@@ -1362,8 +1362,10 @@ ldv_match_typedecl_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_type
   typedecl_source = i_match->i_typedecl;
   typedecl_aspect = ldv_convert_typedecl_signature_to_internal (pps_typedecl);
 
-  /* Compare type declaration names. */
-  if (ldv_cmp_str (typedecl_aspect->name, ldv_cpp_get_id_name (typedecl_source->name)))
+  /* Compare type declaration names if so. */
+  if ((typedecl_aspect->name && typedecl_source->name && ldv_cmp_str (typedecl_aspect->name,
+                                                                      ldv_cpp_get_id_name (typedecl_source->name)))
+      || (typedecl_aspect->name && !typedecl_source->name) || (!typedecl_aspect->name && typedecl_source->name))
     {
       ldv_free_info_typedecl (typedecl_aspect);
       return false;

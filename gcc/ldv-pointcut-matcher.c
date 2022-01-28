@@ -1139,7 +1139,7 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 }
 
 void
-ldv_match_typedecl (tree t, ldv_ppk pp_kind)
+ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
   ldv_list_ptr adef_list = NULL;
@@ -1156,7 +1156,7 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
     }
 
   /* See comments for ldv_print_translation_unit().*/
-  if (!DECL_ORIGINAL_TYPE (t))
+  if (TREE_CODE (t) == TYPE_DECL && !DECL_ORIGINAL_TYPE (t))
     return;
 
   match = ldv_create_info_match ();
@@ -1168,15 +1168,15 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
   match->i_typedecl = typedecl;
 
   /* Obtain information on a type declaration signature. */
-  typedecl->name = ldv_create_id ();
-  if (DECL_NAME (t))
-    ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
-  else
-    ldv_puts_id ("", typedecl->name);
+  if (TREE_CODE (t) == TYPE_DECL && DECL_NAME (t))
+    {
+      typedecl->name = ldv_create_id ();
+      ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
+    }
 
-  typedecl->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
+  typedecl->type = ldv_convert_type_tree_to_internal (TREE_CODE (t) == TYPE_DECL ? TREE_TYPE (t) : t, NULL);
 
-  typedecl->file_path = ldv_get_realpath (DECL_SOURCE_FILE (t));
+  typedecl->file_path = ldv_get_realpath (file_path);
 
   ldv_disable_anon_enum_spec = true;
   typedecl->decl = ldv_convert_and_print_decl (t);
@@ -1208,7 +1208,8 @@ ldv_match_typedecl (tree t, ldv_ppk pp_kind)
           /* Count advice weavings. */
           ++(adef->use_counter);
 
-          ldv_print_info (LDV_INFO_MATCH, "match type \"%s\"", ldv_get_id_name (typedecl->name));
+          if (typedecl->name)
+            ldv_print_info (LDV_INFO_MATCH, "match type \"%s\"", ldv_get_id_name (typedecl->name));
 
           ldv_i_match = match;
           match->a_definition = adef;

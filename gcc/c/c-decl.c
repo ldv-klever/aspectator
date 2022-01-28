@@ -5702,7 +5702,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
       else if (ldv_instrumentation () && TREE_CODE (decl) == TYPE_DECL)
 	{
 	  /* Try to match a type declaration. */
-	  ldv_match_typedecl (decl, LDV_PP_INTRODUCE);
+	  ldv_match_typedecl (decl, DECL_SOURCE_FILE (decl), LDV_PP_INTRODUCE);
 
 	  /* Instance a matched advice. */
 	  ldv_weave_advice (NULL, NULL);
