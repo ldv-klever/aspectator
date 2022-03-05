@@ -116,7 +116,7 @@ static void ldv_print_identifier (unsigned int, ldv_identifier_ptr);
 static void ldv_print_inclusive_or_expr (unsigned int, ldv_inclusive_or_expr_ptr);
 static void ldv_print_init_declarator (unsigned int, ldv_init_declarator_ptr);
 static void ldv_print_init_declarator_list (unsigned int, ldv_init_declarator_list_ptr);
-static void ldv_print_initializer (unsigned int, ldv_initializer_ptr);
+static void ldv_print_initializer (unsigned int, ldv_initializer_ptr, bool);
 static void ldv_print_initializer_list (unsigned int, ldv_initializer_list_ptr);
 static void ldv_print_integer_constant (unsigned int, ldv_integer_constant_ptr);
 static void ldv_print_integer_suffix (unsigned int, ldv_integer_suffix_ptr);
@@ -2245,7 +2245,7 @@ ldv_print_init_declarator (unsigned int indent_level, ldv_init_declarator_ptr in
           ldv_c_backend_print (indent_level, true, "=");
 
           if ((initializer = LDV_INIT_DECLARATOR_INITIALIZER (init_declarator)))
-            ldv_print_initializer (indent_level, initializer);
+            ldv_print_initializer (indent_level, initializer, true);
           else
             LDV_PRETTY_PRINT_ERROR (indent_level, "initializer of init declarator was not printed");
         }
@@ -2294,9 +2294,13 @@ GNU extensions:
 
 initializer:
     { }
+
+Argument is_designation denotes whether there is a corresponding designation for a given initializer. If this is not the
+case, initializer should be "inlined", i.e. printed without surrounding curly braces
+(https://forge.ispras.ru/issues/11464).
 */
 static void
-ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initializer)
+ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initializer, bool is_designation)
 {
   ldv_assignment_expr_ptr assignment_expr;
   ldv_initializer_list_ptr initializer_list;
@@ -2314,7 +2318,8 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
     case LDV_INITIALIZER_SECOND:
     case LDV_INITIALIZER_THIRD:
     case LDV_INITIALIZER_FOURTH:
-      ldv_c_backend_print (indent_level, true, "{");
+      if (is_designation)
+        ldv_c_backend_print (indent_level, true, "{");
 
       if (LDV_INITIALIZER_KIND (initializer) != LDV_INITIALIZER_FOURTH)
         {
@@ -2327,7 +2332,8 @@ ldv_print_initializer (unsigned int indent_level, ldv_initializer_ptr initialize
             ldv_c_backend_print (indent_level, true, ",");
         }
 
-      ldv_c_backend_print (indent_level, true, "}");
+      if (is_designation)
+        ldv_c_backend_print (indent_level, true, "}");
 
       break;
 
@@ -2349,6 +2355,7 @@ ldv_print_initializer_list (unsigned int indent_level, ldv_initializer_list_ptr 
   ldv_designation_ptr designation;
   ldv_initializer_ptr initializer;
   ldv_initializer_list_ptr initializer_list_next;
+  bool is_designation;
 
   switch (LDV_INITIALIZER_LIST_KIND (initializer_list))
     {
@@ -2365,10 +2372,15 @@ ldv_print_initializer_list (unsigned int indent_level, ldv_initializer_list_ptr 
         }
 
       if ((designation = LDV_INITIALIZER_LIST_DESIGNATION (initializer_list)))
-        ldv_print_designation (indent_level, designation);
+        {
+          ldv_print_designation (indent_level, designation);
+          is_designation = true;
+        }
+      else
+        is_designation = false;
 
       if ((initializer = LDV_INITIALIZER_LIST_INITIALIZER (initializer_list)))
-        ldv_print_initializer (indent_level, initializer);
+        ldv_print_initializer (indent_level, initializer, is_designation);
       else
         LDV_PRETTY_PRINT_ERROR (indent_level, "initializer of argument expression list was not printed");
 
