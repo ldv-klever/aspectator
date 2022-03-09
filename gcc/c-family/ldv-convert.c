@@ -1449,6 +1449,7 @@ ldv_convert_cond_expr (tree t, unsigned int recursion_limit)
       break;
 
     case ABS_EXPR:
+    case ABSU_EXPR:
       LDV_COND_EXPR_KIND (cond_expr) = LDV_COND_EXPR_SIXTH;
 
       if ((op1 = LDV_OP_FIRST (t)))
