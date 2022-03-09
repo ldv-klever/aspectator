@@ -24,7 +24,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-grammar.h"
 
 
-#define LDV_CONVERT_EXPR_RECURSION_LIMIT 10
+#define LDV_CONVERT_EXPR_RECURSION_LIMIT 100
 
 
 extern ldv_assignment_expr_ptr ldv_convert_assignment_expr (tree, unsigned int);
