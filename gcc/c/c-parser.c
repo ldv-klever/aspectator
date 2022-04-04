@@ -72,6 +72,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "memmodel.h"
 #include "c-family/known-headers.h"
 
+/* LDV extension beginning. */
+
+#include "ldv-advice-weaver.h"
+#include "ldv-cpp-pointcut-matcher.h"
+#include "ldv-core.h"
+#include "ldv-io.h"
+#include "ldv-opts.h"
+#include "ldv-pointcut-matcher.h"
+
+/* LDV extension end. */
+
 /* We need to walk over decls with incomplete struct/union/enum types
    after parsing the whole translation unit.
    In finish_decl(), if the decl is static, has incomplete
@@ -99,53 +110,6 @@ set_c_expr_source_range (c_expr *expr,
   if (expr->value)
     set_source_range (expr->value, src_range);
 }
-
-/* LDV extension beginning. */
-
-#include "ldv-advice-weaver.h"
-#include "ldv-cpp-pointcut-matcher.h"
-#include "ldv-io.h"
-#include "ldv-opts.h"
-#include "ldv-pointcut-matcher.h"
-
-static hashval_t
-ldv_htab_hash_tree_string (const void *p)
-{
-  return htab_hash_pointer (((const struct ldv_hash_tree_string *)p)->value);
-}
-
-static int
-ldv_htab_eq_tree_string (const void *p, const void *q)
-{
-  return ((const struct ldv_hash_tree_string *)p)->value == (const_tree)q;
-}
-
-static void
-ldv_keep_original_string (tree value, const cpp_string *utf8_str)
-{
-  if (!ldv_tree_string_htab)
-   ldv_tree_string_htab = htab_create (127, ldv_htab_hash_tree_string, ldv_htab_eq_tree_string, NULL);
-
-  void **slot = htab_find_slot_with_hash (ldv_tree_string_htab, value, htab_hash_pointer (value), INSERT);
-
-  if (slot == NULL)
-    internal_error ("Can't allocate memory");
-
-  /* Assign a given string to a hash element. */
-  if (*slot == NULL)
-    {
-      struct ldv_hash_tree_string *v;
-      v = XCNEW (struct ldv_hash_tree_string);
-      v->value = value;
-      v->str = XCNEWVEC (char, utf8_str[0].len + 1);
-      memcpy (v->str, utf8_str[0].text, utf8_str[0].len);
-      v->str[utf8_str[0].len] = '\0';
-
-      *slot = v;
-    }
-}
-
-/* LDV extension end. */
 
 
 /* Initialization routine for this file.  */
@@ -7597,7 +7561,7 @@ c_parser_string_literal (c_parser *parser, bool translate, bool wide_ok)
          since it requests C back-end for initializers that also can contain
          strings. */
       if (ldv_instrumentation () || ldv_is_c_backend_enabled ()) {
-        ldv_keep_original_string (value, strs);
+        ldv_keep_original_string (value, strs, NULL);
       }
 
       /* LDV extension end. */

@@ -19,6 +19,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #ifndef _LDV_CORE_H_
 #define _LDV_CORE_H_
 
+#include "tree.h"
 
 #include "ldv-aspect-types.h"
 /* Core types and functions from preprocessor extensions. */
@@ -68,5 +69,6 @@ extern void ldv_putc_file (unsigned char, ldv_file_ptr);
 extern void ldv_puts_body (const char *, ldv_ab_ptr);
 extern void ldv_puts_file (const char *, ldv_file_ptr);
 
+void ldv_keep_original_string (tree, const cpp_string *, char *);
 
 #endif /* _LDV_CORE_H_ */

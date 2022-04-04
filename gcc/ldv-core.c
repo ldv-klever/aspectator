@@ -439,3 +439,46 @@ ldv_puts_file (const char *str, ldv_file_ptr file)
   else
     internal_error ("file pointer wasn't initialized");
 }
+
+static hashval_t
+ldv_htab_hash_tree_string (const void *p)
+{
+  return htab_hash_pointer (((const struct ldv_hash_tree_string *)p)->value);
+}
+
+static int
+ldv_htab_eq_tree_string (const void *p, const void *q)
+{
+  return ((const struct ldv_hash_tree_string *)p)->value == (const_tree)q;
+}
+
+void
+ldv_keep_original_string (tree value, const cpp_string *cpp_str, char *str)
+{
+  if (!ldv_tree_string_htab)
+   ldv_tree_string_htab = htab_create (127, ldv_htab_hash_tree_string, ldv_htab_eq_tree_string, NULL);
+
+  void **slot = htab_find_slot_with_hash (ldv_tree_string_htab, value, htab_hash_pointer (value), INSERT);
+
+  if (slot == NULL)
+    internal_error ("Can't allocate memory");
+
+  /* Assign a given string to a hash element. */
+  if (*slot == NULL)
+    {
+      struct ldv_hash_tree_string *v;
+      v = XCNEW (struct ldv_hash_tree_string);
+      v->value = value;
+
+      if (cpp_str)
+        {
+          v->str = XCNEWVEC (char, cpp_str[0].len + 1);
+          memcpy (v->str, cpp_str[0].text, cpp_str[0].len);
+          v->str[cpp_str[0].len] = '\0';
+        }
+      else
+        v->str = str;
+
+      *slot = v;
+    }
+}

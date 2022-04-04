@@ -55,6 +55,7 @@ along with GCC; see the file COPYING3.  If not see
 
 /* LDV extension beginning. */
 
+#include "ldv-core.h"
 #include "ldv-cbe-core.h"
 
 /* LDV extension end. */
@@ -8055,7 +8056,27 @@ digest_init (location_t init_loc, tree type, tree init, tree origtype,
 		    = tree_to_uhwi (TYPE_SIZE_UNIT (type));
 		  const char *p = TREE_STRING_POINTER (inside_init);
 
+		  /* LDV extension beginning. */
+
+		  /* Original string should be already stored to the hash table. See the corresponding code in
+		     c-parser.c. */
+		  void **slot;
+
+		  if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
+		    slot = htab_find_slot_with_hash (ldv_tree_string_htab, inside_init, htab_hash_pointer (inside_init), NO_INSERT);
+
+		  /* LDV extension end. */
+
 		  inside_init = build_string (size, p);
+
+		  /* LDV extension beginning. */
+
+		  /* Bind that value to new representation of string. */
+		  if (ldv_instrumentation () || ldv_is_c_backend_enabled ())
+		    ldv_keep_original_string (inside_init, NULL, ((struct ldv_hash_tree_string *)*slot)->str);
+
+		  /* LDV extension end. */
+
 		}
 	    }
 

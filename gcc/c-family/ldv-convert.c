@@ -4695,7 +4695,7 @@ ldv_convert_primary_expr (tree t, unsigned int recursion_limit  )
     default:
       LDV_PRIMARY_EXPR_KIND (primary_expr) = LDV_PRIMARY_EXPR_FOURTH;
 
-      /* Check whether recursion limit is reached. This is neede to avoid
+      /* Check whether recursion limit is reached. This is needed to avoid
          infinite recursion. */
       if (recursion_limit > 0)
         LDV_PRIMARY_EXPR_EXPR (primary_expr) = ldv_convert_expr (t, recursion_limit - 1);
