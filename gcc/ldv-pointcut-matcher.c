@@ -1277,6 +1277,14 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   else
     ldv_puts_id ((const char *) "", var->name);
 
+  /* Remember whether a variable is static to add this information to its type. Ignore function arguments that are
+   * always "static" from the standpoint of the TREE_PUBLIC() definition. Ditto skip local variables. */
+  if (TREE_CODE (t) != PARM_DECL && pp_kind == LDV_PP_INIT_GLOBAL && !TREE_PUBLIC (t))
+    {
+      ldv_entity_declspecs = ldv_create_declspecs ();
+      ldv_entity_declspecs->isstatic = true;
+    }
+
   var->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), NULL);
 
   var->file_path = ldv_get_realpath (DECL_SOURCE_FILE (t));
