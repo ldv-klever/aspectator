@@ -145,6 +145,7 @@ static int ldv_get_arg_size (unsigned int);
 static const char *ldv_get_arg_value (unsigned int);
 static const char *ldv_get_body_sign (ldv_ab_ptr);
 static const char *ldv_get_param_name (unsigned int);
+static const char *ldv_get_storage_class (ldv_i_type_ptr);
 static char *ldv_print_arg_type_str (unsigned int);
 static void ldv_print_c (unsigned int);
 static void ldv_print_composite_pointcut (ldv_cp_ptr);
@@ -509,7 +510,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
       else if (ldv_var_signature)
         *number = ldv_var_signature->use_line;
       else
-        internal_error ("no function signature was found for aspect pattern \"%s\"", pattern->name);
+        internal_error ("no signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else if (!strcmp (pattern->name, "path"))
     {
@@ -572,6 +573,15 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
       ldv_free_text (ldv_text);
       if (ldv_var_initializer)
         ldv_free_info_initializer (ldv_var_initializer);
+    }
+  else if (!strcmp (pattern->name, "storage_class"))
+    {
+      if (ldv_func_signature)
+        *text = ldv_copy_str(ldv_get_storage_class(ldv_func_signature->type));
+      else if (ldv_var_signature)
+        *text = ldv_copy_str(ldv_get_storage_class(ldv_var_signature->type));
+      else
+        internal_error ("no signature was found for aspect pattern \"%s\"", pattern->name);
     }
   else
     internal_error ("aspect pattern \"%s\" wasn't weaved", pattern->name);
@@ -826,6 +836,32 @@ ldv_get_param_name (unsigned int param_numb)
     }
 
   internal_error ("required parameter has number \"%d\" that exceeds the maximum one \"%d\"", param_numb, (i - 1));
+}
+
+const char *
+ldv_get_storage_class (ldv_i_type_ptr type)
+{
+  ldv_pps_declspecs_ptr declspecs;
+  const char *storage_class = "none";
+
+  /* Get more convenient representation for analysis of declaration specifiers. */
+  declspecs = ldv_convert_internal_to_declspecs(type);
+
+  /* There may be the only storage class. */
+  if (declspecs->istypedef)
+    storage_class = "typedef";
+  else if (declspecs->isextern)
+    storage_class = "extern";
+  else if (declspecs->isstatic)
+    storage_class = "static";
+  else if (declspecs->isauto)
+    storage_class = "auto";
+  else if (declspecs->isregister)
+    storage_class = "register";
+
+  ldv_free_declspecs(declspecs);
+
+  return storage_class;
 }
 
 bool
