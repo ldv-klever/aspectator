@@ -71,6 +71,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "c-family/c-ada-spec.h"
 #include "builtins.h"
 #include "c/c-lang.h"
+#include "json.h"
 
 #include "ldv-advice-weaver.h"
 #include "ldv-aspect-types.h"
@@ -159,6 +160,7 @@ static const char *ldv_print_func_context (ldv_i_func_ptr);
 static const char *ldv_print_func_name (ldv_i_func_ptr);
 static const char *ldv_print_func_signature (ldv_pps_decl_ptr);
 static void ldv_print_initializer (ldv_i_initializer_ptr, ldv_text_ptr, unsigned int);
+static json::value *ldv_convert_initializer_to_json (ldv_i_initializer_ptr);
 static const char *ldv_print_line_number (unsigned int);
 static void ldv_print_macro_name (ldv_id_ptr);
 static void ldv_print_macro_param (ldv_list_ptr);
@@ -352,6 +354,8 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
   int func_arg_size;
   ldv_text_ptr ldv_text = NULL;
   ldv_i_initializer_ptr ldv_var_initializer = NULL;
+  json::value *var_init_json = NULL;
+  pretty_printer pp;
 
   if (!strcmp (pattern->name, "arg"))
     *text = ldv_copy_str (ldv_get_param_name (pattern->arg_numb));
@@ -559,6 +563,16 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
       *text = ldv_copy_str (ldv_get_text (ldv_text));
 
       ldv_free_text (ldv_text);
+      if (ldv_var_initializer)
+        ldv_free_info_initializer (ldv_var_initializer);
+    }
+  else if (!strcmp (pattern->name, "var_init_list_json"))
+    {
+      ldv_var_initializer = ldv_convert_initializer_to_internal (ldv_var_initializer_tree);
+      var_init_json = ldv_convert_initializer_to_json (ldv_var_initializer);
+      var_init_json->print (&pp);
+      *text = ldv_copy_str (pp_formatted_text (&pp));
+
       if (ldv_var_initializer)
         ldv_free_info_initializer (ldv_var_initializer);
     }
@@ -1536,6 +1550,61 @@ ldv_print_initializer (ldv_i_initializer_ptr initializer, ldv_text_ptr initializ
       else
         ldv_puts_text (" {}\n", initializer_text);
     }
+}
+
+json::value *
+ldv_convert_initializer_to_json (ldv_i_initializer_ptr initializer)
+{
+  ldv_list_ptr struct_field_initializer_list = NULL;
+  ldv_i_struct_field_initializer_ptr struct_field_initializer = NULL;
+  ldv_list_ptr array_elem_initializer_list = NULL;
+  ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
+
+  if (!initializer)
+    return new json::string ("too large");
+
+  if (initializer->non_struct_or_array_initializer)
+    return new json::string (initializer->non_struct_or_array_initializer);
+
+  if (initializer->struct_initializer)
+    {
+      json::array *root = new json::array ();
+      json::object *field;
+
+      for (struct_field_initializer_list = initializer->struct_initializer
+        ; struct_field_initializer_list
+        ; struct_field_initializer_list = ldv_list_get_next (struct_field_initializer_list))
+        {
+          struct_field_initializer = (ldv_i_struct_field_initializer_ptr) ldv_list_get_data (struct_field_initializer_list);
+          field = new json::object ();
+          field->set("field", new json::string (struct_field_initializer->decl));
+          field->set("value", ldv_convert_initializer_to_json(struct_field_initializer->initializer));
+          root->append(field);
+        }
+
+      return root;
+    }
+
+  if (initializer->array_initializer)
+    {
+      json::array *root = new json::array ();
+      json::object *elem;
+
+      for (array_elem_initializer_list = initializer->array_initializer
+        ; array_elem_initializer_list
+        ; array_elem_initializer_list = ldv_list_get_next (array_elem_initializer_list))
+        {
+          array_elem_initializer = (ldv_i_array_elem_initializer_ptr) ldv_list_get_data (array_elem_initializer_list);
+          elem = new json::object ();
+          elem->set("index", new json::integer_number (array_elem_initializer->index));
+          elem->set("value", ldv_convert_initializer_to_json(array_elem_initializer->initializer));
+          root->append(elem);
+        }
+
+      return root;
+    }
+
+  return new json::string ("{}");
 }
 
 const char *

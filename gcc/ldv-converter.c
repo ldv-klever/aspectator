@@ -322,7 +322,7 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
               ldv_list_push_back (&initializer->array_initializer, array_elem_initializer);
             }
           else
-            internal_error ("can't find neiter initialized structure field nor array element");
+            internal_error ("can't find neither initialized structure field nor array element");
         }
     }
   else
