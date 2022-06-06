@@ -1020,7 +1020,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
     }
 
   if (TREE_CODE (t) == FUNCTION_DECL)
-    func->decl = ldv_convert_and_print_decl (t);
+    func->decl = ldv_convert_and_print_decl (t, true);
 
   if ((attrs = DECL_ATTRIBUTES(t)))
     for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
@@ -1179,7 +1179,7 @@ ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
   typedecl->file_path = ldv_get_realpath (file_path);
 
   ldv_disable_anon_enum_spec = true;
-  typedecl->decl = ldv_convert_and_print_decl (t);
+  typedecl->decl = ldv_convert_and_print_decl (t, true);
   ldv_disable_anon_enum_spec = false;
 
   /* Replace all new lines with spaces to avoid multi-line type definitions. */
@@ -1330,7 +1330,7 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
     {
       initializer = DECL_INITIAL (t);
       DECL_INITIAL (t) = NULL_TREE;
-      var->decl = ldv_convert_and_print_decl (t);
+      var->decl = ldv_convert_and_print_decl (t, true);
       DECL_INITIAL (t) = initializer;
     }
 

@@ -306,11 +306,7 @@ ldv_convert_initializer_to_internal (tree initializer_tree)
           if (TREE_CODE (index) == FIELD_DECL)
             {
               struct_field_initializer = XCNEW (ldv_info_struct_field_initializer);
-              struct_field_initializer->decl = ldv_convert_and_print_struct_decl (index);
-              /* Parsers dislike identation for declarations since it intermixes with identation for initializer. */
-              for (c = struct_field_initializer->decl; *c; c++)
-                if (*c == '\n')
-                  *c = ' ';
+              struct_field_initializer->decl = ldv_convert_and_print_struct_decl (index, true);
               struct_field_initializer->initializer = ldv_convert_initializer_to_internal (value);
               ldv_list_push_back (&initializer->struct_initializer, struct_field_initializer);
             }

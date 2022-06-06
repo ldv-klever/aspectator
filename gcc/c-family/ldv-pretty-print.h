@@ -26,8 +26,8 @@ extern bool ldv_disable_anon_enum_spec;
 
 
 char *ldv_convert_and_print_assignment_expr (tree);
-char *ldv_convert_and_print_decl (tree);
-char *ldv_convert_and_print_struct_decl (tree);
+char *ldv_convert_and_print_decl (tree, bool);
+char *ldv_convert_and_print_struct_decl (tree, bool);
 void ldv_print_translation_unit (tree, bool);
 
 #endif /* LDV_PRETTY_PRINT */

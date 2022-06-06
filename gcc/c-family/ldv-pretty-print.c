@@ -4218,8 +4218,20 @@ ldv_convert_and_print_assignment_expr (tree t)
   return ldv_c_backend_get_buffer ();
 }
 
+/* Parsers and regular expressions dislike new lines for declarations, so remove them. */
+static char *
+ldv_remove_new_lines(char *buf, bool remove_new_lines)
+{
+  if (remove_new_lines)
+    for (char *c = buf; *c; c++)
+      if (*c == '\n')
+        *c = ' ';
+
+  return buf;
+}
+
 char *
-ldv_convert_and_print_decl (tree t)
+ldv_convert_and_print_decl (tree t, bool remove_new_lines)
 {
   ldv_decl_ptr decl = NULL;
   int current_lines_level;
@@ -4241,11 +4253,11 @@ ldv_convert_and_print_decl (tree t)
   ldv_c_backend_print_to_file ();
   ldv_c_backend_set_lines_level (current_lines_level);
 
-  return ldv_c_backend_get_buffer ();
+  return ldv_remove_new_lines(ldv_c_backend_get_buffer (), remove_new_lines);
 }
 
 char *
-ldv_convert_and_print_struct_decl (tree t)
+ldv_convert_and_print_struct_decl (tree t, bool remove_new_lines)
 {
   ldv_struct_decl_ptr struct_decl = NULL;
   int current_lines_level;
@@ -4267,7 +4279,7 @@ ldv_convert_and_print_struct_decl (tree t)
   ldv_c_backend_print_to_file ();
   ldv_c_backend_set_lines_level (current_lines_level);
 
-  return ldv_c_backend_get_buffer ();
+  return ldv_remove_new_lines(ldv_c_backend_get_buffer (), remove_new_lines);
 }
 
 /*
