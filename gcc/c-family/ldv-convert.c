@@ -1207,7 +1207,7 @@ ldv_convert_block_item_list (tree t)
 
                 if (TREE_CODE (statement) == DECL_EXPR)
                   {
-                    /* Label declarations were already parsed. They always preceed any other declarations and statements. */
+                    /* Label declarations were already parsed. They always precede any other declarations and statements. */
                     if (TREE_CODE (DECL_EXPR_DECL (statement)) == LABEL_DECL)
                       break;
 
@@ -5157,12 +5157,33 @@ ldv_convert_storage_class_spec (tree t)
       break;
 
     case VAR_DECL:
+      /* Only local variables can have the "register" storage class specifier. If so it is the only. */
       if (DECL_REGISTER (t))
         LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec) = LDV_STORAGE_CLASS_SPEC_REGISTER;
-      else if (!TREE_PUBLIC (t) && DECL_FILE_SCOPE_P (t))
-        LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec) = LDV_STORAGE_CLASS_SPEC_STATIC;
-      else if (!TREE_STATIC (t) && DECL_FILE_SCOPE_P (t))
-        LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec) = LDV_STORAGE_CLASS_SPEC_EXTERN;
+      else
+        {
+          /* There are following correspondence between storage classes and GCC flags for global variables:
+           *
+           *                     | TREE_STATIC (t) | TREE_PUBLIC (t)
+           *     int var;        |      true       |      true
+           *     static int var; |      true       |      false
+           *     extern int var; |      false      |      true
+           *
+           * and for local variables:
+           *
+           *                     | TREE_STATIC (t) | TREE_PUBLIC (t)
+           *     int var;        |      false      |      false
+           *     static int var; |      true       |      false
+           *
+           * This means that both local and global variables are static iff TREE_STATIC (t) && !TREE_PUBLIC (t).
+           * Besides, global variables are extern iff !TREE_STATIC (t) && TREE_PUBLIC (t). Otherwise, there is no
+           * storage class specifier.
+           */
+          if (TREE_STATIC (t) && !TREE_PUBLIC (t))
+            LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec) = LDV_STORAGE_CLASS_SPEC_STATIC;
+          else if (!TREE_STATIC (t) && TREE_PUBLIC (t))
+            LDV_STORAGE_CLASS_SPEC_KIND (storage_class_spec) = LDV_STORAGE_CLASS_SPEC_EXTERN;
+        }
 
       break;
 
